@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   generate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     steps:
@@ -93,6 +93,19 @@ jobs:
 
             response="$(cat "$tmp_body")"
             rm -f "$tmp_body"
+
+            echo "Agnes API HTTP status: $http_code"
+            if [ "$http_code" != "200" ] && [ "$http_code" != "201" ] && [ "$http_code" != "202" ]; then
+              echo "Agnes API response (sanitized):"
+              printf '%s\n' "$response" | python -c 'import json,sys; 
+try:
+    d=json.load(sys.stdin)
+    if isinstance(d,dict):
+        d.pop("video_url",None); d.pop("url",None); d.pop("download_url",None)
+    print(json.dumps(d,ensure_ascii=False,indent=2))
+except Exception:
+    print(sys.stdin.read())' || true
+            fi
 
             case "$http_code" in
               200|201|202)
