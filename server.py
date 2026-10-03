@@ -286,10 +286,10 @@ if os.path.exists(static_dir):
 
 @app.get("/")
 async def root():
-    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"message": "Agnes Video Generator API"}
+    studio_path = os.path.join(os.path.dirname(__file__), "static", "ai-studio.html")
+    if os.path.exists(studio_path):
+        return FileResponse(studio_path)
+    return {"message": "AI Studio API"}
 
 
 # ═══════════════════════════════════════════════════
