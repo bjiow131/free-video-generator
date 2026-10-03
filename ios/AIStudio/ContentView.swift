@@ -90,8 +90,8 @@ struct ContentView: View {
                     .frame(minHeight: 150).scrollContentBackground(.hidden).padding(10)
                     .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
                 Picker("Режим", selection: $mode) {
-                    Text("Text → Video").tag("t2v"); Text("Image → Video").tag("i2v")
-                    Text("Text + Image").tag("ti2vid"); Text("Keyframes").tag("keyframes")
+                    Text("Текст → видео").tag("t2v"); Text("Изображение → видео").tag("i2v")
+                    Text("Текст + изображение").tag("ti2vid"); Text("Ключевые кадры").tag("keyframes")
                 }.pickerStyle(.segmented)
                 Stepper("Длительность: \(duration) сек", value: $duration, in: 5...30)
                 HStack {
