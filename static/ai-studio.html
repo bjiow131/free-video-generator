@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#11100e"><link rel="manifest" href="./manifest.webmanifest">
-<title>ИИ Студия — Панель управления</title>
+<meta name="description" content="AI Studio — генератор изображений и видео с открытым доступом."><title>AI Studio — генератор изображений и видео</title>
 <style>
 :root{--bg:#11100e;--card:#191815;--card2:#211f1b;--line:#343129;--text:#f5f0e6;--muted:#aaa397;--gold:#c9a96a;--gold2:#e1c58d;--ok:#79c99a;--danger:#d97777}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% -10%,#3a2d1b 0,#11100e 38%);color:var(--text);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
@@ -24,9 +24,9 @@ button{border:0;border-radius:11px;padding:12px 15px;background:var(--gold2);col
 </style>
 </head>
 <body>
-<header><div class="brand"><div class="mark">ИИ</div><div><h1>ИИ Студия</h1><div class="sub">локальная панель управления генератором</div></div></div><div class="status"><span class="dot"></span> API-сервер</div></header>
+<header><div class="brand"><div class="mark">AI</div><div><h1>AI Studio</h1><div class="sub">генератор изображений и видео</div></div></div><div class="status"><span class="dot"></span> API-сервер</div></header>
 <main>
-<section class="hero"><h2>Твоя AI-студия</h2><p>Единая панель для изображений, видео, сценариев и истории задач. Панель работает через существующий API проекта и не хранит API-ключ в браузере.</p></section>
+<section class="hero"><h2>AI Studio</h2><p>Единая панель для изображений, видео, сценариев и истории задач. Панель работает через существующий API проекта и не хранит API-ключ в браузере.</p></section>
 <div class="tabs"><button class="tab active" data-tab="image">🖼 Изображение</button><button class="tab" data-tab="video">🎬 Видео</button><button class="tab" data-tab="creative">✨ Сценарий → видео</button><button class="tab" data-tab="history">📚 История</button><button class="tab" data-tab="system">⚙️ Система</button></div>
 
 <section id="image" class="tabpage"><div class="grid">
@@ -58,8 +58,8 @@ button{border:0;border-radius:11px;padding:12px 15px;background:var(--gold2);col
 
 <section id="history" class="tabpage hidden"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h3>Последние задачи</h3><button class="secondary" onclick="loadHistory()">Обновить</button></div><div id="historyList" class="empty">Загрузка...</div></div></section>
 
-<section id="system" class="tabpage hidden"><div class="grid"><div class="card"><h3>Состояние</h3><div id="systemInfo" class="empty">Проверка...</div></div><div class="card"><h3>Рабочие каталоги</h3><div id="workspaces" class="empty">Загрузка...</div></div><div class="card wide"><h3>Подключение сервера</h3><div class="hint">Если AI Studio открыта через GitHub Pages, укажи адрес запущенного API-сервера. Адрес сохраняется только на этом устройстве.</div><label>Адрес API-сервера</label><input id="serverUrl" placeholder="Адрес сервера"><div class="actions"><button onclick="saveServer()">Сохранить сервер</button><button class="secondary" onclick="clearServer()">Сбросить</button></div><div id="serverMsg" style="margin-top:12px"></div></div><div class="card wide"><div class="notice">Безопасность: ключ API не вводится в эту панель. Используется только ключ, уже сохранённый сервером проекта.</div></div></div></section>
-<div class="footer">ИИ Студия • генератор изображений и видео</div>
+<section id="system" class="tabpage hidden"><div class="grid"><div class="card"><h3>Состояние</h3><div id="systemInfo" class="empty">Проверка...</div></div><div class="card"><h3>Рабочие каталоги</h3><div id="workspaces" class="empty">Загрузка...</div></div><div class="card wide"><h3>Подключение сервера</h3><div class="hint">Если нужно подключить другой сервер, укажи его адрес. Адрес сохраняется только на этом устройстве.</div><label>Адрес API-сервера</label><input id="serverUrl" placeholder="Адрес сервера"><div class="actions"><button onclick="saveServer()">Сохранить сервер</button><button class="secondary" onclick="clearServer()">Сбросить</button></div><div id="serverMsg" style="margin-top:12px"></div></div><div class="card wide"><div class="notice">Безопасность: ключ API не вводится в эту панель. Используется только ключ, уже сохранённый сервером проекта.</div></div></div></section>
+<div class="footer">AI Studio • генератор изображений и видео</div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
@@ -70,6 +70,34 @@ document.querySelectorAll('.preset').forEach(b=>b.onclick=()=>{$('imgPrompt').va
 
 const REFERENCE_IDENTITY_PROMPT = `Если используется референс человека, строго используй предоставленное изображение как эталон личности и внешности. Сохрани личность человека без изменений. Лицо должно оставаться тем же и легко узнаваемым: та же форма лица, глаза, брови, нос, губы, линия челюсти, скулы, оттенок кожи, причёска и линия роста волос. Не улучшай, не стилизуй, не омолаживай и не состаривай лицо. Сохрани исходные пропорции тела и анатомию: то же соотношение головы и тела, ширину плеч, длину туловища, талию, бёдра, руки, ноги, кисти и общую форму тела. Не делай человека выше, ниже, стройнее, шире или более мускулистым. Это должен быть тот же самый реальный человек с референса, а не похожий человек. Сохрани естественную асимметрию лица, естественную текстуру кожи и все отличительные особенности. Не заменяй и не переосмысливай черты лица. Изменяй только сцену, окружение, одежду, позу, освещение и композицию камеры, если это явно указано в запросе. Личность, лицо и основные пропорции тела должны оставаться неизменными. Фотореалистичность, естественная анатомия, реалистичная текстура кожи, высокая точность сохранения личности, стабильная идентичность, без изменения лица и без смещения идентичности.`;
 const REFERENCE_NEGATIVE_PROMPT = `другой человек, другое лицо, изменение личности, морфинг лица, замена лица, смещение идентичности, реконструкция лица, улучшенное лицо, идеализированное лицо, чрезмерно симметричное лицо, изменённые пропорции лица, изменённые глаза, изменённый нос, изменённые губы, изменённая линия челюсти, изменённые скулы, изменённый оттенок кожи, другая причёска, изменённая линия роста волос, изменённые пропорции тела, удлинённое тело, укороченное тело, более широкое тело, более худое тело, более мускулистое тело, искажённая анатомия, нереалистичные пропорции, изменение формы тела, деформированные кисти, лишние пальцы`;
+const UI_TRANSLATIONS={
+  '开始简单视频生成...':'Запуск генерации видео...',
+  '视频生成完成!':'Видео готово!',
+  '任务已被中断，可从任务列表续传':'Задача прервана. Её можно продолжить из истории задач.',
+  '恢复轮询视频任务':'Возобновление ожидания видео',
+  '提交视频任务':'Отправка задачи на генерацию видео',
+  '等待视频生成':'Ожидание генерации видео',
+  '视频生成完成':'Видео готово',
+  'Ошибка сервера':'Ошибка сервера',
+  '生成完成':'Генерация завершена',
+  '生成失败':'Ошибка генерации'
+};
+function translateUiText(value){
+  if(typeof value!=='string') return value;
+  let out=value;
+  for(const [from,to] of Object.entries(UI_TRANSLATIONS)) out=out.split(from).join(to);
+  return out;
+}
+const uiObserver=new MutationObserver(mutations=>{
+  for(const m of mutations){
+    if(m.type==='characterData' && m.target.nodeValue) m.target.nodeValue=translateUiText(m.target.nodeValue);
+    if(m.type==='childList') for(const n of m.addedNodes){
+      if(n.nodeType===Node.TEXT_NODE && n.nodeValue) n.nodeValue=translateUiText(n.nodeValue);
+      else if(n.nodeType===Node.ELEMENT_NODE) n.querySelectorAll('*').forEach(el=>{if(el.childElementCount===0 && el.textContent) el.textContent=translateUiText(el.textContent)});
+    }
+  }
+});
+uiObserver.observe(document.body,{subtree:true,childList:true,characterData:true});
 const DEFAULT_API='https://ai-studio-api-xpyr.onrender.com';
 function apiBase(){return localStorage.getItem('ai_studio_server')||DEFAULT_API}
 function apiUrl(url){const base=apiBase();if(!base)return url;return base.replace(/\/$/,'')+url}
