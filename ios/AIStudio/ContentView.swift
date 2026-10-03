@@ -85,7 +85,7 @@ struct ContentView: View {
     private var videoView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                header("Видео", "Создание задачи Simple Video")
+                header("Видео", "Создание задачи простого видео")
                 TextEditor(text: $videoPrompt)
                     .frame(minHeight: 150).scrollContentBackground(.hidden).padding(10)
                     .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
