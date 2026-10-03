@@ -44,6 +44,8 @@ def init_db():
                 created_at TEXT NOT NULL,metadata TEXT DEFAULT '')""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id,created_at)")
+            conn.execute("""CREATE TABLE IF NOT EXISTS generations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,model TEXT NOT NULL,type TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,output_path TEXT,credits INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL)""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_generations_user ON generations(user_id,created_at)")
         else:
             conn.executescript("""CREATE TABLE IF NOT EXISTS users(
                 id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL COLLATE NOCASE,password_hash TEXT NOT NULL,
@@ -54,7 +56,9 @@ def init_db():
                 id TEXT PRIMARY KEY,user_id TEXT NOT NULL,amount INTEGER NOT NULL,kind TEXT NOT NULL,
                 description TEXT NOT NULL,created_at TEXT NOT NULL,metadata TEXT DEFAULT '');
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-                CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id,created_at);""")
+                CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id,created_at);
+                CREATE TABLE IF NOT EXISTS generations(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,model TEXT NOT NULL,type TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,output_path TEXT,credits INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS idx_generations_user ON generations(user_id,created_at);""")
 
 def create_user(email,password):
     email=email.strip().lower()
@@ -121,6 +125,19 @@ def change_credits(user_id,amount,kind,description,metadata=""):
 
 def ledger(user_id,limit=50):
     q="SELECT amount,kind,description,created_at,metadata FROM ledger WHERE user_id=%s ORDER BY created_at DESC LIMIT %s" if IS_POSTGRES else "SELECT amount,kind,description,created_at,metadata FROM ledger WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
+    with _lock,db() as conn:
+        rows=conn.execute(q,(user_id,int(limit))).fetchall()
+    return [dict(r) for r in rows]
+
+def add_generation(user_id,model,kind,prompt,status,output_path=None,credits=0):
+    gid=secrets.token_hex(16)
+    q="INSERT INTO generations(id,user_id,model,type,prompt,status,output_path,credits,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)" if IS_POSTGRES else "INSERT INTO generations(id,user_id,model,type,prompt,status,output_path,credits,created_at) VALUES(?,?,?,?,?,?,?,?,?)"
+    with _lock,db() as conn:
+        conn.execute(q,(gid,user_id,model,kind,prompt,status,output_path,int(credits),_now()))
+    return gid
+
+def generations(user_id,limit=50):
+    q="SELECT id,model,type,prompt,status,output_path,credits,created_at FROM generations WHERE user_id=%s ORDER BY created_at DESC LIMIT %s" if IS_POSTGRES else "SELECT id,model,type,prompt,status,output_path,credits,created_at FROM generations WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
     with _lock,db() as conn:
         rows=conn.execute(q,(user_id,int(limit))).fetchall()
     return [dict(r) for r in rows]
