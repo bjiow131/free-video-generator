@@ -591,7 +591,18 @@ async def serve_image(task_id: str):
         raise HTTPException(status_code=404, detail="Image not found")
     if not os.path.exists(state.final_video_file):
         raise HTTPException(status_code=404, detail="Image file not found")
-    return FileResponse(state.final_video_file)
+    return FileResponse(state.final_video_file, media_type="image/png")
+
+
+@app.get("/api/image/{task_id}/download")
+async def download_image(task_id: str):
+    """Скачать готовое изображение."""
+    dir_name = _find_dir_name(task_id)
+    tm = TaskManager(task_id, dir_name=dir_name)
+    state = tm.load()
+    if not state or not state.final_video_file or not os.path.exists(state.final_video_file):
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+    return FileResponse(state.final_video_file, media_type="image/png", headers={"Content-Disposition": f'attachment; filename="image_{task_id}.png"'})
 
 
 # ═══════════════════════════════════════════════════
@@ -653,6 +664,17 @@ async def serve_video(task_id: str):
     if not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="Video not found")
     return FileResponse(video_path, media_type="video/mp4")
+
+
+@app.get("/api/video/{task_id}/download")
+async def download_video(task_id: str):
+    """Скачать готовое видео."""
+    dir_name = _find_dir_name(task_id)
+    task_dir = os.path.join(get_working_dir(), dir_name)
+    video_path = os.path.join(task_dir, "final_video.mp4")
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Видео не найдено")
+    return FileResponse(video_path, media_type="video/mp4", headers={"Content-Disposition": f'attachment; filename="video_{task_id}.mp4"'})
 
 
 # ═══════════════════════════════════════════════════
