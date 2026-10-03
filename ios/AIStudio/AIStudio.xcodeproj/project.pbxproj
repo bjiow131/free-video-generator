@@ -14,7 +14,7 @@
   200000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
   200000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
   200000000000000000000006 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
-  300000000000000000000001 = {isa = PBXGroup; children = (200000000000000000000001,200000000000000000000002,200000000000000000000003,200000000000000000000004,200000000000000000000005); path = AIStudio; sourceTree = "<group>"; };
+  300000000000000000000001 = {isa = PBXGroup; children = (200000000000000000000001,200000000000000000000002,200000000000000000000003,200000000000000000000004,200000000000000000000005); name = AIStudio; sourceTree = "<group>"; };
   300000000000000000000002 = {isa = PBXGroup; children = (300000000000000000000001,300000000000000000000003); sourceTree = "<group>"; };
   300000000000000000000003 = {isa = PBXGroup; children = (200000000000000000000006); name = Products; sourceTree = "<group>"; };
   400000000000000000000001 = {isa = PBXNativeTarget; buildConfigurationList = 600000000000000000000001; buildPhases = (500000000000000000000001,500000000000000000000002); buildRules = (); dependencies = (); name = AIStudio; productName = AIStudio; productReference = 200000000000000000000006; productType = "com.apple.product-type.application"; };
