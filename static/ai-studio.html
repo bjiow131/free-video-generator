@@ -57,7 +57,7 @@ button{border:0;border-radius:11px;padding:12px 15px;background:var(--gold2);col
 <section id="history" class="tabpage hidden"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h3>Последние задачи</h3><button class="secondary" onclick="loadHistory()">Обновить</button></div><div id="historyList" class="empty">Загрузка...</div></div></section>
 
 <section id="system" class="tabpage hidden"><div class="grid"><div class="card"><h3>Состояние</h3><div id="systemInfo" class="empty">Проверка...</div></div><div class="card"><h3>Рабочие каталоги</h3><div id="workspaces" class="empty">Загрузка...</div></div><div class="card wide"><h3>Подключение сервера</h3><div class="hint">Если AI Studio открыта через GitHub Pages, укажи адрес запущенного API-сервера. Адрес сохраняется только на этом устройстве.</div><label>URL API-сервера</label><input id="serverUrl" placeholder="https://example.com"><div class="actions"><button onclick="saveServer()">Сохранить сервер</button><button class="secondary" onclick="clearServer()">Сбросить</button></div><div id="serverMsg" style="margin-top:12px"></div></div><div class="card wide"><div class="notice">Безопасность: ключ API не вводится в эту панель. Используется только ключ, уже сохранённый сервером проекта.</div></div></div></section>
-<div class="footer">AI Studio • генератор изображений и видео</div>
+<div class="footer">ИИ Студия • генератор изображений и видео</div>
 </main>
 <script>
 const $=id=>document.getElementById(id);
