@@ -39,13 +39,16 @@ on:
         options: ["1", "2", "3", "4"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Validate inputs
         env:
           IMAGE_MODEL: ${{ inputs.model }}
@@ -149,16 +152,24 @@ jobs:
             file "generated-image-$i.jpg"
           done
 
-      - name: Save metadata
+      - name: Publish images to repository
         env:
+          IMAGE_VARIANTS: ${{ inputs.variants }}
+          RUN_ID: ${{ github.run_id }}
           IMAGE_MODEL: ${{ inputs.model }}
           IMAGE_ASPECT: ${{ inputs.aspect_ratio }}
           IMAGE_RESOLUTION: ${{ inputs.resolution }}
           IMAGE_QUALITY: ${{ inputs.quality }}
-          IMAGE_VARIANTS: ${{ inputs.variants }}
           IMAGE_PROMPT: ${{ inputs.prompt }}
         run: |
           set -euo pipefail
+
+          mkdir -p "generated/$RUN_ID"
+          for i in $(seq 1 "$IMAGE_VARIANTS"); do
+            cp "generated-image-$i.jpg" "generated/$RUN_ID/generated-image-$i.jpg"
+          done
+          cp image-metadata.txt "generated/$RUN_ID/image-metadata.txt" 2>/dev/null || true
+
           {
             printf 'model=%s\n' "$IMAGE_MODEL"
             printf 'aspect_ratio=%s\n' "$IMAGE_ASPECT"
@@ -167,7 +178,20 @@ jobs:
             printf 'variants=%s\n' "$IMAGE_VARIANTS"
             printf 'prompt=%s\n' "$IMAGE_PROMPT"
             printf 'generated_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          } > image-metadata.txt
+            printf 'run_id=%s\n' "$RUN_ID"
+          } > "generated/$RUN_ID/image-metadata.txt"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "generated/$RUN_ID"
+          git commit -m "Add generated Pollinations images (run $RUN_ID)"
+          git push
+
+          echo
+          echo "PUBLIC IMAGE LINKS:"
+          for i in $(seq 1 "$IMAGE_VARIANTS"); do
+            echo "https://raw.githubusercontent.com/${{ github.repository }}/main/generated/$RUN_ID/generated-image-$i.jpg"
+          done
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
