@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-studio-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: AGNES_API_KEY
+        sync: false
+      - key: AGNES_RATE_LIMIT
+        value: "20"
