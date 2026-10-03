@@ -30,8 +30,8 @@ jobs:
     steps:
       - name: Validate inputs
         env:
-          IMAGE_MODEL: \${{ inputs.model }}
-          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+          IMAGE_MODEL: ${{ inputs.model }}
+          IMAGE_ASPECT: ${{ inputs.aspect_ratio }}
         run: |
           set -euo pipefail
           case "$IMAGE_MODEL" in
@@ -45,10 +45,10 @@ jobs:
 
       - name: Generate image
         env:
-          POLLINATIONS_API_KEY: \${{ secrets.POLLINATIONS_API_KEY }}
-          IMAGE_PROMPT: \${{ inputs.prompt }}
-          IMAGE_MODEL: \${{ inputs.model }}
-          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+          IMAGE_PROMPT: ${{ inputs.prompt }}
+          IMAGE_MODEL: ${{ inputs.model }}
+          IMAGE_ASPECT: ${{ inputs.aspect_ratio }}
         run: |
           set -euo pipefail
           if [ -z "$POLLINATIONS_API_KEY" ]; then
@@ -69,22 +69,17 @@ jobs:
               f.write(url)
           PY
 
-          curl --fail --silent --show-error --location \
-            --retry 4 --retry-delay 5 --retry-all-errors \
-            --header "Authorization: Bearer $POLLINATIONS_API_KEY" \
-            --output generated-image.jpg \
-            "$(cat pollinations-url.txt)"
+          curl --fail --silent --show-error --location             --retry 4 --retry-delay 5 --retry-all-errors             --header "Authorization: Bearer $POLLINATIONS_API_KEY"             --output generated-image.jpg             "$(cat pollinations-url.txt)"
 
           test -s generated-image.jpg
           file generated-image.jpg
 
       - name: Save metadata
         env:
-          IMAGE_MODEL: \${{ inputs.model }}
-          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+          IMAGE_MODEL: ${{ inputs.model }}
+          IMAGE_ASPECT: ${{ inputs.aspect_ratio }}
         run: |
-          printf 'model=%s\naspect_ratio=%s\ngenerated_at=%s\n' \
-            "$IMAGE_MODEL" "$IMAGE_ASPECT" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > image-metadata.txt
+          printf 'model=%s\naspect_ratio=%s\ngenerated_at=%s\n'             "$IMAGE_MODEL" "$IMAGE_ASPECT" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > image-metadata.txt
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
