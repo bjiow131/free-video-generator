@@ -19,7 +19,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
@@ -211,6 +211,34 @@ jobs:
           file agnes-video.mp4 || true
           echo "Saved agnes-video.mp4"
 
+      - name: Publish video to repository
+        env:
+          VIDEO_PROMPT: ${{ inputs.prompt }}
+          VIDEO_SECONDS: ${{ inputs.seconds }}
+          VIDEO_ASPECT: ${{ inputs.aspect_ratio }}
+        run: |
+          set -euo pipefail
+
+          output_dir="generated-videos/${GITHUB_RUN_ID}"
+          mkdir -p "$output_dir"
+          cp agnes-video.mp4 "$output_dir/agnes-video.mp4"
+
+          cat > "$output_dir/video-metadata.txt" <<EOF
+          model=agnes-video-2.5-flash
+          seconds=$VIDEO_SECONDS
+          aspect_ratio=$VIDEO_ASPECT
+          prompt=$VIDEO_PROMPT
+          generated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          run_id=$GITHUB_RUN_ID
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$output_dir"
+          git commit -m "Add generated video ${GITHUB_RUN_ID}"
+          git push origin main
+
+          echo "DIRECT_VIDEO_URL=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${output_dir}/agnes-video.mp4"
       - name: Upload video artifact
         uses: actions/upload-artifact@v4
         with:
