@@ -1,0 +1,19 @@
+name: iOS Build
+
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-build.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-build.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build AI Studio
+        run: xcodebuild -project ios/AIStudio/AIStudio.xcodeproj -scheme AIStudio -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
