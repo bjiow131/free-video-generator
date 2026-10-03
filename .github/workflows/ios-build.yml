@@ -9,11 +9,32 @@ on:
     paths:
       - "ios/**"
       - ".github/workflows/ios-build.yml"
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Build AI Studio
-        run: xcodebuild -project ios/AIStudio/AIStudio.xcodeproj -target AIStudio -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+      - name: Verify Xcode
+        run: xcodebuild -version
+      - name: Build simulator app
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/AIStudio/AIStudio.xcodeproj -target AIStudio -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build | tee xcodebuild.log
+      - name: Package simulator app
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Build/Products/Debug-iphonesimulator/AIStudio.app" -print -quit)
+          test -n "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" AIStudio-simulator.zip
+      - name: Upload simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIStudio-iOS-simulator
+          path: AIStudio-simulator.zip
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIStudio-xcodebuild-log
+          path: xcodebuild.log
