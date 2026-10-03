@@ -80,11 +80,50 @@ jobs:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
         run: |
           set -euo pipefail
-          response="$(curl --fail-with-body --silent --show-error \
-            --request POST "https://apihub.agnes-ai.com/v1/videos" \
-            --header "Authorization: Bearer $AGNES_API_KEY" \
-            --header "Content-Type: application/json" \
-            --data-binary @agnes-request.json)"
+
+          max_attempts=6
+          response=""
+          http_code=""
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Submitting generation request (attempt $attempt/$max_attempts)..."
+
+            tmp_body="$(mktemp)"
+
+            http_code="$(curl --silent --show-error --location \
+              --request POST "https://apihub.agnes-ai.com/v1/videos" \
+              --header "Authorization: Bearer $AGNES_API_KEY" \
+              --header "Content-Type: application/json" \
+              --output "$tmp_body" \
+              --write-out "%{http_code}" \
+              --data-binary @agnes-request.json || true)"
+
+            response="$(cat "$tmp_body")"
+            rm -f "$tmp_body"
+
+            case "$http_code" in
+              200|201|202)
+                break
+                ;;
+              429|500|502|503|504)
+                if [ "$attempt" -lt "$max_attempts" ]; then
+                  retry_after=$((15 * 2 ** (attempt - 1)))
+                  echo "Agnes API returned HTTP $http_code. Retrying in ${retry_after}s..."
+                  sleep "$retry_after"
+                  continue
+                fi
+                echo "Agnes API remained unavailable after $max_attempts attempts (last HTTP $http_code)."
+                printf '%s\n' "$response"
+                exit 1
+                ;;
+              *)
+                echo "Agnes API returned unexpected HTTP $http_code."
+                printf '%s\n' "$response"
+                exit 1
+                ;;
+            esac
+          done
+
           printf '%s\n' "$response" | python -m json.tool
 
           video_id="$(printf '%s' "$response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("video_id") or d.get("task_id") or d.get("id") or "")')"
