@@ -145,14 +145,37 @@ jobs:
         run: |
           set -euo pipefail
           completed=0
+          started_at=$(date +%s)
 
-          for attempt in $(seq 1 180); do
-            sleep 10
-            status_response="$(curl --fail-with-body --silent --show-error               --request GET               "https://apihub.agnes-ai.com/agnesapi?video_id=$VIDEO_ID&model_name=agnes-video-2.5-flash"               --header "Authorization: Bearer $AGNES_API_KEY")"
+          echo "Generation started. Progress will be updated every 5 seconds."
+
+          for attempt in $(seq 1 360); do
+            sleep 5
+            status_response="$(curl --fail-with-body --silent --show-error \
+              --request GET \
+              "https://apihub.agnes-ai.com/agnesapi?video_id=$VIDEO_ID&model_name=agnes-video-2.5-flash" \
+              --header "Authorization: Bearer $AGNES_API_KEY")"
 
             state="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))')"
             progress="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("progress",0))')"
-            echo "Attempt $attempt/180 — status: $state — progress: $progress%"
+
+            if ! [[ "$progress" =~ ^[0-9]+$ ]]; then
+              progress=0
+            fi
+            if [ "$progress" -gt 100 ]; then
+              progress=100
+            fi
+
+            elapsed=$(( $(date +%s) - started_at ))
+            minutes=$((elapsed / 60))
+            seconds=$((elapsed % 60))
+
+            bar_length=30
+            filled=$((progress * bar_length / 100))
+            empty=$((bar_length - filled))
+            bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+
+            echo "[$bar] $progress% | status: $state | elapsed: ${minutes}m ${seconds}s"
 
             case "$state" in
               completed)
@@ -163,10 +186,11 @@ jobs:
                   exit 1
                 fi
                 echo "VIDEO_URL=$video_url" >> "$GITHUB_ENV"
+                echo "Generation completed: 100%"
                 completed=1
                 break
                 ;;
-              failed|error)
+              failed|error|cancelled)
                 echo "Agnes generation failed:"
                 printf '%s\n' "$status_response"
                 exit 1
