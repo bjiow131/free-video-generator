@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11100e">
+<title>AI Studio — Control Panel</title>
+<style>
+:root{--bg:#11100e;--card:#191815;--card2:#211f1b;--line:#343129;--text:#f5f0e6;--muted:#aaa397;--gold:#c9a96a;--gold2:#e1c58d;--ok:#79c99a;--danger:#d97777}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% -10%,#3a2d1b 0,#11100e 38%);color:var(--text);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+header{position:sticky;top:0;z-index:5;background:rgba(17,16,14,.88);backdrop-filter:blur(18px);border-bottom:1px solid var(--line);padding:16px 18px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;gap:11px;align-items:center}.mark{width:38px;height:38px;border:1px solid #765f37;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#332817,#17140f);font-weight:800;color:var(--gold2)}h1{font-size:17px;margin:0}.sub{font-size:11px;color:var(--muted);margin-top:2px}
+.status{font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center}.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}
+main{max-width:1100px;margin:auto;padding:22px 16px 60px}.hero{padding:8px 2px 20px}.hero h2{font-size:30px;letter-spacing:-.04em;margin:0 0 7px}.hero p{color:var(--muted);margin:0;line-height:1.5}
+.tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 15px}.tab{border:1px solid var(--line);background:var(--card);color:var(--muted);padding:10px 14px;border-radius:12px;white-space:nowrap}.tab.active{color:#17130d;background:var(--gold2);border-color:var(--gold2);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:rgba(25,24,21,.9);border:1px solid var(--line);border-radius:18px;padding:18px}.wide{grid-column:1/-1}.card h3{margin:0 0 14px;font-size:16px}.hint{color:var(--muted);font-size:12px;line-height:1.45;margin:-7px 0 13px}
+label{display:block;color:var(--muted);font-size:12px;margin:12px 0 6px}input,textarea,select{width:100%;border:1px solid var(--line);background:#11100e;color:var(--text);border-radius:11px;padding:12px;font:inherit;outline:none}textarea{min-height:130px;resize:vertical}input:focus,textarea:focus,select:focus{border-color:#80683e}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.checks{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0}.checks label{margin:0;display:flex;gap:7px;align-items:center}.checks input{width:auto}
+button{border:0;border-radius:11px;padding:12px 15px;background:var(--gold2);color:#18130c;font-weight:750;cursor:pointer}.secondary{background:var(--card2);border:1px solid var(--line);color:var(--text)}button:disabled{opacity:.45;cursor:default}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px}
+.notice{border:1px solid #5b4930;background:#251d12;color:#d9c39b;border-radius:12px;padding:11px;font-size:12px;line-height:1.45}
+.hidden{display:none}.task{border:1px solid var(--line);background:#141310;border-radius:13px;padding:13px;margin:8px 0}.tasktop{display:flex;justify-content:space-between;gap:10px}.badge{font-size:11px;border-radius:999px;padding:4px 8px;background:#2b2924;color:var(--muted)}.badge.ok{color:var(--ok)}.badge.bad{color:var(--danger)}.task p{margin:8px 0 0;color:var(--muted);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.empty{color:var(--muted);padding:25px 0;text-align:center}.footer{color:#777066;text-align:center;font-size:11px;margin-top:25px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.hero h2{font-size:26px}.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div class="brand"><div class="mark">AI</div><div><h1>AI Studio</h1><div class="sub">локальная панель управления генератором</div></div></div><div class="status"><span class="dot"></span> API-сервер</div></header>
+<main>
+<section class="hero"><h2>Твоя AI-студия</h2><p>Один экран для изображений, видео, сценариев и истории задач. Панель работает через существующий API проекта и не хранит API-ключ в браузере.</p></section>
+<div class="tabs"><button class="tab active" data-tab="image">🖼 Изображение</button><button class="tab" data-tab="video">🎬 Видео</button><button class="tab" data-tab="creative">✨ Сценарий → видео</button><button class="tab" data-tab="history">📚 История</button><button class="tab" data-tab="system">⚙️ Система</button></div>
+
+<section id="image" class="tabpage"><div class="grid">
+<div class="card"><h3>Генератор изображения</h3><div class="hint">Создаёт изображение через настроенный серверный AI-провайдер.</div>
+<label>Промпт</label><textarea id="imgPrompt" placeholder="Например: премиальная рекламная фотография Кавказских гор на рассвете..."></textarea>
+<div class="row"><div><label>Размер</label><select id="imgSize"><option>1024x1024</option><option>768x1152</option><option>1152x768</option><option>768x1344</option><option>1344x768</option><option>1792x1024</option><option>1024x1792</option></select></div><div><label>Негативный промпт</label><input id="imgNeg" placeholder="text, watermark, blur..."></div></div>
+<div class="actions"><button onclick="generateImage()">Создать изображение</button></div><div id="imgResult" class="hidden" style="margin-top:15px"></div></div>
+<div class="card"><h3>Быстрые пресеты</h3><div class="hint">Нажми — текст попадёт в основной промпт.</div><div class="actions"><button class="secondary preset">Горный пейзаж</button><button class="secondary preset">Ресторанный интерьер</button><button class="secondary preset">Премиальная реклама</button><button class="secondary preset">Еда крупным планом</button></div></div>
+</div></section>
+
+<section id="video" class="tabpage hidden"><div class="grid">
+<div class="card wide"><h3>Простое видео</h3><div class="hint">Текст → видео. Для image-to-video можно добавить референс.</div>
+<label>Промпт</label><textarea id="vidPrompt" placeholder="Опишите движение камеры, сцену, свет и атмосферу..."></textarea>
+<div class="row"><div><label>Режим</label><select id="vidMode"><option value="t2v">Text → Video</option><option value="i2v">Image → Video</option><option value="ti2vid">Text + Image</option><option value="keyframes">Keyframes</option></select></div><div><label>Длительность</label><select id="vidDuration"><option>5</option><option>10</option><option>15</option><option>20</option><option>30</option></select></div></div>
+<div class="row"><div><label>Ширина</label><input id="vidW" type="number" value="768"></div><div><label>Высота</label><input id="vidH" type="number" value="1152"></div></div>
+<label>Референс изображения</label><input id="vidRef" type="file" accept="image/*">
+<div class="actions"><button onclick="generateVideo()">Запустить видео</button></div><div id="vidMsg" style="margin-top:12px"></div></div>
+</div></section>
+
+<section id="creative" class="tabpage hidden"><div class="grid">
+<div class="card wide"><h3>Креативный видеогенератор</h3><div class="hint">Идея разбивается сервером на сцены и проходит через существующий Creative Pipeline.</div>
+<label>Идея</label><textarea id="idea" placeholder="Например: атмосферный ролик о ресторане ГОРЦЫ, где камера проходит через горную долину к ресторану на вершине..."></textarea>
+<div class="row"><div><label>Стиль</label><input id="style" value="кинематографичный, реалистичный, премиальный"></div><div><label>Количество сцен</label><input id="scenes" type="number" min="1" max="30" value="3"></div></div>
+<div class="checks"><label><input id="chars" type="checkbox" checked> Персонажи</label><label><input id="subs" type="checkbox" checked> Субтитры</label><label><input id="audio" type="checkbox"> Озвучка</label></div>
+<div class="actions"><button onclick="generateCreative()">Создать проект</button></div><div id="creativeMsg" style="margin-top:12px"></div></div>
+</div></section>
+
+<section id="history" class="tabpage hidden"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><h3>Последние задачи</h3><button class="secondary" onclick="loadHistory()">Обновить</button></div><div id="historyList" class="empty">Загрузка...</div></div></section>
+
+<section id="system" class="tabpage hidden"><div class="grid"><div class="card"><h3>Состояние</h3><div id="systemInfo" class="empty">Проверка...</div></div><div class="card"><h3>Рабочие каталоги</h3><div id="workspaces" class="empty">Загрузка...</div></div><div class="card wide"><div class="notice">Безопасность: ключ API не вводится в эту панель. Используется только ключ, уже сохранённый сервером проекта.</div></div></div></section>
+<div class="footer">AI Studio • free-video-generator</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.tabpage').forEach(x=>x.classList.add('hidden'));$(b.dataset.tab).classList.remove('hidden');if(b.dataset.tab==='history')loadHistory();if(b.dataset.tab==='system')loadSystem()});
+document.querySelectorAll('.preset').forEach(b=>b.onclick=()=>{$('imgPrompt').value=(b.textContent==='Горный пейзаж'?'Премиальный кинематографичный пейзаж Кавказских гор на рассвете, монументальные вершины, туман, золотой свет, реалистичная фотография':b.textContent==='Ресторанный интерьер'?'Современный премиальный интерьер ресторана в горах Кавказа, натуральный камень, дерево, латунные детали, кинематографичный свет':b.textContent==='Премиальная реклама'?'Премиальная рекламная съёмка, cinematic commercial, realistic materials, sophisticated lighting, high-end brand identity': 'Аппетитная ресторанная съёмка блюда крупным планом, натуральный свет, премиальная food photography')});
+async function api(url,opt){const r=await fetch(url,opt);let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||('HTTP '+r.status));return d}
+async function generateImage(){const p=$('imgPrompt').value.trim();if(!p)return alert('Введите промпт');const f=new FormData();f.append('prompt',p);f.append('size',$('imgSize').value);f.append('negative_prompt',$('imgNeg').value);$('imgResult').classList.remove('hidden');$('imgResult').textContent='Генерация...';try{const d=await api('/api/image/generate',{method:'POST',body:f});$('imgResult').innerHTML='<div class="notice">Готово. ID: '+d.task_id+'</div><img style="width:100%;margin-top:10px;border-radius:12px" src="/api/image/'+d.task_id+'?t='+Date.now()+'" alt="generated">'}catch(e){$('imgResult').innerHTML='<div class="notice" style="border-color:#713c3c;color:#e8aaaa">Ошибка: '+esc(e.message)+'</div>'}}
+async function generateVideo(){const f=new FormData();f.append('prompt',$('vidPrompt').value.trim());f.append('mode',$('vidMode').value);f.append('duration',$('vidDuration').value);f.append('video_width',$('vidW').value);f.append('video_height',$('vidH').value);const file=$('vidRef').files[0];if(file)f.append('reference_image',file);if(!$('vidPrompt').value.trim())return alert('Введите промпт');msg('vidMsg','Создание задачи...');try{const d=await api('/api/tasks/simple',{method:'POST',body:f});msg('vidMsg','Задача создана: '+d.task_id+' — откройте Историю для статуса.')}catch(e){msg('vidMsg','Ошибка: '+e.message,true)}}
+async function generateCreative(){const f=new FormData();f.append('idea',$('idea').value.trim());f.append('style',$('style').value);f.append('scene_count',$('scenes').value);f.append('duration_source','manual');f.append('scene_durations_json',JSON.stringify(Array.from({length:+$('scenes').value},()=>5)));f.append('uniform_duration','true');f.append('include_characters',$('chars').checked);f.append('subtitle_enabled',$('subs').checked);f.append('audio_enabled',$('audio').checked);if(!$('idea').value.trim())return alert('Введите идею');msg('creativeMsg','Создание проекта...');try{const d=await api('/api/tasks/creative',{method:'POST',body:f});msg('creativeMsg','Проект создан: '+d.task_id+' — откройте Историю для статуса.')}catch(e){msg('creativeMsg','Ошибка: '+e.message,true)}}
+function msg(id,s,bad=false){$(id).innerHTML='<div class="notice"'+(bad?' style="border-color:#713c3c;color:#e8aaaa"':'')+'>'+esc(s)+'</div>'}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+async function loadHistory(){const box=$('historyList');box.textContent='Загрузка...';try{const d=await api('/api/tasks');if(!d.tasks?.length){box.textContent='Задач пока нет';return}box.innerHTML=d.tasks.slice(0,30).map(t=>{const st=String(t.status||'').toLowerCase();const cls=st.includes('complete')?'ok':st.includes('fail')?'bad':'';return '<div class="task"><div class="tasktop"><b>'+esc(t.creative_name||t.task_id)+'</b><span class="badge '+cls+'">'+esc(t.status||'unknown')+'</span></div><p>'+esc(t.idea||t.prompt||t.manuscript_text||'')+'</p><p>ID: '+esc(t.task_id)+'</p></div>'}).join('')}catch(e){box.textContent='Ошибка: '+e.message}}
+async function loadSystem(){try{const [c,w]=await Promise.all([api('/api/config'),api('/api/concurrency')]);$('systemInfo').innerHTML='<div style="text-align:left;line-height:1.9">API key: <b>'+esc(c.api_key||'не настроен')+'</b><br>Источник: '+esc(c.source||'—')+'<br>Рабочая папка: '+esc(c.active_workspace||'—')+'<br>Запущено: '+w.running_count+'<br>В очереди: '+w.queued_count+'</div>';$('workspaces').innerHTML=(c.workspaces||[]).map(x=>'<div class="task"><b>'+esc(x.name||x.path)+'</b><p>'+esc(x.path)+'</p></div>').join('')||'Нет настроенных каталогов'}catch(e){$('systemInfo').textContent='Ошибка: '+e.message}}
+loadHistory();
+</script>
+</body>
+</html>
