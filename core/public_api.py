@@ -111,6 +111,21 @@ def get_history(request: Request):
     return {"items": generations(user(request)["id"])}
 
 
+@router.get("/generation/{generation_id}/output")
+def generation_output(generation_id: str, request: Request):
+    u = user(request)
+    item = next((x for x in generations(u["id"]) if x["id"] == generation_id), None)
+    if not item:
+        raise HTTPException(404, "Генерация не найдена")
+    if item["status"] != "completed" or not item.get("output_path"):
+        raise HTTPException(409, "Результат ещё не готов")
+    path = item["output_path"]
+    if not os.path.isfile(path):
+        raise HTTPException(410, "Файл результата больше недоступен")
+    media = "video/mp4" if item["type"] == "video" else "image/png"
+    return FileResponse(path, media_type=media)
+
+
 @router.get("/models")
 def models():
     # These are Agnes models. The public UI no longer routes through Google/Veo.
