@@ -144,6 +144,18 @@ struct ContentView: View {
         }
     }
 
+    private func statusText(_ status: String?) -> String {
+        switch (status ?? "").lowercased() {
+        case "queued": return "В очереди"
+        case "in_progress": return "Выполняется"
+        case "completed": return "Готово"
+        case "failed": return "Ошибка"
+        case "stopped": return "Остановлено"
+        case "pending": return "Ожидает"
+        default: return status ?? "Неизвестно"
+        }
+    }
+
     private func header(_ title: String, _ subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title).font(.largeTitle.bold()); Text(subtitle).foregroundStyle(.secondary)
