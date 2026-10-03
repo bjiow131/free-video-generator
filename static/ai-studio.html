@@ -79,5 +79,30 @@ async function loadHistory(){const box=$('historyList');box.textContent='Заг�
 async function loadSystem(){try{const [c,w]=await Promise.all([api('/api/config'),api('/api/concurrency')]);$('systemInfo').innerHTML='<div style="text-align:left;line-height:1.9">Ключ API: <b>'+esc(c.api_key||'не настроен')+'</b><br>Источник: '+esc(c.source||'—')+'<br>Рабочая папка: '+esc(c.active_workspace||'—')+'<br>Запущено: '+w.running_count+'<br>В очереди: '+w.queued_count+'</div>';$('workspaces').innerHTML=(c.workspaces||[]).map(x=>'<div class="task"><b>'+esc(x.name||x.path)+'</b><p>'+esc(x.path)+'</p></div>').join('')||'Нет настроенных каталогов'}catch(e){$('systemInfo').textContent='Ошибка: '+e.message}}
 loadHistory();
 </script>
+<script>
+(function(){
+  const replacements={
+    "包含人物角色":"Персонажи",
+    "关闭后全程无人物，纯风景/空镜模式，同时跳过角色参考图生成":"Если отключено — все сцены без персонажей, только пейзажи и общие планы; генерация референса персонажа пропускается.",
+    "关闭后全程无人物":"Если отключено — все сцены без персонажей",
+    "纯风景/空镜模式":"режим без персонажей: только пейзажи и общие планы",
+    "角色参考图":"референс персонажа"
+  };
+  function clean(root){
+    const walker=document.createTreeWalker(root||document.body,NodeFilter.SHOW_TEXT);
+    const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+    for(const n of nodes){
+      let v=n.nodeValue;
+      for(const [from,to] of Object.entries(replacements)) v=v.split(from).join(to);
+      if(v!==n.nodeValue) n.nodeValue=v;
+    }
+    if(document.title){
+      for(const [from,to] of Object.entries(replacements)) document.title=document.title.split(from).join(to);
+    }
+  }
+  clean(document);
+  new MutationObserver(()=>clean(document)).observe(document.documentElement,{subtree:true,childList:true,characterData:true});
+})();
+</script>
 </body>
 </html>
