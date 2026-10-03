@@ -34,7 +34,11 @@ final class APIClient {
 
     private func url(_ path: String) throws -> URL {
         guard let base = settings.baseURL else { throw APIError.invalidServer }
-        return base.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        guard let endpoint = URL(string: cleanPath, relativeTo: base) else {
+            throw APIError.invalidServer
+        }
+        return endpoint
     }
 
     private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String? = nil) async throws -> Data {
