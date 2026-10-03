@@ -9,12 +9,12 @@ on:
         type: string
       seconds:
         description: "Duration (4-12 seconds)"
-        required: false
+        required: true
         default: "10"
         type: string
       aspect_ratio:
         description: "Aspect ratio"
-        required: false
+        required: true
         default: "9:16"
         type: string
 
@@ -25,8 +25,27 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
-      - name: Generate video with Agnes AI
+      - name: Validate inputs
+        env:
+          VIDEO_SECONDS: ${{ inputs.seconds }}
+          VIDEO_ASPECT: ${{ inputs.aspect_ratio }}
+        run: |
+          set -euo pipefail
+          case "$VIDEO_SECONDS" in
+            ''|*[!0-9]*) echo "seconds must be an integer from 4 to 12"; exit 1 ;;
+          esac
+          if [ "$VIDEO_SECONDS" -lt 4 ] || [ "$VIDEO_SECONDS" -gt 12 ]; then
+            echo "seconds must be between 4 and 12"
+            exit 1
+          fi
+          case "$VIDEO_ASPECT" in
+            16:9|9:16|1:1|4:3|3:4|21:9) ;;
+            *) echo "Unsupported aspect_ratio: $VIDEO_ASPECT"; exit 1 ;;
+          esac
+
+      - name: Create Agnes request
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
           VIDEO_PROMPT: ${{ inputs.prompt }}
@@ -35,88 +54,100 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "$AGNES_API_KEY" ]; then
+            echo "Missing AGNES_API_KEY GitHub secret."
+            exit 1
+          fi
+
           python - <<'PY'
           import json, os
-
-          key = os.environ.get("AGNES_API_KEY")
-          if not key:
-              raise SystemExit("Missing AGNES_API_KEY GitHub secret.")
-
-          try:
-              seconds = int(os.environ.get("VIDEO_SECONDS", "10"))
-          except ValueError:
-              raise SystemExit("seconds must be an integer from 4 to 12")
-          if not 4 <= seconds <= 12:
-              raise SystemExit("seconds must be between 4 and 12")
-
-          aspect = os.environ.get("VIDEO_ASPECT", "9:16")
-          allowed = {"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
-          if aspect not in allowed:
-              raise SystemExit(f"Unsupported aspect_ratio: {aspect}")
-
           payload = {
               "model": "agnes-video-2.5-flash",
               "prompt": os.environ["VIDEO_PROMPT"],
               "mode": "text",
-              "seconds": str(seconds),
+              "seconds": str(int(os.environ["VIDEO_SECONDS"])),
               "size": "720P",
-              "aspect_ratio": aspect,
-              "n": 1
+              "aspect_ratio": os.environ["VIDEO_ASPECT"],
+              "n": 1,
           }
           with open("agnes-request.json", "w", encoding="utf-8") as f:
               json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
-
-          print("Submitting video generation...")
+          print("Request prepared.")
           PY
 
-          response=$(curl --fail-with-body --silent --show-error             --request POST "https://apihub.agnes-ai.com/v1/videos"             --header "Authorization: Bearer $AGNES_API_KEY"             --header "Content-Type: application/json"             --data-binary @agnes-request.json)
+      - name: Submit generation
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            --request POST "https://apihub.agnes-ai.com/v1/videos" \
+            --header "Authorization: Bearer $AGNES_API_KEY" \
+            --header "Content-Type: application/json" \
+            --data-binary @agnes-request.json)"
+          printf '%s\n' "$response" | python -m json.tool
 
-          printf '%s
-' "$response" | python -m json.tool
-
-          video_id=$(printf '%s' "$response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("video_id") or d.get("task_id") or d.get("id") or "")')
+          video_id="$(printf '%s' "$response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("video_id") or d.get("task_id") or d.get("id") or "")')"
           if [ -z "$video_id" ]; then
-            echo "Agnes API did not return a video_id/task_id/id."
+            echo "Agnes API did not return a video ID."
             exit 1
           fi
-
+          echo "VIDEO_ID=$video_id" >> "$GITHUB_ENV"
           echo "Video ID: $video_id"
+
+      - name: Wait for video
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+        run: |
+          set -euo pipefail
+          completed=0
 
           for attempt in $(seq 1 180); do
             sleep 10
-            poll_url="https://apihub.agnes-ai.com/agnesapi?video_id=$video_id&model_name=agnes-video-2.5-flash"
-            status=$(curl --fail-with-body --silent --show-error               --request GET "$poll_url"               --header "Authorization: Bearer $AGNES_API_KEY") || {
-                echo "Polling request failed; retrying..."
-                continue
-              }
+            status_response="$(curl --fail-with-body --silent --show-error \
+              --request GET \
+              "https://apihub.agnes-ai.com/agnesapi?video_id=$VIDEO_ID&model_name=agnes-video-2.5-flash" \
+              --header "Authorization: Bearer $AGNES_API_KEY")"
 
-            state=$(printf '%s' "$status" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))')
-            progress=$(printf '%s' "$status" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("progress",0))')
-            echo "Status: $state, progress: $progress%"
+            state="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))')"
+            progress="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("progress",0))')"
+            echo "Attempt $attempt/180 — status: $state — progress: $progress%"
 
-            if [ "$state" = "completed" ]; then
-              video_url=$(printf '%s' "$status" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("url") or (d.get("metadata") or {}).get("url") or "")')
-              if [ -z "$video_url" ]; then
-                echo "Generation completed but no video URL was returned."
-                printf '%s
-' "$status"
+            case "$state" in
+              completed)
+                video_url="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("url") or (d.get("metadata") or {}).get("url") or "")')"
+                if [ -z "$video_url" ]; then
+                  echo "Generation completed but no video URL was returned."
+                  printf '%s\n' "$status_response"
+                  exit 1
+                fi
+                echo "VIDEO_URL=$video_url" >> "$GITHUB_ENV"
+                completed=1
+                break
+                ;;
+              failed|error)
+                echo "Agnes generation failed:"
+                printf '%s\n' "$status_response"
                 exit 1
-              fi
-              curl --fail --silent --show-error --location                 --output agnes-video.mp4 "$video_url"
-              break
-            fi
-
-            if [ "$state" = "failed" ]; then
-              printf '%s
-' "$status"
-              exit 1
-            fi
+                ;;
+            esac
           done
 
+          if [ "$completed" -ne 1 ]; then
+            echo "Timed out waiting for Agnes generation."
+            exit 1
+          fi
+
+      - name: Download video
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --output agnes-video.mp4 "$VIDEO_URL"
           test -s agnes-video.mp4
+          file agnes-video.mp4 || true
           echo "Saved agnes-video.mp4"
 
-      - name: Upload generated video
+      - name: Upload video artifact
         uses: actions/upload-artifact@v4
         with:
           name: agnes-video
