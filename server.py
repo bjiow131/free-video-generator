@@ -358,7 +358,7 @@ async def generate_ideas(keyword: str = Form(...)):
     """使用 Agnes LLM 根据关键词生成创意概念和视觉风格建议。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
     client = AgnesChatAPI(api_key)
     system_prompt = (
         "你是一个专业的视频创意策划师。用户会给你一个关键词，请你输出一个 JSON 对象，"
@@ -369,7 +369,7 @@ async def generate_ideas(keyword: str = Form(...)):
     try:
         result = client.chat_json(system_prompt, user_prompt, max_tokens=2048)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации ИИ: {str(e)}")
     return {
         "ok": True,
         "concept": result.get("concept", ""),
@@ -395,7 +395,7 @@ async def list_workspaces():
 async def create_workspace(path: str = Form(...), name: str = Form("")):
     """添加一个工作目录。"""
     if not path.strip():
-        raise HTTPException(status_code=422, detail="path 不能为空")
+        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
     entry = add_workspace(path.strip(), name.strip())
     os.makedirs(entry["path"], exist_ok=True)
     os.makedirs(os.path.join(entry["path"], "uploads"), exist_ok=True)
@@ -406,10 +406,10 @@ async def create_workspace(path: str = Form(...), name: str = Form("")):
 async def delete_workspace(path: str = Form(...)):
     """移除一个工作目录（仅从配置中移除，不删除磁盘文件）。"""
     if not path.strip():
-        raise HTTPException(status_code=422, detail="path 不能为空")
+        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
     removed = remove_workspace(path.strip())
     if not removed:
-        raise HTTPException(status_code=404, detail="工作目录不存在")
+        raise HTTPException(status_code=404, detail="Рабочая папка не найдена")
     return {"ok": True, "active_workspace": get_active_workspace()}
 
 
@@ -417,7 +417,7 @@ async def delete_workspace(path: str = Form(...)):
 async def activate_workspace(path: str = Form(...)):
     """设置当前激活的工作目录。"""
     if not path.strip():
-        raise HTTPException(status_code=422, detail="path 不能为空")
+        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
     try:
         active = set_active_workspace(path.strip())
     except ValueError as e:
@@ -506,16 +506,16 @@ async def generate_image(
     """简单图片生成：创建任务 → 直调 Agnes Image API → 保存到任务目录。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     if len(prompt) > 5000:
-        raise HTTPException(status_code=422, detail="prompt 最多 5000 字符")
+        raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
     if not prompt.strip():
-        raise HTTPException(status_code=422, detail="prompt 不能为空")
+        raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
 
     _VALID_SIZES = {"1024x1024", "768x1152", "1152x768", "768x1344", "1344x768", "1792x1024", "1024x1792"}
     if size not in _VALID_SIZES:
-        raise HTTPException(status_code=422, detail=f"size 必须为 {_VALID_SIZES} 之一")
+        raise HTTPException(status_code=422, detail=f"Недопустимый размер изображения. Допустимые значения: {_VALID_SIZES}")
 
     task_id = uuid.uuid4().hex[:12]
     name = f"image_{task_id}"
@@ -571,7 +571,7 @@ async def generate_image(
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} save failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"图片保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"Не удалось сохранить изображение: {e}")
 
     state.status = StepStatus.COMPLETED
     state.final_video_file = img_path
@@ -588,9 +588,9 @@ async def serve_image(task_id: str):
     tm = TaskManager(task_id, dir_name=dir_name)
     state = tm.load()
     if not state or not state.final_video_file:
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
     if not os.path.exists(state.final_video_file):
-        raise HTTPException(status_code=404, detail="Image file not found")
+        raise HTTPException(status_code=404, detail="Файл изображения не найден")
     return FileResponse(state.final_video_file, media_type="image/png")
 
 
@@ -650,7 +650,7 @@ async def get_task(task_id: str):
     tm = TaskManager(task_id, dir_name=dir_name)
     state = tm.load()
     if not state:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Задача не найдена")
     data = state.model_dump()
     data["dir_name"] = dir_name
     return data
@@ -662,7 +662,7 @@ async def serve_video(task_id: str):
     task_dir = os.path.join(get_working_dir(), dir_name)
     video_path = os.path.join(task_dir, "final_video.mp4")
     if not os.path.exists(video_path):
-        raise HTTPException(status_code=404, detail="Video not found")
+        raise HTTPException(status_code=404, detail="Видео не найдено")
     return FileResponse(video_path, media_type="video/mp4")
 
 
@@ -915,7 +915,7 @@ async def create_simple_task(
     """创建简单视频任务（类型 1）。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # P7: 参数校验
     _VALID_MODES = {"t2v", "i2v", "ti2vid", "keyframes"}
@@ -930,7 +930,7 @@ async def create_simple_task(
             detail=f"duration 必须为 {sorted(DURATION_FRAME_MAP.keys())} 之一，当前: {duration}",
         )
     if len(prompt) > 5000:
-        raise HTTPException(status_code=422, detail="prompt 最多 5000 字符")
+        raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
 
     task_id = uuid.uuid4().hex[:12]
     dir_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{task_id}"
@@ -1023,27 +1023,27 @@ async def create_creative_task(
     """创建创意长视频任务（类型 2）。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # P7: 参数校验
     if len(idea) > 10000:
-        raise HTTPException(status_code=422, detail="idea 最多 10000 字符")
+        raise HTTPException(status_code=422, detail="Идея может содержать не более 10000 символов")
     if duration_source not in ("manual", "prompt"):
-        raise HTTPException(status_code=422, detail="duration_source 必须为 manual 或 prompt")
+        raise HTTPException(status_code=422, detail="Источник длительности должен быть ручным или заданным в промпте")
     if duration_source == "manual":
         if scene_count < 1 or scene_count > 30:
-            raise HTTPException(status_code=422, detail="scene_count 范围 1-30")
+            raise HTTPException(status_code=422, detail="Количество сцен должно быть от 1 до 30")
         # 解析场景时长 JSON
         try:
             scene_durations = json.loads(scene_durations_json)
             if not isinstance(scene_durations, list):
                 raise ValueError("not a list")
         except Exception:
-            raise HTTPException(status_code=422, detail="scene_durations_json 必须为 JSON 数组")
+            raise HTTPException(status_code=422, detail="Параметры длительности сцен должны быть массивом JSON")
         # 校验每个时长
         for i, d in enumerate(scene_durations):
             if not isinstance(d, (int, float)) or d < 2 or d > 30:
-                raise HTTPException(status_code=422, detail=f"场景 {i+1} 时长范围 2-30 秒")
+                raise HTTPException(status_code=422, detail=f"Длительность сцены {i+1} должна быть от 2 до 30 секунд")
     else:
         scene_durations = []
 
@@ -1164,13 +1164,13 @@ async def create_manuscript_task(
     """创建稿件长视频任务（类型 3）。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     if not manuscript_text.strip():
-        raise HTTPException(status_code=400, detail="稿件内容不能为空")
+        raise HTTPException(status_code=400, detail="Текст сценария не может быть пустым")
     # P7: 文本长度上限
     if len(manuscript_text) > 50000:
-        raise HTTPException(status_code=422, detail="稿件文本最多 50000 字符")
+        raise HTTPException(status_code=422, detail="Текст сценария может содержать не более 50000 символов")
 
     task_id = uuid.uuid4().hex[:12]
     name = creative_name.strip() if creative_name else f"manuscript_{task_id}"
@@ -1251,12 +1251,12 @@ async def create_anchor_task(
     """创建数字人口播任务（类型 4 / Phase 3）。"""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     if not script_text.strip():
-        raise HTTPException(status_code=400, detail="口播稿件不能为空")
+        raise HTTPException(status_code=400, detail="Текст для озвучки не может быть пустым")
     if len(script_text) > 50000:
-        raise HTTPException(status_code=422, detail="口播稿件最多 50000 字符")
+        raise HTTPException(status_code=422, detail="Текст для озвучки может содержать не более 50000 символов")
 
     task_id = uuid.uuid4().hex[:12]
     name = f"anchor_{task_id}"
@@ -1376,7 +1376,7 @@ async def create_task_legacy(
 async def resume_task(task_id: str):
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(status_code=400, detail="请先配置 API Key")
+        raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # 关键段串行化：check 与 insert 之间存在多个 await 让出点，快速重复 resume
     # 会让两次请求都通过 "task not in active_pipelines" 检查并各自启动 pipeline，
@@ -1388,16 +1388,16 @@ async def resume_task(task_id: str):
                 logger.info(f"[Resume] Replacing stopped pipeline for task {task_id}")
                 del active_pipelines[task_id]
             else:
-                raise HTTPException(status_code=400, detail="Task is already running")
+                raise HTTPException(status_code=400, detail="Задача уже выполняется")
 
         dir_name = _find_dir_name(task_id)
         tm = TaskManager(task_id, dir_name=dir_name)
         state = tm.load()
         if not state:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(status_code=404, detail="Задача не найдена")
 
         if state.status == StepStatus.COMPLETED:
-            raise HTTPException(status_code=400, detail="Task is already completed")
+            raise HTTPException(status_code=400, detail="Задача уже завершена")
 
         logger.info(f"[Resume] Starting resume for task {task_id}, type={state.task_type}, status={state.status}")
 
@@ -1416,7 +1416,7 @@ async def resume_task(task_id: str):
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str):
     if task_id not in active_pipelines and task_id not in _queued_tasks:
-        raise HTTPException(status_code=400, detail="Task is not running")
+        raise HTTPException(status_code=400, detail="Задача не выполняется")
 
     # 停止运行中的 pipeline
     if task_id in active_pipelines:
@@ -1485,7 +1485,7 @@ async def cleanup_regression():
     if not os.path.exists(manifest_path):
         raise HTTPException(
             status_code=404,
-            detail="未找到回归测试产物清单，可能没有执行过回归测试")
+            detail="Список результатов тестирования не найден. Возможно, тестирование ещё не выполнялось")
 
     try:
         with open(manifest_path, "r") as f:
