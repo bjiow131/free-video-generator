@@ -1,0 +1,11 @@
+{
+  "name":"AI Studio",
+  "short_name":"AI Studio",
+  "description":"AI Studio — панель управления генератором",
+  "start_url":"./ai-studio.html",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#11100e",
+  "theme_color":"#11100e",
+  "orientation":"portrait"
+}
