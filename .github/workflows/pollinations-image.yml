@@ -44,7 +44,7 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Validate inputs
         env:
@@ -82,6 +82,9 @@ jobs:
           IMAGE_PROMPT: ${{ inputs.prompt }}
           IMAGE_MODEL: ${{ inputs.model }}
           IMAGE_ASPECT: ${{ inputs.aspect_ratio }}
+          IMAGE_RESOLUTION: ${{ inputs.resolution }}
+          IMAGE_QUALITY: ${{ inputs.quality }}
+          IMAGE_VARIANTS: ${{ inputs.variants }}
         run: |
           set -euo pipefail
           if [ -z "$POLLINATIONS_API_KEY" ]; then
