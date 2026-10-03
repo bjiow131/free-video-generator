@@ -32,7 +32,7 @@ struct ContentView: View {
                     else { historyView }
                 }
             }
-            .navigationTitle("AI Studio")
+            .navigationTitle("ИИ Студия")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
