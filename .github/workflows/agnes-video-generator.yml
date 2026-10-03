@@ -2,6 +2,9 @@ name: Agnes Video Generator
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/agnes-video-generator.yml"
     inputs:
       prompt:
         description: "Video prompt"
@@ -23,6 +26,7 @@ permissions:
 
 jobs:
   generate:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
