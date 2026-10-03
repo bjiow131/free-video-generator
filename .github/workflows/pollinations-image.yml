@@ -1,0 +1,96 @@
+name: Pollinations Image Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Image prompt"
+        required: true
+        type: string
+      model:
+        description: "Image model"
+        required: true
+        default: "flux"
+        type: choice
+        options: [flux, zimage, qwen-image, seedream5, nanobanana, gptimage, gptimage-large, wan-image, klein, nova-canvas]
+      aspect_ratio:
+        description: "Aspect ratio"
+        required: true
+        default: "9:16"
+        type: choice
+        options: ["9:16", "16:9", "1:1", "4:3", "3:4"]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate inputs
+        env:
+          IMAGE_MODEL: \${{ inputs.model }}
+          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE_MODEL" in
+            flux|zimage|qwen-image|seedream5|nanobanana|gptimage|gptimage-large|wan-image|klein|nova-canvas) ;;
+            *) echo "Unsupported model: $IMAGE_MODEL"; exit 1 ;;
+          esac
+          case "$IMAGE_ASPECT" in
+            9:16|16:9|1:1|4:3|3:4) ;;
+            *) echo "Unsupported aspect ratio: $IMAGE_ASPECT"; exit 1 ;;
+          esac
+
+      - name: Generate image
+        env:
+          POLLINATIONS_API_KEY: \${{ secrets.POLLINATIONS_API_KEY }}
+          IMAGE_PROMPT: \${{ inputs.prompt }}
+          IMAGE_MODEL: \${{ inputs.model }}
+          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+        run: |
+          set -euo pipefail
+          if [ -z "$POLLINATIONS_API_KEY" ]; then
+            echo "Missing POLLINATIONS_API_KEY GitHub secret."
+            exit 1
+          fi
+
+          python - <<'PY'
+          import os, urllib.parse
+          prompt = os.environ["IMAGE_PROMPT"]
+          params = {
+              "model": os.environ["IMAGE_MODEL"],
+              "aspectRatio": os.environ["IMAGE_ASPECT"],
+          }
+          url = "https://gen.pollinations.ai/image/" + urllib.parse.quote(prompt, safe="")
+          url += "?" + urllib.parse.urlencode(params)
+          with open("pollinations-url.txt", "w", encoding="utf-8") as f:
+              f.write(url)
+          PY
+
+          curl --fail --silent --show-error --location \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            --header "Authorization: Bearer $POLLINATIONS_API_KEY" \
+            --output generated-image.jpg \
+            "$(cat pollinations-url.txt)"
+
+          test -s generated-image.jpg
+          file generated-image.jpg
+
+      - name: Save metadata
+        env:
+          IMAGE_MODEL: \${{ inputs.model }}
+          IMAGE_ASPECT: \${{ inputs.aspect_ratio }}
+        run: |
+          printf 'model=%s\naspect_ratio=%s\ngenerated_at=%s\n' \
+            "$IMAGE_MODEL" "$IMAGE_ASPECT" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > image-metadata.txt
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pollinations-image
+          path: |
+            generated-image.jpg
+            image-metadata.txt
+          if-no-files-found: error
