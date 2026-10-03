@@ -115,7 +115,7 @@ struct ContentView: View {
                         HStack {
                             Text(task.creative_name ?? task.task_id).font(.headline)
                             Spacer()
-                            Text(task.status ?? "unknown").font(.caption).foregroundStyle(.secondary)
+                            Text(statusText(task.status)).font(.caption).foregroundStyle(.secondary)
                         }
                         Text(task.idea ?? task.prompt ?? task.manuscript_text ?? "")
                             .font(.footnote).foregroundStyle(.secondary).lineLimit(3)
