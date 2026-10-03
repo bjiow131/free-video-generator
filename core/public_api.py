@@ -1,9 +1,10 @@
 """Public-facing account, credit and model API."""
-import os, tempfile
+import os, tempfile, asyncio
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from core.public_store import init_db, create_user, authenticate, create_session, get_user_by_session, revoke_session, ledger, change_credits, add_generation, generations
+from core.public_store import init_db, create_user, authenticate, create_session, get_user_by_session, revoke_session, ledger, change_credits, add_generation, generations, update_generation
+from core.api.google_video import GoogleVideoProvider
 from core.api.gemini_image import GeminiImageProvider
 
 router=APIRouter(prefix="/api/public",tags=["public"])
@@ -97,3 +98,59 @@ async def generate_image(request:Request,prompt:str=Form(...),model:str=Form("na
         for path in ref:
             try: os.remove(path)
             except OSError: pass
+
+async def _run_video_generation(user_id,generation_id,prompt,model,cost,reference_path=None,aspect_ratio="16:9",resolution="720p"):
+    try:
+        provider=GoogleVideoProvider(
+            model="veo-3.1-generate-preview" if model=="veo-3.1" else "veo-3.1-lite-generate-preview"
+        )
+        output=await provider.generate(prompt,reference_path,aspect_ratio,resolution)
+        update_generation(generation_id,"completed",output)
+    except Exception:
+        try:
+            change_credits(user_id,cost,"refund",model)
+            update_generation(generation_id,"failed",None)
+        except Exception:
+            pass
+    finally:
+        if reference_path:
+            try: os.remove(reference_path)
+            except OSError: pass
+
+@router.post("/generate/video")
+async def generate_video(request:Request,prompt:str=Form(...),model:str=Form("veo-3.1"),aspect_ratio:str=Form("16:9"),resolution:str=Form("720p"),reference:UploadFile=File(None)):
+    u=user(request)
+    costs={"veo-3.1":150,"veo-3.1-lite":80}
+    if model not in costs: raise HTTPException(400,"Эта модель пока недоступна")
+    if not prompt.strip(): raise HTTPException(422,"Промпт не может быть пустым")
+    if aspect_ratio not in {"16:9","9:16"}: raise HTTPException(422,"Неподдерживаемое соотношение сторон")
+    if resolution not in {"720p","1080p","4k"}: raise HTTPException(422,"Неподдерживаемое разрешение")
+    if model=="veo-3.1-lite" and resolution=="4k": raise HTTPException(422,"Veo 3.1 Lite не поддерживает 4K")
+    cost=costs[model]
+    if u["credits"]<cost: raise HTTPException(402,"Недостаточно кредитов")
+
+    ref_path=None
+    try:
+        if reference and reference.filename:
+            suffix=os.path.splitext(reference.filename)[1].lower() or ".png"
+            if suffix not in {".png",".jpg",".jpeg",".webp"}:
+                raise HTTPException(415,"Поддерживаются PNG, JPG и WebP")
+            data=await reference.read()
+            if len(data)>10*1024*1024: raise HTTPException(413,"Изображение слишком большое (максимум 10 МБ)")
+            fd,ref_path=tempfile.mkstemp(suffix=suffix,prefix="ai_ref_"); os.close(fd)
+            with open(ref_path,"wb") as f: f.write(data)
+
+        change_credits(u["id"],-cost,"generation",model)
+        generation_id=add_generation(u["id"],model,"video",prompt.strip(),"processing",None,cost)
+        asyncio.create_task(_run_video_generation(
+            u["id"],generation_id,prompt.strip(),model,cost,ref_path,aspect_ratio,resolution
+        ))
+        ref_path=None
+        return {"ok":True,"generation_id":generation_id,"status":"processing","credits":u["credits"]-cost}
+    except HTTPException:
+        raise
+    except Exception:
+        if ref_path:
+            try: os.remove(ref_path)
+            except OSError: pass
+        raise HTTPException(502,"Не удалось запустить генерацию видео")
