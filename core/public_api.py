@@ -3,7 +3,7 @@
 The public workspace is intentionally a thin UI over the user's Agnes API key.
 No Google/Gemini credentials are required for the public image/video routes.
 """
-import os, tempfile, asyncio
+import os, tempfile, asyncio, secrets
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -60,6 +60,15 @@ def _reference_file(data: bytes, filename: str):
     with open(path, "wb") as f:
         f.write(data)
     return path
+
+
+@router.post("/guest")
+def guest():
+    # Create an invisible guest account so generation works without manual login.
+    email = "guest-" + secrets.token_hex(12) + "@local.invalid"
+    password = secrets.token_urlsafe(32)
+    uid, _ = create_user(email, password)
+    return {"ok": True, "token": create_session(uid), "guest": True, "credits": None}
 
 
 @router.post("/register")
