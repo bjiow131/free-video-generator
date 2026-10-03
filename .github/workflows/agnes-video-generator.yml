@@ -2,9 +2,6 @@ name: Agnes Video Generator
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/agnes-video-generator.yml"
     inputs:
       prompt:
         description: "Video prompt"
@@ -20,6 +17,9 @@ on:
         required: true
         default: "9:16"
         type: string
+  push:
+    paths:
+      - ".github/workflows/agnes-video-generator.yml"
 
 permissions:
   contents: write
