@@ -1,0 +1,26 @@
+name: Server Test
+
+on:
+  push:
+    paths:
+      - "server.py"
+      - "requirements.txt"
+      - "core/**"
+      - "models/**"
+      - ".github/workflows/server-test.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python
+        run: python -m compileall -q server.py core models
+      - name: Import FastAPI app
+        run: python -c "from server import app; print(app.title)"
