@@ -80,8 +80,8 @@ async def generate_image(request:Request,prompt:str=Form(...),model:str=Form("na
         balance=change_credits(u["id"],-cost,"generation",model)
         provider=GeminiImageProvider(model="gemini-3.1-flash-image" if model=="nano-banana-2" else "gemini-3-pro-image")
         output=await provider.generate(prompt.strip(),ref)
-        add_generation(u["id"],model,"image",prompt.strip(),"completed",output,cost)
-        return FileResponse(output,media_type="image/png",headers={"X-Credits-Remaining":str(balance["credits"]),"X-Generation-Id":u["id"]})
+        generation_id=add_generation(u["id"],model,"image",prompt.strip(),"completed",output,cost)
+        return FileResponse(output,media_type="image/png",headers={"X-Credits-Remaining":str(balance["credits"]),"X-Generation-Id":generation_id})
     except HTTPException:
         raise
     except Exception:
