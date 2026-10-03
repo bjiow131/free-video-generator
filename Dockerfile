@@ -20,4 +20,4 @@ COPY . .
 # server.py binds 0.0.0.0:8765 (Web UI + REST + WebSocket).
 EXPOSE 8765
 
-CMD ["python", "server.py"]
+CMD ["python", "render_app.py"]
