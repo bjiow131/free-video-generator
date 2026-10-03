@@ -27,6 +27,9 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - name: Workflow registration check
+        run: echo "Agnes Video Generator is registered and running."
+
       - name: Validate inputs
         env:
           VIDEO_SECONDS: ${{ inputs.seconds }}
@@ -84,7 +87,7 @@ jobs:
           for attempt in $(seq 1 "$max_attempts"); do
             echo "Submitting generation request (attempt $attempt/$max_attempts)..."
             tmp_body="$(mktemp)"
-            http_code="$(curl --silent --show-error --location               --request POST "https://apihub.agnes-ai.com/v1/videos"               --header "Authorization: Bearer $AGNES_API_KEY"               --header "Content-Type: application/json"               --output "$tmp_body"               --write-out "%{http_code}"               --data-binary @agnes-request.json || true)"
+            http_code="$(curl --silent --show-error --location --request POST "https://apihub.agnes-ai.com/v1/videos" --header "Authorization: Bearer $AGNES_API_KEY" --header "Content-Type: application/json" --output "$tmp_body" --write-out "%{http_code}" --data-binary @agnes-request.json || true)"
             response="$(cat "$tmp_body")"
             rm -f "$tmp_body"
             echo "Agnes API HTTP status: $http_code"
@@ -149,7 +152,7 @@ except Exception:
           echo "Generation started. Progress will be updated every 5 seconds."
           for attempt in $(seq 1 360); do
             sleep 5
-            status_response="$(curl --fail-with-body --silent --show-error               --request GET               "https://apihub.agnes-ai.com/agnesapi?video_id=$VIDEO_ID&model_name=agnes-video-2.5-flash"               --header "Authorization: Bearer $AGNES_API_KEY")"
+            status_response="$(curl --fail-with-body --silent --show-error --request GET "https://apihub.agnes-ai.com/agnesapi?video_id=$VIDEO_ID&model_name=agnes-video-2.5-flash" --header "Authorization: Bearer $AGNES_API_KEY")"
             state="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))')"
             progress="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("progress",0))')"
             if ! [[ "$progress" =~ ^[0-9]+$ ]]; then progress=0; fi
@@ -157,11 +160,7 @@ except Exception:
             elapsed=$(( $(date +%s) - started_at ))
             minutes=$((elapsed / 60))
             seconds=$((elapsed % 60))
-            bar_length=30
-            filled=$((progress * bar_length / 100))
-            empty=$((bar_length - filled))
-            bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
-            echo "[$bar] $progress% | status: $state | elapsed: ${minutes}m ${seconds}s"
+            echo "Progress: $progress% | status: $state | elapsed: ${minutes}m ${seconds}s"
             case "$state" in
               completed)
                 video_url="$(printf '%s' "$status_response" | python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("url") or (d.get("metadata") or {}).get("url") or "")')"
@@ -192,7 +191,7 @@ except Exception:
       - name: Download video
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             --output agnes-video.mp4 "$VIDEO_URL"
+          curl --fail --silent --show-error --location --output agnes-video.mp4 "$VIDEO_URL"
           test -s agnes-video.mp4
           file agnes-video.mp4 || true
           echo "Saved agnes-video.mp4"
@@ -208,13 +207,13 @@ except Exception:
           mkdir -p "$output_dir"
           cp agnes-video.mp4 "$output_dir/agnes-video.mp4"
           cat > "$output_dir/video-metadata.txt" <<EOF
-          model=agnes-video-2.5-flash
-          seconds=$VIDEO_SECONDS
-          aspect_ratio=$VIDEO_ASPECT
-          prompt=$VIDEO_PROMPT
-          generated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          run_id=$GITHUB_RUN_ID
-          EOF
+model=agnes-video-2.5-flash
+seconds=$VIDEO_SECONDS
+aspect_ratio=$VIDEO_ASPECT
+prompt=$VIDEO_PROMPT
+generated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+run_id=$GITHUB_RUN_ID
+EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$output_dir"
