@@ -30,6 +30,7 @@ from typing import Dict, List, Optional, Union
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_api_key, set_api_key, delete_api_key, get_api_key_source, get_working_dir, AVAILABLE_VOICES, DURATION_FRAME_MAP, get_workspaces, add_workspace, remove_workspace, set_active_workspace, get_active_workspace, REGRESSION_WORKING_DIR_ENV, get_watermark_config, set_watermark_config, WATERMARK_PROMO_TEXT_ZH, WATERMARK_PROMO_TEXT_EN
 from core.pipelines import (
@@ -222,6 +223,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 def get_upload_dir() -> str:
     """返回当前激活工作目录下的 uploads 子目录。"""
@@ -270,6 +272,11 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
 # ═══════════════════════════════════════════════════
 # Static files + Root
 # ═══════════════════════════════════════════════════
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "service": "AI Studio API"}
 
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -1542,7 +1549,7 @@ async def cleanup_regression():
 if __name__ == "__main__":
     import uvicorn
 
-    config = uvicorn.Config(app, host="0.0.0.0", port=8765, log_level="info")
+    config = uvicorn.Config(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8765")), log_level="info")
     server = uvicorn.Server(config)
 
     original_handle_exit = server.handle_exit
