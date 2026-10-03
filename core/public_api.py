@@ -51,8 +51,8 @@ def models():
     return {"models":[
       {"id":"nano-banana-2","name":"Nano Banana 2","provider":"Google","type":"image","credits":10,"status":"ready","description":"Универсальная генерация и редактирование изображений"},
       {"id":"nano-banana-pro","name":"Nano Banana Pro","provider":"Google","type":"image","credits":25,"status":"ready","description":"Профессиональные изображения до 4K"},
-      {"id":"veo-3.1","name":"Veo 3.1","provider":"Google","type":"video","credits":150,"status":"coming_soon","description":"Кинематографическое видео с нативным аудио"},
-      {"id":"veo-3.1-lite","name":"Veo 3.1 Lite","provider":"Google","type":"video","credits":80,"status":"coming_soon","description":"Более экономичная генерация видео"},
+      {"id":"veo-3.1","name":"Veo 3.1","provider":"Google","type":"video","credits":400,"status":"ready","description":"Кинематографическое видео с нативным аудио"},
+      {"id":"veo-3.1-lite","name":"Veo 3.1 Lite","provider":"Google","type":"video","credits":100,"status":"ready","description":"Более экономичная генерация видео"},
     ]}
 
 @router.post("/generate/image")
@@ -120,7 +120,7 @@ async def _run_video_generation(user_id,generation_id,prompt,model,cost,referenc
 @router.post("/generate/video")
 async def generate_video(request:Request,prompt:str=Form(...),model:str=Form("veo-3.1"),aspect_ratio:str=Form("16:9"),resolution:str=Form("720p"),reference:UploadFile=File(None)):
     u=user(request)
-    costs={"veo-3.1":150,"veo-3.1-lite":80}
+    costs={"veo-3.1":400,"veo-3.1-lite":100}
     if model not in costs: raise HTTPException(400,"Эта модель пока недоступна")
     if not prompt.strip(): raise HTTPException(422,"Промпт не может быть пустым")
     if aspect_ratio not in {"16:9","9:16"}: raise HTTPException(422,"Неподдерживаемое соотношение сторон")
