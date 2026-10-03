@@ -141,3 +141,8 @@ def generations(user_id,limit=50):
     with _lock,db() as conn:
         rows=conn.execute(q,(user_id,int(limit))).fetchall()
     return [dict(r) for r in rows]
+
+def update_generation(generation_id,status,output_path=None):
+    q="UPDATE generations SET status=%s,output_path=%s WHERE id=%s" if IS_POSTGRES else "UPDATE generations SET status=?,output_path=? WHERE id=?"
+    with _lock,db() as conn:
+        conn.execute(q,(status,output_path,generation_id))
