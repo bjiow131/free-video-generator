@@ -34,7 +34,7 @@ jobs:
           VIDEO_ASPECT: ${{ inputs.aspect_ratio }}
         run: |
           python - <<'PY'
-          import json, os, time, urllib.request, urllib.error
+          import json, os, time, urllib.request, urllib.error, urllib.parse
 
           key = os.environ.get("AGNES_API_KEY")
           if not key:
