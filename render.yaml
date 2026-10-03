@@ -10,3 +10,7 @@ services:
         sync: false
       - key: AGNES_RATE_LIMIT
         value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
