@@ -107,10 +107,23 @@ class AgnesChatAPI:
                     timeout=timeout,
                 )
                 if self._should_retry(resp) and attempt < _MAX_RETRIES - 1:
-                    delay = _RETRY_BASE_DELAY * (attempt + 1)
+                    if resp.status_code == 429:
+                        # Agnes rate limits are minute-based. Retrying after 15/30s
+                        # can still land inside the same quota window and make the
+                        # 429 loop worse. Honor Retry-After when provided; otherwise
+                        # wait a full minute plus a small safety margin.
+                        retry_after = resp.headers.get("Retry-After", "")
+                        try:
+                            delay = max(65.0, float(retry_after))
+                        except (TypeError, ValueError):
+                            delay = 65.0
+                    else:
+                        delay = _RETRY_BASE_DELAY * (attempt + 1)
+                    body_preview = resp.text[:300].replace("\n", " ")
                     logger.warning(
-                        f"[AgnesChat] Server error {resp.status_code}, "
-                        f"retry {attempt + 1}/{_MAX_RETRIES} in {delay}s..."
+                        f"[AgnesChat] HTTP {resp.status_code}, "
+                        f"retry {attempt + 1}/{_MAX_RETRIES} in {delay:.0f}s. "
+                        f"body={body_preview!r}"
                     )
                     time.sleep(delay)
                     continue
