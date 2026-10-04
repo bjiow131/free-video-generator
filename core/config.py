@@ -292,7 +292,7 @@ DEFAULT_VOICE = "ru-RU-SvetlanaNeural"
 AVAILABLE_VOICES = [
     {"id": "ru-RU-SvetlanaNeural", "label": "Светлана — женский голос"},
     {"id": "ru-RU-DmitryNeural", "label": "Дмитрий — мужской голос"},
-]"""
+]
 core/config.py — Agnes Video Generator v2.0 配置模块
 
 包含 API Key 管理、工作目录、音频/字幕默认配置工厂函数。
