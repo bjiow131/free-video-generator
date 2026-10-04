@@ -45,7 +45,7 @@ from core.pipelines import (
 from core.api.agnes_image import AgnesImageAPI
 from core.api.agnes_chat import AgnesChatAPI
 from core.task_manager import TaskManager
-from core.public_store import get_user_by_session
+from core.public_store import get_user_by_session, create_user, create_session
 
 from models.task import (
     AnchorVideoTask,
@@ -158,6 +158,22 @@ def _require_session(request: Request) -> dict:
     if not account:
         raise HTTPException(status_code=401, detail="Требуется вход")
     return account
+
+
+def _require_session_or_guest(request: Request) -> dict:
+    """Allow the public creative UI to work without manual registration."""
+    account = get_user_by_session(_session_token(request))
+    if account:
+        return account
+    email = "guest-" + secrets.token_hex(12) + "@local.invalid"
+    password = secrets.token_urlsafe(32)
+    try:
+        uid, _ = create_user(email, password)
+        raw = create_session(uid)
+        return get_user_by_session(raw) or {}
+    except Exception as exc:
+        logger.exception("Guest session creation failed")
+        raise HTTPException(status_code=503, detail="Не удалось создать гостевую сессию") from exc
 
 
 def _require_admin(request: Request) -> None:
