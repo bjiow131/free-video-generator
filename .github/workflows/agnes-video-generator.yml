@@ -17,9 +17,6 @@ on:
         required: true
         default: "9:16"
         type: string
-  push:
-    paths:
-      - ".github/workflows/agnes-video-generator.yml"
 
 permissions:
   contents: write
