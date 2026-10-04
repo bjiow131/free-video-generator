@@ -78,7 +78,7 @@ TASK_TYPE_WEIGHTS = {
     TaskType.ANCHOR: 2,       # 1 i2v submit + 轻量轮询
     TaskType.IMAGE: 1,        # 1 image submit
 }
-MAX_CONCURRENT_WEIGHT = _AGNES_RATE_LIMIT // 2  # 默认 10
+MAX_CONCURRENT_WEIGHT = 3  # Free Agnes access: run at most one creative pipeline at a time
 
 
 class WeightedSemaphore:
