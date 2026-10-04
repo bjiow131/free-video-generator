@@ -149,6 +149,7 @@ class BaseTaskState(BaseModel):
     video_width: int = 1152
     video_height: int = 768
     final_video_file: str = ""
+    error_message: str = ""
 
 
 class SimpleVideoTask(BaseTaskState):
