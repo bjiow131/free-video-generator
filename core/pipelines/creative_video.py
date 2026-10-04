@@ -1495,6 +1495,7 @@ class CreativeVideoPipeline(BasePipeline):
             info["video_id"] = video_id
             info["already_submitted"] = True
             self._save_scene_task(info["scene_dir"], video_id)
+            self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
 
         if pending:
             await self._emit(
