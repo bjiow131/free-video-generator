@@ -973,6 +973,13 @@ class CreativeVideoPipeline(BasePipeline):
         with open(curl_file, "w") as f:
             f.write(self._make_curl(video_id) + "\n")
 
+    def _set_scene_video_status(self, scene_idx: int, status: StepStatus) -> None:
+        """Persist per-scene video status for the web UI and resume logic."""
+        if 0 <= scene_idx < len(self._state.scenes):
+            scene = self._state.scenes[scene_idx]
+            scene.video_status = status
+            self.task_manager.update_scene(scene)
+
     def _load_scene_task(self, scene_dir: str) -> Optional[str]:
         """Load a previously saved video-task ID from ``task.json``.
 
