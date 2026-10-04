@@ -268,6 +268,7 @@ async def generate_video(
     reference: UploadFile = File(None),
 ):
     u = user(request)
+    _agnes_key()
     if model != "agnes-video-v2.0":
         raise HTTPException(400, "Эта модель пока недоступна")
     if not prompt.strip():
