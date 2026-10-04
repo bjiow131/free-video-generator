@@ -5,6 +5,7 @@ services:
     plan: free
     healthCheckPath: /health
     autoDeploy: true
+    maxShutdownDelaySeconds: 300
     envVars:
       - key: AGNES_API_KEY
         sync: false
