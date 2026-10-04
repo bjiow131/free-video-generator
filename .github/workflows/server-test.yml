@@ -24,3 +24,5 @@ jobs:
         run: python -m compileall -q server.py core models
       - name: Import FastAPI app
         run: python -c "from server import app; print(app.title)"
+      - name: Run unit tests
+        run: python -m pytest -q tests
