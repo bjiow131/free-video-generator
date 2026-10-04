@@ -21,29 +21,15 @@ BASE_URL = "https://apihub.agnes-ai.com/v1"
 
 
 def _make_session() -> requests.Session:
-    """创建带 TCP keepalive 的 Session，防止长时间图片生成时连接被中间网络设备断开。"""
+    """Create an isolated requests session for image generation.
+
+    Never monkey-patch the process-wide socket constructor; image generation
+    can be called repeatedly in one server process.
+    """
     session = requests.Session()
     adapter = HTTPAdapter(max_retries=0)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
-    # 设置 socket 级别 TCP keepalive
-    _orig_init = socket.socket.__init__
-
-    def _keepalive_init(self, *args, **kwargs):
-        _orig_init(self, *args, **kwargs)
-        try:
-            self.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            # Linux: 空闲 30s 后开始发 keepalive 探测包，每 10s 一次
-            if hasattr(socket, "TCP_KEEPIDLE"):
-                self.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
-            if hasattr(socket, "TCP_KEEPINTVL"):
-                self.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
-            if hasattr(socket, "TCP_KEEPCNT"):
-                self.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
-        except OSError:
-            pass
-
-    socket.socket.__init__ = _keepalive_init
     return session
 
 
