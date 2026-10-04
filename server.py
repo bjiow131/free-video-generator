@@ -1068,6 +1068,10 @@ async def create_creative_task(
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # P7: 参数校验
+    if (video_width, video_height) not in {(768, 1152), (1152, 648), (1024, 1024)}:
+        raise HTTPException(status_code=422, detail="Поддерживаются только 9:16, 16:9 и 1:1")
+    if chaining_mode not in ("independent", "ti2vid", "keyframes"):
+        raise HTTPException(status_code=422, detail="Неподдерживаемый режим связности сцен")
     if len(idea) > 10000:
         raise HTTPException(status_code=422, detail="Идея может содержать не более 10000 символов")
     if duration_source not in ("manual", "prompt"):
