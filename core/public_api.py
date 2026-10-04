@@ -217,7 +217,7 @@ async def generate_image(
 def _video_dimensions(aspect_ratio: str):
     return {
         "16:9": (1152, 648),
-        "9:16": (648, 1152),
+        "9:16": (768, 1152),
     }.get(aspect_ratio, (1152, 648))
 
 
