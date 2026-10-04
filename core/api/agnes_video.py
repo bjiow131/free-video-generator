@@ -293,7 +293,7 @@ class AgnesVideoAPI:
                     timeout=90,
                 )
 
-                if resp.status_code == 200:
+                if resp.status_code in (200, 201, 202):
                     result = resp.json()
                     video_id = result.get("video_id") or result.get("task_id") or result.get("id")
                     if video_id:
