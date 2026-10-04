@@ -92,7 +92,7 @@ class AudioConfig(BaseModel):
     """音频配置（TTS 语音，不再包含字幕样式）"""
 
     enabled: bool = True
-    voice: str = "zh-CN-XiaoxiaoNeural"
+    voice: str = "ru-RU-SvetlanaNeural"
     rate: str = "+0%"
 
 
