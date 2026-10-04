@@ -2060,6 +2060,6 @@ class CreativeVideoPipeline(BasePipeline):
             raise
         except Exception as e:
             self._state.status = StepStatus.FAILED
-            self.task_manager.update_state(status=StepStatus.FAILED)
+            self.task_manager.update_state(status=StepStatus.FAILED, error_message=str(e))
             await self._emit("error", "failed", str(e), 0.0)
             raise
