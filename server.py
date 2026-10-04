@@ -1373,7 +1373,8 @@ async def create_anchor_task(
 
 
 @app.post("/api/tasks")
-async def create_task_legacy(request: Request, 
+async def create_task_legacy(
+    request: Request,
     idea: str = Form(...),
     creative_name: str = Form(""),
     user_requirement: str = Form("3个场景，每个场景10秒，电影质感"),
@@ -1387,10 +1388,11 @@ async def create_task_legacy(request: Request,
     generate_end_frames_from_ref: bool = Form(True),
 ):
     """向后兼容旧端点，映射到 create_creative_task。"""
+    _require_session(request)
     return await create_creative_task(
-        idea=idea,
+        request=request,
+        idea=f"{idea}\n{user_requirement}",
         creative_name=creative_name,
-        user_requirement=user_requirement,
         style=style,
         chaining_mode=chaining_mode,
         video_width=video_width,
@@ -1399,7 +1401,9 @@ async def create_task_legacy(request: Request,
         end_frame_images=end_frame_images,
         use_custom_end_frames=use_custom_end_frames,
         generate_end_frames_from_ref=generate_end_frames_from_ref,
-        # 提供音频/字幕默认值（旧端点不传这些参数）
+        duration_source="prompt",
+        scene_count=3,
+        scene_durations_json="[5,5,5]",
         audio_enabled=False,
         audio_voice="ru-RU-SvetlanaNeural",
         audio_rate="+0%",
@@ -1420,9 +1424,8 @@ async def create_task_legacy(request: Request,
 
 
 @app.post("/api/tasks/{task_id}/resume")
-async def resume_tas    _require_session(request)
-
-k(task_id: str):
+async def resume_task(task_id: str, request: Request):
+    _require_session(request)
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
