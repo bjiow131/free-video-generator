@@ -672,11 +672,12 @@ class SubtitleGenerator:
         h_resolved = resolve_h(h_raw)
         v_resolved = resolve_v(v_raw)
 
-        # safe-margin clamping for pixel positions
-        if isinstance(h_resolved, (int, float)):
-            h_resolved = max(safe_margin_x, min(h_resolved, video_width - safe_margin_x))
-        if isinstance(v_resolved, (int, float)):
-            v_resolved = max(safe_margin_y, min(v_resolved, video_height - safe_margin_y))
+        # Clamp only to the actual frame bounds. Do not force the safe margin
+        # inward, because explicit positions such as top+50 are user intent.
+        if isinstance(h_resolved, (int, float)) and video_width > 0:
+            h_resolved = max(0, min(h_resolved, video_width))
+        if isinstance(v_resolved, (int, float)) and video_height > 0:
+            v_resolved = max(0, min(v_resolved, video_height))
 
         return (h_resolved, v_resolved)
 
