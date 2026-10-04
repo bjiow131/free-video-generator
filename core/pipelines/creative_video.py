@@ -1152,7 +1152,7 @@ class CreativeVideoPipeline(BasePipeline):
                 0.35 + 0.45 * scene_idx / total,
             )
             video_id = await self.video_generator.submit_video(
-                prompt=scene_text,
+                prompt=self._scene_video_prompt(scene_text),
                 reference_image_paths=[character_ref_path],
                 duration=self._scene_duration(scene_idx),
                 width=vw,
@@ -1261,7 +1261,7 @@ class CreativeVideoPipeline(BasePipeline):
                     0.35 + 0.45 * scene_idx / total,
                 )
                 video_id = await self.video_generator.submit_video(
-                    prompt=scene_text,
+                    prompt=self._scene_video_prompt(scene_text),
                     reference_image_paths=[current_image],
                     duration=self._scene_duration(scene_idx),
                     width=vw,
@@ -1478,7 +1478,7 @@ class CreativeVideoPipeline(BasePipeline):
                 0.35 + 0.05 * scene_idx / total,
             )
             video_id = await self.video_generator.submit_video(
-                prompt=info["scene_text"],
+                prompt=self._scene_video_prompt(info["scene_text"]),
                 reference_image_paths=[info["first_frame_url"], info["end_frame_url"]],
                 duration=self._scene_duration(scene_idx),
                 width=vw,
