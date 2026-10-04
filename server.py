@@ -1077,7 +1077,7 @@ async def create_creative_task(
     subtitle_bg_color: str = Form("black@0.5"),
 ):
     """创建创意长视频任务（类型 2）。"""
-    _require_session(request)
+    _require_session_or_guest(request)
 
     api_key = get_api_key()
     if not api_key:
