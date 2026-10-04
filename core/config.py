@@ -286,7 +286,7 @@ def set_active_workspace(path: str) -> str:
 # ═══════════════════════════════════════════════════
 
 # D3：默认语音角色
-DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+DEFAULT_VOICE = "ru-RU-SvetlanaNeural"
 
 # D3：可选中文语音角色列表
 AVAILABLE_VOICES = [
