@@ -1143,6 +1143,7 @@ class CreativeVideoPipeline(BasePipeline):
 
             existing_video_id = self._load_scene_task(scene_dir)
             if existing_video_id:
+                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
                 logger.info(
                     f"[Pipeline] Scene {scene_idx}: resuming existing video task "
                     f"{existing_video_id[:16]}..."
@@ -1257,6 +1258,7 @@ class CreativeVideoPipeline(BasePipeline):
             existing_video_id = self._load_scene_task(scene_dir)
 
             if existing_video_id:
+                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
                 logger.info(
                     f"[Pipeline] Scene {scene_idx}: resuming existing video task "
                     f"{existing_video_id[:16]}..."
@@ -1383,6 +1385,7 @@ class CreativeVideoPipeline(BasePipeline):
 
             existing_video_id = self._load_scene_task(scene_dir)
             if existing_video_id:
+                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
                 logger.info(
                     f"[Pipeline] Scene {scene_idx}: resuming existing video task "
                     f"{existing_video_id[:16]}..."
