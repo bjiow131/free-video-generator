@@ -1065,6 +1065,34 @@ class CreativeVideoPipeline(BasePipeline):
     # Video generation strategies
     # ------------------------------------------------------------------
 
+    def _scene_video_prompt(self, scene_text: str) -> str:
+        """Add a persistent character-identity lock to every video prompt."""
+        text = (scene_text or "").strip()
+        appearance = (self._state.character_appearance or "").strip()
+        if not self._state.include_characters:
+            return text
+        if appearance and not self._state.reference_image:
+            lock = (
+                "[CHARACTER IDENTITY LOCK]\n"
+                "Keep the exact same main character throughout the entire film. "
+                f"Preserve this established appearance exactly: {appearance}\n"
+                "Do not change face, age, body type, hairstyle, hair color, skin tone, "
+                "clothing design, clothing colors, or distinctive features. "
+                "Only pose, expression, camera angle, action, and environment may change."
+            )
+        elif self._state.reference_image or self._state.character_ref_file:
+            lock = (
+                "[CHARACTER REFERENCE LOCK]\n"
+                "The reference image defines the main character's identity. "
+                "Keep the exact same person, face, age, body proportions, hairstyle, "
+                "hair color, skin tone, clothing design, clothing colors, and distinctive "
+                "features as the reference. Do not redesign or replace the character. "
+                "Only pose, expression, camera angle, action, and environment may change."
+            )
+        else:
+            return text
+        return f"{lock}\n\n[SCENE]\n{text}"
+
     def _scene_duration(self, scene_idx: int) -> float:
         """Get the video duration for a specific scene by index.
 
