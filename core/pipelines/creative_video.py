@@ -1138,7 +1138,8 @@ class CreativeVideoPipeline(BasePipeline):
             video_path = os.path.join(scene_dir, "video.mp4")
 
             if os.path.exists(video_path):
-                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n                continue
+                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+                continue
 
             existing_video_id = self._load_scene_task(scene_dir)
             if existing_video_id:
