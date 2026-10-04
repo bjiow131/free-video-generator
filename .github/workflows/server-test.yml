@@ -7,6 +7,8 @@ on:
       - "requirements.txt"
       - "core/**"
       - "models/**"
+      - "static/**"
+      - "render.yaml"
       - ".github/workflows/server-test.yml"
   workflow_dispatch:
 
@@ -30,3 +32,17 @@ jobs:
         run: python -m pytest -q tests
       - name: Build Docker image
         run: docker build --tag agnes-video-generator:ci .
+      - name: Validate web UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("static/ai-studio.html").read_text(encoding="utf-8")
+          scripts = html.split("<script>")
+          if len(scripts) < 2:
+              raise SystemExit("No inline script found in ai-studio.html")
+          js = scripts[-1].split("</script>", 1)[0]
+          Path("/tmp/ai-studio.js").write_text(js, encoding="utf-8")
+          PY
+          node --check /tmp/ai-studio.js
+      - name: Validate Render blueprint
+        run: python -c "import yaml; yaml.safe_load(open('render.yaml', encoding='utf-8'))"
