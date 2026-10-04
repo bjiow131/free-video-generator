@@ -1168,7 +1168,8 @@ class CreativeVideoPipeline(BasePipeline):
                 negative_prompt=self._state.negative_prompt or None,
             )
             self._save_scene_task(scene_dir, video_id)
-            self._set_scene_video_status(scene_idx, StepStatus.RUNNING)\n            pending.append({
+            self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
+            pending.append({
                 "scene_idx": scene_idx, "video_path": video_path,
                 "video_id": video_id, "scene_dir": scene_dir,
                 "already_submitted": True,
@@ -1278,7 +1279,8 @@ class CreativeVideoPipeline(BasePipeline):
                     negative_prompt=self._state.negative_prompt or None,
                 )
                 self._save_scene_task(scene_dir, video_id)
-                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)\n                existing_video_id = video_id
+                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
+                existing_video_id = video_id
 
             await self._emit(
                 "video_gen", "running",
