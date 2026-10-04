@@ -1197,6 +1197,7 @@ class CreativeVideoPipeline(BasePipeline):
                     0.38 + 0.42 * (pending.index(info) + 1) / len(pending),
                 )
             except Exception as e:
+                self._set_scene_video_status(scene_idx, StepStatus.FAILED)
                 logger.error(f"Scene {scene_idx} video failed: {e}")
                 task_file = os.path.join(info["scene_dir"], "task.json")
                 if os.path.exists(task_file):
@@ -1287,6 +1288,7 @@ class CreativeVideoPipeline(BasePipeline):
                 video_output = await self.video_generator.wait_for_video(existing_video_id)
                 video_output.save(video_path)
                 self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n            except Exception as e:
+                self._set_scene_video_status(scene_idx, StepStatus.FAILED)
                 logger.error(f"Scene {scene_idx} video failed: {e}")
                 task_file = os.path.join(scene_dir, "task.json")
                 if os.path.exists(task_file):
@@ -1520,6 +1522,7 @@ class CreativeVideoPipeline(BasePipeline):
                     0.4 + 0.4 * (pending.index(info) + 1) / len(pending),
                 )
             except Exception as e:
+                self._set_scene_video_status(scene_idx, StepStatus.FAILED)
                 logger.error(f"Scene {scene_idx} video failed: {e}")
                 task_file = os.path.join(info["scene_dir"], "task.json")
                 if os.path.exists(task_file):
