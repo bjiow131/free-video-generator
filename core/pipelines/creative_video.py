@@ -1193,7 +1193,8 @@ class CreativeVideoPipeline(BasePipeline):
             try:
                 video_output = await self.video_generator.wait_for_video(info["video_id"])
                 video_output.save(info["video_path"])
-                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n                await self._emit(
+                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+                await self._emit(
                     "video_gen", "running",
                     f"场景 {scene_idx+1}/{total}: 完成",
                     0.38 + 0.42 * (pending.index(info) + 1) / len(pending),
@@ -1241,7 +1242,8 @@ class CreativeVideoPipeline(BasePipeline):
 
             if os.path.exists(video_path):
                 all_video_paths.append(video_path)
-                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n                last_frame_path = os.path.join(scene_dir, "last_frame.jpg")
+                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+                last_frame_path = os.path.join(scene_dir, "last_frame.jpg")
                 if os.path.exists(last_frame_path):
                     current_image = last_frame_path
                 await self._emit(
@@ -1290,7 +1292,8 @@ class CreativeVideoPipeline(BasePipeline):
             try:
                 video_output = await self.video_generator.wait_for_video(existing_video_id)
                 video_output.save(video_path)
-                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n            except Exception as e:
+                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+            except Exception as e:
                 self._set_scene_video_status(scene_idx, StepStatus.FAILED)
                 logger.error(f"Scene {scene_idx} video failed: {e}")
                 task_file = os.path.join(scene_dir, "task.json")
@@ -1372,7 +1375,8 @@ class CreativeVideoPipeline(BasePipeline):
             video_path = os.path.join(scene_dir, "video.mp4")
 
             if os.path.exists(video_path):
-                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)\n                end_frame_path = os.path.join(scene_dir, "end_frame.png")
+                self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+                end_frame_path = os.path.join(scene_dir, "end_frame.png")
                 if os.path.exists(end_frame_path):
                     current_first_frame = end_frame_path
                 continue
