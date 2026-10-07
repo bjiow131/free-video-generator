@@ -24,6 +24,7 @@ import tempfile
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
+from urllib.parse import urlsplit
 from typing import Dict, List, Optional, Union
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException, Request
@@ -288,14 +289,26 @@ _LOCAL_ALLOWED_HOSTS = {
     f"localhost:{_LOCAL_SERVER_PORT}",
 }
 
+def _origin_matches_host(origin: str, host: str) -> bool:
+    """Allow same-origin requests on localhost and deployed HTTPS hosts."""
+    if not origin:
+        return True
+    if origin in _LOCAL_CORS_ORIGINS:
+        return True
+    try:
+        parsed = urlsplit(origin)
+        return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == host
+    except ValueError:
+        return False
+
 @app.middleware("http")
 async def local_origin_guard(request: Request, call_next):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
         host = request.headers.get("host", "").lower()
-        if origin and origin not in _LOCAL_CORS_ORIGINS:
+        if not _origin_matches_host(origin, host):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый источник запроса"})
-        if host not in _LOCAL_ALLOWED_HOSTS:
+        if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
     return await call_next(request)
 
@@ -382,10 +395,10 @@ def _validate_workspace_path(raw_path: str) -> str:
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
     origin = websocket.headers.get("origin")
     host = websocket.headers.get("host", "").lower()
-    if origin and origin not in _LOCAL_CORS_ORIGINS:
+    if not _origin_matches_host(origin, host):
         await websocket.close(code=1008, reason="Недопустимый источник запроса")
         return
-    if host not in _LOCAL_ALLOWED_HOSTS:
+    if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
         await websocket.close(code=1008, reason="Недопустимый адрес сервера")
         return
     await websocket.accept()
