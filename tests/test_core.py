@@ -610,7 +610,7 @@ class TestAgnesCurrentVideoProtocol:
             return FakeResponse()
 
         monkeypatch.setattr("core.api.agnes_video.requests.get", fake_get)
-        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter().acquire", lambda: None)
+        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter", lambda: type("Limiter", (), {"acquire": lambda self: None})())
 
         result = asyncio.run(api._poll_task("video_test", interval=0, max_poll_duration=5))
         assert result["status"] == "completed"
