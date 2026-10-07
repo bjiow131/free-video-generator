@@ -54,7 +54,7 @@ def strip_code_fence(text: str) -> str:
 class AgnesChatAPI:
     """Agnes LLM Chat API 封装（text + multimodal）。"""
 
-    def __init__(self, api_key: str, model: str = "agnes-2.0-flash"):
+    def __init__(self, api_key: str, model: str = "agnes-3.0-flash"):
         self.api_key = api_key
         self.model = model
         self.headers = {
