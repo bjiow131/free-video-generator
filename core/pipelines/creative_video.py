@@ -965,7 +965,7 @@ class CreativeVideoPipeline(BasePipeline):
         """
         return (
             f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
+            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}&model_name={self.video_generator.model}"'
         )
 
     def _save_scene_task(self, scene_dir: str, video_id: str) -> None:
