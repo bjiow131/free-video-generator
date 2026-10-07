@@ -502,7 +502,16 @@ class TestSimpleVideoPersistence:
         assert not (tmp_path / "task.json.tmp").exists()
 
 
-class TestApiRequestDefaults:\n    def test_video_request_defaults_to_landscape(self):\n        from models.task import CreateSimpleTaskRequest, CreateCreativeTaskRequest, CreateManuscriptTaskRequest\n        assert (CreateSimpleTaskRequest(prompt="x").video_width, CreateSimpleTaskRequest(prompt="x").video_height) == (1152, 648)\n        assert (CreateCreativeTaskRequest(idea="x").video_width, CreateCreativeTaskRequest(idea="x").video_height) == (1152, 648)\n        assert (CreateManuscriptTaskRequest(manuscript_text="x").video_width, CreateManuscriptTaskRequest(manuscript_text="x").video_height) == (1152, 648)\n\n\nclass TestLocalWindowsContracts:
+class TestApiRequestDefaults:\n    def test_video_request_defaults_to_landscape(self):\n        from models.task import CreateSimpleTaskRequest, CreateCreativeTaskRequest, CreateManuscriptTaskRequest\n        assert (CreateSimpleTaskRequest(prompt="x").video_width, CreateSimpleTaskRequest(prompt="x").video_height) == (1152, 648)\n        assert (CreateCreativeTaskRequest(idea="x").video_width, CreateCreativeTaskRequest(idea="x").video_height) == (1152, 648)\n        assert (CreateManuscriptTaskRequest(manuscript_text="x").video_width, CreateManuscriptTaskRequest(manuscript_text="x").video_height) == (1152, 648)\n\n\nclass TestSharedSubtitleDefaults:
+    def test_shared_subtitle_helper_defaults_to_landscape(self):
+        import inspect
+        from core.pipelines import BasePipeline
+        params = inspect.signature(BasePipeline.generate_subtitles_common).parameters
+        assert params["video_width"].default == 1152
+        assert params["video_height"].default == 648
+
+
+class TestLocalWindowsContracts:
     """Windows-first local mode contract tests."""
 
     def test_resolution_presets_are_valid_aspect_ratios(self):
