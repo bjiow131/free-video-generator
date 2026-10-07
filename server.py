@@ -347,8 +347,7 @@ async def clear_config(request: Request):
 
 
 # ═══════════════════════════════════════════════════
-# 水印配置
-# ═══════════════════════════════════════════════════
+# 水印配置# ═══════════════════════════════════════════════════
 
 
 @app.post("/api/config/watermark")
@@ -697,8 +696,7 @@ async def download_video(task_id: str):
 # 时长提取 regex 模式（支持 7 种语言）
 _DURATION_PATTERNS = [
     # 中文
-    r'(?:每个场景|每段|每节|每个|每)(?:约)?(\d+)\s*(?:秒|s)',
-    r'(\d+)\s*(?:秒|s)\s*(?:每|/)',
+    r'(?:每个场景|每段|每节|每个|每)(?:约)?(\d+)\s*(?:秒|s)',    r'(\d+)\s*(?:秒|s)\s*(?:每|/)',
     # 日文
     r'各\s*(\d+)\s*秒',
     # 英文
@@ -917,8 +915,8 @@ async def create_simple_task(
     prompt: str = Form(...),
     mode: str = Form("t2v"),
     duration: int = Form(5),
-    video_width: int = Form(768),
-    video_height: int = Form(1152),
+    video_width: int = Form(1152),
+    video_height: int = Form(648),
     seed: Optional[int] = Form(None),
     negative_prompt: Optional[str] = Form(None),
     system_prompt: str = Form(""),
@@ -1008,8 +1006,8 @@ async def create_creative_task(
     negative_prompt: str = Form(""),
     include_characters: bool = Form(True),
     chaining_mode: str = Form("keyframes"),
-    video_width: int = Form(768),
-    video_height: int = Form(1152),
+    video_width: int = Form(1152),
+    video_height: int = Form(648),
     # ── v3.x 场景配置 ──
     duration_source: str = Form("manual"),
     scene_count: int = Form(3),
@@ -1047,8 +1045,7 @@ async def create_creative_task(
     if chaining_mode not in ("independent", "ti2vid", "keyframes"):
         raise HTTPException(status_code=422, detail="Неподдерживаемый режим связности сцен")
     if len(idea) > 10000:
-        raise HTTPException(status_code=422, detail="Идея может содержать не более 10000 символов")
-    if duration_source not in ("manual", "prompt"):
+        raise HTTPException(status_code=422, detail="Идея может содержать не более 10000 символов")    if duration_source not in ("manual", "prompt"):
         raise HTTPException(status_code=422, detail="Источник длительности должен быть ручным или заданным в промпте")
     if duration_source == "manual":
         if scene_count < 1 or scene_count > 30:
@@ -1163,8 +1160,8 @@ async def create_manuscript_task(
     video_style: str = Form(""),
     negative_prompt: str = Form(""),
     creative_name: str = Form(""),
-    video_width: int = Form(768),
-    video_height: int = Form(1152),
+    video_width: int = Form(1152),
+    video_height: int = Form(648),
     video_duration: int = Form(10),
     # v2.0 音频配置
     audio_enabled: bool = Form(True),
@@ -1357,8 +1354,8 @@ async def create_task_legacy(
     user_requirement: str = Form("3个场景，每个场景10秒，电影质感"),
     style: str = Form("电影质感写实风格"),
     chaining_mode: str = Form("keyframes"),
-    video_width: int = Form(768),
-    video_height: int = Form(1152),
+    video_width: int = Form(1152),
+    video_height: int = Form(648),
     reference_image: UploadFile = File(None),
     end_frame_images: List[UploadFile] = File(None),
     use_custom_end_frames: bool = Form(False),
@@ -1397,7 +1394,6 @@ async def create_task_legacy(
 # ═══════════════════════════════════════════════════
 # 任务恢复 + 停止
 # ═══════════════════════════════════════════════════
-
 
 @app.post("/api/tasks/{task_id}/resume")
 async def resume_task(task_id: str, request: Request):
