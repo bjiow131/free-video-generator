@@ -33,7 +33,7 @@ To be honest, Agnes's video model isn't perfect yet. The generated frames are so
 | **Keyframes Animation** | Yes | Yes | Yes | Not available | Not available |
 | **Local GPU Required** | No (cloud API) | No (cloud) | No (cloud) | No (cloud) | No (cloud) |
 | **Watermark** | No watermark | Built-in watermark | Built-in watermark | C2PA metadata | Built-in watermark |
-| **Usage Limit** | No limit (16 req/min rate limit) | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
+| **Usage Limit** | No subscription; local client guard is 20 requests/min | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
 
 ## Core Features
 
@@ -76,7 +76,7 @@ Both Creative Video and Manuscript Video support:
 - **Image-to-image end frames** — Auto-generate scene end frames via img2img from your reference image
 - **Three video chaining modes** — `keyframes` (first+last frame interpolation, recommended) / `ti2vid` (inter-scene transition frames) / `none` (independent scenes)
 - **Multiple resolutions** — Portrait 9:16 (768x1152), Landscape 16:9 (1152x648), Square 1:1 (1024x1024)
-- **Flexible duration** — Custom scene duration
+- **Flexible duration** — 4–12 seconds per Agnes Video 2.5 scene
 - **Smart manuscript splitting** — Splits by period/question mark/exclamation mark, greedily merges into 5-12 second segments based on reading speed (~4 chars/sec), preserves long sentences, auto-merges short sentences forward
 
 ### Production-Grade Reliability
@@ -218,7 +218,7 @@ Quick single-clip generation with full parameter control:
 | Prompt | Describe the AI video scene in natural language |
 | Generation Mode | Text-to-Video / Image-to-Video / Text+Image / Keyframes |
 | Resolution | Portrait 9:16 / Landscape 16:9 / Square 1:1 |
-| Duration | 5s / 10s / 15s / 18s / 20s |
+| Duration | 4s–12s on Agnes Video 2.5; legacy presets 15s / 18s / 20s |
 | Reference Image | Optional upload for image-to-video modes |
 | End Frame Image | Optional end frame for keyframes mode |
 
