@@ -224,15 +224,19 @@ class AgnesVideoAPI:
 
                 if resp.status_code in (200, 201, 202):
                     result = resp.json()
-                    video_id = (
-                        result.get("video_id")
-                        or result.get("task_id")
-                        or result.get("id")
-                    )
+                    if self.is_modern:
+                        # Agnes Video 2.5 polling is keyed by video_id + model_name.
+                        video_id = result.get("video_id")
+                    else:
+                        video_id = (
+                            result.get("video_id")
+                            or result.get("task_id")
+                            or result.get("id")
+                        )
                     if video_id:
                         return video_id
                     raise RuntimeError(
-                        f"Agnes video submit returned no video_id: {result}"
+                        f"Agnes video submit returned no usable video_id: {result}"
                     )
 
                 if resp.status_code == 429 or resp.status_code >= 500:
