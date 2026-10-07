@@ -457,3 +457,19 @@ class TestLocalServerContract:
         assert "/api/video/{task_id}" in routes
         assert "/api/video/{task_id}/download" in routes
         assert "/health" in routes
+
+
+class TestTaskIdSafety:
+    """Filesystem-facing task IDs must reject traversal input."""
+
+    @pytest.mark.parametrize("value", ["../secret", "..\\secret", "/absolute", "\\\\server\\share", ""])
+    def test_rejects_unsafe_task_id(self, value):
+        from fastapi import HTTPException
+        from server import _validate_task_id
+        with pytest.raises(HTTPException) as exc:
+            _validate_task_id(value)
+        assert exc.value.status_code == 400
+
+    def test_accepts_generated_style_task_id(self):
+        from server import _validate_task_id
+        assert _validate_task_id("a1b2c3d4e5f6") == "a1b2c3d4e5f6"
