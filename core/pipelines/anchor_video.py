@@ -60,7 +60,7 @@ class AnchorPipeline(BasePipeline):
         task_id: str,
         dir_name: Optional[str] = None,
         chat_model: str = "agnes-3.0-flash",
-        image_model: str = "agnes-image-2.1-flash",
+        image_model: str = "agnes-image-2.5-flash",
         video_model: str = "agnes-video-v2.0",
         progress_callback: Optional[Callable] = None,
         shutdown_event: Optional[asyncio.Event] = None,
