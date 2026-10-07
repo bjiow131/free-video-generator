@@ -181,6 +181,10 @@ class TaskManager:
             self._state = parse_task_state(
                 data
             )
+            if self._normalize_recovered_state():
+                self._save()
+                self._log_event("task_recovery_normalized")
+
 
             if isinstance(
                 self._state,
@@ -242,6 +246,33 @@ class TaskManager:
 
             return self.restore_checkpoint()
 
+    def _normalize_recovered_state(self) -> bool:
+        """Reset in-flight task steps after a process restart."""
+        if not self._state:
+            return False
+        changed = False
+        in_flight = {StepStatus.RUNNING, StepStatus.QUEUED}
+        if self._state.status in in_flight:
+            self._state.status = StepStatus.PENDING
+            changed = True
+        for field_name in self._state.model_fields:
+            if not field_name.startswith("step_"):
+                continue
+            value = getattr(self._state, field_name, None)
+            if value in in_flight:
+                setattr(self._state, field_name, StepStatus.PENDING)
+                changed = True
+        if isinstance(self._state, CreativeVideoTask):
+            for scene in self._state.scenes:
+                if scene.status in in_flight:
+                    scene.status = StepStatus.PENDING
+                    changed = True
+                if scene.video_status in in_flight:
+                    scene.video_status = StepStatus.PENDING
+                    changed = True
+        return changed
+
+
     def _save(self):
         """
         Сохранение текущего состояния.
@@ -297,6 +328,8 @@ class TaskManager:
             self._state = parse_task_state(
                 data
             )
+
+            self._normalize_recovered_state()
 
             self._save()
 
