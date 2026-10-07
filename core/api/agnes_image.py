@@ -109,6 +109,7 @@ class AgnesImageAPI:
         prompt: str,
         reference_image_paths: Optional[List[str]] = None,
         size: Optional[str] = None,
+        ratio: Optional[str] = None,
         max_retries: int = 3,
         retry_base_delay: float = 20.0,
         **kwargs,
@@ -119,8 +120,9 @@ class AgnesImageAPI:
         payload: dict = {
             "model": model,
             "prompt": prompt,
-            "size": size or "1024x1024",
+            "size": size or "1K",
             "n": 1,
+            **({"ratio": ratio} if ratio else {}),
         }
 
         if reference_image_paths:
