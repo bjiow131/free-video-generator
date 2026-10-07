@@ -502,7 +502,7 @@ class TestSimpleVideoPersistence:
         assert not (tmp_path / "task.json.tmp").exists()
 
 
-class TestLocalWindowsContracts:
+class TestApiRequestDefaults:\n    def test_video_request_defaults_to_landscape(self):\n        from models.task import CreateSimpleTaskRequest, CreateCreativeTaskRequest, CreateManuscriptTaskRequest\n        assert (CreateSimpleTaskRequest(prompt="x").video_width, CreateSimpleTaskRequest(prompt="x").video_height) == (1152, 648)\n        assert (CreateCreativeTaskRequest(idea="x").video_width, CreateCreativeTaskRequest(idea="x").video_height) == (1152, 648)\n        assert (CreateManuscriptTaskRequest(manuscript_text="x").video_width, CreateManuscriptTaskRequest(manuscript_text="x").video_height) == (1152, 648)\n\n\nclass TestLocalWindowsContracts:
     """Windows-first local mode contract tests."""
 
     def test_resolution_presets_are_valid_aspect_ratios(self):
