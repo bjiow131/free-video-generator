@@ -373,10 +373,10 @@ class AgnesVideoAPI:
     async def submit_video(
         self,
         prompt: str,
-        reference_image_paths: List[str] = [],
+        reference_image_paths: Optional[Sequence[str]] = None,
         duration: Optional[int] = None,
         width: int = 1152,
-        height: int = 768,
+        height: int = 648,
         seed: Optional[int] = None,
         negative_prompt: Optional[str] = None,
         **kwargs,
