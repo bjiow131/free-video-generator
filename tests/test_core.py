@@ -545,3 +545,85 @@ class TestTaskRecoveryNormalization:
         tm.create(state)
         loaded = tm.load()
         assert loaded.status == "pending"
+
+
+# ═══════════════════════════════════════════════════
+# 8. Agnes current API protocol
+# ═══════════════════════════════════════════════════
+
+class TestAgnesCurrentVideoProtocol:
+    """Regression tests for Agnes Video 2.5 request/poll semantics."""
+
+    def test_modern_i2v_payload_uses_current_schema(self, monkeypatch, tmp_path):
+        from core.api.agnes_video import AgnesVideoAPI
+
+        image = tmp_path / "frame.png"
+        image.write_bytes(b"fake-png")
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+
+        async def fake_submit(payload, mode_desc):
+            assert payload["model"] == "agnes-video-2.5-flash"
+            assert payload["mode"] == "img2video"
+            assert payload["seconds"] == "5"
+            assert payload["size"] == "720P"
+            assert payload["aspect_ratio"] == "16:9"
+            assert payload["n"] == 1
+            assert payload["first_frame"].startswith("data:image/png;base64,")
+            return "video_test"
+
+        monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+
+        import asyncio
+        video_id = asyncio.run(
+            api.submit_video(
+                "cinematic motion",
+                reference_image_paths=[str(image)],
+                duration=5,
+                width=1152,
+                height=648,
+            )
+        )
+        assert video_id == "video_test"
+
+    def test_poll_passes_model_name_and_accepts_metadata_url(self, monkeypatch):
+        from core.api.agnes_video import AgnesVideoAPI
+        import asyncio
+
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "status": "completed",
+                    "progress": 100,
+                    "video_id": "video_test",
+                    "metadata": {"url": "https://example.test/video.mp4"},
+                }
+
+        calls = []
+
+        def fake_get(url, **kwargs):
+            calls.append((url, kwargs))
+            return FakeResponse()
+
+        monkeypatch.setattr("core.api.agnes_video.requests.get", fake_get)
+        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter().acquire", lambda: None)
+
+        result = asyncio.run(api._poll_task("video_test", interval=0, max_poll_duration=5))
+        assert result["status"] == "completed"
+        assert calls[0][1]["params"]["video_id"] == "video_test"
+        assert calls[0][1]["params"]["model_name"] == "agnes-video-2.5-flash"
+
+        output = asyncio.run(api.wait_for_video("video_test"))
+        assert output.data == "https://example.test/video.mp4"
+
+
+class TestAgnesCurrentImageDefaults:
+    def test_image_default_model_is_current(self):
+        from core.api.agnes_image import AgnesImageAPI
+        api = AgnesImageAPI("test-key")
+        assert api.model == "agnes-image-2.5-flash"
+        assert api.i2i_model == "agnes-image-2.5-flash"
