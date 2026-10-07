@@ -426,3 +426,34 @@ class TestStepSplitText:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
+
+
+# ═══════════════════════════════════════════════════
+# 7. Local single-user server contract
+# ═══════════════════════════════════════════════════
+
+class TestLocalServerContract:
+    """Local mode must not expose account/session authentication and UI routes must exist."""
+
+    def test_no_auth_routes_or_session_dependencies(self):
+        from server import app
+        routes = {getattr(route, "path", "") for route in app.routes}
+        assert "/api/public/login" not in routes
+        assert "/api/public/register" not in routes
+        assert "/api/public/guest" not in routes
+        assert "/api/public/logout" not in routes
+        assert "/api/login" not in routes
+        assert "/api/register" not in routes
+
+    def test_local_generation_routes_exist(self):
+        from server import app
+        routes = {getattr(route, "path", "") for route in app.routes}
+        assert "/api/image/generate" in routes
+        assert "/api/image/{task_id}" in routes
+        assert "/api/image/{task_id}/download" in routes
+        assert "/api/tasks/simple" in routes
+        assert "/api/tasks/creative" in routes
+        assert "/api/tasks/manuscript" in routes
+        assert "/api/video/{task_id}" in routes
+        assert "/api/video/{task_id}/download" in routes
+        assert "/health" in routes
