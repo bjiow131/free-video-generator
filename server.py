@@ -195,7 +195,12 @@ def _find_dir_name(task_id: str) -> str:
     tm = TaskManager("_")
     for t in tm.list_tasks():
         if t["task_id"] == task_id:
-            return t.get("dir_name", task_id)
+            dir_name = t.get("dir_name", task_id)
+            try:
+                return _validate_task_id(dir_name)
+            except HTTPException:
+                logger.warning("[Security] Ignoring unsafe task directory for %s", task_id)
+                return task_id
     return task_id
 
 

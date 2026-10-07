@@ -52,12 +52,12 @@ All core AI capabilities are **completely free** — no trial period, no waterma
 
 | Capability | Model | Cost |
 |-----------|-------|------|
-| Text / Script Generation | `agnes-2.0-flash` | Free |
-| Image Generation | `agnes-image-2.1-flash` | Free |
-| Video Generation | `agnes-video-v2.0` | Free |
+| Text / Script Generation | `agnes-3.0-flash` | Free |
+| Image Generation | `agnes-image-2.5-flash` | Free |
+| Video Generation | `agnes-video-2.5-flash` | Free |
 | Text-to-Speech Narration | Edge TTS (Microsoft) | Free, no extra API key needed |
 
-All AI API calls share a global token bucket rate limiter (16 requests/min), with automatic retries and exponential backoff to ensure stable operation.
+All AI API calls share a global rate limiter (20 requests/min by default), with automatic retries and backoff. Long-running video jobs are persisted locally so they can be resumed after a restart.
 
 ### AI Narration & Smart Subtitles
 
@@ -320,7 +320,7 @@ free-video-generator/
 | Backend | Python FastAPI | Async + WebSocket |
 | Frontend | HTML/CSS/JS + Tailwind CSS CDN | Zero build steps, single-file SPA |
 | LLM | Agnes Chat (`agnes-2.0-flash`) | Free — story, script, narration generation |
-| Image AI | `agnes-image-2.1-flash` (t2i) / `agnes-image-2.0-flash` (i2i) | Free — reference images, end frames, standalone image generation |
+| Image AI | `agnes-image-2.1-flash` (t2i) / `agnes-image-2.5-flash` (i2i) | Free — reference images, end frames, standalone image generation |
 | Video AI | `agnes-video-v2.0` | Free — text-to-video, image-to-video, keyframes |
 | TTS | Edge TTS (Microsoft) | Free — 4 Chinese voices, no extra API key needed |
 | Subtitles | moviepy + srt | Fine-grained word-level SRT, multi-line wrapping |
@@ -419,7 +419,7 @@ Bug reports and feature suggestions are welcome via [GitHub Issues](../../issues
 
 ## Support the Developer
 
-Free Video Generator is and will always remain completely free and open-source. There will be **no paid plans, no premium features, and no subscription services** — now or in the future.
+Free Video Generator is open-source software. It has no built-in paid plans or subscription system.
 
 
 
@@ -433,7 +433,7 @@ MIT
 
 ### Is Free Video Generator really free? Are there any hidden costs?
 
-Yes, it is **completely free**. All AI model calls (Agnes Chat, Agnes Image, Agnes Video) are free of charge with no trial period, no watermarks, and no usage limits. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
+Yes, it is **completely free**. The application does not charge for its own software. Agnes AI availability, quotas, and pricing are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
 
 ### Do I need a GPU to run this AI video generator?
 
@@ -441,7 +441,7 @@ No. All AI compute runs in the cloud via Agnes AI's free API. You just need a re
 
 ### How is this different from Runway, Pika, or Sora?
 
-Unlike commercial AI video tools that charge $10-$95/month, Free Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the [comparison table](#comparison-free-video-generator-vs-commercial-ai-video-tools) above for details.
+Unlike commercial AI video tools that charge $10-$95/month, Free Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the comparison table above for general positioning; third-party prices and limits can change.
 
 ### What video generation modes are supported?
 

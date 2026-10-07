@@ -750,3 +750,13 @@ class TestVideoInputValidation:
         with pytest.raises(HTTPException) as exc:
             _validate_video_dimensions(8192, 8192)
         assert exc.value.status_code == 422
+
+
+class TestPathSafety:
+    def test_find_dir_name_rejects_unsafe_task_ids(self):
+        import pytest
+        from fastapi import HTTPException
+        from server import _validate_task_id
+        for value in ("../escape", r"..\escape", "a/b", ""):
+            with pytest.raises(HTTPException):
+                _validate_task_id(value)
