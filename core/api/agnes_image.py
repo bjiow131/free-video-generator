@@ -38,12 +38,26 @@ class ImageOutput:
         self.data = data
 
     def save(self, path: str) -> None:
-        if self.fmt == "url":
-            download_image(self.data, path)
-        else:
-            raw = self.data.split(",")[1] if "," in self.data else self.data
-            with open(path, "wb") as f:
-                f.write(base64.b64decode(raw))
+        """Write the image atomically so interrupted downloads never look complete."""
+        directory = os.path.dirname(path) or "."
+        os.makedirs(directory, exist_ok=True)
+        tmp_path = path + ".tmp"
+        try:
+            if self.fmt == "url":
+                download_image(self.data, tmp_path)
+            else:
+                raw = self.data.split(",", 1)[1] if "," in self.data else self.data
+                with open(tmp_path, "wb") as f:
+                    f.write(base64.b64decode(raw))
+                    f.flush()
+                    os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 class AgnesImageAPI:

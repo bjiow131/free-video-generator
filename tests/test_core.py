@@ -467,6 +467,23 @@ class TestLocalServerContract:
         assert "/health" in routes
 
 
+
+class TestMediaOutputPersistence:
+    def test_image_output_save_is_atomic(self, tmp_path):
+        from core.api.agnes_image import ImageOutput
+        path = tmp_path / "image.png"
+        ImageOutput("b64", "png", "iVBORw0KGgo=").save(str(path))
+        assert path.exists()
+        assert not (tmp_path / "image.png.tmp").exists()
+
+    def test_video_output_save_is_atomic(self, tmp_path):
+        from core.api.agnes_video import VideoOutput
+        path = tmp_path / "video.mp4"
+        VideoOutput("bytes", "mp4", b"video").save(str(path))
+        assert path.read_bytes() == b"video"
+        assert not (tmp_path / "video.mp4.tmp").exists()
+
+
 class TestCreativeSceneTaskPersistence:
     def test_scene_task_persistence_does_not_create_shell_helper(self, tmp_path):
         from core.pipelines.creative_video import CreativeVideoPipeline

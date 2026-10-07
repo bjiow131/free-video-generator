@@ -43,11 +43,25 @@ class VideoOutput:
         self.data = data
 
     def save(self, path: str) -> None:
-        if self.fmt == "url":
-            download_video(self.data, path)
-        else:
-            with open(path, "wb") as f:
-                f.write(self.data if isinstance(self.data, bytes) else self.data.encode())
+        """Write the video atomically so interrupted downloads never look complete."""
+        directory = os.path.dirname(path) or "."
+        os.makedirs(directory, exist_ok=True)
+        tmp_path = path + ".tmp"
+        try:
+            if self.fmt == "url":
+                download_video(self.data, tmp_path)
+            else:
+                with open(tmp_path, "wb") as f:
+                    f.write(self.data if isinstance(self.data, bytes) else self.data.encode())
+                    f.flush()
+                    os.fsync(f.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 class AgnesVideoAPI:

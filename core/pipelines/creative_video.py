@@ -1247,6 +1247,29 @@ class CreativeVideoPipeline(BasePipeline):
                 last_frame_path = os.path.join(scene_dir, "last_frame.jpg")
                 if os.path.exists(last_frame_path):
                     current_image = last_frame_path
+                else:
+                    # A previous process may have produced the video but crashed
+                    # before extracting its last frame. Rebuild that checkpoint
+                    # from the already-complete local video.
+                    try:
+                        await _run_ffmpeg_async(
+                            [
+                                "ffmpeg", "-y",
+                                "-sseof", "-1",
+                                "-i", video_path,
+                                "-frames:v", "1",
+                                "-update", "1",
+                                last_frame_path,
+                            ],
+                            timeout=30,
+                        )
+                        current_image = last_frame_path
+                    except Exception as e:
+                        logger.warning(
+                            "[Pipeline] Could not restore last frame for cached "
+                            "scene %s: %s; keeping current reference",
+                            scene_idx, e,
+                        )
                 await self._emit(
                     "video_gen", "running",
                     f"场景 {scene_idx+1}/{total}: 已缓存",
