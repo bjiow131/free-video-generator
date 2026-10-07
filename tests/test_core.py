@@ -433,6 +433,12 @@ if __name__ == "__main__":
 # ═══════════════════════════════════════════════════
 
 class TestLocalServerContract:
+    def test_cors_is_loopback_only(self):
+        from server import _LOCAL_CORS_ORIGINS
+        assert "http://127.0.0.1:8765" in _LOCAL_CORS_ORIGINS
+        assert "http://localhost:8765" in _LOCAL_CORS_ORIGINS
+        assert "*" not in _LOCAL_CORS_ORIGINS
+
     """Local mode must not expose account/session authentication and UI routes must exist."""
 
     def test_no_auth_routes_or_session_dependencies(self):
