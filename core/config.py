@@ -384,3 +384,6 @@ DURATION_FRAME_MAP = {
     18: (441, 24),
     20: (441, 22),
 }
+
+# Agnes Video 2.5 accepts 4-12 seconds; keep legacy presets for v2.0 compatibility.
+SUPPORTED_AGNES_VIDEO_DURATIONS = frozenset(range(4, 13)) | frozenset({15, 18, 20})
