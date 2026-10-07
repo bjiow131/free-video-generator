@@ -551,6 +551,12 @@ class TestTaskRecoveryNormalization:
 # 8. Agnes current API protocol
 # ═══════════════════════════════════════════════════
 
+class TestConcurrencyWeights:
+    def test_all_task_weights_fit_semaphore_capacity(self):
+        from server import MAX_CONCURRENT_WEIGHT, TASK_TYPE_WEIGHTS
+        assert all(weight <= MAX_CONCURRENT_WEIGHT for weight in TASK_TYPE_WEIGHTS.values())
+
+
 class TestAgnesCurrentVideoProtocol:
     """Regression tests for Agnes Video 2.5 request/poll semantics."""
 
