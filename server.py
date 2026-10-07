@@ -13,15 +13,12 @@ resume 端点根据 task_type 自动选择对应的 Pipeline。
 
 import asyncio
 import base64
-import hmac
 import json
 import logging
 import os
 import platform
 import re
-import secrets
 import shutil
-import signal
 import subprocess
 import tempfile
 import uuid
