@@ -800,3 +800,30 @@ class TestConcurrencyAndTaskDirectoryCache:
     def test_max_concurrent_weight_is_environment_configurable(self):
         import server
         assert server.MAX_CONCURRENT_WEIGHT >= max(server.TASK_TYPE_WEIGHTS.values())
+
+class TestLocalSecurityContracts:
+    def test_workspace_path_rejects_parent_traversal(self):
+        import pytest
+        from fastapi import HTTPException
+        from server import _validate_workspace_path
+        with pytest.raises(HTTPException) as exc:
+            _validate_workspace_path("../escape")
+        assert exc.value.status_code == 422
+
+    def test_workspace_path_requires_existing_parent(self, tmp_path):
+        import pytest
+        from fastapi import HTTPException
+        from server import _validate_workspace_path
+        with pytest.raises(HTTPException) as exc:
+            _validate_workspace_path(str(tmp_path / "missing" / "workspace"))
+        assert exc.value.status_code == 422
+
+    def test_upload_limits_and_signatures_are_declared(self):
+        import server
+        assert server.MAX_UPLOAD_SIZE == 10 * 1024 * 1024
+        assert set(server._ALLOWED_IMAGE_SIGNATURES) == {".png", ".jpg", ".webp"}
+
+    def test_loopback_host_policy_is_explicit(self):
+        import server
+        assert "127.0.0.1:8765" in server._LOCAL_ALLOWED_HOSTS
+        assert "localhost:8765" in server._LOCAL_ALLOWED_HOSTS
