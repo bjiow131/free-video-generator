@@ -34,7 +34,7 @@ def _xml_escape(text: str) -> str:
 
 
 class Screenwriter:
-    def __init__(self, api_key: str, model: str = "agnes-2.0-flash", language: str = None):
+    def __init__(self, api_key: str, model: str = "agnes-3.0-flash", language: str = None):
         self.api_key = api_key
         self.model = model
         self.language = language if language else PROMPT_LANGUAGE  # "zh" 中文 / "en" 英文
@@ -218,7 +218,7 @@ otherwise.
 - 如果 idea 中完全没有任何关于场景数或时长的线索，返回一个空对象 {}，\
 表示提取失败。
 - 不要编造不存在的数字。
-- 每个场景时长不超过 30 秒，不少于 2 秒。
+- 每个场景时长不少于 4 秒、不超过 12 秒，因为 Agnes Video 2.5 单次生成限制为 4–12 秒。
 """,
             en_text="""\
 You are a video production requirements analyst. Read the user's creative idea
@@ -242,7 +242,7 @@ Constraints:
 - If the idea contains NO clues about scene count or durations, return an empty object\
 {}, indicating extraction failure.
 - Do not fabricate numbers that don't exist in the text.
-- Each scene duration must be between 2 and 30 seconds.
+- Each scene duration must be between 4 and 12 seconds, because Agnes Video 2.5 supports 4–12 seconds per generation.
 """,
         )
         user_prompt = f"""\

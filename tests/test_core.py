@@ -564,6 +564,157 @@ class TestTaskRecoveryNormalization:
         assert loaded.status == "pending"
 
 
+# ═══════════════════════════════════════════════════
+# 8. Agnes current API protocol
+# ═══════════════════════════════════════════════════
+
+class TestConcurrencyWeights:
+    def test_all_task_weights_fit_semaphore_capacity(self):
+        from server import MAX_CONCURRENT_WEIGHT, TASK_TYPE_WEIGHTS
+        assert all(weight <= MAX_CONCURRENT_WEIGHT for weight in TASK_TYPE_WEIGHTS.values())
+
+
+class TestAgnesCurrentVideoProtocol:
+    """Regression tests for Agnes Video 2.5 request/poll semantics."""
+
+    def test_modern_i2v_payload_uses_current_schema(self, monkeypatch, tmp_path):
+        from core.api.agnes_video import AgnesVideoAPI
+
+        image = tmp_path / "frame.png"
+        image.write_bytes(b"fake-png")
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+
+        async def fake_submit(payload, mode_desc):
+            assert payload["model"] == "agnes-video-2.5-flash"
+            assert payload["mode"] == "img2video"
+            assert payload["seconds"] == "5"
+            assert payload["size"] == "720P"
+            assert payload["aspect_ratio"] == "16:9"
+            assert payload["n"] == 1
+            assert payload["first_frame"].startswith("data:image/png;base64,")
+            return "video_test"
+
+        monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+
+        import asyncio
+        video_id = asyncio.run(
+            api.submit_video(
+                "cinematic motion",
+                reference_image_paths=[str(image)],
+                duration=5,
+                width=1152,
+                height=648,
+            )
+        )
+        assert video_id == "video_test"
+
+    def test_poll_passes_model_name_and_accepts_metadata_url(self, monkeypatch):
+        from core.api.agnes_video import AgnesVideoAPI
+        import asyncio
+
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "status": "completed",
+                    "progress": 100,
+                    "video_id": "video_test",
+                    "metadata": {"url": "https://example.test/video.mp4"},
+                }
+
+        calls = []
+
+        def fake_get(url, **kwargs):
+            calls.append((url, kwargs))
+            return FakeResponse()
+
+        monkeypatch.setattr("core.api.agnes_video.requests.get", fake_get)
+        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter", lambda: type("Limiter", (), {"acquire": lambda self: None})())
+
+        result = asyncio.run(api._poll_task("video_test", interval=0, max_poll_duration=5))
+        assert result["status"] == "completed"
+        assert calls[0][1]["params"]["video_id"] == "video_test"
+        assert calls[0][1]["params"]["model_name"] == "agnes-video-2.5-flash"
+
+        output = asyncio.run(api.wait_for_video("video_test"))
+        assert output.data == "https://example.test/video.mp4"
+
+
+class TestAgnesModernVideoModes:
+    def test_three_refs_use_reference_mode(self, monkeypatch):
+        from core.api.agnes_video import AgnesVideoAPI
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+        submitted = {}
+        async def fake_submit(payload, mode_desc):
+            submitted.update(payload)
+            return "video-test"
+        monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+        monkeypatch.setattr(api, "_resolve_image_ref", lambda ref: _ready(ref))
+        async def run():
+            return await api.submit_video("scene", ["a.png", "b.png", "c.png"], duration=5)
+        asyncio.run(run())
+        assert submitted["mode"] == "reference"
+        assert submitted["images"] == ["a.png", "b.png", "c.png"]
+        assert "first_frame" not in submitted
+        assert "last_frame" not in submitted
+
+async def _ready(value):
+    return value
+class TestAgnesRecoveryPolling:
+    def test_manuscript_curl_includes_model_name(self):
+        from core.pipelines.manuscript_video import ManuscriptVideoPipeline
+        pipeline = ManuscriptVideoPipeline.__new__(ManuscriptVideoPipeline)
+        pipeline.video_api = type("VideoApiStub", (), {"model": "agnes-video-2.5-flash"})()
+        command = pipeline._make_curl("video_test")
+        assert "video_id=video_test" in command
+        assert "model_name=agnes-video-2.5-flash" in command
+
+
+class TestAgnesCurrentImageDefaults:
+    def test_image_default_model_is_current(self):
+        from core.api.agnes_image import AgnesImageAPI
+        api = AgnesImageAPI("test-key")
+        assert api.model == "agnes-image-2.5-flash"
+        assert api.i2i_model == "agnes-image-2.5-flash"
+
+    def test_text_to_image_does_not_send_unsupported_negative_prompt(self, monkeypatch):
+        from core.api.agnes_image import AgnesImageAPI
+        import asyncio
+
+        api = AgnesImageAPI("test-key")
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"data": [{"url": "https://example.test/image.png"}]}
+
+        class FakeSession:
+            def post(self, *args, **kwargs):
+                captured["payload"] = kwargs["json"]
+                return FakeResponse()
+
+        monkeypatch.setattr("core.api.agnes_image._make_session", lambda: FakeSession())
+        monkeypatch.setattr(
+            "core.api.agnes_image.get_rate_limiter",
+            lambda: type("Limiter", (), {"acquire": lambda self: None})(),
+        )
+
+        output = asyncio.run(
+            api.generate_single_image("cinematic scene", negative_prompt="blurry")
+        )
+        assert output.data == "https://example.test/image.png"
+        assert "negative_prompt" not in captured["payload"]
+
+
+
 class TestVideoInputValidation:
     def test_supported_dimensions_are_whitelisted(self):
         from server import SUPPORTED_VIDEO_DIMENSIONS, _validate_video_dimensions
