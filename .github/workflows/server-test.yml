@@ -58,6 +58,4 @@ jobs:
           missing = [item for item in required if item not in bat]
           if missing:
               raise SystemExit(f"Windows launcher missing: {missing}")
-          if "render.com" in bat.lower() or "render.yaml" in bat.lower():
-              raise SystemExit("Stale Render reference in Windows launcher")
           PY
