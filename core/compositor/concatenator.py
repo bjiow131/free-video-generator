@@ -391,6 +391,8 @@ class VideoConcatenator:
         # ── Step 5: moviepy 合成视频+音频+字幕 ──
         video_clip = None
         audio_clip_obj = None
+        subtitle_clips = []
+        final_clip = None
         try:
             video_clip = VideoFileClip(video_input)
             audio_clip_obj = AudioFileClip(audio_input)
@@ -417,8 +419,9 @@ class VideoConcatenator:
                         subtitle_styles=per_entry_styles,
                     )
                     if subs_clips:
-                        final = CompositeVideoClip([video_with_audio, *subs_clips])
-                        final.write_videofile(
+                        subtitle_clips = subs_clips
+                        final_clip = CompositeVideoClip([video_with_audio, *subtitle_clips])
+                        final_clip.write_videofile(
                             output_path,
                             codec="libx264",
                             audio_codec=_AUDIO_CODEC,
@@ -427,7 +430,6 @@ class VideoConcatenator:
                             fps=_VIDEO_FPS,
                             logger="bar",
                         )
-                        final.close()
                     else:
                         video_with_audio.write_videofile(
                             output_path,
@@ -462,10 +464,26 @@ class VideoConcatenator:
                     logger="bar",
                 )
         finally:
+            if final_clip is not None:
+                try:
+                    final_clip.close()
+                except Exception:
+                    pass
+            for clip in subtitle_clips:
+                try:
+                    clip.close()
+                except Exception:
+                    pass
             if video_clip is not None:
-                video_clip.close()
+                try:
+                    video_clip.close()
+                except Exception:
+                    pass
             if audio_clip_obj is not None:
-                audio_clip_obj.close()
+                try:
+                    audio_clip_obj.close()
+                except Exception:
+                    pass
             for tmp in tmp_files:
                 if os.path.exists(tmp):
                     try:
@@ -573,6 +591,8 @@ class VideoConcatenator:
         # Step 5: Overlay audio and subtitles
         concat_video_clip = None
         audio_clip_obj = None
+        subtitle_clips = []
+        final_clip = None
         try:
             concat_video_clip = VideoFileClip(looped_path)
             audio_clip_obj = AudioFileClip(audio_path)
@@ -595,8 +615,9 @@ class VideoConcatenator:
                     subtitle_styles=per_entry_styles,
                 )
                 if subs_clips:
-                    final = CompositeVideoClip([video_with_audio, *subs_clips])
-                    final.write_videofile(
+                    subtitle_clips = subs_clips
+                    final_clip = CompositeVideoClip([video_with_audio, *subtitle_clips])
+                    final_clip.write_videofile(
                         output_path,
                         codec="libx264",
                         audio_codec=_AUDIO_CODEC,
@@ -605,7 +626,6 @@ class VideoConcatenator:
                         fps=_VIDEO_FPS,
                         logger="bar",
                     )
-                    final.close()
                 else:
                     video_with_audio.write_videofile(
                         output_path,
@@ -627,10 +647,26 @@ class VideoConcatenator:
                     logger="bar",
                 )
         finally:
+            if final_clip is not None:
+                try:
+                    final_clip.close()
+                except Exception:
+                    pass
+            for clip in subtitle_clips:
+                try:
+                    clip.close()
+                except Exception:
+                    pass
             if concat_video_clip is not None:
-                concat_video_clip.close()
+                try:
+                    concat_video_clip.close()
+                except Exception:
+                    pass
             if audio_clip_obj is not None:
-                audio_clip_obj.close()
+                try:
+                    audio_clip_obj.close()
+                except Exception:
+                    pass
             for tmp in (looped_path, concat_file):
                 if os.path.exists(tmp):
                     try:
