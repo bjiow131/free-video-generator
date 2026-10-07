@@ -1,7 +1,7 @@
 # Free Video Generator — Completely Free AI Video Generator
 
 
-> **Completely free AI video generator** — Built on Agnes AI's free models, no subscription, no high-end GPU, no usage limits. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need. **[Try it online →](https://video.lichuanyang.top)**
+> **Completely free AI video generator** — Built on Agnes AI's free models, no subscription, no high-end GPU, no usage limits. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
 
 > "The solution is not to suppress AI, but to make it a more equitable capability, so that everyone knows how to create more with AI. This is a very important vision for our company — to make world-class AI belong to everyone. What we can do may be insignificant, but this vision is very long-term and enduring."
 >
@@ -109,23 +109,19 @@ One-click launch, operate entirely in the browser. Interface available in **7 la
 
 That's it. No GPU, no large RAM, a regular laptop is all you need.
 
-### Option A: Manual Setup
+### Option A: Windows (recommended)
 
 **Step 1 — Clone & Launch**
 
-```bash
+```bat
 git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
-./start.sh
+start_windows.bat
 ```
 
-The script automatically creates a virtual environment, installs dependencies, and opens `http://localhost:8765` in your browser. You can also start manually:
+`start_windows.bat` creates the local Python environment, checks FFmpeg, installs dependencies, starts FastAPI, and opens `http://127.0.0.1:8765` in your browser. No Render account, deployment, or cloud server is required.
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python server.py
-```
+For Linux/macOS, use `./start.sh`.
 
 **Step 2 — Configure API Key**
 
@@ -145,7 +141,7 @@ curl -X POST http://localhost:8765/api/config \
 
 Open `http://localhost:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
 
-### Option B: Docker (optional)
+### Option B: Docker (optional, local only)
 
 One command to start everything — no need to install Python, ffmpeg, or any dependencies locally. Docker handles it all.
 
