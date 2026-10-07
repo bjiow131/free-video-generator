@@ -33,7 +33,14 @@ The node ids above match the repository scaffold only and must be changed for th
 
 ## API behavior
 
-The integration submits the graph to POST /prompt, receives prompt_id, then polls GET /history/{prompt_id} until completion or timeout.
+The integration submits the graph to POST /prompt, receives prompt_id, then polls GET /history/{prompt_id} until completion or timeout. Completed history is normalized into downloadable output descriptors from ComfyUI's /view endpoint.
+
+The local generator exposes two diagnostics endpoints:
+
+- GET /api/comfyui/status — checks whether ComfyUI is reachable.
+- POST /api/comfyui/preview — validates the configured API workflow and applies prompt/seed/size bindings without queueing a generation.
+
+These endpoints are optional and do not change the Agnes pipeline.
 
 ## Verification
 
