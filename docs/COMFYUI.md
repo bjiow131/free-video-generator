@@ -39,6 +39,13 @@ The local generator exposes two diagnostics endpoints:
 
 - GET /api/comfyui/status — checks whether ComfyUI is reachable.
 - POST /api/comfyui/preview — validates the configured API workflow and applies prompt/seed/size bindings without queueing a generation.
+- POST /api/comfyui/generate — queues the configured workflow and waits for its history; returns normalized output descriptors.
+
+Example JSON body:
+
+{"prompt":"a cinematic woman walking through a European city at sunset","seed":12345,"width":1152,"height":648}
+
+The generation endpoint is intentionally provider-only: it does not replace the existing Agnes task pipeline yet. This keeps Agnes stable while the real ComfyUI workflow is verified.
 
 These endpoints are optional and do not change the Agnes pipeline.
 
