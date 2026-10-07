@@ -1400,7 +1400,7 @@ async def create_anchor_task(
     negative_prompt: str = Form(""),
     audio_source: str = Form("post_stitch"),
     video_width: int = Form(768),
-    video_height: int = Form(1344),
+    video_height: int = Form(1152),
     audio_enabled: bool = Form(True),
     audio_voice: str = Form("ru-RU-SvetlanaNeural"),
     audio_rate: str = Form("+0%"),
