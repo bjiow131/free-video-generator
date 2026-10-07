@@ -467,11 +467,12 @@ class ManuscriptVideoPipeline(BasePipeline):
     # Curl / task persistence helpers (per-paragraph)
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _make_curl(video_id: str) -> str:
+    def _make_curl(self, video_id: str) -> str:
+        # Keep the recovery command aligned with Agnes Video 2.5 polling.
+        model_name = self.video_api.model
         return (
             f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
+            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}&model_name={model_name}"'
         )
 
     def _save_para_task(self, para_dir: str, video_id: str) -> None:
@@ -561,7 +562,7 @@ class ManuscriptVideoPipeline(BasePipeline):
                 0.15 + 0.20 * (i / max(total, 1)),
             )
 
-            para_duration = max(int(math.ceil(len(para.text) / _CHARS_PER_SEC)), 3)
+            para_duration = min(max(int(math.ceil(len(para.text) / _CHARS_PER_SEC)), 4), 12)
             logger.info(
                 "[Manuscript] video: paragraph %d estimated duration %.1fs (chars=%d)",
                 para.index, para_duration, len(para.text),
