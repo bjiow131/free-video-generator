@@ -945,20 +945,6 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 4: Video Generation
     # ==================================================================
 
-    def _make_curl(self, video_id: str) -> str:
-        """Build a curl command string for manual video-task retrieval.
-
-        Args:
-            video_id: The remote video task identifier.
-
-        Returns:
-            Shell command string.
-        """
-        return (
-            f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
-        )
-
     def _save_scene_task(self, scene_dir: str, video_id: str) -> None:
         """Persist a scene's remote video-task ID atomically for resume."""
         os.makedirs(scene_dir, exist_ok=True)
