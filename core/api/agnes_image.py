@@ -5,8 +5,6 @@ import base64
 import logging
 import mimetypes
 import os
-import socket
-import time
 from typing import List, Optional
 
 import requests
@@ -95,12 +93,13 @@ class AgnesImageAPI:
     async def generate_single_image(
         self,
         prompt: str,
-        reference_image_paths: List[str] = [],
+        reference_image_paths: Optional[List[str]] = None,
         size: Optional[str] = None,
         max_retries: int = 3,
         retry_base_delay: float = 20.0,
         **kwargs,
     ) -> ImageOutput:
+        reference_image_paths = reference_image_paths or []
         use_i2i = len(reference_image_paths) > 0
         model = self.i2i_model if use_i2i else self.model
         payload: dict = {
