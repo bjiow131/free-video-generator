@@ -760,3 +760,43 @@ class TestPathSafety:
         for value in ("../escape", r"..\escape", "a/b", ""):
             with pytest.raises(HTTPException):
                 _validate_task_id(value)
+
+
+class TestConcurrencyAndTaskDirectoryCache:
+    def test_weighted_semaphore_cancellation_does_not_reduce_counter(self):
+        import asyncio
+        from server import WeightedSemaphore
+
+        async def run():
+            semaphore = WeightedSemaphore(1)
+            await semaphore.acquire(1)
+            waiter = asyncio.create_task(semaphore.acquire(1))
+            await asyncio.sleep(0)
+            waiter.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            assert semaphore.current == 1
+            await semaphore.release(1)
+            assert semaphore.current == 0
+
+        asyncio.run(run())
+
+    def test_task_dir_cache_rebuild_and_lookup(self, tmp_path, monkeypatch):
+        import json
+        import server
+
+        task_dir = tmp_path / "20261007_120000_abc123"
+        task_dir.mkdir()
+        (task_dir / "task_state.json").write_text(
+            json.dumps({"task_id": "abc123", "status": "pending"}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(server, "get_working_dir", lambda: str(tmp_path))
+        server._rebuild_task_dir_cache()
+        assert server._find_dir_name("abc123") == task_dir.name
+        server._invalidate_task_dir("abc123")
+        assert server._find_dir_name("abc123") == "abc123"
+
+    def test_max_concurrent_weight_is_environment_configurable(self):
+        import server
+        assert server.MAX_CONCURRENT_WEIGHT >= max(server.TASK_TYPE_WEIGHTS.values())

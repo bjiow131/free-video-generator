@@ -652,36 +652,40 @@ async def download_image(task_id: str):
 
 @app.get("/api/tasks")
 async def list_tasks():
-    tm = TaskManager("_")
-    tasks = tm.list_tasks()
-    for t in tasks:
-        task_tm = TaskManager(t["task_id"], dir_name=t.get("dir_name"))
+    tasks = []
+    for task_id, dir_name in sorted(_task_dir_cache.items(), key=lambda item: item[1], reverse=True):
+        task_tm = TaskManager(task_id, dir_name=dir_name)
         state = task_tm.load()
-        if state:
-            t["final_video_file"] = state.final_video_file
-            t["task_type"] = state.task_type
-            # 创意视频特有字段
-            if isinstance(state, CreativeVideoTask):
-                t["scene_count"] = state.scene_count
-                t["idea"] = state.idea[:100] if state.idea else ""
-            # 稿件视频特有字段
-            elif isinstance(state, ManuscriptVideoTask):
-                t["paragraph_count"] = len(state.paragraphs)
-                t["manuscript_text"] = state.manuscript_text[:100] if state.manuscript_text else ""
-            # 数字人口播
-            elif isinstance(state, AnchorVideoTask):
-                t["script_text"] = state.script_text[:100] if state.script_text else ""
-                t["anchor_prompt"] = state.anchor_prompt[:100] if state.anchor_prompt else ""
-                t["paragraph_count"] = len(state.paragraphs)
-            # 简单视频
-            elif isinstance(state, SimpleVideoTask):
-                t["prompt"] = state.prompt[:100] if state.prompt else ""
-                t["mode"] = state.mode
-            # 简单图片
-            elif isinstance(state, SimpleImageTask):
-                t["prompt"] = state.prompt[:100] if state.prompt else ""
-                t["size"] = state.size
+        if not state:
+            continue
+        task = {
+            "task_id": task_id,
+            "dir_name": dir_name,
+            "task_type": state.task_type,
+            "creative_name": state.creative_name,
+            "status": state.status,
+            "chaining_mode": getattr(state, "chaining_mode", "none"),
+            "final_video_file": state.final_video_file,
+        }
+        if isinstance(state, CreativeVideoTask):
+            task["scene_count"] = state.scene_count
+            task["idea"] = state.idea[:100] if state.idea else ""
+        elif isinstance(state, ManuscriptVideoTask):
+            task["paragraph_count"] = len(state.paragraphs)
+            task["manuscript_text"] = state.manuscript_text[:100] if state.manuscript_text else ""
+        elif isinstance(state, AnchorVideoTask):
+            task["script_text"] = state.script_text[:100] if state.script_text else ""
+            task["anchor_prompt"] = state.anchor_prompt[:100] if state.anchor_prompt else ""
+            task["paragraph_count"] = len(state.paragraphs)
+        elif isinstance(state, SimpleVideoTask):
+            task["prompt"] = state.prompt[:100] if state.prompt else ""
+            task["mode"] = state.mode
+        elif isinstance(state, SimpleImageTask):
+            task["prompt"] = state.prompt[:100] if state.prompt else ""
+            task["size"] = state.size
+        tasks.append(task)
     return {"tasks": tasks}
+
 
 
 @app.get("/api/tasks/{task_id}")
