@@ -641,6 +641,16 @@ class TestAgnesModernVideoModes:
 
 async def _ready(value):
     return value
+class TestAgnesRecoveryPolling:
+    def test_manuscript_curl_includes_model_name(self):
+        from core.pipelines.manuscript_video import ManuscriptVideoPipeline
+        pipeline = ManuscriptVideoPipeline.__new__(ManuscriptVideoPipeline)
+        pipeline.video_api = type("VideoApiStub", (), {"model": "agnes-video-2.5-flash"})()
+        command = pipeline._make_curl("video_test")
+        assert "video_id=video_test" in command
+        assert "model_name=agnes-video-2.5-flash" in command
+
+
 class TestAgnesCurrentImageDefaults:
     def test_image_default_model_is_current(self):
         from core.api.agnes_image import AgnesImageAPI
