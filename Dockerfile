@@ -19,5 +19,6 @@ COPY . .
 
 # server.py binds 0.0.0.0:8765 (Web UI + REST + WebSocket).
 EXPOSE 8765
+ENV HOST=0.0.0.0
 
 CMD ["python", "render_app.py"]
