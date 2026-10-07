@@ -219,6 +219,7 @@ class AgnesVideoAPI:
             await asyncio.sleep(interval)
 
     async def _submit_with_retry(self, payload: dict, mode_desc: str) -> str:
+        last_error_code = ""
         for attempt in range(self.max_retries):
             if self.shutdown_event and self.shutdown_event.is_set():
                 raise RuntimeError("Video generation cancelled by user")
@@ -253,9 +254,16 @@ class AgnesVideoAPI:
                         f"Agnes video submit returned no usable video_id: {result}"
                     )
 
-                if resp.status_code == 429 or resp.status_code >= 500:
+                if resp.status_code == 429 or resp.status_code in {500, 502, 503, 504, 520, 522, 524}:
+                    response_text = resp.text[:1000]
+                    try:
+                        response_data = resp.json()
+                    except ValueError:
+                        response_data = {}
+                    last_error_code = str(response_data.get("code") or "").strip().lower()
+                    queue_full = last_error_code == "video_queue_full"
                     retry_after = resp.headers.get("Retry-After")
-                    # Agnes documents 503 as a transient busy/unavailable response.
+                    # Agnes documents 503/video_queue_full as transient busy responses.
                     # Prefer server-provided Retry-After; otherwise use exponential
                     # backoff so repeated workers do not retry at the same moment.
                     if retry_after:
@@ -266,14 +274,16 @@ class AgnesVideoAPI:
                     else:
                         delay = self.retry_base_delay * (2 ** attempt)
                     delay = max(1.0, min(delay, 300.0))
-                    response_hint = resp.text[:300].replace("\n", " ").replace("\r", " ")
+                    response_hint = response_text[:300].replace("\n", " ").replace("\r", " ")
+                    queue_hint = " [video queue full]" if queue_full else ""
                     logger.warning(
-                        "[AgnesVideo] HTTP %s on %s; retry %d/%d in %.0fs%s",
+                        "[AgnesVideo] HTTP %s on %s; retry %d/%d in %.0fs%s%s",
                         resp.status_code,
                         mode_desc,
                         attempt + 1,
                         self.max_retries,
                         delay,
+                        queue_hint,
                         f": {response_hint}" if response_hint else "",
                     )
                     await asyncio.sleep(delay)
@@ -292,6 +302,12 @@ class AgnesVideoAPI:
                 )
                 await asyncio.sleep(delay)
 
+        if last_error_code == "video_queue_full":
+            raise RuntimeError(
+                "[AgnesVideo] Agnes video queue is full after "
+                f"{self.max_retries} attempts. The provider is temporarily overloaded; "
+                "please retry later."
+            )
         raise RuntimeError(
             f"[AgnesVideo] {mode_desc}: Agnes remained unavailable after "
             f"{self.max_retries} attempts. The service may be busy; please retry later."
