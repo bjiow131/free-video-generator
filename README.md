@@ -114,7 +114,7 @@ That's it. No GPU, no large RAM, a regular laptop is all you need.
 **Step 1 — Clone & Launch**
 
 ```bash
-git clone https://github.com/uglylee/free-video-generator.git
+git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
 ./start.sh
 ```
@@ -145,14 +145,14 @@ curl -X POST http://localhost:8765/api/config \
 
 Open `http://localhost:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
 
-### Option B: Docker (Recommended)
+### Option B: Docker (optional)
 
 One command to start everything — no need to install Python, ffmpeg, or any dependencies locally. Docker handles it all.
 
 **Step 1 — Clone & Configure**
 
 ```bash
-git clone https://github.com/uglylee/free-video-generator.git
+git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
 ```
 
@@ -177,7 +177,7 @@ That's it. Open `http://localhost:8765` in your browser.
 This project is designed for AI coding assistants. First, download the code and prepare your API key:
 
 ```bash
-git clone https://github.com/uglylee/free-video-generator.git
+git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
 ```
 
