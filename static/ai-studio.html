@@ -23,7 +23,7 @@
 </main></div>
 <div id="toast" class="toast hidden"></div>
 <script>
-const $=s=>document.querySelector(s), $=s=>document.querySelectorAll(s);let models=[],selected=null;
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);let models=[],selected=null;
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
 function show(page){$$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory()}
 $$('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.page));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
