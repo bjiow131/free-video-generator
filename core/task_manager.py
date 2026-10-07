@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from core.config import get_working_dir
@@ -113,30 +113,17 @@ class TaskManager:
         action: str,
         data: dict = None
     ):
-        """
-        Запись истории действий.
-        """
-
+        """Append a durable JSONL event to the task history."""
         self._ensure_dir()
-
         event = {
-            "time": datetime.utcnow().isoformat(),
+            "time": datetime.now(timezone.utc).isoformat(),
             "action": action,
-            "data": data or {}
+            "data": data or {},
         }
-
-        with open(
-            self._events_file,
-            "a",
-            encoding="utf-8"
-        ) as f:
-            f.write(
-                json.dumps(
-                    event,
-                    ensure_ascii=False
-                )
-                + "\n"
-            )
+        with open(self._events_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
 
 
     def create(
@@ -255,7 +242,7 @@ class TaskManager:
         if self._state.status in in_flight:
             self._state.status = StepStatus.PENDING
             changed = True
-        for field_name in self._state.model_fields:
+        for field_name in type(self._state).model_fields:
             if not field_name.startswith("step_"):
                 continue
             value = getattr(self._state, field_name, None)
