@@ -71,7 +71,7 @@ _AGNES_RATE_LIMIT = int(os.environ.get("AGNES_RATE_LIMIT", "20"))
 TASK_TYPE_WEIGHTS = {
     TaskType.SIMPLE: 1,       # 1 submit + 轻量轮询
     TaskType.CREATIVE: 3,     # Chat + N*Image + N*Video + 轮询
-    TaskType.MANUSCRIPT: 4,   # 段落*Chat + 段落*Image + 轮询
+    TaskType.MANUSCRIPT: 3,   # Chat + images + video polling; one heavy pipeline at a time
     TaskType.ANCHOR: 2,       # 1 i2v submit + 轻量轮询
     TaskType.IMAGE: 1,        # 1 image submit
 }
@@ -1087,8 +1087,8 @@ async def create_creative_task(
             raise HTTPException(status_code=422, detail="Параметры длительности сцен должны быть массивом JSON")
         # 校验每个时长
         for i, d in enumerate(scene_durations):
-            if not isinstance(d, (int, float)) or d < 2 or d > 30:
-                raise HTTPException(status_code=422, detail=f"Длительность сцены {i+1} должна быть от 2 до 30 секунд")
+            if not isinstance(d, (int, float)) or d < 4 or d > 12:
+                raise HTTPException(status_code=422, detail=f"Длительность сцены {i+1} должна быть от 4 до 12 секунд (ограничение Agnes Video 2.5)")
     else:
         scene_durations = []
 
