@@ -7,7 +7,7 @@ import logging
 import mimetypes
 import os
 import time
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import requests
 
@@ -230,8 +230,9 @@ class AgnesVideoAPI:
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
                         requests.get,
-                        f"{API_ROOT}/agnesapi?video_id={video_id}",
+                        f"{API_ROOT}/agnesapi",
                         headers=self.headers,
+                        params={"video_id": video_id},
                         timeout=15,
                     ),
                     timeout=30,
@@ -348,10 +349,10 @@ class AgnesVideoAPI:
     async def generate_single_video(
         self,
         prompt: str,
-        reference_image_paths: List[str] = [],
+        reference_image_paths: Optional[Sequence[str]] = None,
         duration: Optional[int] = None,
         width: int = 1152,
-        height: int = 768,
+        height: int = 648,
         seed: Optional[int] = None,
         negative_prompt: Optional[str] = None,
         progress_callback=None,
@@ -397,7 +398,7 @@ class AgnesVideoAPI:
             payload["negative_prompt"] = negative_prompt
 
         resolved_refs = []
-        for p in reference_image_paths:
+        for p in (reference_image_paths or ()):
             resolved_refs.append(await self._resolve_image_ref(p))
         n_refs = len(resolved_refs)
 
