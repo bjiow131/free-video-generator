@@ -119,7 +119,7 @@ cd free-video-generator
 start_windows.bat
 ```
 
-`start_windows.bat` creates the local Python environment, checks FFmpeg, installs dependencies, starts FastAPI, and opens `http://127.0.0.1:8765` in your browser. No Render account, deployment, or cloud server is required.
+`start_windows.bat` creates the local Python environment, checks FFmpeg, installs dependencies, starts FastAPI, and opens `http://127.0.0.1:8765` in your browser. No account, deployment, or external server is required.
 
 For Linux/macOS, use `./start.sh`.
 
@@ -129,7 +129,7 @@ Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose o
 
 ```bash
 # Way 1: Environment variable
-export AGNES_API_KEY="your-api-key"
+set AGNES_API_KEY=your-api-key
 
 # Way 2: Via API (same as entering it in the Web UI)
 curl -X POST http://localhost:8765/api/config \
