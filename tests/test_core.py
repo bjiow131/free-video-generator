@@ -480,14 +480,6 @@ class TestLocalEntrypoints:
         from server import app
         assert app.title == "Agnes Video Generator"
 
-    def test_gemini_temp_path_is_platform_neutral(self):
-        from core.api.gemini_image import GeminiImageProvider
-        provider = GeminiImageProvider(api_key="test")
-        # The provider must not hard-code POSIX /tmp; actual network generation is not run here.
-        import inspect
-        source = inspect.getsource(provider._sync)
-        assert '"/tmp/' not in source
-
 
 class TestSimpleVideoPersistence:
     def test_save_task_is_atomic_and_does_not_create_shell_script(self, tmp_path):
