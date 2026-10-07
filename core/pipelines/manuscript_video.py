@@ -464,25 +464,26 @@ class ManuscriptVideoPipeline(BasePipeline):
         })
 
     # ------------------------------------------------------------------
-    # Curl / task persistence helpers (per-paragraph)
-    # ------------------------------------------------------------------
-
-    def _make_curl(self, video_id: str) -> str:
-        # Keep the recovery command aligned with Agnes Video 2.5 polling.
-        model_name = self.video_api.model
-        return (
-            f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}&model_name={model_name}"'
-        )
+    # Task persistence helpers (per-paragraph)
 
     def _save_para_task(self, para_dir: str, video_id: str) -> None:
+        # Persist only the remote task identifier. Never write API keys to disk.
+        # Atomic replacement prevents a crash from truncating task.json.
         os.makedirs(para_dir, exist_ok=True)
         task_file = os.path.join(para_dir, "task.json")
-        with open(task_file, "w") as f:
-            json.dump({"video_id": video_id}, f, indent=2)
-        curl_file = os.path.join(para_dir, "curl.sh")
-        with open(curl_file, "w") as f:
-            f.write(self._make_curl(video_id) + "\n")
+        tmp_file = task_file + ".tmp"
+        try:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump({"video_id": video_id}, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, task_file)
+        except Exception:
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+            raise
 
     def _load_para_task(self, para_dir: str) -> Optional[str]:
         task_file = os.path.join(para_dir, "task.json")
