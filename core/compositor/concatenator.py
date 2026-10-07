@@ -534,10 +534,12 @@ class VideoConcatenator:
         # Step 3: Build concat file list for ffmpeg
         loop_dir = os.path.dirname(output_path)
         concat_file = os.path.join(loop_dir, "_anchor_concat.txt")
-        with open(concat_file, "w") as f:
+        # FFmpeg concat files are written as UTF-8 with forward-slash paths,
+        # which keeps Windows drive paths portable and avoids backslash escaping issues.
+        concat_path = clip_path.replace(chr(92), "/")
+        with open(concat_file, "w", encoding="utf-8", newline="\n") as f:
             for _ in range(n):
-                f.write(f"file '{clip_path}'\n")
-
+                f.write(f"file '{concat_path}'\n")
         looped_path = output_path.replace(".mp4", "_looped.mp4")
 
         # Step 4: Concatenate with xfade cross-fade transitions
@@ -554,26 +556,15 @@ class VideoConcatenator:
         except subprocess.CalledProcessError as e:
             logger.warning(f"[Compositor] Simple concat failed: {e.stderr[:200]}, trying xfade")
 
-            # Build complex filter for xfade cross-fade between each pair
-            fade_duration = 0.3
-            filter_parts = []
-            for i in range(n):
-                if i == 0:
-                    filter_parts.append(f"[0:{i}]")
-                else:
-                    filter_parts.append(f"[0:{i}]")
-                    filter_parts.append(f"xfade=transition=fade:duration={fade_duration}:offset={i * clip_duration - fade_duration * i}")
-            filter_str = "".join(filter_parts)
-
+            # Portable fallback: re-encode a stream-looped input instead of relying
+            # on a fragile filter graph or shell-specific path syntax.
             subprocess.run(
                 ["ffmpeg", "-y",
                  "-stream_loop", str(n - 1), "-i", clip_path,
-                 "-filter_complex",
-                 f"[0:v]trim=duration={needed}[v]",
-                 "-map", "[v]",
+                 "-t", str(needed),
                  "-c:v", "libx264",
                  "-preset", "fast",
-                 "-t", str(needed),
+                 "-pix_fmt", "yuv420p",
                  looped_path],
                 stdin=subprocess.DEVNULL,
                 check=True, capture_output=True, timeout=300,
