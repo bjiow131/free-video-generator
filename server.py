@@ -176,8 +176,17 @@ def _get_pipeline_lock(task_id: str) -> asyncio.Lock:
     return lock
 
 
+def _validate_task_id(task_id: str) -> str:
+    """Validate a task identifier before it can influence a filesystem path."""
+    if not task_id or len(task_id) > 128 or os.path.basename(task_id) != task_id:
+        raise HTTPException(status_code=400, detail="Недопустимый идентификатор задачи")
+    if "/" in task_id or chr(92) in task_id or ".." in task_id:
+        raise HTTPException(status_code=400, detail="Недопустимый идентификатор задачи")
+    return task_id
+
 def _find_dir_name(task_id: str) -> str:
     """Find the directory name for a task_id. Falls back to task_id for legacy tasks."""
+    task_id = _validate_task_id(task_id)
     tm = TaskManager("_")
     for t in tm.list_tasks():
         if t["task_id"] == task_id:
