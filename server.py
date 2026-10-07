@@ -662,6 +662,28 @@ async def comfyui_status():
     return await ComfyUIClient().health()
 
 
+@app.post("/api/comfyui/generate")
+async def comfyui_generate(request: Request):
+    """Run the configured optional ComfyUI API workflow."""
+    try:
+        body = await request.json()
+        client = ComfyUIClient()
+        result = await client.generate(
+            prompt=body.get("prompt"),
+            seed=body.get("seed"),
+            width=body.get("width"),
+            height=body.get("height"),
+            timeout=float(body.get("timeout", 1800)),
+        )
+        return {
+            "provider": "comfyui",
+            "prompt_id": result["prompt_id"],
+            "outputs": result.get("outputs", []),
+        }
+    except (ComfyUIError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/comfyui/preview")
 async def comfyui_preview(request: Request):
     """Validate/bind a ComfyUI API workflow without queueing it."""
