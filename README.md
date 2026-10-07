@@ -125,18 +125,28 @@ For Linux/macOS, use `./start.sh`.
 
 **Step 2 — Configure API Key**
 
-Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of two ways:
+Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
 
-```bash
-# Way 1: Environment variable
+```bat
+REM Windows CMD
 set AGNES_API_KEY=your-api-key
-
-# Way 2: Via API (same as entering it in the Web UI)
-curl -X POST http://localhost:8765/api/config \
-  -H "Content-Type: application/json" \
-  -d '{"api_key": "your-api-key"}'
 ```
 
+```powershell
+# Windows PowerShell
+$env:AGNES_API_KEY = "your-api-key"
+```
+
+```bash
+# Linux/macOS
+export AGNES_API_KEY="your-api-key"
+```
+
+Or save it through the Web UI. The local endpoint accepts multipart form data:
+
+```bash
+curl -X POST http://localhost:8765/api/config -F "api_key=your-api-key"
+```
 **Step 3 — Create Your First Video**
 
 Open `http://localhost:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
