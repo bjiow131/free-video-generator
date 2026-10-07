@@ -75,7 +75,7 @@ Both Creative Video and Manuscript Video support:
 - **Custom end frames** — Specify end frame images per scene for precise visual transition control
 - **Image-to-image end frames** — Auto-generate scene end frames via img2img from your reference image
 - **Three video chaining modes** — `keyframes` (first+last frame interpolation, recommended) / `ti2vid` (inter-scene transition frames) / `none` (independent scenes)
-- **Multiple resolutions** — Portrait 9:16 (768x1152), Landscape 16:9 (1152x768), Square 1:1 (1024x1024)
+- **Multiple resolutions** — Portrait 9:16 (768x1152), Landscape 16:9 (1152x648), Square 1:1 (1024x1024)
 - **Flexible duration** — Custom scene duration
 - **Smart manuscript splitting** — Splits by period/question mark/exclamation mark, greedily merges into 5-12 second segments based on reading speed (~4 chars/sec), preserves long sentences, auto-merges short sentences forward
 
