@@ -52,7 +52,7 @@ class AgnesImageAPI:
     def __init__(
         self,
         api_key: str,
-        model: str = "agnes-image-2.1-flash",
+        model: str = os.environ.get("AGNES_IMAGE_MODEL", "agnes-image-2.5-flash"),
         i2i_model: Optional[str] = None,
     ):
         """初始化图片 API。
