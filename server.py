@@ -46,7 +46,6 @@ from core.pipelines import (
 from core.api.agnes_image import AgnesImageAPI
 from core.api.agnes_chat import AgnesChatAPI
 from core.task_manager import TaskManager
-from core.public_store import get_user_by_session, create_user, create_session
 
 from models.task import (
     AnchorVideoTask,
@@ -339,7 +338,6 @@ async def root():
 
 @app.get("/api/config")
 async def get_config(request: Request):
-    _require_admin(request)
     key = get_api_key()
     source = get_api_key_source()
     active_ws = get_active_workspace()
@@ -360,14 +358,12 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 async def save_config(api_key: str = Form(...), request: Request = None):
-    _require_admin(request)
     set_api_key(api_key)
     return {"ok": True}
 
 
 @app.delete("/api/config")
 async def clear_config(request: Request):
-    _require_admin(request)
     """Delete the API key from the config file."""
     source = get_api_key_source()
     if source == "env":
@@ -386,7 +382,6 @@ async def clear_config(request: Request):
 
 @app.post("/api/config/watermark")
 async def save_watermark_config(enabled: bool = Form(False), request: Request = None):
-    _require_admin(request)
     """Save watermark toggle."""
     set_watermark_config(enabled=enabled)
     return {"ok": True, "enabled": enabled}
@@ -399,7 +394,6 @@ async def save_watermark_config(enabled: bool = Form(False), request: Request = 
 
 @app.post("/api/ideas/generate")
 async def generate_ideas(keyword: str = Form(...), request: Request = None):
-    _require_session(request)
     """使用 Agnes LLM 根据关键词生成创意概念和视觉风格建议。"""
     api_key = get_api_key()
     if not api_key:
@@ -429,7 +423,6 @@ async def generate_ideas(keyword: str = Form(...), request: Request = None):
 
 @app.get("/api/workspaces")
 async def list_workspaces(request: Request):
-    _require_admin(request)
     """列出所有已配置的工作目录及当前激活项。"""
     return {
         "workspaces": get_workspaces(),
@@ -439,7 +432,6 @@ async def list_workspaces(request: Request):
 
 @app.post("/api/workspaces")
 async def create_workspace(path: str = Form(...), name: str = Form(""), request: Request = None):
-    _require_admin(request)
     """添加一个工作目录。"""
     if not path.strip():
         raise HTTPException(status_code=422, detail="Путь не может быть пустым")
@@ -451,7 +443,6 @@ async def create_workspace(path: str = Form(...), name: str = Form(""), request:
 
 @app.delete("/api/workspaces")
 async def delete_workspace(path: str = Form(...), request: Request = None):
-    _require_admin(request)
     """移除一个工作目录（仅从配置中移除，不删除磁盘文件）。"""
     if not path.strip():
         raise HTTPException(status_code=422, detail="Путь не может быть пустым")
@@ -463,7 +454,6 @@ async def delete_workspace(path: str = Form(...), request: Request = None):
 
 @app.post("/api/workspaces/active")
 async def activate_workspace(path: str = Form(...), request: Request = None):
-    _require_admin(request)
     """设置当前激活的工作目录。"""
     if not path.strip():
         raise HTTPException(status_code=422, detail="Путь не может быть пустым")
@@ -478,7 +468,6 @@ async def activate_workspace(path: str = Form(...), request: Request = None):
 
 @app.get("/api/workspaces/pick-directory")
 async def pick_directory(request: Request):
-    _require_admin(request)
     """弹出操作系统原生目录选择框，返回所选目录路径。
 
     跨平台实现：
@@ -555,7 +544,6 @@ async def generate_image(
     reference_image: UploadFile = File(None),
 ):
     """简单图片生成：创建任务 → 直调 Agnes Image API → 保存到任务目录。"""
-    _require_session(request)
 
     api_key = get_api_key()
     if not api_key:
@@ -967,7 +955,6 @@ async def create_simple_task(
     end_frame_image: UploadFile = File(None),
 ):
     """创建简单视频任务（类型 1）。"""
-    _require_session(request)
 
     api_key = get_api_key()
     if not api_key:
@@ -1078,7 +1065,6 @@ async def create_creative_task(
     subtitle_bg_color: str = Form("black@0.5"),
 ):
     """创建创意长视频任务（类型 2）。"""
-    _require_session_or_guest(request)
 
     api_key = get_api_key()
     if not api_key:
@@ -1226,7 +1212,6 @@ async def create_manuscript_task(
     subtitle_bg_color: str = Form("black@0.5"),
 ):
     """创建稿件长视频任务（类型 3）。"""
-    _require_session(request)
 
     api_key = get_api_key()
     if not api_key:
@@ -1316,7 +1301,6 @@ async def create_anchor_task(
     subtitle_bg_color: str = Form("black@0.5"),
 ):
     """创建数字人口播任务（类型 4 / Phase 3）。"""
-    _require_session(request)
 
     api_key = get_api_key()
     if not api_key:
@@ -1410,7 +1394,6 @@ async def create_task_legacy(
     generate_end_frames_from_ref: bool = Form(True),
 ):
     """向后兼容旧端点，映射到 create_creative_task。"""
-    _require_session(request)
     return await create_creative_task(
         request=request,
         idea=f"{idea}\n{user_requirement}",
@@ -1447,7 +1430,6 @@ async def create_task_legacy(
 
 @app.post("/api/tasks/{task_id}/resume")
 async def resume_task(task_id: str, request: Request):
-    _require_session(request)
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
@@ -1489,7 +1471,6 @@ async def resume_task(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str, request: Request):
-    _require_session(request)
     if task_id not in active_pipelines and task_id not in _queued_tasks:
         raise HTTPException(status_code=400, detail="Задача не выполняется")
 
@@ -1516,7 +1497,6 @@ async def stop_task(task_id: str, request: Request):
 
 @app.get("/api/concurrency")
 async def get_concurrency_status(request: Request):
-    _require_admin(request)
     """返回当前并发控制状态：已用权重、上限、排队任务列表。"""
     running_tasks = []
     for tid, pl in active_pipelines.items():
@@ -1551,7 +1531,6 @@ async def get_concurrency_status(request: Request):
 
 @app.post("/api/cleanup-regression")
 async def cleanup_regression(request: Request):
-    _require_admin(request)
     """安全清理回归测试产物（报告、日志、任务目录）。
 
     只删除产物清单中记录的内容，不影响用户原有任务数据。
