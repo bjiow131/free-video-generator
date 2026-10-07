@@ -178,7 +178,7 @@ class CreativeVideoPipeline(BasePipeline):
         api_key: str,
         task_id: str,
         dir_name: Optional[str] = None,
-        chat_model: str = "agnes-2.0-flash",
+        chat_model: str = "agnes-3.0-flash",
         image_model: str = "agnes-image-2.1-flash",
         video_model: str = "agnes-video-v2.0",
         progress_callback: Optional[Callable] = None,
