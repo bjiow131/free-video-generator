@@ -621,6 +621,26 @@ class TestAgnesCurrentVideoProtocol:
         assert output.data == "https://example.test/video.mp4"
 
 
+class TestAgnesModernVideoModes:
+    def test_three_refs_use_reference_mode(self, monkeypatch):
+        from core.api.agnes_video import AgnesVideoAPI
+        api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
+        submitted = {}
+        async def fake_submit(payload, mode_desc):
+            submitted.update(payload)
+            return "video-test"
+        monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+        monkeypatch.setattr(api, "_resolve_image_ref", lambda ref: _ready(ref))
+        async def run():
+            return await api.submit_video("scene", ["a.png", "b.png", "c.png"], duration=5)
+        asyncio.run(run())
+        assert submitted["mode"] == "reference"
+        assert submitted["images"] == ["a.png", "b.png", "c.png"]
+        assert "first_frame" not in submitted
+        assert "last_frame" not in submitted
+
+async def _ready(value):
+    return value
 class TestAgnesCurrentImageDefaults:
     def test_image_default_model_is_current(self):
         from core.api.agnes_image import AgnesImageAPI
