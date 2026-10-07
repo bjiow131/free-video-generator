@@ -473,3 +473,18 @@ class TestTaskIdSafety:
     def test_accepts_generated_style_task_id(self):
         from server import _validate_task_id
         assert _validate_task_id("a1b2c3d4e5f6") == "a1b2c3d4e5f6"
+
+
+class TestLocalEntrypoints:
+    def test_render_app_imports_main_server_without_public_api(self):
+        import render_app
+        from server import app
+        assert render_app.app is app
+
+    def test_gemini_temp_path_is_platform_neutral(self):
+        from core.api.gemini_image import GeminiImageProvider
+        provider = GeminiImageProvider(api_key="test")
+        # The provider must not hard-code POSIX /tmp; actual network generation is not run here.
+        import inspect
+        source = inspect.getsource(provider._sync)
+        assert '"/tmp/' not in source
