@@ -308,8 +308,11 @@ class AgnesVideoAPI:
             payload = {
                 "model": self.model,
                 "prompt": prompt,
-                "mode": "text" if not resolved_refs else (
-                    "img2video" if len(resolved_refs) == 1 else "keyframe"
+                "mode": (
+                    "text" if not resolved_refs
+                    else "img2video" if len(resolved_refs) == 1
+                    else "keyframe" if len(resolved_refs) == 2
+                    else "reference"
                 ),
                 "seconds": str(seconds),
                 "size": "720P" if self.model == "agnes-video-2.5-flash" else kwargs.get("size", "720P"),
@@ -318,15 +321,13 @@ class AgnesVideoAPI:
             }
             if seed is not None:
                 payload["seed"] = seed
-            if negative_prompt:
-                payload["negative_prompt"] = negative_prompt
-
             if len(resolved_refs) == 1:
                 payload["first_frame"] = resolved_refs[0]
-            elif len(resolved_refs) >= 2:
-                # Modern keyframe mode accepts first/last frames only.
+            elif len(resolved_refs) == 2:
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
+            elif len(resolved_refs) > 2:
+                payload["images"] = resolved_refs[:5]
 
             mode_desc = payload["mode"]
             logger.info(
