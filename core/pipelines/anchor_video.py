@@ -345,29 +345,41 @@ class AnchorPipeline(BasePipeline):
         vw = self._state.video_width
         vh = self._state.video_height
 
-        for attempt in range(3):
-            try:
-                video_id = await self.video_generator.submit_video(
-                    prompt=prompt,
-                    reference_image_paths=[anchor_image_path],
-                    duration=5,
-                    width=vw,
-                    height=vh,
-                    negative_prompt=self._state.negative_prompt or None,
-                )
-                video_output = await self.video_generator.wait_for_video(video_id)
-                video_output.save(clip_path)
-                self._save_task(clip_dir, video_id)
-                break
-            except Exception as e:
-                if attempt < 2:
-                    logger.warning(
-                        "[Anchor] single clip attempt %d failed: %s, retrying...",
-                        attempt + 1, e,
+        # Resume an already submitted Agnes job before creating a new one.
+        saved_video_id = self._load_task(clip_dir)
+        if saved_video_id:
+            logger.info(
+                "[Anchor] resuming existing video task %s...",
+                saved_video_id[:16],
+            )
+            video_output = await self.video_generator.wait_for_video(saved_video_id)
+            video_output.save(clip_path)
+        else:
+            for attempt in range(3):
+                try:
+                    video_id = await self.video_generator.submit_video(
+                        prompt=prompt,
+                        reference_image_paths=[anchor_image_path],
+                        duration=5,
+                        width=vw,
+                        height=vh,
+                        negative_prompt=self._state.negative_prompt or None,
                     )
-                    await asyncio.sleep(15 * (attempt + 1))
-                else:
-                    raise
+                    # Persist immediately so a restart during polling cannot
+                    # lose the submitted Agnes job.
+                    self._save_task(clip_dir, video_id)
+                    video_output = await self.video_generator.wait_for_video(video_id)
+                    video_output.save(clip_path)
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        logger.warning(
+                            "[Anchor] single clip attempt %d failed: %s, retrying...",
+                            attempt + 1, e,
+                        )
+                        await asyncio.sleep(15 * (attempt + 1))
+                    else:
+                        raise
 
         self._state.step_clip_generation = StepStatus.COMPLETED
         self.task_manager.update_state(step_clip_generation=StepStatus.COMPLETED)
