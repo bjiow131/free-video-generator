@@ -960,18 +960,23 @@ class CreativeVideoPipeline(BasePipeline):
         )
 
     def _save_scene_task(self, scene_dir: str, video_id: str) -> None:
-        """Persist a scene's video-task ID to ``task.json`` and ``curl.sh``.
-
-        Args:
-            scene_dir: Directory for the scene.
-            video_id: Remote video task identifier.
-        """
+        """Persist a scene's remote video-task ID atomically for resume."""
+        os.makedirs(scene_dir, exist_ok=True)
         task_file = os.path.join(scene_dir, "task.json")
-        with open(task_file, "w") as f:
-            json.dump({"video_id": video_id}, f, indent=2)
-        curl_file = os.path.join(scene_dir, "curl.sh")
-        with open(curl_file, "w") as f:
-            f.write(self._make_curl(video_id) + "\n")
+        tmp_file = task_file + ".tmp"
+        try:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump({"video_id": video_id}, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, task_file)
+        except Exception:
+            try:
+                if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
+            except OSError:
+                pass
+            raise
 
     def _set_scene_video_status(self, scene_idx: int, status: StepStatus) -> None:
         """Persist per-scene video status for the web UI and resume logic."""
