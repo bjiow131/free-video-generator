@@ -500,3 +500,27 @@ class TestSimpleVideoPersistence:
             assert json.load(f)["video_id"] == "video-123"
         assert not (tmp_path / "curl.sh").exists()
         assert not (tmp_path / "task.json.tmp").exists()
+
+
+class TestLocalWindowsContracts:
+    """Windows-first local mode contract tests."""
+
+    def test_resolution_presets_are_valid_aspect_ratios(self):
+        from core.config import VIDEO_RESOLUTION_PRESETS
+        assert VIDEO_RESOLUTION_PRESETS["portrait"][:2] == {"width": 768, "height": 1152}
+        assert VIDEO_RESOLUTION_PRESETS["landscape"][:2] == {"width": 1152, "height": 648}
+        assert VIDEO_RESOLUTION_PRESETS["square"][:2] == {"width": 1024, "height": 1024}
+
+    def test_start_windows_launcher_points_to_local_server(self):
+        from pathlib import Path
+        bat = Path("start_windows.bat").read_text(encoding="utf-8")
+        assert 'set "HOST=127.0.0.1"' in bat
+        assert 'set "PORT=8765"' in bat
+        assert '.venv\\Scripts\\python.exe' in bat
+        assert '"%PYTHON%" server.py' in bat
+
+    def test_tts_retry_temp_path_is_defined_before_attempt(self):
+        import inspect
+        from core.audio.tts import EdgeTTSEngine
+        source = inspect.getsource(EdgeTTSEngine.generate)
+        assert source.index('tmp_path = output_path + ".tmp"') < source.index('for attempt in range(max_attempts)')
