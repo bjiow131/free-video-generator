@@ -42,6 +42,7 @@ from core.pipelines import (
 )
 from core.api.agnes_image import AgnesImageAPI
 from core.api.agnes_chat import AgnesChatAPI
+from core.api.comfyui import ComfyUIClient, ComfyUIError, build_workflow
 from core.task_manager import TaskManager
 
 from models.task import (
@@ -653,6 +654,28 @@ def _pick_directory_native() -> str:
 async def get_voices():
     """返回可选 TTS 语音角色列表。"""
     return {"voices": AVAILABLE_VOICES}
+
+
+@app.get("/api/comfyui/status")
+async def comfyui_status():
+    """Check the optional local ComfyUI service without affecting Agnes."""
+    return await ComfyUIClient().health()
+
+
+@app.post("/api/comfyui/preview")
+async def comfyui_preview(request: Request):
+    """Validate/bind a ComfyUI API workflow without queueing it."""
+    try:
+        body = await request.json()
+        workflow = build_workflow(
+            prompt=body.get("prompt"),
+            seed=body.get("seed"),
+            width=body.get("width"),
+            height=body.get("height"),
+        )
+        return {"valid": True, "workflow": workflow}
+    except (ComfyUIError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # ═══════════════════════════════════════════════════
