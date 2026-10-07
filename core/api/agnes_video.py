@@ -255,11 +255,26 @@ class AgnesVideoAPI:
 
                 if resp.status_code == 429 or resp.status_code >= 500:
                     retry_after = resp.headers.get("Retry-After")
-                    delay = float(retry_after) if retry_after else self.retry_base_delay * (attempt + 1)
+                    # Agnes documents 503 as a transient busy/unavailable response.
+                    # Prefer server-provided Retry-After; otherwise use exponential
+                    # backoff so repeated workers do not retry at the same moment.
+                    if retry_after:
+                        try:
+                            delay = float(retry_after)
+                        except ValueError:
+                            delay = self.retry_base_delay * (2 ** attempt)
+                    else:
+                        delay = self.retry_base_delay * (2 ** attempt)
                     delay = max(1.0, min(delay, 300.0))
+                    response_hint = resp.text[:300].replace("\n", " ").replace("\r", " ")
                     logger.warning(
-                        "[AgnesVideo] HTTP %s on %s; retry in %.0fs",
-                        resp.status_code, mode_desc, delay,
+                        "[AgnesVideo] HTTP %s on %s; retry %d/%d in %.0fs%s",
+                        resp.status_code,
+                        mode_desc,
+                        attempt + 1,
+                        self.max_retries,
+                        delay,
+                        f": {response_hint}" if response_hint else "",
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -278,7 +293,8 @@ class AgnesVideoAPI:
                 await asyncio.sleep(delay)
 
         raise RuntimeError(
-            f"[AgnesVideo] {mode_desc}: max retries ({self.max_retries}) exceeded"
+            f"[AgnesVideo] {mode_desc}: Agnes remained unavailable after "
+            f"{self.max_retries} attempts. The service may be busy; please retry later."
         )
 
     async def generate_single_video(
