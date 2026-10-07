@@ -762,6 +762,7 @@ async def generate_image(
     # 先用 PENDING 创建任务目录和状态文件
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
 
     image_api = AgnesImageAPI(api_key=api_key)
 
