@@ -709,7 +709,8 @@ async def comfyui_preview(request: Request):
 async def generate_image(
     request: Request,
     prompt: str = Form(...),
-    size: str = Form("1024x1024"),
+    size: str = Form("1K"),
+    ratio: str = Form("1:1"),
     negative_prompt: Optional[str] = Form(None),
     system_prompt: str = Form(""),
     reference_image: UploadFile = File(None),
@@ -725,9 +726,12 @@ async def generate_image(
     if not prompt.strip():
         raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
 
-    _VALID_SIZES = {"1024x1024", "768x1152", "1152x768", "768x1344", "1344x768", "1792x1024", "1024x1792"}
+    _VALID_SIZES = {"1K", "2K", "3K", "4K"}
+    _VALID_RATIOS = {"1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"}
     if size not in _VALID_SIZES:
         raise HTTPException(status_code=422, detail=f"Недопустимый размер изображения. Допустимые значения: {_VALID_SIZES}")
+    if ratio not in _VALID_RATIOS:
+        raise HTTPException(status_code=422, detail=f"Недопустимое соотношение сторон. Допустимые значения: {_VALID_RATIOS}")
 
     task_id = uuid.uuid4().hex[:12]
     name = f"image_{task_id}"
@@ -761,6 +765,7 @@ async def generate_image(
             prompt=full_prompt,
             reference_image_paths=ref_paths,
             size=size,
+            ratio=ratio,
             negative_prompt=negative_prompt,
         )
     except Exception as e:
