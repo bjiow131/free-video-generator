@@ -545,3 +545,20 @@ class TestTaskRecoveryNormalization:
         tm.create(state)
         loaded = tm.load()
         assert loaded.status == "pending"
+
+
+class TestVideoInputValidation:
+    def test_supported_dimensions_are_whitelisted(self):
+        from server import SUPPORTED_VIDEO_DIMENSIONS, _validate_video_dimensions
+        assert (1152, 648) in SUPPORTED_VIDEO_DIMENSIONS
+        assert (768, 1152) in SUPPORTED_VIDEO_DIMENSIONS
+        assert (1024, 1024) in SUPPORTED_VIDEO_DIMENSIONS
+        _validate_video_dimensions(1152, 648)
+
+    def test_unsupported_dimensions_are_rejected(self):
+        import pytest
+        from fastapi import HTTPException
+        from server import _validate_video_dimensions
+        with pytest.raises(HTTPException) as exc:
+            _validate_video_dimensions(8192, 8192)
+        assert exc.value.status_code == 422
