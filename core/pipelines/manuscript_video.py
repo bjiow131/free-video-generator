@@ -468,10 +468,12 @@ class ManuscriptVideoPipeline(BasePipeline):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _make_curl(video_id: str) -> str:
+    def _make_curl(self, video_id: str) -> str:
+        # Keep the recovery command aligned with Agnes Video 2.5 polling.
+        model_name = self.video_api.model
         return (
             f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
+            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}&model_name={model_name}"'
         )
 
     def _save_para_task(self, para_dir: str, video_id: str) -> None:
