@@ -507,9 +507,9 @@ class TestLocalWindowsContracts:
 
     def test_resolution_presets_are_valid_aspect_ratios(self):
         from core.config import VIDEO_RESOLUTION_PRESETS
-        assert VIDEO_RESOLUTION_PRESETS["portrait"][:2] == {"width": 768, "height": 1152}
-        assert VIDEO_RESOLUTION_PRESETS["landscape"][:2] == {"width": 1152, "height": 648}
-        assert VIDEO_RESOLUTION_PRESETS["square"][:2] == {"width": 1024, "height": 1024}
+        assert (VIDEO_RESOLUTION_PRESETS["portrait"]["width"], VIDEO_RESOLUTION_PRESETS["portrait"]["height"]) == (768, 1152)
+        assert (VIDEO_RESOLUTION_PRESETS["landscape"]["width"], VIDEO_RESOLUTION_PRESETS["landscape"]["height"]) == (1152, 648)
+        assert (VIDEO_RESOLUTION_PRESETS["square"]["width"], VIDEO_RESOLUTION_PRESETS["square"]["height"]) == (1024, 1024)
 
     def test_start_windows_launcher_points_to_local_server(self):
         from pathlib import Path
