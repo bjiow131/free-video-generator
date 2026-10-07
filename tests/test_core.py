@@ -493,7 +493,7 @@ class TestSimpleVideoPersistence:
     def test_save_task_is_atomic_and_does_not_create_shell_script(self, tmp_path):
         from core.pipelines.simple_video import SimpleVideoPipeline
         pipeline = SimpleVideoPipeline.__new__(SimpleVideoPipeline)
-        pipeline.working_dir = str(tmp_path)
+        pipeline.task_manager = type("TaskManagerStub", (), {"task_dir": str(tmp_path)})()
         pipeline._save_task("video-123")
         import json
         with open(tmp_path / "task.json", encoding="utf-8") as f:
