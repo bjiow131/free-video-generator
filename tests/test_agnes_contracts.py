@@ -15,3 +15,14 @@ def test_modern_duration_clamps_to_provider_range():
 
 def test_modern_models_are_explicit():
     assert "agnes-video-2.5-flash" in MODERN_MODELS
+
+
+def test_transient_statuses_are_explicit():
+    source = __import__("inspect").getsource(AgnesVideoAPI._submit_with_retry)
+    assert "{500, 502, 503, 504, 520, 522, 524}" in source
+
+
+def test_queue_full_error_is_user_actionable():
+    source = __import__("inspect").getsource(AgnesVideoAPI._submit_with_retry)
+    assert "video queue is full" in source
+    assert "please retry later" in source
