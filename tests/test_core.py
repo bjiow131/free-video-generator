@@ -524,3 +524,15 @@ class TestLocalWindowsContracts:
         from core.audio.tts import EdgeTTSEngine
         source = inspect.getsource(EdgeTTSEngine.generate)
         assert source.index('tmp_path = output_path + ".tmp"') < source.index('for attempt in range(max_attempts)')
+
+
+class TestTaskRecoveryNormalization:
+    def test_running_state_is_reset_to_pending_on_load(self, tmp_path, monkeypatch):
+        from core.task_manager import TaskManager
+        from models.task import SimpleVideoTask
+        monkeypatch.setattr("core.task_manager.get_working_dir", lambda: str(tmp_path))
+        state = SimpleVideoTask(task_id="recover-1", status="running")
+        tm = TaskManager("recover-1")
+        tm.create(state)
+        loaded = tm.load()
+        assert loaded.status == "pending"
