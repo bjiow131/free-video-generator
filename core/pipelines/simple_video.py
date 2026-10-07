@@ -83,15 +83,8 @@ class SimpleVideoPipeline(BasePipeline):
             raise
 
     # ------------------------------------------------------------------
-    # Curl / task persistence helpers
+    # Task persistence helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _make_curl(video_id: str) -> str:
-        return (
-            f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
-        )
 
     def _save_task(self, video_id: str) -> None:
         """Persist the remote video id atomically.
