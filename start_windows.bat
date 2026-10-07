@@ -3,99 +3,93 @@ setlocal EnableExtensions
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 chcp 65001 >nul
-cd /d "%~dp0"
+cd /d "C:\AI\free-video-generator"
 
-title Agnes Video Generator - Local Server
+title Free Video Generator - Local Server
 
 echo.
-echo ============================================================
-echo   Agnes Video Generator - Windows Local Server
-echo ============================================================
+echo ==========================================
+echo   FREE VIDEO GENERATOR
+echo ==========================================
 echo.
 
-REM --- Find a supported Python installation ---
-set "PYTHON="
-if exist ".venv\Scripts\python.exe" set "PYTHON=.venv\Scripts\python.exe"
-
-if not defined PYTHON (
-    where py >nul 2>nul
-    if not errorlevel 1 (
-        py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
-        if not errorlevel 1 (
-            echo [1/4] Creating Python virtual environment...
-            py -3 -m venv .venv
-            if errorlevel 1 goto :python_error
-            set "PYTHON=.venv\Scripts\python.exe"
-        )
-    )
-)
-
-if not defined PYTHON (
-    where python >nul 2>nul
-    if not errorlevel 1 (
-        python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
-        if not errorlevel 1 (
-            echo [1/4] Creating Python virtual environment...
-            python -m venv .venv
-            if errorlevel 1 goto :python_error
-            set "PYTHON=.venv\Scripts\python.exe"
-        )
-    )
-)
-
-if not defined PYTHON goto :python_error
-
-echo [2/4] Checking FFmpeg...
-where ffmpeg >nul 2>nul
-if errorlevel 1 goto :ffmpeg_error
-ffmpeg -version >nul 2>nul
-if errorlevel 1 goto :ffmpeg_error
-
-echo [3/4] Installing/updating Python dependencies...
-"%PYTHON%" -m pip install --disable-pip-version-check -r requirements.txt
-if errorlevel 1 (
+REM --- Agnes API key must come from Windows environment ---
+if "%AGNES_API_KEY%"=="" (
+    echo [ERROR] AGNES_API_KEY not found.
     echo.
-    echo ERROR: Dependency installation failed.
+    echo Run this once in a CMD window:
+    echo.
+    echo   setx AGNES_API_KEY "YOUR_AGNES_KEY"
+    echo.
+    echo Then close CMD completely and run this BAT again.
+    echo.
     pause
     exit /b 1
 )
 
-echo [4/4] Starting local server...
-echo.
-echo   Web UI: http://127.0.0.1:8765
-echo   Health: http://127.0.0.1:8765/health
-echo.
-echo   Press Ctrl+C to stop the server.
+echo Agnes API key found.
 echo.
 
-REM Open the local UI in the default browser.
-start "" "http://127.0.0.1:8765"
+REM --- Python virtual environment ---
+if not exist ".venv\Scripts\python.exe" (
+    echo [ERROR] Python virtual environment not found:
+    echo C:\AI\free-video-generator\.venv
+    echo.
+    echo Create it with:
+    echo   py -3 -m venv .venv
+    echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
+    echo.
+    pause
+    exit /b 1
+)
 
-set "HOST=127.0.0.1"
-set "PORT=8765"
-"%PYTHON%" server.py
-set "ERR=%ERRORLEVEL%"
+REM --- FFmpeg ---
+where ffmpeg >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] FFmpeg was not found in PATH.
+    echo Install FFmpeg and add it to PATH.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo Starting Free Video Generator...
+echo.
+
+REM --- Start the local server ---
+start "" /b ".venv\Scripts\python.exe" server.py
+
+echo Waiting for Free Video Generator...
+
+:wait
+timeout /t 2 /nobreak >nul
+curl -s http://127.0.0.1:8765/health >nul 2>&1
+if errorlevel 1 goto wait
 
 echo.
-echo Server stopped with exit code %ERR%.
+echo Server is running!
+echo http://127.0.0.1:8765
+echo.
+
+REM --- Open Chrome without GPU when available ---
+if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
+    echo Opening Google Chrome without GPU...
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --disable-gpu http://127.0.0.1:8765
+) else (
+    echo Chrome was not found at the standard path.
+    echo Opening the default browser...
+    start "" http://127.0.0.1:8765
+)
+
+echo.
+echo ==========================================
+echo   Free Video Generator is running!
+echo ==========================================
+echo.
+echo Local server: http://127.0.0.1:8765
+echo Agnes: API key loaded from Windows environment
+echo.
+echo Close the Python server window or press Ctrl+C
+echo in the server console to stop the server.
+echo.
 pause
-exit /b %ERR%
-
-:python_error
-echo.
-echo ERROR: Python 3.10 or newer is required.
-echo Install Python from https://www.python.org/downloads/
-echo Make sure the Python Launcher ^(py^) or python.exe is available in PATH.
-echo.
-pause
-exit /b 1
-
-:ffmpeg_error
-echo.
-echo ERROR: FFmpeg was not found in PATH.
-echo Install FFmpeg and add its bin folder to PATH, then run this file again.
-echo Example with winget:
-echo   winget install Gyan.FFmpeg
-echo.
-pause
-exit /b 1
