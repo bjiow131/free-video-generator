@@ -372,7 +372,7 @@ def set_watermark_config(enabled: bool = None, language: str = None):
 
 VIDEO_RESOLUTION_PRESETS = {
     "portrait": {"width": 768, "height": 1152, "label": "竖屏 9:16"},
-    "landscape": {"width": 1152, "height": 768, "label": "横屏 16:9"},
+    "landscape": {"width": 1152, "height": 648, "label": "横屏 16:9"},
     "square": {"width": 1024, "height": 1024, "label": "方形 1:1"},
 }
 
