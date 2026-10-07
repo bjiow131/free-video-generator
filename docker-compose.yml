@@ -4,7 +4,7 @@ services:
     image: agnes-video-generator
     container_name: agnes-video
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     # AGNES_API_KEY (and optional AGNES_RATE_LIMIT) come from .env at runtime.
     env_file:
       - .env

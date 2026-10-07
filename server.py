@@ -263,9 +263,95 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
+_LOCAL_SERVER_PORT = int(os.environ.get("PORT", "8765"))
+_LOCAL_ALLOWED_HOSTS = {
+    f"127.0.0.1:{_LOCAL_SERVER_PORT}",
+    f"localhost:{_LOCAL_SERVER_PORT}",
+}
+
+@app.middleware("http")
+async def local_origin_guard(request: Request, call_next):
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin")
+        host = request.headers.get("host", "").lower()
+        if origin and origin not in _LOCAL_CORS_ORIGINS:
+            return JSONResponse(status_code=403, content={"detail": "Недопустимый источник запроса"})
+        if host not in _LOCAL_ALLOWED_HOSTS:
+            return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
+    return await call_next(request)
+
 def get_upload_dir() -> str:
     """返回当前激活工作目录下的 uploads 子目录。"""
     return os.path.join(get_working_dir(), "uploads")
+
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+_ALLOWED_IMAGE_SIGNATURES = {
+    ".png": lambda head: head.startswith(b"\x89PNG\r\n\x1a\n"),
+    ".jpg": lambda head: head.startswith(b"\xff\xd8\xff"),
+    ".webp": lambda head: head.startswith(b"RIFF") and head[8:12] == b"WEBP",
+}
+
+async def _save_image_upload(upload: UploadFile, stem: str) -> str:
+    """Validate and persist a reference image with a 10 MB limit."""
+    if not upload or not upload.filename:
+        return ""
+    await upload.seek(0)
+    header = await upload.read(16)
+    extension = next((ext for ext, check in _ALLOWED_IMAGE_SIGNATURES.items() if check(header)), None)
+    if extension is None:
+        raise HTTPException(status_code=422, detail="Поддерживаются только изображения PNG, JPG/JPEG и WEBP")
+    await upload.seek(0)
+    upload_dir = get_upload_dir()
+    os.makedirs(upload_dir, exist_ok=True)
+    path = os.path.join(upload_dir, f"{stem}{extension}")
+    total = 0
+    try:
+        with open(path, "wb") as f:
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_SIZE:
+                    raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
+                f.write(chunk)
+    except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise
+    return path
+
+def _validate_workspace_path(raw_path: str) -> str:
+    """Validate a workspace path before it is persisted or created."""
+    path = (raw_path or "").strip()
+    if not path:
+        raise HTTPException(status_code=422, detail="Путь рабочей папки не может быть пустым")
+    normalized = path.replace("\\", "/")
+    if any(part == ".." for part in normalized.split("/")):
+        raise HTTPException(status_code=422, detail="Путь рабочей папки не должен содержать ..")
+    candidate = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+    if not os.path.isabs(candidate):
+        raise HTTPException(status_code=422, detail="Путь рабочей папки должен быть абсолютным")
+    if os.path.exists(candidate) and not os.path.isdir(candidate):
+        raise HTTPException(status_code=422, detail="Путь рабочей папки должен указывать на каталог")
+    parent = os.path.dirname(candidate)
+    if not os.path.isdir(parent):
+        raise HTTPException(status_code=422, detail="Родительская папка рабочей директории не существует")
+    protected = []
+    if platform.system() == "Windows":
+        for env_name in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData", "ProgramW6432", "CommonProgramFiles"):
+            value = os.environ.get(env_name)
+            if value:
+                protected.append(os.path.realpath(os.path.abspath(value)))
+    for protected_dir in protected:
+        try:
+            if os.path.commonpath([candidate, protected_dir]) == protected_dir:
+                raise HTTPException(status_code=422, detail="Нельзя использовать системную папку Windows как рабочую")
+        except ValueError:
+            continue
+    return candidate
 
 
 # ═══════════════════════════════════════════════════
@@ -275,6 +361,14 @@ def get_upload_dir() -> str:
 
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host", "").lower()
+    if origin and origin not in _LOCAL_CORS_ORIGINS:
+        await websocket.close(code=1008, reason="Недопустимый источник запроса")
+        return
+    if host not in _LOCAL_ALLOWED_HOSTS:
+        await websocket.close(code=1008, reason="Недопустимый адрес сервера")
+        return
     await websocket.accept()
     logger.info(f"[WS] Client connected for task {task_id}")
 
@@ -314,7 +408,24 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "service": "AI Studio API"}
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffmpeg_version = ""
+    if ffmpeg_path:
+        try:
+            result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True, timeout=5, check=False)
+            first_line = (result.stdout or result.stderr).splitlines()
+            if first_line:
+                match = re.search(r"ffmpeg version\s+([^\s]+)", first_line[0])
+                ffmpeg_version = match.group(1) if match else first_line[0]
+        except (OSError, subprocess.TimeoutExpired) as e:
+            logger.warning("[Health] FFmpeg version check failed: %s", e, exc_info=True)
+    return {
+        "ok": True,
+        "service": "Agnes Video Generator",
+        "ffmpeg": bool(ffmpeg_path),
+        "ffmpeg_version": ffmpeg_version,
+        "api_key_configured": bool(get_api_key()),
+    }
 
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -342,7 +453,7 @@ async def get_config(request: Request):
     active_ws = get_active_workspace()
     wm = get_watermark_config()
     data = {
-        "api_key": key[:8] + "..." if key else "",
+        "api_key": "****" + key[-4:] if key else "",
         "source": source,
         "can_clear": source == "config",
         "workspaces": get_workspaces(),
@@ -432,9 +543,8 @@ async def list_workspaces(request: Request):
 @app.post("/api/workspaces")
 async def create_workspace(path: str = Form(...), name: str = Form(""), request: Request = None):
     """添加一个工作目录。"""
-    if not path.strip():
-        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
-    entry = add_workspace(path.strip(), name.strip())
+    safe_path = _validate_workspace_path(path)
+    entry = add_workspace(safe_path, name.strip())
     os.makedirs(entry["path"], exist_ok=True)
     os.makedirs(os.path.join(entry["path"], "uploads"), exist_ok=True)
     return {"ok": True, "workspace": entry, "active_workspace": get_active_workspace()}
@@ -443,9 +553,8 @@ async def create_workspace(path: str = Form(...), name: str = Form(""), request:
 @app.delete("/api/workspaces")
 async def delete_workspace(path: str = Form(...), request: Request = None):
     """移除一个工作目录（仅从配置中移除，不删除磁盘文件）。"""
-    if not path.strip():
-        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
-    removed = remove_workspace(path.strip())
+    safe_path = _validate_workspace_path(path)
+    removed = remove_workspace(safe_path)
     if not removed:
         raise HTTPException(status_code=404, detail="Рабочая папка не найдена")
     return {"ok": True, "active_workspace": get_active_workspace()}
@@ -454,18 +563,18 @@ async def delete_workspace(path: str = Form(...), request: Request = None):
 @app.post("/api/workspaces/active")
 async def activate_workspace(path: str = Form(...), request: Request = None):
     """设置当前激活的工作目录。"""
-    if not path.strip():
-        raise HTTPException(status_code=422, detail="Путь не может быть пустым")
+    safe_path = _validate_workspace_path(path)
     try:
-        active = set_active_workspace(path.strip())
+        active = set_active_workspace(safe_path)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     os.makedirs(active, exist_ok=True)
     os.makedirs(os.path.join(active, "uploads"), exist_ok=True)
+    _rebuild_task_dir_cache()
     return {"ok": True, "active_workspace": active}
 
 
-@app.get("/api/workspaces/pick-directory")
+@app.post("/api/workspaces/pick-directory")
 async def pick_directory(request: Request):
     """弹出操作系统原生目录选择框，返回所选目录路径。
 
@@ -578,13 +687,7 @@ async def generate_image(
 
     ref_paths = []
     if reference_image and reference_image.filename:
-        ext = os.path.splitext(reference_image.filename)[1] or ".png"
-        upload_dir = get_upload_dir()
-        os.makedirs(upload_dir, exist_ok=True)
-        ref_path = os.path.join(upload_dir, f"img_ref_{uuid.uuid4().hex[:8]}{ext}")
-        with open(ref_path, "wb") as f:
-            f.write(await reference_image.read())
-        ref_paths.append(ref_path)
+        ref_paths.append(await _save_image_upload(reference_image, f"img_ref_{uuid.uuid4().hex[:8]}"))
 
     try:
         state.status = StepStatus.RUNNING
@@ -1004,20 +1107,11 @@ async def create_simple_task(
 
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
     if reference_image and reference_image.filename:
-        ext = os.path.splitext(reference_image.filename)[1] or ".png"
-        os.makedirs(get_upload_dir(), exist_ok=True)
-        upload_path = os.path.join(get_upload_dir(), f"{task_id}_ref{ext}")
-        with open(upload_path, "wb") as f:
-            f.write(await reference_image.read())
-        state.reference_image = upload_path
+        state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
 
     # 处理尾帧图上传（keyframes 模式）
     if end_frame_image and end_frame_image.filename:
-        ext = os.path.splitext(end_frame_image.filename)[1] or ".png"
-        upload_path = os.path.join(get_upload_dir(), f"{task_id}_end{ext}")
-        with open(upload_path, "wb") as f:
-            f.write(await end_frame_image.read())
-        state.end_frame_image = upload_path
+        state.end_frame_image = await _save_image_upload(end_frame_image, f"{task_id}_end")
 
     pipeline = _create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
     active_pipelines[task_id] = pipeline
@@ -1156,23 +1250,15 @@ async def create_creative_task(
 
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
     if reference_image and reference_image.filename:
-        ext = os.path.splitext(reference_image.filename)[1] or ".png"
-        os.makedirs(get_upload_dir(), exist_ok=True)
-        upload_path = os.path.join(get_upload_dir(), f"{task_id}_ref{ext}")
-        with open(upload_path, "wb") as f:
-            f.write(await reference_image.read())
-        state.reference_image = upload_path
+        state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
+
 
     # P3: 处理自定义尾帧图片上传
     if use_custom_end_frames and end_frame_images:
         saved_paths = []
         for idx, ef_file in enumerate(end_frame_images):
             if ef_file and ef_file.filename:
-                ext = os.path.splitext(ef_file.filename)[1] or ".png"
-                upload_path = os.path.join(get_upload_dir(), f"{task_id}_end_{idx}{ext}")
-                with open(upload_path, "wb") as f:
-                    f.write(await ef_file.read())
-                saved_paths.append(upload_path)
+                saved_paths.append(await _save_image_upload(ef_file, f"{task_id}_end_{idx}"))
         if saved_paths:
             state.end_frame_images = saved_paths
             logger.info(f"[Pipeline] Saved {len(saved_paths)} custom end frame images for task {task_id}")
@@ -1345,12 +1431,7 @@ async def create_anchor_task(
     # 处理参考图上传
     ref_image_path = ""
     if anchor_reference_image and anchor_reference_image.filename:
-        ext = os.path.splitext(anchor_reference_image.filename)[1] or ".png"
-        os.makedirs(get_upload_dir(), exist_ok=True)
-        upload_path = os.path.join(get_upload_dir(), f"{task_id}_ref{ext}")
-        with open(upload_path, "wb") as f:
-            f.write(await anchor_reference_image.read())
-        ref_image_path = upload_path
+        ref_image_path = await _save_image_upload(anchor_reference_image, f"{task_id}_ref")
 
     state = AnchorVideoTask(
         task_id=task_id,
