@@ -132,7 +132,7 @@ class AgnesVideoAPI:
     async def _poll_task(
         self,
         video_id: str,
-        interval: int = 30,
+        interval: int = 3,
         max_poll_duration: int = 1800,
         max_consecutive_failures: int = 10,
         progress_callback=None,
@@ -201,7 +201,7 @@ class AgnesVideoAPI:
                         f"{max_consecutive_failures} consecutive errors for {video_id[:16]}"
                     )
 
-            # Avoid hammering the polling endpoint; Agnes documents low video RPM.
+            # Poll frequently enough for responsive UI updates while staying near the local 20 RPM guard.
             await asyncio.sleep(interval)
 
     async def _submit_with_retry(self, payload: dict, mode_desc: str) -> str:
