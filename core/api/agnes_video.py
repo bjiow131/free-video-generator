@@ -132,7 +132,7 @@ class AgnesVideoAPI:
     async def _poll_task(
         self,
         video_id: str,
-        interval: int = 3,
+        interval: int = 5,
         max_poll_duration: int = 1800,
         max_consecutive_failures: int = 10,
         progress_callback=None,
