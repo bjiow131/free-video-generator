@@ -71,7 +71,7 @@ _AGNES_RATE_LIMIT = int(os.environ.get("AGNES_RATE_LIMIT", "20"))
 TASK_TYPE_WEIGHTS = {
     TaskType.SIMPLE: 1,       # 1 submit + 轻量轮询
     TaskType.CREATIVE: 3,     # Chat + N*Image + N*Video + 轮询
-    TaskType.MANUSCRIPT: 4,   # 段落*Chat + 段落*Image + 轮询
+    TaskType.MANUSCRIPT: 3,   # Chat + images + video polling; one heavy pipeline at a time
     TaskType.ANCHOR: 2,       # 1 i2v submit + 轻量轮询
     TaskType.IMAGE: 1,        # 1 image submit
 }
