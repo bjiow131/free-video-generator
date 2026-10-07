@@ -467,7 +467,6 @@ class ManuscriptVideoPipeline(BasePipeline):
     # Curl / task persistence helpers (per-paragraph)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _make_curl(self, video_id: str) -> str:
         # Keep the recovery command aligned with Agnes Video 2.5 polling.
         model_name = self.video_api.model
