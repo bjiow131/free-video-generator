@@ -466,6 +466,16 @@ class TestLocalServerContract:
         assert "/health" in routes
 
 
+class TestCreativeSceneTaskPersistence:
+    def test_scene_task_persistence_does_not_create_shell_helper(self, tmp_path):
+        from core.pipelines.creative_video import CreativeVideoPipeline
+        pipeline = object.__new__(CreativeVideoPipeline)
+        scene_dir = tmp_path / "scene_0"
+        pipeline._save_scene_task(str(scene_dir), "remote-video-123")
+        assert (scene_dir / "task.json").exists()
+        assert not (scene_dir / "curl.sh").exists()
+        assert pipeline._load_scene_task(str(scene_dir)) == "remote-video-123"
+
 class TestTaskIdSafety:
     """Filesystem-facing task IDs must reject traversal input."""
 
