@@ -161,8 +161,8 @@ class BasePipeline(ABC):
         srt_filename: str = "full_subtitle.srt",
         styles_filename: str = "subtitle_styles.json",
         screenwriter=None,
-        video_width: int = 768,
-        video_height: int = 1152,
+        video_width: int = 1152,
+        video_height: int = 648,
         role: str = "",
     ) -> tuple:
         """通用字幕生成逻辑，供所有 pipeline 复用。
