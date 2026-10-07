@@ -94,12 +94,18 @@ class SimpleVideoPipeline(BasePipeline):
         )
 
     def _save_task(self, video_id: str) -> None:
+        """Persist the remote video id atomically.
+
+        The id is also stored in task_state.json. This legacy task.json remains
+        as a resume fallback for older tasks, but shell scripts are intentionally
+        not generated: they are unnecessary on Windows and can become unsafe
+        artifacts when workspaces are copied or shared.
+        """
         task_file = os.path.join(self.working_dir, "task.json")
-        with open(task_file, "w") as f:
+        tmp_file = task_file + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump({"video_id": video_id}, f, indent=2)
-        curl_file = os.path.join(self.working_dir, "curl.sh")
-        with open(curl_file, "w") as f:
-            f.write(self._make_curl(video_id) + "\n")
+        os.replace(tmp_file, task_file)
 
     def _load_task(self) -> Optional[str]:
         task_file = os.path.join(self.working_dir, "task.json")
