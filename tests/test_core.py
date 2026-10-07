@@ -665,13 +665,15 @@ class TestAgnesModernVideoModes:
 async def _ready(value):
     return value
 class TestAgnesRecoveryPolling:
-    def test_manuscript_curl_includes_model_name(self):
+    def test_manuscript_task_persistence_does_not_create_shell_helper(self, tmp_path):
         from core.pipelines.manuscript_video import ManuscriptVideoPipeline
-        pipeline = ManuscriptVideoPipeline.__new__(ManuscriptVideoPipeline)
-        pipeline.video_api = type("VideoApiStub", (), {"model": "agnes-video-2.5-flash"})()
-        command = pipeline._make_curl("video_test")
-        assert "video_id=video_test" in command
-        assert "model_name=agnes-video-2.5-flash" in command
+        pipeline = object.__new__(ManuscriptVideoPipeline)
+        para_dir = tmp_path / "para_0"
+        pipeline._save_para_task(str(para_dir), "video_test")
+        assert (para_dir / "task.json").exists()
+        assert not (para_dir / "curl.sh").exists()
+        assert not (para_dir / "task.json.tmp").exists()
+        assert pipeline._load_para_task(str(para_dir)) == "video_test"
 
 
 class TestAgnesCurrentImageDefaults:
