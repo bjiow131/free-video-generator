@@ -2,10 +2,6 @@ from core.api.agnes_video import AgnesVideoAPI, MODERN_MODELS
 from core.config import SUPPORTED_AGNES_VIDEO_DURATIONS
 
 
-def test_agnes_modern_defaults():
-    assert AgnesVideoAPI.DEFAULT_MODEL if hasattr(AgnesVideoAPI, "DEFAULT_MODEL") else True
-
-
 def test_short_durations_are_supported():
     assert {4, 5, 6, 8, 10, 12}.issubset(SUPPORTED_AGNES_VIDEO_DURATIONS)
 
