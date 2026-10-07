@@ -562,7 +562,7 @@ class ManuscriptVideoPipeline(BasePipeline):
                 0.15 + 0.20 * (i / max(total, 1)),
             )
 
-            para_duration = max(int(math.ceil(len(para.text) / _CHARS_PER_SEC)), 3)
+            para_duration = min(max(int(math.ceil(len(para.text) / _CHARS_PER_SEC)), 4), 12)
             logger.info(
                 "[Manuscript] video: paragraph %d estimated duration %.1fs (chars=%d)",
                 para.index, para_duration, len(para.text),
