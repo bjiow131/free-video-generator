@@ -182,7 +182,7 @@ class AgnesVideoAPI:
             return 961   # 480p tier
 
     def _get_frame_config(self, duration: Optional[int] = None,
-                          width: int = 1152, height: int = 768) -> tuple:
+                          width: int = 1152, height: int = 648) -> tuple:
         d = duration or self.default_duration
         max_nf = self._get_max_frames(width, height)
         if d in DURATION_PRESETS:
@@ -210,10 +210,6 @@ class AgnesVideoAPI:
         poll_count = 0
         consecutive_failures = 0
         start_time = asyncio.get_event_loop().time()
-        curl_cmd = (
-            f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"{API_ROOT}/agnesapi?video_id={video_id}"'
-        )
         while True:
             # M2: 每次轮询前检查停止信号
             if self.shutdown_event and self.shutdown_event.is_set():
@@ -252,7 +248,7 @@ class AgnesVideoAPI:
                     last_status = status
 
                 if progress_callback:
-                    progress_callback(status, progress, curl_cmd)
+                    progress_callback(status, progress, None)
 
                 if status in ("completed", "COMPLETED"):
                     return result
