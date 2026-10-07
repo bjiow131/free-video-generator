@@ -647,3 +647,36 @@ class TestAgnesCurrentImageDefaults:
         api = AgnesImageAPI("test-key")
         assert api.model == "agnes-image-2.5-flash"
         assert api.i2i_model == "agnes-image-2.5-flash"
+
+    def test_text_to_image_does_not_send_unsupported_negative_prompt(self, monkeypatch):
+        from core.api.agnes_image import AgnesImageAPI
+        import asyncio
+
+        api = AgnesImageAPI("test-key")
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"data": [{"url": "https://example.test/image.png"}]}
+
+        class FakeSession:
+            def post(self, *args, **kwargs):
+                captured["payload"] = kwargs["json"]
+                return FakeResponse()
+
+        monkeypatch.setattr("core.api.agnes_image._make_session", lambda: FakeSession())
+        monkeypatch.setattr(
+            "core.api.agnes_image.get_rate_limiter",
+            lambda: type("Limiter", (), {"acquire": lambda self: None})(),
+        )
+
+        output = asyncio.run(
+            api.generate_single_image("cinematic scene", negative_prompt="blurry")
+        )
+        assert output.data == "https://example.test/image.png"
+        assert "negative_prompt" not in captured["payload"]
+
