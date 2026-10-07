@@ -1,5 +1,5 @@
 """Google Gemini native image provider (Nano Banana 2 / Pro)."""
-import asyncio,base64,os
+import asyncio,base64,os,tempfile
 class GeminiImageProvider:
  def __init__(self,api_key=None,model=None):
   self.api_key=api_key or os.environ.get("GEMINI_API_KEY","")
@@ -20,6 +20,6 @@ class GeminiImageProvider:
   if output is None: raise RuntimeError("Google Gemini не вернул изображение")
   data=getattr(output,"data",None)
   if not data: raise RuntimeError("Google Gemini вернул пустое изображение")
-  path="/tmp/ai_studio_gemini_%s.png"%os.urandom(8).hex()
+  path=os.path.join(tempfile.gettempdir(), "ai_studio_gemini_%s.png"%os.urandom(8).hex())
   with open(path,"wb") as f:f.write(base64.b64decode(data))
   return path
