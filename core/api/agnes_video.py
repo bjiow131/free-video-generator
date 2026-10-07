@@ -323,11 +323,10 @@ class AgnesVideoAPI:
 
             if len(resolved_refs) == 1:
                 payload["first_frame"] = resolved_refs[0]
-            elif len(resolved_refs) > 1:
+            elif len(resolved_refs) >= 2:
+                # Modern keyframe mode accepts first/last frames only.
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
-                if len(resolved_refs) > 2:
-                    payload["images"] = resolved_refs[:5]
 
             mode_desc = payload["mode"]
             logger.info(
