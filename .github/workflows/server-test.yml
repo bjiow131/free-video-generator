@@ -8,7 +8,6 @@ on:
       - "core/**"
       - "models/**"
       - "static/**"
-      - "render.yaml"
       - ".github/workflows/server-test.yml"
   workflow_dispatch:
 
@@ -44,5 +43,21 @@ jobs:
           Path("/tmp/ai-studio.js").write_text(js, encoding="utf-8")
           PY
           node --check /tmp/ai-studio.js
-      - name: Validate Render blueprint
-        run: python -c "import yaml; yaml.safe_load(open('render.yaml', encoding='utf-8'))"
+      - name: Validate Windows launcher
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          bat = Path("start_windows.bat").read_text(encoding="utf-8")
+          required = [
+              'set "HOST=127.0.0.1"',
+              'set "PORT=8765"',
+              '.venv\\Scripts\\python.exe',
+              'server.py',
+              'where ffmpeg',
+          ]
+          missing = [item for item in required if item not in bat]
+          if missing:
+              raise SystemExit(f"Windows launcher missing: {missing}")
+          if "render.com" in bat.lower() or "render.yaml" in bat.lower():
+              raise SystemExit("Stale Render reference in Windows launcher")
+          PY
