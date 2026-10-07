@@ -34,7 +34,7 @@ def _xml_escape(text: str) -> str:
 
 
 class Screenwriter:
-    def __init__(self, api_key: str, model: str = "agnes-2.0-flash", language: str = None):
+    def __init__(self, api_key: str, model: str = "agnes-3.0-flash", language: str = None):
         self.api_key = api_key
         self.model = model
         self.language = language if language else PROMPT_LANGUAGE  # "zh" 中文 / "en" 英文
