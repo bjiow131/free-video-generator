@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 # Agnes API 所有接口共享的每分钟调用上限
 _AGNES_RATE_LIMIT = int(os.environ.get("AGNES_RATE_LIMIT", "20"))
-# 预留 20% 余量：实际允许 80% 的配额，即 16 次/分钟（3.75 秒/次）
+# Оставляем 50% запаса: фактическая скорость — половина лимита (10/мин при лимите 20).
 _SAFETY_FACTOR = 0.5
-_EFFECTIVE_RATE = _AGNES_RATE_LIMIT * _SAFETY_FACTOR  # 16 次/分钟
+_EFFECTIVE_RATE = _AGNES_RATE_LIMIT * _SAFETY_FACTOR
 
 
 class AgnesRateLimiter:
