@@ -494,7 +494,15 @@ class TestSimpleVideoPersistence:
         assert not (tmp_path / "task.json.tmp").exists()
 
 
-class TestApiRequestDefaults:\n    def test_video_request_defaults_to_landscape(self):\n        from models.task import CreateSimpleTaskRequest, CreateCreativeTaskRequest, CreateManuscriptTaskRequest\n        assert (CreateSimpleTaskRequest(prompt="x").video_width, CreateSimpleTaskRequest(prompt="x").video_height) == (1152, 648)\n        assert (CreateCreativeTaskRequest(idea="x").video_width, CreateCreativeTaskRequest(idea="x").video_height) == (1152, 648)\n        assert (CreateManuscriptTaskRequest(manuscript_text="x").video_width, CreateManuscriptTaskRequest(manuscript_text="x").video_height) == (1152, 648)\n\n\nclass TestSharedSubtitleDefaults:
+class TestApiRequestDefaults:
+    def test_video_request_defaults_to_landscape(self):
+        from models.task import CreateSimpleTaskRequest, CreateCreativeTaskRequest, CreateManuscriptTaskRequest
+        assert (CreateSimpleTaskRequest(prompt="x").video_width, CreateSimpleTaskRequest(prompt="x").video_height) == (1152, 648)
+        assert (CreateCreativeTaskRequest(idea="x").video_width, CreateCreativeTaskRequest(idea="x").video_height) == (1152, 648)
+        assert (CreateManuscriptTaskRequest(manuscript_text="x").video_width, CreateManuscriptTaskRequest(manuscript_text="x").video_height) == (1152, 648)
+
+
+class TestSharedSubtitleDefaults:
     def test_shared_subtitle_helper_defaults_to_landscape(self):
         import inspect
         from core.pipelines import BasePipeline
