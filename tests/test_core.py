@@ -15,6 +15,7 @@ Agnes Video Generator v2.0 — 单元测试套件
 
 import sys
 import os
+import asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

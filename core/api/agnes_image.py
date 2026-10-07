@@ -109,9 +109,6 @@ class AgnesImageAPI:
             "n": 1,
         }
 
-        if kwargs.get("negative_prompt"):
-            payload["negative_prompt"] = kwargs["negative_prompt"]
-
         if reference_image_paths:
             resolved = [await self._resolve_image_ref(p) for p in reference_image_paths]
             # 官方文档所有 i2i 示例均用 image 数组形式（extra_body.image=[url]），
