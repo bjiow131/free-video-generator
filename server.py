@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import get_api_key, set_api_key, delete_api_key, get_api_key_source, get_working_dir, AVAILABLE_VOICES, DURATION_FRAME_MAP, get_workspaces, add_workspace, remove_workspace, set_active_workspace, get_active_workspace, REGRESSION_WORKING_DIR_ENV, get_watermark_config, set_watermark_config, WATERMARK_PROMO_TEXT_ZH, WATERMARK_PROMO_TEXT_EN
+from core.config import get_api_key, set_api_key, delete_api_key, get_api_key_source, get_working_dir, AVAILABLE_VOICES, DURATION_FRAME_MAP, SUPPORTED_AGNES_VIDEO_DURATIONS, get_workspaces, add_workspace, remove_workspace, set_active_workspace, get_active_workspace, REGRESSION_WORKING_DIR_ENV, get_watermark_config, set_watermark_config, WATERMARK_PROMO_TEXT_ZH, WATERMARK_PROMO_TEXT_EN
 from core.pipelines import (
     AnchorPipeline,
     BasePipeline,
@@ -1096,10 +1096,10 @@ async def create_simple_task(
             status_code=422,
             detail=f"mode 必须为 {_VALID_MODES} 之一，当前: {mode}",
         )
-    if duration not in DURATION_FRAME_MAP:
+    if duration not in SUPPORTED_AGNES_VIDEO_DURATIONS:
         raise HTTPException(
             status_code=422,
-            detail=f"duration 必须为 {sorted(DURATION_FRAME_MAP.keys())} 之一，当前: {duration}",
+            detail=f"duration должен быть одним из {sorted(SUPPORTED_AGNES_VIDEO_DURATIONS)}, сейчас: {duration}",
         )
     if len(prompt) > 5000:
         raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
