@@ -54,6 +54,7 @@ class EdgeTTSEngine(TTSEngine):
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
         max_attempts = 2
+        tmp_path = output_path + ".tmp"
         for attempt in range(max_attempts):
             try:
                 communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
