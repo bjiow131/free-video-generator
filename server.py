@@ -241,7 +241,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+
+# Local-only browser UI: allow only the two loopback origins used by the
+# built-in server.  The UI itself is same-origin, but keeping explicit CORS
+# support is useful for localhost development without exposing the API to
+# arbitrary websites.
+_LOCAL_CORS_ORIGINS = [
+    "http://127.0.0.1:8765",
+    "http://localhost:8765",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_LOCAL_CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 def get_upload_dir() -> str:
     """返回当前激活工作目录下的 uploads 子目录。"""
