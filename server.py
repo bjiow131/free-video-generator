@@ -1062,8 +1062,8 @@ async def create_creative_task(
             raise HTTPException(status_code=422, detail="Параметры длительности сцен должны быть массивом JSON")
         # 校验每个时长
         for i, d in enumerate(scene_durations):
-            if not isinstance(d, (int, float)) or d < 2 or d > 30:
-                raise HTTPException(status_code=422, detail=f"Длительность сцены {i+1} должна быть от 2 до 30 секунд")
+            if not isinstance(d, (int, float)) or d < 4 or d > 12:
+                raise HTTPException(status_code=422, detail=f"Длительность сцены {i+1} должна быть от 4 до 12 секунд (ограничение Agnes Video 2.5)")
     else:
         scene_durations = []
 
