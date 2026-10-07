@@ -410,6 +410,15 @@ class CreativeVideoPipeline(BasePipeline):
                 },
             )
 
+        # Agnes Video 2.5 supports 4–12 seconds per generation. Normalize
+        # restored/legacy task state as well as newly extracted durations so the
+        # video length, narration timing, and subtitle timeline stay consistent.
+        normalized = [max(4, min(12, int(round(float(d))))) for d in self._state.scene_durations]
+        if normalized != self._state.scene_durations:
+            logger.warning("[Pipeline] Normalizing scene durations to Agnes 4–12s: %s -> %s", self._state.scene_durations, normalized)
+            self._state.scene_durations = normalized
+            self.task_manager.update_state(scene_durations=normalized)
+
         self._state.step_scene_config = StepStatus.COMPLETED
         self.task_manager.update_step(
             "step_scene_config", StepStatus.COMPLETED
