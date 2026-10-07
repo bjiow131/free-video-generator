@@ -8,6 +8,10 @@ on:
       - "core/**"
       - "models/**"
       - "static/**"
+      - "tests/**"
+      - "start_windows.bat"
+      - "Dockerfile"
+      - "README.md"
       - ".github/workflows/server-test.yml"
   workflow_dispatch:
 
