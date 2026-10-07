@@ -8,6 +8,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlencode
 import requests
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,63 @@ class ComfyUIClient:
             await asyncio.sleep(poll_interval)
         raise ComfyUIError(f"ComfyUI workflow timed out after {timeout:.0f}s")
 
+
+    def extract_outputs(self, history: dict[str, Any]) -> list[dict[str, str]]:
+        """Return downloadable ComfyUI output descriptors from a completed history."""
+        outputs: list[dict[str, str]] = []
+        for node_output in (history.get("outputs") or {}).values():
+            if not isinstance(node_output, dict):
+                continue
+            for kind in ("images", "gifs", "videos", "audio"):
+                items = node_output.get(kind) or []
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict) or not item.get("filename"):
+                        continue
+                    descriptor = {
+                        "filename": str(item["filename"]),
+                        "subfolder": str(item.get("subfolder") or ""),
+                        "type": str(item.get("type") or "output"),
+                        "kind": kind,
+                    }
+                    descriptor["url"] = (
+                        f"{self.base_url}/view?"
+                        + urlencode({
+                            "filename": descriptor["filename"],
+                            "subfolder": descriptor["subfolder"],
+                            "type": descriptor["type"],
+                        })
+                    )
+                    outputs.append(descriptor)
+        return outputs
+
+    async def download_output(self, output: dict[str, str], destination: Path) -> Path:
+        """Download a ComfyUI /view output atomically."""
+        params = {
+            "filename": output["filename"],
+            "subfolder": output.get("subfolder", ""),
+            "type": output.get("type", "output"),
+        }
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + ".tmp")
+
+        def _request() -> requests.Response:
+            return requests.get(f"{self.base_url}/view", params=params, timeout=(5, 60))
+
+        try:
+            response = await asyncio.to_thread(_request)
+            response.raise_for_status()
+            await asyncio.to_thread(temporary.write_bytes, response.content)
+            await asyncio.to_thread(temporary.replace, destination)
+            return destination
+        except (requests.RequestException, OSError) as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise ComfyUIError(f"ComfyUI output download failed: {exc}") from exc
+
     async def generate(self, *, prompt: Optional[str] = None, seed: Optional[int] = None,
                        width: Optional[int] = None, height: Optional[int] = None,
                        workflow_path: Optional[Path] = None, timeout: float = 1800.0) -> dict[str, Any]:
@@ -126,7 +184,7 @@ class ComfyUIClient:
                                   workflow_path=workflow_path)
         prompt_id = await self.queue_prompt(workflow)
         history = await self.wait_for_history(prompt_id, timeout=timeout)
-        return {"prompt_id": prompt_id, "history": history}
+        return {"prompt_id": prompt_id, "history": history, "outputs": self.extract_outputs(history)}
 
 async def check_comfyui() -> dict[str, Any]:
     return await ComfyUIClient().health()
