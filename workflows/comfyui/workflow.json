@@ -1,0 +1,12 @@
+{
+  "_comment": "API-format ComfyUI workflow scaffold. Replace with a successfully executed export before production use.",
+  "_verified": false,
+  "_required_action": "Build and run the graph manually in ComfyUI, export API JSON, then replace this file and remove metadata fields beginning with underscore.",
+  "3": {"class_type": "KSampler", "inputs": {"seed": 0, "steps": 20, "cfg": 7, "sampler_name": "euler", "scheduler": "normal", "denoise": 1, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+  "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "REPLACE_WITH_YOUR_CHECKPOINT.safetensors"}},
+  "5": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024, "batch_size": 1}},
+  "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "REPLACE_WITH_POSITIVE_PROMPT", "clip": ["4", 1]}},
+  "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "REPLACE_WITH_NEGATIVE_PROMPT", "clip": ["4", 1]}},
+  "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+  "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "free-video-generator", "images": ["8", 0]}}
+}

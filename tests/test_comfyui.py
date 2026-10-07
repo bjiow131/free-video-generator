@@ -1,0 +1,36 @@
+import json
+import pytest
+from core.api.comfyui import ComfyUIError, build_workflow
+
+def test_build_workflow_loads_api_format_and_applies_bindings(tmp_path, monkeypatch):
+    workflow = {"3": {"class_type": "KSampler", "inputs": {"seed": 1}},
+                "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "old"}}}
+    path = tmp_path / "workflow.json"
+    path.write_text(json.dumps(workflow), encoding="utf-8")
+    monkeypatch.setenv("COMFYUI_PROMPT_NODE", "6")
+    monkeypatch.setenv("COMFYUI_PROMPT_INPUT", "text")
+    monkeypatch.setenv("COMFYUI_SEED_NODE", "3")
+    monkeypatch.setenv("COMFYUI_SEED_INPUT", "seed")
+    result = build_workflow(prompt="new prompt", seed=123, workflow_path=path)
+    assert result["6"]["inputs"]["text"] == "new prompt"
+    assert result["3"]["inputs"]["seed"] == 123
+
+def test_build_workflow_rejects_missing_file(tmp_path):
+    with pytest.raises(ComfyUIError):
+        build_workflow(workflow_path=tmp_path / "missing.json")
+
+def test_build_workflow_rejects_empty_workflow(tmp_path):
+    path = tmp_path / "workflow.json"
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ComfyUIError):
+        build_workflow(workflow_path=path)
+
+def test_build_workflow_does_not_mutate_source(tmp_path, monkeypatch):
+    workflow = {"1": {"class_type": "Node", "inputs": {"value": "old"}}}
+    path = tmp_path / "workflow.json"
+    path.write_text(json.dumps(workflow), encoding="utf-8")
+    monkeypatch.setenv("COMFYUI_PROMPT_NODE", "1")
+    monkeypatch.setenv("COMFYUI_PROMPT_INPUT", "value")
+    result = build_workflow(prompt="new", workflow_path=path)
+    assert result["1"]["inputs"]["value"] == "new"
+    assert json.loads(path.read_text(encoding="utf-8")) == workflow
