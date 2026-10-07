@@ -147,41 +147,6 @@ def _build_position(subtitle_position: str) -> tuple:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-def _session_token(request: Request) -> str:
-    return request.cookies.get("ai_session") or request.headers.get(
-        "Authorization", ""
-    ).removeprefix("Bearer ").strip()
-
-
-def _require_session(request: Request) -> dict:
-    account = get_user_by_session(_session_token(request))
-    if not account:
-        raise HTTPException(status_code=401, detail="Требуется вход")
-    return account
-
-
-def _require_session_or_guest(request: Request) -> dict:
-    """Allow the public creative UI to work without manual registration."""
-    account = get_user_by_session(_session_token(request))
-    if account:
-        return account
-    email = "guest-" + secrets.token_hex(12) + "@local.invalid"
-    password = secrets.token_urlsafe(32)
-    try:
-        uid, _ = create_user(email, password)
-        raw = create_session(uid)
-        return get_user_by_session(raw) or {}
-    except Exception as exc:
-        logger.exception("Guest session creation failed")
-        raise HTTPException(status_code=503, detail="Не удалось создать гостевую сессию") from exc
-
-
-def _require_admin(request: Request) -> None:
-    token = _session_token(request)
-    expected = get_api_key()
-    if not expected or not token or not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=403, detail="Доступ запрещён")
-
 
 # Suppress noisy WebSocket heartbeat / protocol logs from uvicorn and websockets
 logging.getLogger("uvicorn.protocols.websockets").setLevel(logging.WARNING)
