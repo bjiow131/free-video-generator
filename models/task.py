@@ -147,7 +147,7 @@ class BaseTaskState(BaseModel):
     task_type: TaskType
     status: StepStatus = StepStatus.PENDING
     video_width: int = 1152
-    video_height: int = 768
+    video_height: int = 648
     final_video_file: str = ""
     error_message: str = ""
 
