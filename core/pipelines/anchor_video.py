@@ -550,8 +550,19 @@ class AnchorPipeline(BasePipeline):
     def _make_curl(video_id: str) -> str:
         return (
             f'curl -s -H "Authorization: Bearer $AGNES_API_KEY" '
-            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}"'
+            f'"https://apihub.agnes-ai.com/agnesapi?video_id={video_id}&model_name={self.video_generator.model}"'
         )
+
+    def _load_task(self, clip_dir: str) -> Optional[str]:
+        """Load a previously submitted Agnes video_id for crash/restart recovery."""
+        task_file = os.path.join(clip_dir, "task.json")
+        try:
+            with open(task_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            video_id = data.get("video_id")
+            return video_id if isinstance(video_id, str) and video_id.strip() else None
+        except (OSError, json.JSONDecodeError):
+            return None
 
     def _save_task(self, clip_dir: str, video_id: str) -> None:
         task_file = os.path.join(clip_dir, "task.json")
