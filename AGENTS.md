@@ -79,7 +79,7 @@ curl -s http://localhost:8765/api/config | python3 -m json.tool
 
 # 3. TTS 语音列表可达
 curl -s http://localhost:8765/api/voices | python3 -m json.tool
-# 期望：返回包含 4 个语音角色的 JSON 数组
+# 期望：返回包含 2 个语音角色的 JSON 数组
 
 # 4. 任务列表可达
 curl -s http://localhost:8765/api/tasks | python3 -m json.tool
@@ -458,7 +458,7 @@ python scripts/scene_runner.py --endpoints
 |------|--------|
 | `GET /` | 返回 200，三 Tab HTML |
 | `GET /api/config` | 返回 ok: true |
-| `GET /api/voices` | 返回 4 个语音角色 |
+| `GET /api/voices` | 返回 2 个语音角色 |
 | `POST /api/tasks/simple` | 参数校验 + task_type: simple |
 | `POST /api/tasks/creative` | 参数校验 + task_type: creative |
 | `POST /api/tasks/manuscript` | 参数校验 + task_type: manuscript |
