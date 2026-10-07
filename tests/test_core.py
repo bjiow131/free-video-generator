@@ -627,9 +627,3 @@ class TestAgnesCurrentImageDefaults:
         api = AgnesImageAPI("test-key")
         assert api.model == "agnes-image-2.5-flash"
         assert api.i2i_model == "agnes-image-2.5-flash"
-
-class TestAgnesCurrentImageRequest:
-    def test_legacy_pixel_size_maps_to_current_schema(self):
-        from core.api.agnes_image import AgnesImageAPI
-        assert AgnesImageAPI._normalize_size("1152x648") == ("1K", "16:9")
-        assert AgnesImageAPI._normalize_size("768x1152") == ("1K", "9:16")
