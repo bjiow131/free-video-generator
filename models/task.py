@@ -382,8 +382,8 @@ class CreateSimpleTaskRequest(BaseModel):
     prompt: str
     mode: str = "t2v"
     duration: int = 5
-    video_width: int = 768
-    video_height: int = 1152
+    video_width: int = 1152
+    video_height: int = 648
     seed: Optional[int] = None
     negative_prompt: Optional[str] = None
     system_prompt: str = ""
@@ -397,8 +397,8 @@ class CreateCreativeTaskRequest(BaseModel):
     negative_prompt: str = ""
     include_characters: bool = True
     chaining_mode: str = "keyframes"
-    video_width: int = 768
-    video_height: int = 1152
+    video_width: int = 1152
+    video_height: int = 648
 
     # ── 场景配置 ──
     duration_source: str = "manual"  # "manual" | "prompt"
@@ -416,8 +416,8 @@ class CreateManuscriptTaskRequest(BaseModel):
     manuscript_text: str
     video_style: str = ""
     negative_prompt: str = ""
-    video_width: int = 768
-    video_height: int = 1152
+    video_width: int = 1152
+    video_height: int = 648
     video_duration: int = 10
     audio_config: Optional[AudioConfig] = None
     subtitle_config: Optional[SubtitleConfig] = None
