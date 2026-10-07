@@ -52,3 +52,18 @@ def test_extract_outputs_builds_view_urls():
     assert result[0]["filename"] == "sample.png"
     assert result[0]["kind"] == "images"
     assert result[0]["url"].startswith("http://127.0.0.1:8188/view?")
+
+
+def test_extract_outputs_ignores_malformed_items():
+    from core.api.comfyui import ComfyUIClient
+
+    client = ComfyUIClient(base_url="http://127.0.0.1:8188")
+    result = client.extract_outputs({
+        "outputs": {
+            "9": {
+                "images": [None, {}, {"subfolder": "x"}, {"filename": "ok.png"}],
+                "videos": [{"filename": "clip.mp4", "type": "output"}],
+            }
+        }
+    })
+    assert [item["filename"] for item in result] == ["ok.png", "clip.mp4"]
