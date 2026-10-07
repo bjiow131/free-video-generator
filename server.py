@@ -75,7 +75,7 @@ TASK_TYPE_WEIGHTS = {
     TaskType.ANCHOR: 2,       # 1 i2v submit + 轻量轮询
     TaskType.IMAGE: 1,        # 1 image submit
 }
-MAX_CONCURRENT_WEIGHT = 3  # Free Agnes access: run at most one creative pipeline at a time
+MAX_CONCURRENT_WEIGHT = int(os.environ.get("AGNES_MAX_CONCURRENT_WEIGHT", "3"))
 
 
 SUPPORTED_VIDEO_DIMENSIONS = {(768, 1152), (1152, 648), (1024, 1024)}
@@ -162,18 +162,13 @@ active_pipelines: Dict[str, BasePipeline] = {}
 # task_id -> asyncio.Lock, 串行化 create/resume/stop，避免并发操作同一任务导致
 # 旧 pipeline 的 finally 误删新 pipeline、或同任务双重运行。
 _pipeline_locks: Dict[str, asyncio.Lock] = {}
+_task_dir_cache: Dict[str, str] = {}
 background_tasks: set = set()
 shutdown_event = asyncio.Event()
 
 
 def _get_pipeline_lock(task_id: str) -> asyncio.Lock:
-    """获取（必要时创建）task_id 级别的并发锁。
-
-    create/resume/stop 端点对 ``active_pipelines`` 的检查与插入之间存在
-    ``await`` 让出点，快速重复操作（如 resume→stop）会让旧 pipeline 的
-    ``finally`` 误删新 pipeline，甚至产生同任务双重运行。用 per-task 锁将
-    这三类操作的「检查+插入/删除」关键段串行化。
-    """
+    """Get the task-level lock, creating it when necessary."""
     lock = _pipeline_locks.get(task_id)
     if lock is None:
         lock = asyncio.Lock()
@@ -181,6 +176,35 @@ def _get_pipeline_lock(task_id: str) -> asyncio.Lock:
     return lock
 
 
+def _rebuild_task_dir_cache() -> None:
+    """Rebuild task_id -> dir_name cache for the active workspace."""
+    _task_dir_cache.clear()
+    working_dir = get_working_dir()
+    if not os.path.isdir(working_dir):
+        return
+    for name in os.listdir(working_dir):
+        task_file = os.path.join(working_dir, name, "task_state.json")
+        if not os.path.isfile(task_file):
+            continue
+        try:
+            with open(task_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            task_id = data.get("task_id")
+            if task_id:
+                try:
+                    _task_dir_cache[_validate_task_id(task_id)] = _validate_task_id(name)
+                except HTTPException:
+                    logger.warning("[Security] Ignoring unsafe task cache entry: %s", name)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("[Startup] Failed to index task %s: %s", name, e, exc_info=True)
+
+
+def _cache_task_dir(task_id: str, dir_name: str) -> None:
+    _task_dir_cache[_validate_task_id(task_id)] = _validate_task_id(dir_name)
+
+
+def _invalidate_task_dir(task_id: str) -> None:
+    _task_dir_cache.pop(task_id, None)
 def _validate_task_id(task_id: str) -> str:
     """Validate a task identifier before it can influence a filesystem path."""
     if not task_id or len(task_id) > 128 or os.path.basename(task_id) != task_id:
@@ -190,18 +214,10 @@ def _validate_task_id(task_id: str) -> str:
     return task_id
 
 def _find_dir_name(task_id: str) -> str:
-    """Find the directory name for a task_id. Falls back to task_id for legacy tasks."""
+    """Find a task directory using the in-memory cache."""
     task_id = _validate_task_id(task_id)
-    tm = TaskManager("_")
-    for t in tm.list_tasks():
-        if t["task_id"] == task_id:
-            dir_name = t.get("dir_name", task_id)
-            try:
-                return _validate_task_id(dir_name)
-            except HTTPException:
-                logger.warning("[Security] Ignoring unsafe task directory for %s", task_id)
-                return task_id
-    return task_id
+    return _task_dir_cache.get(task_id, task_id)
+
 
 
 # ═══════════════════════════════════════════════════
@@ -221,7 +237,7 @@ async def lifespan(app: FastAPI):
             task_file = os.path.join(working_dir, name, "task_state.json")
             if os.path.exists(task_file):
                 try:
-                    with open(task_file, "r") as f:
+                    with open(task_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     if data.get("status") in ("running", "queued"):
                         old_status = data["status"]
@@ -240,7 +256,9 @@ async def lifespan(app: FastAPI):
                             raise
                         logger.info(f"[Startup] Reset stale {old_status} task {name} -> pending")
                 except Exception as e:
-                    logger.debug(f"[Startup] Failed to reset stale task {name}: {e}")
+                    logger.warning(f"[Startup] Failed to reset stale task {name}: {e}", exc_info=True)
+
+    _rebuild_task_dir_cache()
 
     yield
 
@@ -971,6 +989,7 @@ async def _run_pipeline(pipeline: BasePipeline, state: BaseTaskState):
         # 否则快速 resume→stop 会让旧 pipeline 的 finally 误删新 pipeline。
         if active_pipelines.get(pipeline.task_id) is pipeline:
             del active_pipelines[pipeline.task_id]
+            _pipeline_locks.pop(pipeline.task_id, None)
 
 
 async def _run_pipeline_with_concurrency(
@@ -998,9 +1017,12 @@ async def _run_pipeline_with_concurrency(
     # 标记排队状态
     task_manager.update_state(status=StepStatus.QUEUED)
 
+    acquired = False
+
     try:
         # 等待并发槽位
         await _pipeline_semaphore.acquire(weight)
+        acquired = True
         # 已获取槽位，从排队列表移除
         _queued_tasks.pop(task_id, None)
 
@@ -1017,19 +1039,19 @@ async def _run_pipeline_with_concurrency(
         # 启动 pipeline
         await _run_pipeline(pipeline, state)
     except asyncio.CancelledError:
-        # 任务被取消（如 stop 操作）
         _queued_tasks.pop(task_id, None)
-        logger.info(f"[Concurrency] Task {task_id} cancelled while queued")
+        logger.info(f"[Concurrency] Task {task_id} cancelled")
+        raise
     finally:
-        # 释放信号量
-        try:
-            await _pipeline_semaphore.release(weight)
-            logger.info(
-                f"[Concurrency] Task {task_id} released slot (weight={weight}, "
-                f"current={_pipeline_semaphore.current}/{_pipeline_semaphore.max_weight})"
-            )
-        except Exception:
-            pass
+        if acquired:
+            try:
+                await _pipeline_semaphore.release(weight)
+                logger.info(
+                    f"[Concurrency] Task {task_id} released slot (weight={weight}, "
+                    f"current={_pipeline_semaphore.current}/{_pipeline_semaphore.max_weight})"
+                )
+            except Exception:
+                logger.exception("[Concurrency] Failed to release slot for %s", task_id)
         _queued_tasks.pop(task_id, None)
 
 
@@ -1115,6 +1137,7 @@ async def create_simple_task(
 
     pipeline = _create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
     active_pipelines[task_id] = pipeline
+    _cache_task_dir(task_id, dir_name)
 
     if task_id in active_connections:
         pipeline.progress_callback = _make_progress_callback(task_id)
