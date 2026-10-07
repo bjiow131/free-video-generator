@@ -476,10 +476,9 @@ class TestTaskIdSafety:
 
 
 class TestLocalEntrypoints:
-    def test_render_app_imports_main_server_without_public_api(self):
-        import render_app
+    def test_local_server_module_is_importable(self):
         from server import app
-        assert render_app.app is app
+        assert app.title == "Agnes Video Generator"
 
     def test_gemini_temp_path_is_platform_neutral(self):
         from core.api.gemini_image import GeminiImageProvider
