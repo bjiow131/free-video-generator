@@ -876,7 +876,7 @@ async def generate_image(
     ratio: str = Form("1:1"),
     negative_prompt: Optional[str] = Form(None),
     system_prompt: str = Form(""),
-    reference_image: UploadFile = File(None),
+    reference_image: Optional[UploadFile] = File(None),
     character_id: Optional[str] = Form(None),
 ):
     """简单图片生成：创建任务 → 直调 Agnes Image API → 保存到任务目录。"""
