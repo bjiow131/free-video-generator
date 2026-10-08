@@ -79,7 +79,7 @@ TASK_TYPE_WEIGHTS = {
 MAX_CONCURRENT_WEIGHT = int(os.environ.get("AGNES_MAX_CONCURRENT_WEIGHT", "3"))
 
 
-SUPPORTED_VIDEO_DIMENSIONS = {(768, 1152), (1152, 648), (1024, 1024)}
+SUPPORTED_VIDEO_DIMENSIONS = {(720, 1280), (1280, 704), (720, 720)}
 
 def _validate_video_dimensions(width: int, height: int) -> None:
     """Reject unsupported resolutions before they reach FFmpeg/Agnes."""
