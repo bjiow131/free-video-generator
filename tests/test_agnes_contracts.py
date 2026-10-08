@@ -26,3 +26,14 @@ def test_queue_full_error_is_user_actionable():
     source = __import__("inspect").getsource(AgnesVideoAPI._submit_with_retry)
     assert "video queue is full" in source
     assert "please retry later" in source
+
+
+@pytest.mark.asyncio
+async def test_video_reference_file_read_is_async(tmp_path):
+    from core.api.agnes_video import AgnesVideoAPI
+
+    path = tmp_path / "ref.png"
+    path.write_bytes(b"png-data")
+    api = AgnesVideoAPI(api_key="test")
+    result = await api._path_to_b64(str(path))
+    assert result.startswith("data:image/png;base64,")
