@@ -699,9 +699,18 @@ async function useLastVideoFrame(taskId,button){
     toast('Финальный кадр выбран для следующей сцены');
   }catch(e){
     generatedStartFrameBlob=null;generatedStartFrameTaskId='';
-    $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
-    $('#startFrameResult').classList.add('hidden');
-    toast(e.message||'Не удалось извлечь финальный кадр');
+    const message=e.message||'Не удалось извлечь финальный кадр';
+    $('#startFrameStatus').textContent=message;
+    const container=$('#startFrameResult');
+    container.replaceChildren();
+    const error=document.createElement('div');
+    error.setAttribute('role','status');
+    error.style.cssText='padding:16px;color:#8a342b;background:#fff1ee;border-radius:12px;line-height:1.5';
+    error.textContent='Финальный кадр не получен. '+message+' Проверь, что видео полностью загружено и воспроизводится, затем попробуй ещё раз.';
+    container.appendChild(error);
+    container.classList.remove('hidden');
+    container.scrollIntoView({behavior:'smooth',block:'nearest'});
+    toast(message);
   }finally{
     if(button){button.disabled=false;button.textContent=originalLabel}
   }
