@@ -572,31 +572,41 @@ class VideoConcatenator:
 
         # Step 4: Concatenate with xfade cross-fade transitions
         try:
-            subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", concat_file,
-                 "-c", "copy",
-                 "-t", str(needed),
-                 looped_path],
-                stdin=subprocess.DEVNULL,
-                check=True, capture_output=True, timeout=300,
-            )
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"[Compositor] Simple concat failed: {e.stderr[:200]}, trying xfade")
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                     "-i", concat_file,
+                     "-c", "copy",
+                     "-t", str(needed),
+                     looped_path],
+                    stdin=subprocess.DEVNULL,
+                    check=True, capture_output=True, timeout=300,
+                )
+            except subprocess.CalledProcessError as e:
+                stderr = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else str(e.stderr or "")
+                logger.warning(f"[Compositor] Simple concat failed: {stderr[:200]}, trying fallback")
 
-            # Portable fallback: re-encode a stream-looped input instead of relying
-            # on a fragile filter graph or shell-specific path syntax.
-            subprocess.run(
-                ["ffmpeg", "-y",
-                 "-stream_loop", str(n - 1), "-i", clip_path,
-                 "-t", str(needed),
-                 "-c:v", "libx264",
-                 "-preset", "fast",
-                 "-pix_fmt", "yuv420p",
-                 looped_path],
-                stdin=subprocess.DEVNULL,
-                check=True, capture_output=True, timeout=300,
-            )
+                # Portable fallback: re-encode a stream-looped input instead of relying
+                # on a fragile filter graph or shell-specific path syntax.
+                subprocess.run(
+                    ["ffmpeg", "-y",
+                     "-stream_loop", str(n - 1), "-i", clip_path,
+                     "-t", str(needed),
+                     "-c:v", "libx264",
+                     "-preset", "fast",
+                     "-pix_fmt", "yuv420p",
+                     looped_path],
+                    stdin=subprocess.DEVNULL,
+                    check=True, capture_output=True, timeout=300,
+                )
+        except Exception:
+            for tmp in (looped_path, concat_file):
+                try:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                except OSError:
+                    logger.warning("[Compositor] Failed to clean anchor temp file %s", tmp, exc_info=True)
+            raise
 
         # Step 5: Overlay audio and subtitles
         concat_video_clip = None
