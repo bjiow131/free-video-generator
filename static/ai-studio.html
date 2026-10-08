@@ -189,7 +189,7 @@ button{cursor:pointer}
 </style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
-<button class="active" data-page="image">Изображения</button><button data-page="history">История</button>
+<button class="active" data-page="image">Изображения</button><button data-page="characters">Персонажи</button><button data-page="history">История</button>
 </nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
 <main class="main"><header class="top"><div>Локальный сервер</div><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></header>
 
@@ -204,10 +204,25 @@ button{cursor:pointer}
       </select>
       <div class="label">Качество</div>
       <select id="imageQuality" class="select"><option value="1K">1K</option><option value="2K">2K</option><option value="3K">3K</option><option value="4K">4K</option></select>
+      <div class="label">Персонаж</div><select id="imageCharacter" class="select"><option value="">Без персонажа</option></select>
       <div class="label">Промпт</div><textarea id="imagePrompt" class="textarea" placeholder="Опиши изображение, которое хочешь получить…"></textarea>
       <div class="label">Референс <span style="color:#777">(необязательно)</span></div><input id="imageReference" type="file" accept="image/*">
       <div class="actions"><button id="imageGenerate" class="primary">Создать изображение</button><button class="ghost" id="imageClear">Очистить</button></div>
       <div id="imageStatus" class="status"></div><div id="imageResult" class="result hidden"></div>
+    </div>
+  </div>
+</section>
+
+<section id="characters" class="section">
+  <div class="hero"><div class="eyebrow">Character Pack</div><h1 style="font-size:52px">Персонажи</h1><p>Храни референсы персонажей один раз и используй их повторно при генерации изображений.</p></div>
+  <div class="workspace">
+    <div class="panel">
+      <h2>Мия</h2>
+      <div id="characterStatus" class="status">Референсы ещё не загружены.</div>
+      <div id="characterRefs" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));padding:16px 0"></div>
+      <div class="label">Добавить или обновить референсы</div>
+      <input id="characterFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+      <div class="actions"><button id="characterSave" class="primary">Сохранить референсы</button></div>
     </div>
   </div>
 </section>
@@ -233,6 +248,28 @@ function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
+async function loadCharacters(){
+  try{
+    const r=await api('/api/characters'); const d=await r.json(); const chars=d.characters||[];
+    const select=$('#imageCharacter'); if(select) select.innerHTML='<option value="">Без персонажа</option>'+chars.map(c=>'<option value="'+escapeHtml(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
+    renderCharacters(chars);
+  }catch(e){$('#characterStatus').textContent=e.message}
+}
+function renderCharacters(chars){
+  const box=$('#characterRefs'), status=$('#characterStatus'); if(!box||!status)return;
+  const mia=chars.find(c=>c.id==='miya'||c.name==='Мия');
+  if(!mia){status.textContent='Загрузите референсы Мии (до 12 изображений).';box.innerHTML='';return}
+  status.textContent='Сохранено референсов: '+mia.references.length+' · основной: '+(mia.primary||'');
+  box.innerHTML=mia.references.map((r,i)=>'<div class="card" style="padding:10px;min-height:0"><img src="'+r.url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(r.name===mia.primary?' · основной':'')+'</div></div>').join('');
+}
+async function saveCharacterPack(){
+  const files=$('#characterFiles').files;if(!files.length){toast('Выбери хотя бы один референс');return}
+  const b=$('#characterSave');b.disabled=true;b.textContent='Сохранение…';
+  try{
+    const f=new FormData();f.append('name','Мия');for(const file of files)f.append('reference_images',file);
+    const r=await api('/api/characters',{method:'POST',body:f});await r.json();toast('Референсы Мии сохранены');$('#characterFiles').value='';await loadCharacters();
+  }catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Сохранить референсы'}
+}
 async function load(){}
 function renderDedicatedModels(type){
   const box=$('#'+type+'Models'), list=models.filter(m=>m.type===type);
@@ -249,6 +286,7 @@ async function generateImage(){
   setGenerateBusy('image',true);$('#imageStatus').textContent='Запуск генерации…';
   try{
     const f=new FormData();f.append('prompt',p);f.append('size',$('#imageQuality').value);f.append('ratio',$('#imageAspect').value);
+    const characterId=$('#imageCharacter').value;if(characterId)f.append('character_id',characterId);
     const ref=$('#imageReference').files[0];if(ref)f.append('reference_image',ref);
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
@@ -294,6 +332,7 @@ $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 $('#imageGenerate').onclick=generateImage;
+$('#characterSave').onclick=saveCharacterPack;
 $('#imageClear').onclick=()=>{$('#imagePrompt').value='';$('#imageReference').value='';$('#imageResult').classList.add('hidden');$('#imageStatus').textContent=''};
 async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
 let historyTimer=null;
@@ -322,4 +361,4 @@ async function loadHistory(){
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
   }catch(e){$('#historyList').innerHTML='<div class="card">'+e.message+'</div>'}
 }
-load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false)});</script></body></html>
+load().then(()=>{loadCharacters();let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false)});</script></body></html>
