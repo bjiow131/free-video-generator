@@ -9,7 +9,7 @@ tenacity>=8.0.0,<10.0.0
 python-multipart>=0.0.6,<1.0.0
 
 # v2.0 新增
-edge_tts>=6.1.0,<8.0.0          # Azure Edge TTS，免费无需 API Key
+edge-tts>=6.1.0,<8.0.0          # Azure Edge TTS，免费无需 API Key
 srt>=3.5.0,<4.0.0               # SRT 字幕解析/生成工具
 
 # Development/test runner
