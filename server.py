@@ -309,12 +309,17 @@ _LOCAL_ALLOWED_HOSTS = {
     f"127.0.0.1:{_LOCAL_SERVER_PORT}",
     f"localhost:{_LOCAL_SERVER_PORT}",
 }
+for _configured_host in (
+    os.environ.get("ALLOWED_HOST", ""),
+    os.environ.get("PUBLIC_HOST", ""),
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME", ""),
+):
+    if _configured_host:
+        _LOCAL_ALLOWED_HOSTS.add(_configured_host.lower().removeprefix("https://").removeprefix("http://").rstrip("/"))
 
 def _origin_matches_host(origin: str, host: str) -> bool:
-    """Allow same-origin requests on localhost and deployed HTTPS hosts."""
+    """Require a supplied Origin to be same-origin with the validated Host."""
     if not origin:
-        return True
-    if origin in _LOCAL_CORS_ORIGINS:
         return True
     try:
         parsed = urlsplit(origin)
@@ -322,15 +327,18 @@ def _origin_matches_host(origin: str, host: str) -> bool:
     except ValueError:
         return False
 
+def _request_host_allowed(host: str) -> bool:
+    return host in _LOCAL_ALLOWED_HOSTS
+
 @app.middleware("http")
 async def local_origin_guard(request: Request, call_next):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
         host = request.headers.get("host", "").lower()
+        if not _request_host_allowed(host):
+            return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
         if not _origin_matches_host(origin, host):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый источник запроса"})
-        if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
-            return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
     return await call_next(request)
 
 def get_upload_dir() -> str:
@@ -414,13 +422,18 @@ def _validate_workspace_path(raw_path: str) -> str:
 
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    try:
+        _validate_task_id(task_id)
+    except HTTPException:
+        await websocket.close(code=1008, reason="Недопустимый идентификатор задачи")
+        return
     origin = websocket.headers.get("origin")
     host = websocket.headers.get("host", "").lower()
+    if not _request_host_allowed(host):
+        await websocket.close(code=1008, reason="Недопустимый адрес сервера")
+        return
     if not _origin_matches_host(origin, host):
         await websocket.close(code=1008, reason="Недопустимый источник запроса")
-        return
-    if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
-        await websocket.close(code=1008, reason="Недопустимый адрес сервера")
         return
     await websocket.accept()
     logger.info(f"[WS] Client connected for task {task_id}")
