@@ -402,6 +402,10 @@ async function generateImage(){
       chosen.forEach((item,index)=>{const mime=String(item.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';const field=index===0?'reference_image':'reference_images';f.append(field,item.blob,'miya_ref_'+(index+1)+'.'+ext);});
     }
     const endpoint='/api/image/generate?prompt='+encodeURIComponent(p)+'&size='+encodeURIComponent($('#imageQuality').value)+'&ratio='+encodeURIComponent($('#imageAspect').value);
+    const sentRefs=[...f.entries()].filter(([key,value])=>(key==='reference_image'||key==='reference_images')&&value instanceof Blob);
+    const refDiagnostics=sentRefs.map(([key,value])=>({field:key,type:value.type||'unknown',size:value.size,name:value.name||'blob'}));
+    console.info('[Image request diagnostics]',{character:characterId||'none',manualReference:!!ref,referenceCount:sentRefs.length,references:refDiagnostics,size:$('#imageQuality').value,ratio:$('#imageAspect').value});
+    $('#imageStatus').textContent='Отправка запроса: референсов '+sentRefs.length+'; '+(sentRefs.map(([,v])=>(v.type||'unknown')+', '+Math.round(v.size/1024)+' КБ').join(' | ')||'без референса');
     const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
