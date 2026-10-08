@@ -175,7 +175,12 @@ class AgnesVideoAPI:
 
             try:
                 await asyncio.to_thread(get_rate_limiter().acquire)
-                params = {"video_id": video_id, "model_name": self.model}
+                # Agnes recommends querying legacy v2.0 jobs by video_id alone.
+                # Passing model_name is only necessary for non-default/upstream IDs;
+                # omitting it avoids the legacy endpoint getting pinned to a stale model route.
+                params = {"video_id": video_id}
+                if self.is_modern:
+                    params["model_name"] = self.model
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
                         requests.get,
@@ -195,13 +200,22 @@ class AgnesVideoAPI:
 
                 if status != last_status:
                     logger.info(
-                        "[AgnesVideo] %s %s progress=%s%%",
-                        video_id[:16], status, progress,
+                        "[AgnesVideo] %s model=%s status=%s progress=%s%% poll=%d",
+                        video_id[:16], self.model, status, progress, poll_count,
                     )
                     last_status = status
+                else:
+                    logger.info(
+                        "[AgnesVideo] %s model=%s heartbeat status=%s progress=%s%% poll=%d",
+                        video_id[:16], self.model, status, progress, poll_count,
+                    )
 
                 if progress_callback:
-                    progress_callback(status, progress, None)
+                    progress_callback(
+                        status,
+                        progress,
+                        f"Agnes {self.model}: {status or 'processing'} · {progress}%"
+                    )
 
                 if status == "completed":
                     return result
