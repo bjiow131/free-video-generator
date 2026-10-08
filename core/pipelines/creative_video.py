@@ -780,186 +780,75 @@ class CreativeVideoPipeline(BasePipeline):
     async def _step_pregenerate_end_frames(
         self, scenes: list, end_frame_prompts: list, character_ref_path: str
     ) -> dict:
-        """Pre-generate end-frame images for every scene (keyframes mode only).
-
-        Args:
-            scenes: List of scene descriptions.
-            end_frame_prompts: Per-scene end-frame prompt strings.
-            character_ref_path: Path to the character reference image.
-
-        Returns:
-            Dict mapping ``str(scene_idx)`` to end-frame file paths, or
-            empty dict when not in keyframes mode.
-        """
+        """Pre-generate independent end frames concurrently, with per-scene checkpoints."""
         if self._state.chaining_mode != "keyframes":
             return {}
-
-        if self._state.step_end_frame_generation == StepStatus.COMPLETED:
-            cached_frames = self._state.pregenerated_end_frames or {}
-            # 验证缓存的文件是否实际存在（防止标记 completed 但文件丢失）
-            all_exist = all(
-                os.path.exists(p) for p in cached_frames.values()
-            ) if cached_frames else False
-            if all_exist:
-                logger.info("[Pipeline] Step end_frame_gen: SKIP (already completed)")
-                return cached_frames
-            logger.warning(
-                "[Pipeline] Step end_frame_gen: marked completed but some files missing, re-running"
-            )
-            self._state.step_end_frame_generation = StepStatus.PENDING
-            self.task_manager.update_step("step_end_frame_generation", StepStatus.PENDING)
-
-        logger.info(f"[Pipeline] Step end_frame_gen: RUNNING ({len(end_frame_prompts)} frames)")
-
-        vw = self._state.video_width
-        vh = self._state.video_height
-        end_frame_images = self._state.end_frame_images
-
-        pregenerated: dict = {}
         cached = self._state.pregenerated_end_frames or {}
-        # 批次5：维护上一场景尾帧路径，用于多图 i2i 场景间视觉链
-        prev_end_frame: Optional[str] = None
+        if self._state.step_end_frame_generation == StepStatus.COMPLETED:
+            if cached and all(os.path.exists(p) for p in cached.values()):
+                return cached
 
-        for scene_idx in range(len(scenes)):
+        vw, vh = self._state.video_width, self._state.video_height
+        user_frames = self._state.end_frame_images or []
+        limit = max(1, int(os.getenv("MAX_PARALLEL_SCENES", "3")))
+        semaphore = asyncio.Semaphore(limit)
+        results = dict(cached)
+
+        async def generate_one(scene_idx: int):
             if self._is_shutdown():
                 raise PipelineShutdown(f"interrupted during end frame gen scene {scene_idx}")
             scene_dir = os.path.join(self.working_dir, f"scene_{scene_idx}")
             os.makedirs(scene_dir, exist_ok=True)
             end_frame_path = os.path.join(scene_dir, "end_frame.png")
+            if str(scene_idx) in results and os.path.exists(end_frame_path):
+                return scene_idx, end_frame_path
+            user_ef = user_frames[scene_idx] if scene_idx < len(user_frames) else None
+            if user_ef and os.path.exists(user_ef):
+                await _run_ffmpeg_async([
+                    "ffmpeg", "-y", "-i", user_ef,
+                    "-vf", f"scale={vw}:{vh}:force_original_aspect_ratio=decrease,pad={vw}:{vh}:(ow-iw)/2:(oh-ih)/2",
+                    end_frame_path,
+                ], timeout=30)
+                return scene_idx, end_frame_path
 
-            if str(scene_idx) in cached and os.path.exists(end_frame_path):
-                pregenerated[scene_idx] = end_frame_path
-                prev_end_frame = end_frame_path  # 维护视觉链
-                continue
+            prompt = end_frame_prompts[scene_idx] if scene_idx < len(end_frame_prompts) else _fallback_end_frame(scenes[scene_idx])
+            if self._state.character_appearance and not self._state.reference_image and self._state.generate_end_frames_from_ref:
+                tags = _localize_preserve_tags(scenes[scene_idx])
+                prompt = f"{tags['preserve']}\n{self._state.character_appearance}\n{tags['keep_identity']}\n\n{tags['change']}\n{prompt}"
 
-            user_ef = (
-                end_frame_images[scene_idx]
-                if end_frame_images and scene_idx < len(end_frame_images) and end_frame_images[scene_idx]
-                else None
-            )
-
-            if user_ef:
-                await self._emit(
-                    "end_frame_gen", "running",
-                    f"场景 {scene_idx+1}/{len(scenes)}: 使用自定义尾帧",
-                    0.25 + 0.05 * scene_idx / len(scenes),
-                )
-                if os.path.exists(user_ef):
-                    dest = os.path.join(scene_dir, "end_frame.png")
-                    await _run_ffmpeg_async(
-                        [
-                            "ffmpeg", "-y", "-i", user_ef,
-                            "-vf", f"scale={vw}:{vh}:force_original_aspect_ratio=decrease,pad={vw}:{vh}:(ow-iw)/2:(oh-ih)/2",
-                            dest,
-                        ],
-                        timeout=30,
-                    )
-                    end_frame_path = dest
-                pregenerated[scene_idx] = end_frame_path
-                cached[str(scene_idx)] = end_frame_path
-                prev_end_frame = end_frame_path  # 维护视觉链
-                continue
-
-            if os.path.exists(end_frame_path):
-                pregenerated[scene_idx] = end_frame_path
-                cached[str(scene_idx)] = end_frame_path
-                prev_end_frame = end_frame_path  # 维护视觉链
-                continue
-
-            if self._state.generate_end_frames_from_ref and character_ref_path:
-                await self._emit(
-                    "end_frame_gen", "running",
-                    f"场景 {scene_idx+1}/{len(scenes)}: 基于参考图生成尾帧 (i2i)",
-                    0.25 + 0.05 * scene_idx / len(scenes),
-                )
-                end_frame_prompt = (
-                    end_frame_prompts[scene_idx]
-                    if scene_idx < len(end_frame_prompts)
-                    else _fallback_end_frame(scenes[scene_idx])
-                )
-                # 程序化拼入 [PRESERVE] 角色外观硬约束，确保 i2i 身份一致性（批次3）
-                # 用户提供了参考图时跳过：文本描述从故事提取，可能与参考图衣着矛盾，
-                # 此时让 i2i 模型直接看参考图保持身份一致性。
-                if self._state.character_appearance and not self._state.reference_image:
-                    _tags = _localize_preserve_tags(scenes[scene_idx])
-                    end_frame_prompt = (
-                        f"{_tags['preserve']}\n"
-                        f"{self._state.character_appearance}\n"
-                        f"{_tags['keep_identity']}\n\n"
-                        f"{_tags['change']}\n"
-                        f"{end_frame_prompt}"
-                    )
-                # 规范化角色参考图到目标尺寸，避免 i2i 拉伸/构图错位
-                normalized_ref = await self._get_normalized_character_ref(character_ref_path)
-                # 批次5：多图 i2i 引导 —— 角色图锁身份 + 上一场景尾帧锁环境/风格延续
-                ref_images = [normalized_ref]
-                if prev_end_frame and os.path.exists(prev_end_frame):
-                    ref_images.append(prev_end_frame)
-                    logger.info(
-                        f"[EndFrame] Scene {scene_idx}: multi-ref i2i "
-                        f"(character + prev scene {scene_idx-1} end frame)"
-                    )
+            async with semaphore:
                 for attempt in range(3):
-                    if self._is_shutdown():
-                        raise PipelineShutdown(f"interrupted during end frame gen scene {scene_idx}")
                     try:
-                        img_output = await self.image_generator.generate_single_image(
-                            prompt=end_frame_prompt,
-                            reference_image_paths=ref_images,
-                            size=f"{vw}x{vh}",
-                        )
-                        await asyncio.to_thread(img_output.save, end_frame_path)
-                        pregenerated[scene_idx] = end_frame_path
-                        cached[str(scene_idx)] = end_frame_path
-                        break
-                    except Exception as e:
-                        if attempt < 2:
-                            wait = (attempt + 1) * 20
-                            logger.warning(
-                                f"[EndFrame] Scene {scene_idx} attempt {attempt+1} failed: {e}, "
-                                f"retrying in {wait}s..."
+                        if self._state.generate_end_frames_from_ref and character_ref_path:
+                            normalized_ref = await self._get_normalized_character_ref(character_ref_path)
+                            refs = [normalized_ref]
+                            img_output = await self.image_generator.generate_single_image(
+                                prompt=prompt, reference_image_paths=refs, size=f"{vw}x{vh}"
                             )
-                            await asyncio.sleep(wait)
                         else:
-                            logger.error(f"[EndFrame] Scene {scene_idx} failed after 3 attempts: {e}")
+                            img_output = await self.image_generator.generate_single_image(
+                                prompt=prompt, size=f"{vw}x{vh}"
+                            )
+                        await asyncio.to_thread(img_output.save, end_frame_path)
+                        return scene_idx, end_frame_path
+                    except Exception:
+                        if attempt < 2:
+                            await asyncio.sleep((attempt + 1) * 20)
+                        else:
                             raise
-            else:
-                end_frame_prompt = (
-                    end_frame_prompts[scene_idx]
-                    if scene_idx < len(end_frame_prompts)
-                    else _fallback_end_frame(scenes[scene_idx])
-                )
-                await self._emit(
-                    "end_frame_gen", "running",
-                    f"场景 {scene_idx+1}/{len(scenes)}: 自动生成尾帧 (t2i)",
-                    0.25 + 0.05 * scene_idx / len(scenes),
-                )
-                img_output = await self.image_generator.generate_single_image(
-                    prompt=end_frame_prompt,
-                    size=f"{vw}x{vh}",
-                )
-                await asyncio.to_thread(img_output.save, end_frame_path)
-                pregenerated[scene_idx] = end_frame_path
-                cached[str(scene_idx)] = end_frame_path
 
-            # 维护视觉链：所有路径（i2i/t2i）生成完毕后更新 prev_end_frame
-            prev_end_frame = end_frame_path
-
-            if scene_idx < len(scenes) - 1:
-                await asyncio.sleep(2)
-
-        self._state.pregenerated_end_frames = cached
+        generated = await asyncio.gather(*(generate_one(i) for i in range(len(scenes))))
+        for scene_idx, path_value in generated:
+            results[str(scene_idx)] = path_value
+        self._state.pregenerated_end_frames = results
         self._state.step_end_frame_generation = StepStatus.COMPLETED
         self.task_manager.update_state(
-            pregenerated_end_frames=cached,
+            pregenerated_end_frames=results,
             step_end_frame_generation=StepStatus.COMPLETED,
         )
-        await self._emit(
-            "end_frame_gen", "completed",
-            f"尾帧预生成全部完成 ({len(pregenerated)}/{len(scenes)})",
-            0.35,
-        )
-        return pregenerated
+        await self._emit("end_frame_gen", "completed",
+            f"尾帧预生成全部完成 ({len(results)}/{len(scenes)})", 0.35)
+        return results
 
     # ==================================================================
     # Step 4: Video Generation
