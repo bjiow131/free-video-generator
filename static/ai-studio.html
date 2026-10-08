@@ -205,7 +205,7 @@ button{cursor:pointer}
       <div class="label">Качество</div>
       <select id="imageQuality" class="select"><option value="1K">1K</option><option value="2K">2K</option><option value="3K">3K</option><option value="4K">4K</option></select>
       <div class="label">Персонаж</div><select id="imageCharacter" class="select"><option value="">Без персонажа</option></select>
-      <div class="label">Референс персонажа</div><select id="imageCharacterReference" class="select" disabled><option value="">Сначала выбери персонажа</option></select>
+      <div class="label">Референсы персонажа <span style="color:#777">(можно выбрать несколько)</span></div><select id="imageCharacterReference" class="select" multiple size="4" disabled><option value="">Сначала выбери персонажа</option></select><div class="hint">Чтобы выбрать несколько на компьютере, удерживай Ctrl; на телефоне отметь несколько пунктов в списке, если браузер поддерживает множественный выбор.</div>
       <div class="label">Промпт</div><textarea id="imagePrompt" class="textarea" placeholder="Опиши изображение, которое хочешь получить…"></textarea>
       <div class="label">Референс <span style="color:#777">(необязательно)</span></div><input id="imageReference" type="file" accept="image/*">
       <div class="actions"><button id="imageGenerate" class="primary">Создать изображение</button><button class="ghost" id="imageClear">Очистить</button></div>
@@ -327,7 +327,7 @@ async function populateCharacterReferences(refs){
     return '<option value="'+r.id+'">'+name+(r.isPrimary?' · основной':'')+'</option>';
   }).join('');
   const primary=refs.find(r=>r.isPrimary)||refs[0];
-  select.value=String(primary.id);
+  [...select.options].forEach(option=>{option.selected=Number(option.value)===primary.id});
 }
 async function syncCharacterReferenceSelector(){
   const character=$('#imageCharacter');
@@ -397,9 +397,9 @@ async function generateImage(){
     if(ref) f.append('reference_image',ref);
     else if(characterId==='miya'){
       const refs=await getMiaRefs();
-      const selectedId=Number($('#imageCharacterReference').value);
-      const chosen=refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0];
-      if(chosen){const mime=String(chosen.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';f.append('reference_image',chosen.blob,'miya_ref.'+ext);}
+      const selectedIds=[...$('#imageCharacterReference').selectedOptions].map(o=>Number(o.value)).filter(Number.isFinite);
+      const chosen=selectedIds.length?refs.filter(item=>selectedIds.includes(item.id)):[refs.find(item=>item.isPrimary)||refs[0]].filter(Boolean);
+      chosen.forEach((item,index)=>{const mime=String(item.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';f.append('reference_images',item.blob,'miya_ref_'+(index+1)+'.'+ext);});
     }
     const endpoint='/api/image/generate?prompt='+encodeURIComponent(p)+'&size='+encodeURIComponent($('#imageQuality').value)+'&ratio='+encodeURIComponent($('#imageAspect').value);
     const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
