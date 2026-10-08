@@ -879,8 +879,8 @@ async def generate_image(request: Request):
     system_prompt = str(form.get("system_prompt") or "")
     reference_images = [item for item in form.getlist("reference_images") if getattr(item, "filename", None) and hasattr(item, "read")]
     single_reference = form.get("reference_image")
-    if not reference_images and getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
-        reference_images = [single_reference]
+    if getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
+        reference_images.insert(0, single_reference)
     character_id = str(form.get("character_id") or "").strip() or None
 
     api_key = get_api_key()
