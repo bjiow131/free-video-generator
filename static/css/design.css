@@ -185,3 +185,6 @@ h1,h2,h3,h4,p,button,label,span,small,dt,dd{overflow-wrap:anywhere}
 :root[data-theme="light"] .create-canvas{background:var(--ds-surface-2)}
 :root[data-theme="light"] .result,:root[data-theme="light"] .player-frame{background:#111}
 :root[data-theme="light"] .credits{color:var(--ds-text-1);background:var(--ds-surface-1)}
+/* TASK 3B.3 — option rail and touch-target hardening */
+.option-row{display:flex;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;max-width:100%;scrollbar-width:none}.option-row::-webkit-scrollbar{display:none}.option-chip{flex:0 0 auto}
+@media(max-width:900px){.option-row{touch-action:pan-x}.mode-tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap}.mode-tab{flex:0 0 auto}}
