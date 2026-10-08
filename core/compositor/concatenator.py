@@ -391,16 +391,20 @@ class VideoConcatenator:
         # ── Step 5: moviepy 合成视频+音频+字幕 ──
         video_clip = None
         audio_clip_obj = None
+        source_video_clip = None
+        source_audio_clip = None
         subtitle_clips = []
         final_clip = None
         try:
-            video_clip = VideoFileClip(video_input)
-            audio_clip_obj = AudioFileClip(audio_input)
+            source_video_clip = VideoFileClip(video_input)
+            source_audio_clip = AudioFileClip(audio_input)
+            video_clip = source_video_clip
+            audio_clip_obj = source_audio_clip
 
             # 掐头去尾确保完全对齐
-            target_dur = min(video_clip.duration, audio_clip_obj.duration)
-            video_clip = video_clip.subclipped(0, target_dur)
-            audio_clip_obj = audio_clip_obj.subclipped(0, target_dur)
+            target_dur = min(source_video_clip.duration, source_audio_clip.duration)
+            video_clip = source_video_clip.subclipped(0, target_dur)
+            audio_clip_obj = source_audio_clip.subclipped(0, target_dur)
 
             video_with_audio = video_clip.with_audio(audio_clip_obj)
 
