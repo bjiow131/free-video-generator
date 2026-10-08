@@ -1,4 +1,5 @@
 from core.timing import timed_step
+
 """core.pipelines.simple_video — 简单视频生成流水线（类型 1）
 
 用户输入 prompt → 选择模式（t2v/i2v/keyframes）→ 调用 Agnes Video API → 返回视频。
@@ -40,6 +41,7 @@ class SimpleVideoPipeline(BasePipeline):
         self.video_api = AgnesVideoAPI(api_key=api_key, model="agnes-video-2.5-flash")
         self.video_api.shutdown_event = shutdown_event
 
+    @timed_step
     async def run(self, state: SimpleVideoTask) -> str:
         """执行简单视频生成流水线。"""
         self._state = state
