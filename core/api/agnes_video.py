@@ -405,10 +405,11 @@ class AgnesVideoAPI:
                     # Agnes 2.5 explicitly supports single-image image-to-video
                     # with mode=img2video and first_frame. Keyframe is reserved
                     # for first/last-frame interpolation.
-                    # Agnes 2.5 Flash deployments in the wild currently validate
-                    # image input through keyframe/reference modes. Use keyframe
-                    # for a single starting frame as the compatible contract.
-                    else "keyframe" if len(resolved_refs) in (1, 2)
+                    # Current Agnes 2.5 Flash schema exposes keyframe/reference.
+                    # For one saved character image, reference mode avoids the
+                    # first_frame validation path and explicitly supplies images.
+                    else "reference" if len(resolved_refs) == 1
+                    else "keyframe" if len(resolved_refs) == 2
                     else "reference"
                 ),
                 "seconds": str(seconds),
@@ -419,12 +420,16 @@ class AgnesVideoAPI:
             if seed is not None:
                 payload["seed"] = seed
             if len(resolved_refs) == 1:
-                payload["first_frame"] = resolved_refs[0]
+                payload["images"] = [resolved_refs[0]]
+                if "<Picture 1>" not in payload["prompt"]:
+                    payload["prompt"] = "<Picture 1> " + payload["prompt"]
             elif len(resolved_refs) == 2:
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
             elif len(resolved_refs) > 2:
                 payload["images"] = resolved_refs[:5]
+                if "<Picture 1>" not in payload["prompt"]:
+                    payload["prompt"] = "<Picture 1> " + payload["prompt"]
 
             mode_desc = payload["mode"]
             logger.info(
