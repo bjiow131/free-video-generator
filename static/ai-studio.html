@@ -590,10 +590,28 @@ async function getSelectedVideoReference(){
 async function generateVideo(){
   const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
   if(!p){toast('Напиши промпт движения');return}
-  const ref=await getSelectedVideoReference();
-  if((mode==='i2v'||mode==='ti2vid')&&!ref){toast('Для этого режима выбери исходное изображение или персонажа');return}
-  setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации видео…';$('#videoResult').classList.add('hidden');
+  setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');
   try{
+    let ref=null;
+    try{
+      ref=await getSelectedVideoReference();
+    }catch(e){
+      const msg=e?.message||'Не удалось получить референс';
+      console.error('[Video] Reference preparation failed',e);
+      $('#videoStatus').textContent='Ошибка референса: '+msg;
+      toast(msg);
+      setGenerateBusy('video',false);
+      return;
+    }
+    if((mode==='i2v'||mode==='ti2vid')&&!ref){
+      const msg='Для этого режима выбери исходное изображение или персонажа';
+      $('#videoStatus').textContent=msg;
+      toast(msg);
+      setGenerateBusy('video',false);
+      return;
+    }
+    console.info('[Video] Generate clicked',{mode,duration:$('#videoDuration').value,aspect:$('#videoAspect').value,hasReference:!!ref});
+    $('#videoStatus').textContent='Отправка запроса на сервер…';
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
     let reference_image_base64='';
     if(ref){
