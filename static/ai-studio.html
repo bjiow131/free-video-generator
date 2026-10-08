@@ -632,7 +632,16 @@ async function generateVideo(){
       setGenerateBusy('video',false);
       return;
     }
-    console.info('[Video] Generate clicked',{mode,duration:$('#videoDuration').value,aspect:$('#videoAspect').value,referenceCount:refs.length});
+    const duration=Number($('#videoDuration').value);
+    const aspect=$('#videoAspect').value;
+    const quality=$('#videoQuality').value;
+    const validAspects=new Set(['9:16','16:9','1:1']);
+    if(!validAspects.has(aspect)){throw new Error('Недопустимый формат кадра видео');}
+    if(!Number.isInteger(duration)||duration<4||duration>20){throw new Error('Недопустимая длительность видео');}
+    if(quality!=='720P'){throw new Error('Сейчас доступно только качество 720P');}
+    if(refs.length>5){throw new Error('Можно использовать не более 5 референсов');}
+    if((mode==='i2v'||mode==='ti2vid')&&refs.length===0){throw new Error('Для выбранного режима нужен хотя бы один референс');}
+    console.info('[Video] Generate clicked',{mode,duration,aspect,quality,referenceCount:refs.length});
     $('#videoStatus').textContent='Отправка запроса на сервер…';
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
     let reference_images_base64=[];
@@ -654,8 +663,8 @@ async function generateVideo(){
     }
     console.info('[Video] Sending request',{referenceCount:reference_images_base64.length});
     const payload={
-      prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),
-      video_quality:$('#videoQuality').value,
+      prompt:p,model:'agnes-video-2.5-flash',mode,duration,
+      video_quality:quality,
       video_width,video_height,reference_image_base64:reference_images_base64[0]||'',
       reference_images_base64
     };
@@ -703,7 +712,7 @@ function historyCard(x){
   const failed=x.status==='failed';
   const pct=Math.max(0,Math.min(100,Number(x.progress||0)));
   const statusText=ready?'Готово':failed?'Ошибка':(x.progress_message||'Подготовка');
-  const action=ready?'<button class="ghost" onclick="openResult(\''+x.task_id+'\',\''+(x.task_type==='image'?'image':'video')+'\')" style="margin-top:10px">Открыть результат</button>':'';
+  const action=ready?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="openResult(\''+x.task_id+'\',\''+(x.task_type==='image'?'image':'video')+'\')">Открыть результат</button><a class="ghost" href="'+(x.task_type==='image'?'/api/image/':'/api/video/')+encodeURIComponent(x.task_id)+'/download" download="'+(x.task_type==='image'?'ai-studio.png':'ai-studio-video.mp4')+'" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a></div>':'';
   const progress=(!ready&&!failed)?'<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#6d7168"><b>'+pct.toFixed(0)+'%</b><span>'+escapeHtml(formatEta(x.eta_seconds))+'</span></div><div style="height:7px;margin-top:7px;border-radius:99px;background:#e7e3d9;overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:#55755d;border-radius:99px;transition:width .4s ease"></i></div><div style="margin-top:7px;font-size:11px;color:#8a8e85">'+escapeHtml(statusText)+'</div></div>':'<span class="tag">'+escapeHtml(statusText)+'</span>';
   return '<div class="card"><b>'+escapeHtml(type+' · '+(x.creative_name||x.task_id))+'</b><p>Задача '+escapeHtml(x.task_id)+'</p>'+progress+action+'</div>';
 }
