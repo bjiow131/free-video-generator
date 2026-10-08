@@ -300,7 +300,31 @@ class AgnesVideoAPI:
                     await asyncio.sleep(delay)
                     continue
 
-                error_text = resp.text[:1000]
+                # Preserve the provider's structured validation error. The UI previously
+                # reduced responses such as {"detail":[{"loc":[...],"msg":"Field required"}]}
+                # to only "Field required", hiding which field was actually missing.
+                try:
+                    error_data = resp.json()
+                    if isinstance(error_data, dict):
+                        detail = error_data.get("detail")
+                        if isinstance(detail, list):
+                            parts = []
+                            for item in detail[:10]:
+                                if isinstance(item, dict):
+                                    loc = item.get("loc")
+                                    msg = item.get("msg") or item.get("detail")
+                                    parts.append(f"{loc}: {msg}" if loc else str(msg))
+                                else:
+                                    parts.append(str(item))
+                            error_text = "; ".join(parts) or resp.text[:1000]
+                        elif isinstance(detail, (dict, str)):
+                            error_text = json.dumps(detail, ensure_ascii=False) if isinstance(detail, dict) else detail
+                        else:
+                            error_text = json.dumps(error_data, ensure_ascii=False)[:1000]
+                    else:
+                        error_text = resp.text[:1000]
+                except (ValueError, TypeError):
+                    error_text = resp.text[:1000]
                 raise RuntimeError(
                     f"Agnes video submit failed (HTTP {resp.status_code}): {error_text}"
                 )
