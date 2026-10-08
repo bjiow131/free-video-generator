@@ -378,10 +378,11 @@ class AgnesVideoAPI:
                 "prompt": prompt,
                 "mode": (
                     "text" if not resolved_refs
-                    # Current Agnes 2.5 validation accepts a single starting image
-                    # through the keyframe schema; this avoids the older img2video
-                    # validation path that can return "Field required".
-                    else "keyframe" if len(resolved_refs) in (1, 2)
+                    # Agnes 2.5 explicitly supports single-image image-to-video
+                    # with mode=img2video and first_frame. Keyframe is reserved
+                    # for first/last-frame interpolation.
+                    else "img2video" if len(resolved_refs) == 1
+                    else "keyframe" if len(resolved_refs) == 2
                     else "reference"
                 ),
                 "seconds": str(seconds),
@@ -393,11 +394,6 @@ class AgnesVideoAPI:
                 payload["seed"] = seed
             if len(resolved_refs) == 1:
                 payload["first_frame"] = resolved_refs[0]
-                # Some Agnes 2.5 validators require both keyframe fields even
-                # for a single-image animation. Reusing the same source frame
-                # keeps this an image-to-video request without introducing a
-                # second visual reference.
-                payload["last_frame"] = resolved_refs[0]
             elif len(resolved_refs) == 2:
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
