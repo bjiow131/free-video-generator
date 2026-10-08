@@ -244,7 +244,7 @@ button{cursor:pointer}
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию. В видео сейчас передаётся один основной референс.</div>
       <div class="label">Промпт движения</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
-      <div class="actions"><button id="videoGenerate" class="primary">Создать видео</button><button class="ghost" id="videoClear">Очистить</button></div>
+      <div class="actions"><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
       <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
     </div>
   </div>
@@ -595,7 +595,7 @@ async function generateVideo(){
   setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации видео…';$('#videoResult').classList.add('hidden');
   try{
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
-    const f=new FormData();f.append('prompt',p);f.append('model','agnes-video-2.5-flash');f.append('mode',mode);f.append('duration',$('#videoDuration').value);f.append('video_width',String(video_width));f.append('video_height',String(video_height));
+    const f=new FormData();f.set('prompt',p);f.set('model','agnes-video-2.5-flash');f.append('mode',mode);f.append('duration',$('#videoDuration').value);f.append('video_width',String(video_width));f.append('video_height',String(video_height));
     if(ref)f.append('reference_image',ref,'video_character_reference.'+(ref.type||'image/png').split('/')[1].replace('jpeg','jpg'));
     if($('#videoCharacter').value){
       f.append('system_prompt','Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.');
