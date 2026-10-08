@@ -63,6 +63,7 @@ class AgnesRateLimiter:
         self._total_waits = 0
         self._total_wait_seconds = 0.0
 
+    @timed_step
     def acquire(self) -> None:
         """阻塞式获取一个令牌。
 
@@ -97,11 +98,13 @@ class AgnesRateLimiter:
                 time.sleep(wait_time)
                 self.last_refill = time.monotonic()
 
+    @timed_step
     async def acquire_async(self) -> None:
         """异步获取令牌（内部使用 ``asyncio.to_thread``）。"""
         await asyncio.to_thread(self.acquire)
 
     @property
+    @timed_step
     def stats(self) -> dict:
         """返回限速器统计信息。"""
         return {
