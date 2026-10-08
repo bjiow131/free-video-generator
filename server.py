@@ -1443,23 +1443,30 @@ def _launch_background_task(coro):
 
 
 @app.post("/api/tasks/simple")
-async def create_simple_task(
-    request: Request,
-    prompt: str = Form(...),
-    model: str = Form("agnes-video-2.5-flash"),
-    mode: str = Form("t2v"),
-    duration: int = Form(5),
-    video_width: int = Form(1152),
-    video_height: int = Form(648),
-    seed: Optional[int] = Form(None),
-    negative_prompt: Optional[str] = Form(None),
-    system_prompt: str = Form(""),
-    # Explicit Optional annotations are important here: on newer FastAPI/Pydantic
-    # versions, UploadFile = File(None) can still be validated as required.
-    reference_image: Optional[UploadFile] = File(None),
-    end_frame_image: Optional[UploadFile] = File(None),
-):
-    """创建简单视频任务（类型 1）。"""
+async def create_simple_task(request: Request):
+    """Create a simple video task with explicit multipart parsing."""
+    form = await request.form()
+    prompt = str(form.get("prompt") or "").strip()
+    model = str(form.get("model") or "agnes-video-2.5-flash").strip()
+    mode = str(form.get("mode") or "t2v").strip()
+    try:
+        duration = int(form.get("duration") or 5)
+        video_width = int(form.get("video_width") or 1152)
+        video_height = int(form.get("video_height") or 648)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Некорректные параметры видео: {exc}")
+    seed_raw = form.get("seed")
+    try:
+        seed = int(seed_raw) if seed_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Некорректный seed")
+    negative_prompt = str(form.get("negative_prompt") or "")
+    system_prompt = str(form.get("system_prompt") or "")
+    reference_image = form.get("reference_image")
+    end_frame_image = form.get("end_frame_image")
+    logger.info("[Simple] multipart keys=%s prompt_present=%s prompt_len=%d", sorted(form.keys()), bool(prompt), len(prompt))
+
+
 
     api_key = get_api_key()
     if not api_key:
