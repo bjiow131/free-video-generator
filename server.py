@@ -990,16 +990,24 @@ _DURATION_PATTERNS = [
 
 
 def _parse_duration(user_requirement: str) -> int:
-    """Extract a supported scene duration from seven supported languages."""
+    """Extract a duration that is guaranteed to be a DURATION_FRAME_MAP key."""
     text_value = (user_requirement or "").strip()
-    supported = sorted(SUPPORTED_AGNES_VIDEO_DURATIONS)
     valid_duration_keys = sorted(DURATION_FRAME_MAP)
+    if not valid_duration_keys:
+        raise ValueError("DURATION_FRAME_MAP не содержит допустимых значений")
+    default_duration = 5 if 5 in DURATION_FRAME_MAP else valid_duration_keys[0]
     for pattern in _DURATION_PATTERNS[:-1]:
         match = re.search(pattern, text_value, re.IGNORECASE)
         if match:
             value = int(match.group(1))
-            return min(valid_duration_keys, key=lambda item: abs(item - value))
-    return 5
+            if value in DURATION_FRAME_MAP:
+                return value
+            logger.warning(
+                "[Duration] Unsupported requested duration %s; using %s",
+                value, default_duration,
+            )
+            return default_duration
+    return default_duration
 
 def _has_explicit_duration(user_requirement: str) -> bool:
     """检查 user_requirement 中是否显式提到了时长。支持 7 种语言。"""
