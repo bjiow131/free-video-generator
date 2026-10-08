@@ -534,6 +534,13 @@ function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect=
 async function syncVideoCharacterSelector(refs){
   const character=$('#videoCharacter'),select=$('#videoCharacterReference');
   if(!character||!select)return;
+  if(!character.dataset.changeBound){
+    character.addEventListener('change',async()=>{
+      try{await syncVideoCharacterSelector(await getMiaRefs())}
+      catch(e){select.innerHTML='<option value="">Не удалось загрузить референсы</option>';select.disabled=true}
+    });
+    character.dataset.changeBound='1';
+  }
   const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
   character.innerHTML='<option value="">Без персонажа</option>'+(savedRefs.length?'<option value="miya">Мия</option>':'');
   if(character.value!=='miya'){
