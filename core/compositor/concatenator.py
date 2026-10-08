@@ -565,6 +565,11 @@ class VideoConcatenator:
         # FFmpeg concat files are written as UTF-8 with forward-slash paths,
         # which keeps Windows drive paths portable and avoids backslash escaping issues.
         concat_path = clip_path.replace(chr(92), "/")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in concat_path):
+            raise ValueError("Anchor clip path contains unsupported control characters")
+        # FFmpeg concat scripts have their own quoting syntax; escape backslashes
+        # and apostrophes so a filename cannot terminate the file directive.
+        concat_path = concat_path.replace("\\", "\\\\").replace("'", "'\\''")
         with open(concat_file, "w", encoding="utf-8", newline="\n") as f:
             for _ in range(n):
                 f.write(f"file '{concat_path}'\n")
