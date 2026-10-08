@@ -1462,7 +1462,7 @@ async def create_simple_task(request: Request):
     # Some reverse proxies/clients can drop multipart fields while preserving
     # the query string. Scalar parameters are mirrored in the query string.
     prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
-    model = str(form.get("model") or request.query_params.get("model") or "agnes-video-2.5-flash").strip()
+    model = str(form.get("model") or request.query_params.get("model") or "agnes-video-v2.0").strip()
     mode = str(form.get("mode") or request.query_params.get("mode") or "t2v").strip()
     try:
         duration = int(form.get("duration") or request.query_params.get("duration") or 5)
@@ -1492,7 +1492,7 @@ async def create_simple_task(request: Request):
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # P7: 参数校验
-    if model not in {"agnes-video-2.5-flash", "agnes-video-2.5"}:
+    if model not in {"agnes-video-v2.0", "agnes-video-2.5-flash", "agnes-video-2.5"}:
         raise HTTPException(status_code=422, detail="Неподдерживаемая модель видео")
     _validate_video_dimensions(video_width, video_height)
     _VALID_MODES = {"t2v", "i2v", "ti2vid", "keyframes"}
