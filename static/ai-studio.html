@@ -198,7 +198,6 @@ button{cursor:pointer}
   <div class="workspace">
     <div class="panel">
       <h2>Генерация изображения</h2>
-      <div class="label">Модель</div><div id="imageModels"></div>
       <div class="label">Формат</div>
       <select id="imageAspect" class="select">
         <option value="1:1">1:1 — квадрат</option><option value="9:16">9:16 — вертикальный</option><option value="16:9">16:9 — горизонтальный</option><option value="3:4">3:4 — вертикальный</option><option value="4:3">4:3 — горизонтальный</option>
@@ -210,7 +209,6 @@ button{cursor:pointer}
       <div class="actions"><button id="imageGenerate" class="primary">Создать изображение</button><button class="ghost" id="imageClear">Очистить</button></div>
       <div id="imageStatus" class="status"></div><div id="imageResult" class="result hidden"></div>
     </div>
-    <div class="panel"><h2>Выбранная модель</h2><div id="imageSelectedModel" class="model active"></div><div class="label">Движок</div><div style="font-size:30px;font-weight:800">Agnes AI</div><p style="color:#888;font-size:13px">Генерация выполняется напрямую через Agnes AI.</p></div>
   </div>
 </section>
 
@@ -224,12 +222,7 @@ function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
-async function load(){
-  models=[
-    {id:'agnes-image-2.1-flash',name:'Agnes Image 2.1 Flash',provider:'Agnes AI',type:'image',credits:0,status:'ready',description:'Генерация и редактирование изображений'}
-  ];
-  renderDedicatedModels('image');
-}
+async function load(){}
 function renderDedicatedModels(type){
   const box=$('#'+type+'Models'), list=models.filter(m=>m.type===type);
   if(!box)return;
@@ -281,4 +274,4 @@ async function loadHistory(){
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
   }catch(e){$('#historyList').innerHTML='<div class="card">'+e.message+'</div>'}
 }
-load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false);restoreFilmAfterLoad()});</script></body></html>
+load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false)});</script></body></html>
