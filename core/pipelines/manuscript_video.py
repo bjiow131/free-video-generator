@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.pipelines.manuscript_video -- 稿件长视频生成流水线（类型 3）
 
 用户粘贴长文本稿件 -> 按朗读时长拆段 -> 每段生成视频 prompt -> 视频生成 -> TTS+字幕 -> 拼接。
@@ -165,6 +166,7 @@ class ManuscriptVideoPipeline(BasePipeline):
     # Step runners (wrap step logic + persistence + progress)
     # ------------------------------------------------------------------
 
+    @timed_step
     async def _run_step_split_text(self) -> List[ManuscriptParagraph]:
         """运行 Step 1: 文本拆分，带 resume 支持。"""
         if self._state.step_split == StepStatus.COMPLETED and self._state.paragraphs:
@@ -187,6 +189,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         )
         return paragraphs
 
+    @timed_step
     async def _run_step_generate_scene_prompts(
         self, paragraphs: List[ManuscriptParagraph],
     ) -> None:
@@ -204,6 +207,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         self.task_manager.update_step("step_scene_prompts", StepStatus.COMPLETED)
         await self._emit("scene_prompts", "completed", "场景描述生成完成", 0.15)
 
+    @timed_step
     async def _run_step_generate_videos(
         self, paragraphs: List[ManuscriptParagraph],
     ) -> None:
@@ -221,6 +225,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         self.task_manager.update_step("step_video_generation", StepStatus.COMPLETED)
         await self._emit("video_gen", "completed", "所有段落视频已生成", 0.60)
 
+    @timed_step
     async def _run_step_audio(
         self,
         paragraphs: List[ManuscriptParagraph],
@@ -247,6 +252,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         await self._emit("audio", "completed", "旁白已生成", 0.75)
         return sub_maker
 
+    @timed_step
     async def _run_step_subtitle(
         self,
         paragraphs: List[ManuscriptParagraph],
@@ -274,6 +280,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         self.task_manager.update_step("step_subtitle", StepStatus.COMPLETED)
         await self._emit("subtitle", "completed", "字幕已生成", 0.80)
 
+    @timed_step
     async def _run_step_concatenate(
         self,
         paragraphs: List[ManuscriptParagraph],
@@ -300,6 +307,7 @@ class ManuscriptVideoPipeline(BasePipeline):
     # Step implementations
     # ------------------------------------------------------------------
 
+    @timed_step
     def _step_split_text(self, text: str) -> List[ManuscriptParagraph]:
         """将长文本按朗读时长拆分为段落列表。
 
@@ -409,6 +417,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         )
         return paragraphs
 
+    @timed_step
     async def _step_generate_scene_prompts(
         self, paragraphs: List[ManuscriptParagraph],
     ) -> None:
@@ -496,6 +505,7 @@ class ManuscriptVideoPipeline(BasePipeline):
                 logger.debug(f"[Manuscript] Failed to load cached task.json: {e}")
         return None
 
+    @timed_step
     async def _step_generate_videos(
         self, paragraphs: List[ManuscriptParagraph],
     ) -> None:
@@ -636,6 +646,7 @@ class ManuscriptVideoPipeline(BasePipeline):
                 para_idx, video_path, video_id[:16],
             )
 
+    @timed_step
     async def _step_audio(
         self,
         paragraphs: List[ManuscriptParagraph],
@@ -700,6 +711,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         logger.info("[Manuscript] audio: combined → %s", audio_path)
         return sub_maker
 
+    @timed_step
     async def _step_subtitle(
         self,
         paragraphs: List[ManuscriptParagraph],
@@ -757,6 +769,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         self.task_manager.update_state(combined_subtitle=srt_path)
         logger.info("[Manuscript] subtitle: combined → %s", srt_path)
 
+    @timed_step
     async def _step_concatenate(
         self,
         paragraphs: List[ManuscriptParagraph],
