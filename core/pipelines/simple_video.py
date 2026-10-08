@@ -40,7 +40,7 @@ class SimpleVideoPipeline(BasePipeline):
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         super().__init__(api_key, task_id, dir_name, progress_callback, shutdown_event)
-        self.video_api = AgnesVideoAPI(api_key=api_key, model="agnes-video-2.5-flash")
+        self.video_api = AgnesVideoAPI(api_key=api_key, model="agnes-video-v2.0")
         self.video_api.shutdown_event = shutdown_event
 
     @timed_step
