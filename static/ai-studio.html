@@ -626,6 +626,46 @@ async function getSelectedVideoReferences(){
 
 let generatedStartFrameBlob=null;
 let generatedStartFrameTaskId='';
+async function useLastVideoFrame(taskId,button){
+  const originalLabel=button?.textContent||'Использовать последний кадр для следующей сцены';
+  if(button){button.disabled=true;button.textContent='Извлекаю последний кадр…'}
+  $('#startFrameStatus').textContent='Извлекаю финальный кадр предыдущей сцены…';
+  try{
+    const video=document.createElement('video');
+    video.preload='auto';video.muted=true;video.playsInline=true;
+    video.src='/api/video/'+encodeURIComponent(taskId);
+    await new Promise((resolve,reject)=>{
+      video.onloadedmetadata=resolve;
+      video.onerror=()=>reject(new Error('Не удалось открыть готовое видео для извлечения кадра'));
+      video.load();
+    });
+    if(!Number.isFinite(video.duration)||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео нет доступного финального кадра');
+    video.currentTime=Math.max(0,video.duration-0.12);
+    await new Promise((resolve,reject)=>{
+      video.onseeked=resolve;
+      video.onerror=()=>reject(new Error('Не удалось перейти к финальному кадру видео'));
+    });
+    const canvas=document.createElement('canvas');
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('Не удалось подготовить изображение кадра');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    const frame=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось сохранить извлечённый кадр')),'image/png'));
+    generatedStartFrameBlob=frame;
+    generatedStartFrameTaskId='continuity:'+taskId;
+    $('#videoReference').value='';
+    $('#startFrameResult').innerHTML='<img alt="Финальный кадр предыдущей сцены" style="width:100%;display:block" src="'+URL.createObjectURL(frame)+'"><div style="padding:12px">Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.</div>';
+    $('#startFrameResult').classList.remove('hidden');
+    $('#startFrameStatus').textContent='Кадр для продолжения выбран · '+taskId;
+    $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
+    toast('Финальный кадр выбран для следующей сцены');
+  }catch(e){
+    $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
+    toast(e.message||'Не удалось извлечь финальный кадр');
+  }finally{
+    if(button){button.disabled=false;button.textContent=originalLabel}
+  }
+}
 function buildStartFramePrompt(videoPrompt){
   const source=String(videoPrompt||'').trim();
   if(!source)return '';
@@ -817,8 +857,9 @@ async function generateVideo(){
       if(task.status==='failed'){throw Error(task.error_message||task.progress_message||'Генерация видео не удалась')}
       if(task.status==='completed'){
         const url='/api/video/'+encodeURIComponent(taskId);
-        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button></div>';
+        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button><button class="primary" id="useLastFrameButton">Использовать последний кадр для следующей сцены</button></div>';
         $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');
+        $('#useLastFrameButton').onclick=()=>useLastVideoFrame(taskId,$('#useLastFrameButton'));
         $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;finishVideoProgress('Видео готово');setGenerateBusy('video',false);return}
       const pct=Math.max(0,Math.min(99,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
     }catch(e){$('#videoStatus').textContent=e.message;$('#videoProgressStage').textContent=e.message;finishVideoProgress('Ошибка генерации');toast(e.message);setGenerateBusy('video',false)}};
