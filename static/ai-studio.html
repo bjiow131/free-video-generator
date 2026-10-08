@@ -660,7 +660,7 @@ async function generateVideo(){
       if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
       if(task.status==='completed'){
         const url='/api/video/'+encodeURIComponent(taskId);
-        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px"><button class="ghost" id="saveVideoButton">Открыть видео</button></div>';
+        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Открыть видео</button><a class="ghost" id="downloadVideoButton" href="/api/video/'+encodeURIComponent(taskId)+'/download" download="ai-studio-video.mp4" style="display:inline-flex;align-items:center;text-decoration:none">Скачать видео</a></div>';
         $('#saveVideoButton').onclick=()=>openResult(taskId,'video');
         $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;setGenerateBusy('video',false);return}
       const pct=Math.max(0,Math.min(100,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
