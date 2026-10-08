@@ -233,8 +233,14 @@ button{cursor:pointer}
       </select>
       <div class="label">Длительность</div>
       <select id="videoDuration" class="select">
-        <option value="4">4 сек</option><option value="5" selected>5 сек</option><option value="6">6 сек</option><option value="8">8 сек</option><option value="10">10 сек</option><option value="12">12 сек</option><option value="15">15 сек</option><option value="18">18 сек</option><option value="20">20 сек</option>
+        <option value="4">4 сек</option><option value="5" selected>5 сек</option><option value="6">6 сек</option><option value="8">8 сек</option><option value="10">10 сек</option><option value="12">12 сек</option><option value="15">15 сек · fallback v2.0</option><option value="18">18 сек · fallback v2.0</option><option value="20">20 сек · fallback v2.0</option>
       </select>
+      <div class="hint">Agnes 2.5 Flash: 4–12 сек. Для 15–20 сек система использует fallback v2.0.</div>
+      <div class="label">Качество</div>
+      <select id="videoQuality" class="select">
+        <option value="720P" selected>720P — доступно и стабильно</option>
+      </select>
+      <div class="hint">1080P пока не показываю как доступный вариант: текущая бесплатная 2.5 Flash работает в 720P. Не буду отправлять неподдерживаемые параметры в API.</div>
       <div class="label">Персонаж</div>
       <select id="videoCharacter" class="select"><option value="">Без персонажа</option></select>
       <div class="label">Референсы персонажа <span style="color:#777">(можно выбрать несколько)</span></div>
@@ -649,6 +655,7 @@ async function generateVideo(){
     console.info('[Video] Sending request',{referenceCount:reference_images_base64.length});
     const payload={
       prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),
+      video_quality:$('#videoQuality').value,
       video_width,video_height,reference_image_base64:reference_images_base64[0]||'',
       reference_images_base64
     };
@@ -715,7 +722,7 @@ async function loadHistory(){
 const FORM_STATE_KEY='aistudio_form_state_v2';
 const FORM_STATE_IDS=[
   'imageAspect','imageQuality','imageCharacter','imageCharacterReference',
-  'imagePrompt','videoMode','videoAspect','videoDuration','videoCharacter',
+  'imagePrompt','videoMode','videoAspect','videoDuration','videoQuality','videoCharacter',
   'videoCharacterReference','videoPrompt'
 ];
 function saveFormState(){
