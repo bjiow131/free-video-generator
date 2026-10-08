@@ -168,6 +168,7 @@ class SimpleVideoTask(BaseTaskState):
     model: str = "agnes-video-2.5-flash"
     mode: VideoMode = VideoMode.T2V
     reference_image: str = ""
+    reference_images: List[str] = Field(default_factory=list)
     end_frame_image: str = ""
     duration: int = 5
     seed: Optional[int] = None
