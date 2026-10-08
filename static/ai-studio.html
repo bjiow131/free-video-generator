@@ -258,7 +258,7 @@ button{cursor:pointer}
       <textarea id="startFramePrompt" class="textarea" placeholder="Сначала опиши сцену выше — здесь появится промпт для изображения." rows="5"></textarea>
       <div class="hint">Видео-промпт отвечает за движение. Промпт кадра — за первый момент: персонаж, фон, композиция и свет. Автопромпт не отправляет дополнительный запрос и его можно исправить вручную.</div>
       <div class="actions"><button type="button" id="refreshStartFramePrompt" class="ghost">Обновить промпт кадра из видео</button></div>
-      <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
+      <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить промпты</button></div>
       <div class="hint">Готовый кадр автоматически станет исходным изображением для Agnes 2.0.</div>
       <div id="startFrameStatus" class="status"></div><div id="startFrameResult" class="result hidden"></div>
       <div id="videoProgressPanel" class="card hidden" style="margin-top:14px;padding:16px;border:1px solid var(--border,#dedbd2);border-radius:14px">
@@ -632,7 +632,7 @@ async function useLastVideoFrame(taskId,button){
   $('#startFrameStatus').textContent='Извлекаю финальный кадр предыдущей сцены…';
   try{
     const video=document.createElement('video');
-    video.preload='auto';video.muted=true;video.playsInline=true;
+    video.preload='auto';video.muted=true;video.playsInline=true;video.crossOrigin='same-origin';
     video.src='/api/video/'+encodeURIComponent(taskId);
     await new Promise((resolve,reject)=>{
       video.onloadedmetadata=resolve;
@@ -640,21 +640,27 @@ async function useLastVideoFrame(taskId,button){
       video.load();
     });
     if(!Number.isFinite(video.duration)||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео нет доступного финального кадра');
-    video.currentTime=Math.max(0,video.duration-0.12);
     await new Promise((resolve,reject)=>{
-      video.onseeked=resolve;
+      video.onseeked=()=>video.readyState>=2?resolve():reject(new Error('Видео не успело декодировать финальный кадр'));
       video.onerror=()=>reject(new Error('Не удалось перейти к финальному кадру видео'));
+      video.currentTime=Math.max(0,video.duration-0.2);
     });
+    if(video.readyState<2)throw new Error('Финальный кадр видео ещё не декодирован. Попробуй ещё раз.');
     const canvas=document.createElement('canvas');
     canvas.width=video.videoWidth;canvas.height=video.videoHeight;
     const ctx=canvas.getContext('2d');
     if(!ctx)throw new Error('Не удалось подготовить изображение кадра');
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
     const frame=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось сохранить извлечённый кадр')),'image/png'));
+    if(frame.size<1024)throw new Error('Извлечённый кадр пустой или повреждённый. Попробуй ещё раз.');
+    const previewUrl=URL.createObjectURL(frame);
+    const preview=new Image();
+    preview.src=previewUrl;
+    await new Promise((resolve,reject)=>{preview.onload=resolve;preview.onerror=()=>reject(new Error('Не удалось проверить изображение финального кадра'))});
     generatedStartFrameBlob=frame;
     generatedStartFrameTaskId='continuity:'+taskId;
     $('#videoReference').value='';
-    $('#startFrameResult').innerHTML='<img alt="Финальный кадр предыдущей сцены" style="width:100%;display:block" src="'+URL.createObjectURL(frame)+'"><div style="padding:12px">Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.</div>';
+    $('#startFrameResult').innerHTML='<img alt="Финальный кадр предыдущей сцены" style="width:100%;display:block" src="'+previewUrl+'"><div style="padding:12px">Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.</div>';
     $('#startFrameResult').classList.remove('hidden');
     $('#startFrameStatus').textContent='Кадр для продолжения выбран · '+taskId;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -877,7 +883,7 @@ $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderV
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#createStartFrame').onclick=createStartFrame;
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#videoProgressPanel').classList.add('hidden');stopVideoProgressTicker();videoEtaDeadline=0;videoProgressStartedAt=0;$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';syncStartFramePrompt(true);saveFormState()};
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;syncStartFramePrompt(true);saveFormState();toast(generatedStartFrameBlob?'Промпты очищены. Финальный кадр сохранён.':'Промпты очищены')};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
