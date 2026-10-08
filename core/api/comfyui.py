@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """Optional local ComfyUI API integration."""
 from __future__ import annotations
 import asyncio
