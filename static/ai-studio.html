@@ -378,7 +378,7 @@ qsa('.label').forEach(el=>{if(!el.dataset.uiBase)el.dataset.uiBase=el.textConten
 qsa('.mode-tab').forEach((el,i)=>el.textContent=tr(['navCreative','navManuscript','navAnchor'][i]));
 qsa('.production-actions .primary').forEach(el=>el.textContent=tr('generate'));qsa('.production-actions .ghost').forEach(el=>el.textContent=tr('clear'));
 qsa('#taskSearch').forEach(el=>el.placeholder=tr('search'));
-qsa('#settingsLanguage').forEach(el=>el.setAttribute('aria-label',tr('language')));const settingsText={'#settingsTheme':'toggleTheme','#settingsLanguage':'language','.settings-card:nth-of-type(4) strong':'videoWatermark'};Object.entries(settingsText).forEach(([sel,key])=>qsa(sel).forEach(el=>el.textContent=tr(key)));
+qsa('#settingsLanguage').forEach(el=>el.setAttribute('aria-label',tr('language')));const settingsText={'#settingsTheme':'toggleTheme','.settings-card:nth-of-type(4) strong':'videoWatermark'};Object.entries(settingsText).forEach(([sel,key])=>qsa(sel).forEach(el=>el.textContent=tr(key)));
 const themeBtn=$('#themeToggle');if(themeBtn)themeBtn.setAttribute('title',tr('toggleTheme'));
 
   qsa('.step span').forEach(el=>{if(!/\d+%/.test(el.textContent))el.textContent=tr('pending')});
