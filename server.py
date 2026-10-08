@@ -883,6 +883,25 @@ async def generate_image(request: Request):
     if getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
         reference_images.insert(0, single_reference)
     character_id = str(form.get("character_id") or "").strip() or None
+    # Fallback for browsers/proxies that drop multipart file parts: accept a base64 image field.
+    reference_image_base64 = str(form.get("reference_image_base64") or "").strip()
+    if reference_image_base64 and not reference_images:
+        try:
+            import base64
+            raw = base64.b64decode(reference_image_base64, validate=True)
+            if len(raw) > 10 * 1024 * 1024:
+                raise ValueError("reference too large")
+            fallback_path = os.path.join(get_working_dir(), f"img_ref_{uuid.uuid4().hex[:8]}_base64.png")
+            with open(fallback_path, "wb") as out:
+                out.write(raw)
+            reference_images = [type("Base64Upload", (), {"filename": "reference.png", "read": lambda self: raw})()]
+            # Keep the actual path separately; _save_image_upload is not used for this fallback.
+            reference_images = []
+            ref_paths_from_base64 = [fallback_path]
+        except (ValueError, OSError, TypeError, base64.binascii.Error):
+            raise HTTPException(status_code=422, detail="Некорректный base64-референс")
+    else:
+        ref_paths_from_base64 = []
 
     api_key = get_api_key()
     if not api_key:
@@ -921,7 +940,7 @@ async def generate_image(request: Request):
 
     image_api = AgnesImageAPI(api_key=api_key)
 
-    ref_paths = []
+    ref_paths = list(ref_paths_from_base64)
     for index, uploaded_reference in enumerate(reference_images[:6]):
         ref_paths.append(await _save_image_upload(uploaded_reference, f"img_ref_{uuid.uuid4().hex[:8]}_{index+1}"))
     if not ref_paths and character_id:
