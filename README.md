@@ -119,7 +119,7 @@ cd free-video-generator
 start_windows.bat
 ```
 
-`start_windows.bat` starts an already-created local Python environment, checks FFmpeg, starts FastAPI, and opens `http://127.0.0.1:8765`. If `.venv` does not exist, create it first as shown by the script. No account, deployment, or external server is required.
+`start_windows.bat` requires an existing `.venv`, a Windows `AGNES_API_KEY`, and FFmpeg in PATH. It starts FastAPI and opens `http://127.0.0.1:8765`. Create the environment first as shown by the script.
 
 For Linux/macOS, use `./start.sh`.
 
@@ -142,7 +142,7 @@ $env:AGNES_API_KEY = "your-api-key"
 export AGNES_API_KEY="your-api-key"
 ```
 
-Or save it through the Web UI. The local endpoint accepts multipart form data:
+On Windows, the launcher requires `AGNES_API_KEY` in the environment. For other local launches, the key can also be saved through the Web UI. The local endpoint accepts multipart form data:
 
 ```bash
 curl -X POST http://localhost:8765/api/config -F "api_key=your-api-key"
@@ -276,7 +276,7 @@ free-video-generator/
 ├── requirements.txt                  # Python dependencies
 ├── server.py                         # FastAPI server (REST + WebSocket)
 ├── static/
-│   └── index.html                    # Frontend SPA — 5 task tabs, Russian UI (Tailwind CSS)
+│   └── ai-studio.html                # Frontend SPA served at `/`
 ├── core/
 │   ├── config.py                     # API key, font resolution, default configs
 │   ├── screenwriter.py               # Screenwriter Agent (LLM-powered story/script/narration)
@@ -285,7 +285,7 @@ free-video-generator/
 │   │   ├── agnes_chat.py             # LLM Chat API (agnes-3.0-flash)
 │   │   ├── agnes_image.py            # Image generation API (agnes-image-2.5-flash)
 │   │   ├── agnes_video.py             # Video generation API (agnes-video-2.5-flash / 2.5)
-│   │   └── rate_limiter.py            # Global token bucket limiter (20 configured / 10 effective requests/min)
+│   │   └── rate_limiter.py            # Global token bucket limiter controlled by AGNES_RATE_LIMIT
 │   ├── audio/
 │   │   ├── tts.py                    # Edge TTS engine + silent fallback engine
 │   │   └── subtitle.py               # SRT generation (fine-grained word-level) + overlay
@@ -339,11 +339,15 @@ free-video-generator/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Serve Web UI |
-| GET | `/health` | Service and FFmpeg health |\n| GET | `/api/config` | Configuration status, workspaces and watermark settings |
-| POST | `/api/config` | Save API key |\n| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |\n| POST | `/api/workspaces/pick-directory` | Pick a local directory |\n| POST | `/api/config/watermark` | Configure optional watermark |
+| GET | `/health` | Service and FFmpeg health |
+| GET | `/api/config` | Configuration status, workspaces and watermark settings |
+| POST | `/api/config` | Save API key |
+| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |\n| POST | `/api/workspaces/pick-directory` | Pick a local directory |
+| POST | `/api/config/watermark` | Configure optional watermark |
 | DELETE | `/api/config` | Delete configured API key |
 | GET | `/api/voices` | List available TTS voices |
-| POST | `/api/ideas/generate` | Generate creative ideas |\n| POST | `/api/image/generate` | Image generation |
+| POST | `/api/ideas/generate` | Generate creative ideas |
+| POST | `/api/image/generate` | Image generation |
 | GET | `/api/image/{task_id}` | Serve generated image |
 | POST | `/api/tasks/simple` | Create simple video task |
 | POST | `/api/tasks/creative` | Create creative video task |
@@ -425,11 +429,11 @@ Special thanks to [Agnes AI](https://platform.agnes-ai.com) for providing access
 
 ## Feedback & Contributing
 
-Bug reports and feature suggestions are welcome via [GitHub Issues](../../issues).
+Bug reports and feature suggestions are welcome via [GitHub Issues](https://github.com/bjiow131/free-video-generator/issues).
 
 ## Support the Developer
 
-Free Video Generator is open-source software. It has no built-in paid plans or subscription system.
+Agnes Video Generator is open-source software. It has no built-in paid plans or subscription system.
 
 
 
