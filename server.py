@@ -12,6 +12,7 @@ resume 端点根据 task_type 自动选择对应的 Pipeline。
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -936,19 +937,28 @@ async def generate_image(request: Request):
         except (OSError, json.JSONDecodeError):
             raise HTTPException(status_code=404, detail="Референс персонажа не найден")
 
+    reference_diagnostics = []
+    for path in ref_paths:
+        try:
+            with open(path, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            source_bytes = os.path.getsize(path)
+        except OSError:
+            digest = None
+            source_bytes = None
+        reference_diagnostics.append({
+            "file": os.path.basename(path),
+            "bytes": source_bytes,
+            "sha256": digest,
+        })
+
     logger.info(
         "[ImageRequest] task=%s character_id=%s uploaded_reference_fields=%s accepted_references=%s refs=%s size=%s ratio=%s prompt_chars=%s",
         task_id,
         character_id or "none",
         len(reference_images),
         len(ref_paths),
-        [
-            {
-                "file": os.path.basename(path),
-                "bytes": os.path.getsize(path) if os.path.isfile(path) else None,
-            }
-            for path in ref_paths
-        ],
+        reference_diagnostics,
         size,
         ratio,
         len(prompt),
@@ -995,7 +1005,21 @@ async def generate_image(request: Request):
     tm.update_state(status=StepStatus.COMPLETED, final_video_file=img_path)
 
     logger.info(f"[Image] Task {task_id} completed: {img_path}, prompt={prompt[:60]}...")
-    return {"ok": True, "task_id": task_id, "dir_name": dir_name}
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "dir_name": dir_name,
+        "diagnostics": {
+            "mode": "i2i" if ref_paths else "t2i",
+            "model": image_api.i2i_model if ref_paths else image_api.model,
+            "accepted_references": len(ref_paths),
+            "references": reference_diagnostics,
+            "size": size,
+            "ratio": ratio,
+            "prompt_chars": len(full_prompt),
+            "prompt_sha256": hashlib.sha256(full_prompt.encode("utf-8")).hexdigest(),
+        },
+    }
 
 
 @app.get("/api/image/{task_id}")
