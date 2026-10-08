@@ -264,12 +264,28 @@ async function getMiaRefs(){
     q.onsuccess=()=>resolve(q.result||[]);q.onerror=()=>reject(q.error);
   });
 }
-async function replaceMiaRefs(files){
+async function appendMiaRefs(files){
   const db=await characterDb();
   await new Promise((resolve,reject)=>{
-    const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs'); store.clear();
-    [...files].forEach((file,index)=>store.add({name:file.name||('ref_'+(index+1)),blob:file,order:index+1,isPrimary:index===0}));
-    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+    const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs');
+    const q=store.getAll();
+    q.onsuccess=()=>{
+      const refs=q.result||[];
+      const hasPrimary=refs.some(r=>r.isPrimary);
+      const startOrder=refs.reduce((max,r)=>Math.max(max,Number(r.order)||0),0);
+      [...files].forEach((file,index)=>{
+        store.add({
+          name:file.name||('ref_'+(refs.length+index+1)),
+          blob:file,
+          order:startOrder+index+1,
+          isPrimary:!hasPrimary && index===0
+        });
+      });
+    };
+    q.onerror=()=>reject(q.error||new Error('Не удалось прочитать сохранённые референсы'));
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error||new Error('Не удалось сохранить референсы'));
+    tx.onabort=()=>reject(tx.error||new Error('Операция сохранения отменена'));
   });
 }
 async function renameMiaRef(id,name){
@@ -369,10 +385,15 @@ async function saveCharacterPack(){
   if(files.length>12){toast('Можно сохранить не более 12 референсов');return}
   const b=$('#characterSave');b.disabled=true;b.textContent='Сохранение…';
   try{
-    await replaceMiaRefs(files);
+    const existing=await getMiaRefs();
+    if(existing.length+files.length>12){
+      toast('У Мии уже сохранено '+existing.length+' референсов. Максимум — 12.');
+      return;
+    }
+    await appendMiaRefs(files);
     $('#characterFiles').value='';
     await loadCharacters();
-    toast('Референсы Мии сохранены на устройстве');
+    toast('Новые референсы добавлены, старые сохранены');
   }catch(e){toast(e.message||'Не удалось сохранить референсы')}
   finally{b.disabled=false;b.textContent='Сохранить референсы'}
 }
