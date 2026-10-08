@@ -186,7 +186,7 @@ button{cursor:pointer}
   body:after{width:75vw;height:75vw;left:-30vw}
 }
 
-</style></head><body>
+.save-name-modal{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.6)}.save-name-card{width:min(420px,100%);padding:20px;border-radius:18px;background:#171917;box-shadow:0 20px 60px rgba(0,0,0,.4)}.save-name-title{font-size:20px;font-weight:700}.save-name-subtitle{margin-top:6px;opacity:.7}.save-name-input{width:100%;box-sizing:border-box;margin:16px 0;padding:13px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#0e100e;color:#fff;font-size:16px}.save-name-actions{display:flex;gap:10px;justify-content:flex-end}.save-name-actions button{min-height:42px;padding:0 16px}</style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
 <button class="active" data-page="image">Изображения</button><button data-page="history">История</button>
@@ -248,12 +248,14 @@ async function generateImage(){
     const ref=$('#imageReference').files[0];if(ref)f.append('reference_image',ref);
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
-    $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><a download="ai-studio.png" href="/api/image/'+encodeURIComponent(d.task_id)+'/download" style="color:#365b42">Скачать изображение</a></div>';
+    $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button type="button" class="ghost" onclick="downloadTask(d.task_id,'image')" style="color:#365b42">Скачать изображение</button></div>';
     $('#imageResult').classList.remove('hidden');$('#imageStatus').textContent='Готово';
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
 $('#imageGenerate').onclick=generateImage;
 $('#imageClear').onclick=()=>{$('#imagePrompt').value='';$('#imageReference').value='';$('#imageResult').classList.add('hidden');$('#imageStatus').textContent=''};
+function askFileName(type,defaultName){return new Promise(resolve=>{const ext=type==='image'?'.png':'.mp4';const fallback=(defaultName||(type==='image'?'Мия':'video')).replace(/[\\/:*?"<>|]/g,'').trim()||(type==='image'?'Мия':'video');const wrap=document.createElement('div');wrap.className='save-name-modal';wrap.innerHTML='<div class="save-name-card"><div class="save-name-title">Сохранить файл</div><div class="save-name-subtitle">Введите имя файла</div><input class="save-name-input" type="text"><div class="save-name-actions"><button type="button" class="ghost save-name-cancel">Отмена</button><button type="button" class="primary save-name-ok">Продолжить</button></div></div>';document.body.appendChild(wrap);const input=wrap.querySelector('.save-name-input');input.value=fallback;input.focus();input.select();const done=ok=>{const name=input.value.replace(/[\\/:*?"<>|]/g,'').trim();wrap.remove();resolve(ok&&name?name+ext:null)};wrap.querySelector('.save-name-cancel').onclick=()=>done(false);wrap.querySelector('.save-name-ok').onclick=()=>done(true);input.addEventListener('keydown',e=>{if(e.key==='Enter')done(true);if(e.key==='Escape')done(false)});});}
+async function downloadTask(id,type,defaultName=''){const name=await askFileName(type,defaultName);if(!name)return;try{const download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';const r=await fetch(download);if(!r.ok)throw Error('Не удалось скачать файл');const blob=await r.blob();const file=new File([blob],name,{type:blob.type||(type==='image'?'image/png':'video/mp4')});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({title:name,files:[file]});return}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){if(e.name!=='AbortError')toast(e.message||'Ошибка сохранения')}}
 async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
 let historyTimer=null;
 function formatEta(sec){
