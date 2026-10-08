@@ -414,8 +414,7 @@ def _validate_workspace_path(raw_path: str) -> str:
     for protected_dir in protected:
         try:
             if os.path.commonpath([candidate, protected_dir]) == protected_dir:
-                # The repository itself is reserved, but the default .working_dir remains allowed.
-                if os.path.realpath(candidate) != os.path.realpath(_PROJECT_ROOT):
+                if os.path.realpath(candidate) != os.path.realpath(_default_working_dir()):
                     raise HTTPException(status_code=422, detail="Нельзя использовать системную или служебную папку как рабочую")
         except ValueError:
             continue
