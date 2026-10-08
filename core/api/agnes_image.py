@@ -1,5 +1,6 @@
-from core.timing import timed_step
 """core.api.agnes_image — Agnes Image API 封装（从 core/image_generator.py 迁移）"""
+from core.timing import timed_step
+
 
 import asyncio
 import base64
