@@ -137,3 +137,34 @@ button[disabled],button:disabled,input:disabled,select:disabled,textarea:disable
 .card,.model,.field,.production-status,.task-card,.settings-card{border-radius:var(--ds-radius-lg)}
 .status{min-height:20px;color:var(--ds-text-2);font-size:12px}
 @media(prefers-reduced-motion:reduce){.primary:hover:not(:disabled){transform:none}}
+/* TASK 3B.1 — responsive and localization hardening */
+*,*::before,*::after{min-width:0}
+html,body{width:100%;max-width:100%;overflow-x:hidden}
+img,video,canvas,svg{max-width:100%}
+h1,h2,h3,h4,p,button,label,span,small,dt,dd{overflow-wrap:anywhere}
+.nav-label,.task-title strong,.workspace-item strong,.api-status,.credits{min-width:0}
+.task-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
+.story-body p{overflow-wrap:anywhere}
+@media(max-width:900px){
+ .side{position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;height:auto;z-index:80;padding:6px max(8px,env(safe-area-inset-left)) max(6px,env(safe-area-inset-bottom));border-top:1px solid var(--ds-border);border-right:0;background:color-mix(in srgb,var(--ds-bg) 94%,transparent);backdrop-filter:blur(18px)}
+ .main{padding-bottom:76px}.nav{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;width:100%;overflow:hidden}
+ .nav button{min-width:0;width:100%;min-height:52px;padding:5px 2px;justify-content:center;flex-direction:column;gap:3px;text-align:center}
+ .nav .nav-icon{display:block!important;width:20px;height:20px;flex:0 0 20px}.nav .nav-label{display:block;max-width:100%;font-size:9px;line-height:1.1;white-space:normal;text-overflow:clip}
+ .nav button:before{display:none}
+ .brand,.shell-collapse,.bottom{display:none!important}
+ .prompt-dock{bottom:84px!important}
+}
+@media(max-width:600px){
+ .top{padding:0 10px}.top-project{flex:1 1 auto;min-width:0}.top-actions{gap:4px}.top-actions .api-status,.top-actions .credits{display:none}
+ .shell-select{max-width:72px;padding-left:9px!important;padding-right:22px!important}.top-actions .ds-btn-icon{flex:0 0 40px}
+ .hero,.grid,.workspace,.create-stage,.production-shell,.tasks-shell,.settings-shell{padding-left:12px;padding-right:12px}
+ .create-canvas{min-height:46vh}.create-result{width:100%}.prompt-row textarea{min-height:68px}
+ .tasks-toolbar{grid-template-columns:1fr}.tasks-toolbar input{grid-column:auto}
+ .settings-card,.production-form,.production-status{padding:16px}.setting-row{align-items:flex-start;flex-wrap:wrap}.setting-row>div{flex:1 1 180px}
+}
+@media(max-width:380px){
+ .top-project small{display:none}.top-project strong{font-size:12px}.shell-select{max-width:62px}
+ .nav .nav-label{font-size:8px}.nav button{min-height:50px}
+ .prompt-dock{bottom:82px!important;padding:7px}.option-chip{font-size:10px}
+ .create-canvas{min-height:42vh}
+}
