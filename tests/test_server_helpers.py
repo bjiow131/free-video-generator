@@ -44,7 +44,7 @@ class _Pipeline:
 def test_cancel_while_queued_does_not_release_semaphore(monkeypatch):
     async def scenario():
         semaphore = server.WeightedSemaphore(1)
-    semaphore.current = 1
+        semaphore.current = 1
         manager = _TaskManager()
         pipeline = _Pipeline()
         state = type("State", (), {"task_type": TaskType.SIMPLE})()
