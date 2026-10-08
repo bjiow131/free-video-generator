@@ -13,22 +13,15 @@ echo   AGNES VIDEO GENERATOR
 echo ==========================================
 echo.
 
-REM --- Agnes API key must come from Windows environment ---
+REM --- Agnes API key is optional here; it may be configured in the Web UI ---
 if "%AGNES_API_KEY%"=="" (
-    echo [ERROR] AGNES_API_KEY not found.
+    echo [WARNING] AGNES_API_KEY is not set in Windows.
+    echo The server will still start. You can configure the API key in the Web UI.
     echo.
-    echo Run this once in a CMD window:
+) else (
+    echo Agnes API key found.
     echo.
-    echo   setx AGNES_API_KEY "YOUR_AGNES_KEY"
-    echo.
-    echo Then close CMD completely and run this BAT again.
-    echo.
-    pause
-    exit /b 1
 )
-
-echo Agnes API key found.
-echo.
 
 REM --- Python virtual environment ---
 if not exist ".venv\Scripts\python.exe" (
