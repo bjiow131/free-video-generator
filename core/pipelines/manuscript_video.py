@@ -511,142 +511,78 @@ class ManuscriptVideoPipeline(BasePipeline):
     async def _step_generate_videos(
         self, paragraphs: List[ManuscriptParagraph],
     ) -> None:
-        """为每个段落调用 Agnes Video API 生成视频（两阶段并行）。
-
-        Phase 1: 批量提交所有视频请求（服务端并行生成）。
-        Phase 2: 逐个轮询等待完成并下载。
-
-        每段视频保存到 ``{working_dir}/para_{index}/video.mp4``，
-        同时记录 video_id 和 curl 命令到 ``task.json`` / ``curl.sh``。
-
-        Args:
-            paragraphs: 段落列表（就地修改 ``video_file``、``video_id`` 字段）。
-        """
+        """Generate independent paragraph videos concurrently with bounded concurrency."""
         _SUBMIT_RETRIES = 3
         _WAIT_RETRIES = 3
         total = len(paragraphs)
+        limit = max(1, int(os.getenv("MAX_PARALLEL_SCENES", "3")))
+        semaphore = asyncio.Semaphore(limit)
 
-        # ── Phase 1: 批量提交 ────────────────────────────────────────────
-        pending: list[tuple[int, str, str]] = []  # (para_index, video_id, video_path)
-
-        for i, para in enumerate(paragraphs):
+        async def submit_one(i: int, para: ManuscriptParagraph):
             self._check_shutdown()
-
             para_dir = os.path.join(self.working_dir, f"para_{para.index}")
             video_path = os.path.join(para_dir, "video.mp4")
-
-            # 已有视频文件 → 跳过
             if os.path.exists(video_path):
                 para.video_file = video_path
-                logger.info(
-                    "[Manuscript] video: paragraph %d already exists, skipping",
-                    para.index,
-                )
-                continue
-
+                return None
             if not para.scene_prompt:
-                logger.warning(
-                    "[Manuscript] video: paragraph %d has no scene_prompt, skipping",
-                    para.index,
-                )
-                continue
-
+                logger.warning("[Manuscript] paragraph %d has no scene_prompt, skipping", para.index)
+                return None
             os.makedirs(para_dir, exist_ok=True)
-
-            # 续传：复用已提交的 video_id
             saved_video_id = self._load_para_task(para_dir)
             if saved_video_id:
                 para.video_id = saved_video_id
-                logger.info(
-                    "[Manuscript] video: paragraph %d resuming video_id %s...",
-                    para.index, saved_video_id[:16],
-                )
-                pending.append((para.index, saved_video_id, video_path))
-                continue
-
-            # 提交新视频
-            logger.info(
-                "[Manuscript] video: submitting paragraph %d/%d...",
-                i + 1, total,
-            )
-            await self._emit(
-                "video_gen", "running",
-                f"提交视频 {i + 1}/{total}",
-                0.15 + 0.20 * (i / max(total, 1)),
-            )
+                return (para.index, saved_video_id, video_path)
 
             para_duration = min(max(int(math.ceil(len(para.text) / _CHARS_PER_SEC)), 4), 12)
-            logger.info(
-                "[Manuscript] video: paragraph %d estimated duration %.1fs (chars=%d)",
-                para.index, para_duration, len(para.text),
-            )
-
-            for retry in range(_SUBMIT_RETRIES):
-                try:
-                    video_id = await self.video_api.submit_video(
-                        prompt=para.scene_prompt,
-                        duration=para_duration,
-                        width=self._state.video_width,
-                        height=self._state.video_height,
-                        negative_prompt=self._state.negative_prompt or None,
-                    )
-                    para.video_id = video_id
-                    self._save_para_task(para_dir, video_id)
-                    pending.append((para.index, video_id, video_path))
-                    break
-                except Exception as e:
-                    if retry < _SUBMIT_RETRIES - 1:
-                        delay = 15 * (retry + 1)
-                        logger.warning(
-                            "[Manuscript] video: paragraph %d submit failed "
-                            "(%s), retry %d/%d in %ds...",
-                            para.index, e, retry + 1, _SUBMIT_RETRIES, delay,
+            async with semaphore:
+                await self._emit("video_gen", "running",
+                    f"提交视频 {i + 1}/{total}", 0.15 + 0.20 * i / max(total, 1))
+                for retry in range(_SUBMIT_RETRIES):
+                    try:
+                        video_id = await self.video_api.submit_video(
+                            prompt=para.scene_prompt,
+                            duration=para_duration,
+                            width=self._state.video_width,
+                            height=self._state.video_height,
+                            negative_prompt=self._state.negative_prompt or None,
                         )
-                        await asyncio.sleep(delay)
-                    else:
-                        raise
+                        para.video_id = video_id
+                        self._save_para_task(para_dir, video_id)
+                        return (para.index, video_id, video_path)
+                    except Exception as e:
+                        if retry < _SUBMIT_RETRIES - 1:
+                            await asyncio.sleep(15 * (retry + 1))
+                        else:
+                            raise
 
-        # 提交完毕后持久化（断点续传可恢复 video_id）
-        self.task_manager.update_state(paragraphs=paragraphs)
-        logger.info(
-            "[Manuscript] video: all %d paragraphs submitted, now waiting...",
-            len(pending),
+        submitted = await asyncio.gather(
+            *(submit_one(i, para) for i, para in enumerate(paragraphs))
         )
+        pending = [item for item in submitted if item]
+        self.task_manager.update_state(paragraphs=paragraphs)
 
-        # ── Phase 2: 逐个等待完成 ────────────────────────────────────────
-        for j, (para_idx, video_id, video_path) in enumerate(pending):
-            self._check_shutdown()
+        async def wait_one(item):
+            para_idx, video_id, video_path = item
+            para = next(p for p in paragraphs if p.index == para_idx)
+            async with semaphore:
+                self._check_shutdown()
+                for retry in range(_WAIT_RETRIES):
+                    try:
+                        video_output = await self.video_api.wait_for_video(video_id)
+                        await asyncio.to_thread(video_output.save, video_path)
+                        para.video_file = video_path
+                        self.task_manager.update_state(paragraphs=paragraphs)
+                        logger.info("[Manuscript] paragraph %d saved → %s", para_idx, video_path)
+                        return
+                    except Exception as e:
+                        if retry < _WAIT_RETRIES - 1:
+                            await asyncio.sleep(20 * (retry + 1))
+                        else:
+                            raise
 
-            para = paragraphs[para_idx]
-            await self._emit(
-                "video_gen", "running",
-                f"等待视频 {j + 1}/{len(pending)} ({video_id[:16]}...)",
-                0.35 + 0.25 * (j / max(len(pending), 1)),
-            )
-
-            for retry in range(_WAIT_RETRIES):
-                try:
-                    video_output = await self.video_api.wait_for_video(video_id)
-                    await asyncio.to_thread(video_output.save, video_path)
-                    break
-                except Exception as e:
-                    if retry < _WAIT_RETRIES - 1:
-                        delay = 20 * (retry + 1)
-                        logger.warning(
-                            "[Manuscript] video: paragraph %d wait failed "
-                            "(%s), retry %d/%d in %ds...",
-                            para_idx, e, retry + 1, _WAIT_RETRIES, delay,
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        raise
-
-            para.video_file = video_path
-            self.task_manager.update_state(paragraphs=paragraphs)
-            logger.info(
-                "[Manuscript] video: paragraph %d saved → %s (video_id=%s)",
-                para_idx, video_path, video_id[:16],
-            )
+        if pending:
+            await asyncio.gather(*(wait_one(item) for item in pending))
 
     @timed_step
     async def _step_audio(
