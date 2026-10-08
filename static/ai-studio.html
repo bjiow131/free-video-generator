@@ -211,10 +211,10 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
   <div class="production-shell">
     <div class="production-head">
       <div><div class="eyebrow">Production Studio</div><h1>Creative workspace</h1></div>
-      <div class="mode-tabs" role="tablist">
-        <button class="mode-tab active" data-production-mode="creative" type="button">Creative</button>
-        <button class="mode-tab" data-production-mode="manuscript" type="button">Manuscript</button>
-        <button class="mode-tab" data-production-mode="anchor" type="button">Anchor</button>
+      <div class="mode-tabs" role="tablist" aria-label="Creation mode">
+        <button class="mode-tab active" role="tab" aria-selected="true" data-production-mode="creative" type="button">Creative</button>
+        <button class="mode-tab" role="tab" aria-selected="false" data-production-mode="manuscript" type="button">Manuscript</button>
+        <button class="mode-tab" role="tab" aria-selected="false" data-production-mode="anchor" type="button">Anchor</button>
       </div>
     </div>
     <div class="stepper" id="productionStepper">
@@ -389,7 +389,7 @@ qsa('#taskTypeFilter option,#taskStatusFilter option').forEach(el=>{const base=e
 applyUiLanguage(localStorage.getItem('agnes_lang')||'ru');
 let models=[],selected=null;
 let productionMode='creative',productionSockets={};
-function setProductionMode(mode){productionMode=mode;$('.mode-tab').forEach(b=>b.classList.toggle('active',b.dataset.productionMode===mode));$('.mode-panel').forEach(p=>p.classList.toggle('active',p.dataset.modePanel===mode));resetProductionStepper()}
+function setProductionMode(mode){productionMode=mode;$('.mode-tab').forEach(b=>{const active=b.dataset.productionMode===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});$('.mode-panel').forEach(p=>p.classList.toggle('active',p.dataset.modePanel===mode));resetProductionStepper()}
 function resetProductionStepper(){$('#productionStepper .step').forEach((s,i)=>{s.classList.remove('running','done','failed');s.querySelector('span').textContent=i===0?'Ready':'Pending'})}
 $('.mode-tab').forEach(b=>b.onclick=()=>setProductionMode(b.dataset.productionMode));
 function formatDims(format){return format==='portrait'?[768,1152]:[1152,648]}
