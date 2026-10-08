@@ -398,8 +398,95 @@ function formatDims(format){return format==='portrait'?[768,1152]:[1152,648]}
 function productionSteps(progress){const pct=Number(progress)||0,idx=pct>=95?4:pct>=65?3:pct>=35?2:pct>0?1:0;$('#productionStepper .step').forEach((s,i)=>{s.classList.remove('running','done');if(i<idx)s.classList.add('done');if(i===idx)s.classList.add('running');s.querySelector('span').textContent=i<idx?'Done':i===idx?Math.round(pct)+'%':'Pending'})}
 function renderStoryboard(container,scenes){if(!container)return;container.innerHTML=(scenes||[]).map((x,i)=>'<article class="story-card"><div class="story-thumb">'+(x.video_file?'<video muted playsinline src="/api/video/'+encodeURIComponent(x.task_id||'')+'"></video>':'Scene '+(i+1))+'</div><div class="story-body"><strong>Scene '+(i+1)+' · '+escapeHtml(String(x.duration||''))+'s</strong><p>'+escapeHtml(x.prompt||x.description||'Ожидает генерации')+'</p></div></article>').join('')}
 function connectProductionWS(id,progressEl,storyEl,statusEl){try{const proto=location.protocol==='https:'?'wss':'ws',ws=new WebSocket(proto+'://'+location.host+'/ws/'+encodeURIComponent(id));productionSockets[id]=ws;ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type!=='progress')return;productionSteps(m.progress);if(progressEl)progressEl.innerHTML='<b>'+escapeHtml(m.step||'Processing')+'</b><p>'+escapeHtml(m.message||m.status||'')+'</p><div class="ds-progress"><span style="--progress:'+Number(m.progress||0)+'%"></span></div>';if(m.data?.scenes)renderStoryboard(storyEl,m.data.scenes);if(statusEl)statusEl.textContent=Math.round(Number(m.progress||0))+'% · '+(m.message||m.status||'')}catch{}};ws.onclose=()=>{delete productionSockets[id]}}catch{}}
-async function createProductionTask(kind){const cfg={creative:{endpoint:'/api/tasks/creative',form:()=>{const [w,h]=formatDims($('#creativeFormat').value),n=Number($('#creativeScenes').value),d=Number($('#creativeDuration').value),f=new FormData();f.append('idea',$('#creativeIdea').value.trim());f.append('creative_name',$('#creativeName').value.trim());f.append('style',$('#creativeStyle').value);f.append('chaining_mode',$('#creativeChaining').value);f.append('video_width',w);f.append('video_height',h);f.append('scene_count',n);f.append('uniform_duration','true');f.append('scene_durations_json',JSON.stringify(Array(n).fill(d)));f.append('audio_enabled','true');f.append('audio_voice',$('#creativeVoice').value);if($('#creativeReference').files[0])f.append('reference_image',$('#creativeReference').files[0]);return f},status:'#creativeStatus',progress:'#creativeProgress',story:'#creativeStoryboard'},manuscript:{endpoint:'/api/tasks/manuscript',form:()=>{const [w,h]=formatDims($('#manuscriptFormat').value),f=new FormData();f.append('manuscript_text',$('#manuscriptText').value.trim());f.append('video_style',$('#manuscriptStyle').value);f.append('creative_name',$('#manuscriptName').value.trim());f.append('video_width',w);f.append('video_height',h);f.append('video_duration',$('#manuscriptDuration').value);f.append('audio_enabled','true');f.append('audio_voice',$('#manuscriptVoice').value);return f},status:'#manuscriptStatus',progress:'#manuscriptProgress',story:'#manuscriptStoryboard'},anchor:{endpoint:'/api/tasks/anchor',form:()=>{const [w,h]=formatDims($('#anchorFormat').value),f=new FormData();f.append('anchor_prompt',$('#anchorPrompt').value);f.append('script_text',$('#anchorScript').value.trim());f.append('video_width',w);f.append('video_height',h);f.append('audio_enabled','true');f.append('audio_voice',$('#anchorVoice').value);if($('#anchorReference').files[0])f.append('anchor_reference_image',$('#anchorReference').files[0]);return f},status:'#anchorStatus',progress:'#anchorProgress',story:'#anchorStoryboard'}}[kind];if(!cfg)return;const field=kind==='creative'?'#creativeIdea':kind==='manuscript'?'#manuscriptText':'#anchorScript';if(!$(field).value.trim()){fieldError(field,'Добавьте текст перед запуском.');$(field).focus();toast('Добавь текст для запуска');return}clearFieldError(field);$(cfg.status).textContent='Запуск…';try{const r=await api(cfg.endpoint,{method:'POST',body:cfg.form()}),d=await r.json();localStorage.setItem('production_task_id',d.task_id);$(cfg.status).textContent='Задача запущена';connectProductionWS(d.task_id,$(cfg.progress),$(cfg.story),$(cfg.status));pollProduction(d.task_id,cfg)}catch(e){$(cfg.status).textContent=e.message;toast(e.message)}}
-async function pollProduction(id,cfg){try{const r=await api('/api/tasks/'+encodeURIComponent(id)),s=await r.json();productionSteps(s.progress||0);if(cfg.progress)$(cfg.progress).innerHTML='<b>'+escapeHtml(s.status||'processing')+'</b><p>'+escapeHtml(s.error_message||'Обработка задачи…')+'</p><div class="ds-progress"><span style="--progress:'+Number(s.progress||0)+'%"></span></div>';if(s.scenes)renderStoryboard($(cfg.story),s.scenes);if(s.status==='completed'||s.status==='failed'){if(s.status==='completed')localStorage.removeItem('production_task_id');return}}catch{}setTimeout(()=>pollProduction(id,cfg),8000)}
+function productionConfig(kind){
+  return {
+    creative:{
+      endpoint:'/api/tasks/creative',
+      form:()=>{
+        const [w,h]=formatDims($('#creativeFormat').value),n=Number($('#creativeScenes').value),d=Number($('#creativeDuration').value),f=new FormData();
+        f.append('idea',$('#creativeIdea').value.trim());f.append('creative_name',$('#creativeName').value.trim());f.append('style',$('#creativeStyle').value);
+        f.append('chaining_mode',$('#creativeChaining').value);f.append('video_width',w);f.append('video_height',h);f.append('scene_count',n);
+        f.append('uniform_duration','true');f.append('scene_durations_json',JSON.stringify(Array(n).fill(d)));f.append('audio_enabled','true');f.append('audio_voice',$('#creativeVoice').value);
+        if($('#creativeReference').files[0])f.append('reference_image',$('#creativeReference').files[0]);return f
+      },status:'#creativeStatus',progress:'#creativeProgress',story:'#creativeStoryboard'
+    },
+    manuscript:{
+      endpoint:'/api/tasks/manuscript',
+      form:()=>{
+        const [w,h]=formatDims($('#manuscriptFormat').value),f=new FormData();
+        f.append('manuscript_text',$('#manuscriptText').value.trim());f.append('video_style',$('#manuscriptStyle').value);f.append('creative_name',$('#manuscriptName').value.trim());
+        f.append('video_width',w);f.append('video_height',h);f.append('video_duration',$('#manuscriptDuration').value);f.append('audio_enabled','true');f.append('audio_voice',$('#manuscriptVoice').value);return f
+      },status:'#manuscriptStatus',progress:'#manuscriptProgress',story:'#manuscriptStoryboard'
+    },
+    anchor:{
+      endpoint:'/api/tasks/anchor',
+      form:()=>{
+        const [w,h]=formatDims($('#anchorFormat').value),f=new FormData();
+        f.append('anchor_prompt',$('#anchorPrompt').value);f.append('script_text',$('#anchorScript').value.trim());f.append('video_width',w);f.append('video_height',h);
+        f.append('audio_enabled','true');f.append('audio_voice',$('#anchorVoice').value);if($('#anchorReference').files[0])f.append('anchor_reference_image',$('#anchorReference').files[0]);return f
+      },status:'#anchorStatus',progress:'#anchorProgress',story:'#anchorStoryboard'
+    }
+  }[kind]
+}
+function saveProductionDraft(kind){
+  try{
+    localStorage.setItem('production_mode',kind);
+    const draft={
+      name:$('#creativeName').value,idea:$('#creativeIdea').value,style:$('#creativeStyle').value,chaining:$('#creativeChaining').value,
+      scenes:$('#creativeScenes').value,duration:$('#creativeDuration').value,format:$('#creativeFormat').value,voice:$('#creativeVoice').value,
+      manuscriptName:$('#manuscriptName').value,manuscriptText:$('#manuscriptText').value,manuscriptStyle:$('#manuscriptStyle').value,
+      manuscriptDuration:$('#manuscriptDuration').value,manuscriptFormat:$('#manuscriptFormat').value,manuscriptVoice:$('#manuscriptVoice').value,
+      anchorPrompt:$('#anchorPrompt').value,anchorScript:$('#anchorScript').value,anchorFormat:$('#anchorFormat').value,anchorVoice:$('#anchorVoice').value
+    };
+    localStorage.setItem('production_draft',JSON.stringify(draft))
+  }catch{}
+}
+function restoreProductionDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem('production_draft')||'null');if(!d)return;
+    const set=(id,key)=>{if(d[key]!=null&&$(id))$(id).value=d[key]};
+    [['#creativeName','name'],['#creativeIdea','idea'],['#creativeStyle','style'],['#creativeChaining','chaining'],['#creativeScenes','scenes'],['#creativeDuration','duration'],['#creativeFormat','format'],['#creativeVoice','voice'],
+     ['#manuscriptName','manuscriptName'],['#manuscriptText','manuscriptText'],['#manuscriptStyle','manuscriptStyle'],['#manuscriptDuration','manuscriptDuration'],['#manuscriptFormat','manuscriptFormat'],['#manuscriptVoice','manuscriptVoice'],
+     ['#anchorPrompt','anchorPrompt'],['#anchorScript','anchorScript'],['#anchorFormat','anchorFormat'],['#anchorVoice','anchorVoice']].forEach(x=>set(x[0],x[1]));
+    const mode=localStorage.getItem('production_mode');if(mode&&['creative','manuscript','anchor'].includes(mode))setProductionMode(mode)
+  }catch{}
+}
+async function createProductionTask(kind){
+  const cfg=productionConfig(kind);if(!cfg)return;
+  const field=kind==='creative'?'#creativeIdea':kind==='manuscript'?'#manuscriptText':'#anchorScript';
+  if(!$(field).value.trim()){fieldError(field,'Добавьте текст перед запуском.');$(field).focus();return}
+  clearFieldError(field);saveProductionDraft(kind);$(cfg.status).textContent='Запуск…';
+  try{
+    const r=await api(cfg.endpoint,{method:'POST',body:cfg.form()}),d=await r.json();
+    localStorage.setItem('production_task_id',d.task_id);localStorage.setItem('production_task_kind',kind);
+    $(cfg.status).textContent='Задача запущена';connectProductionWS(d.task_id,$(cfg.progress),$(cfg.story),$(cfg.status));pollProduction(d.task_id,cfg)
+  }catch(e){$(cfg.status).textContent=e.message;toast(e.message)}
+}
+async function pollProduction(id,cfg){
+  try{
+    const r=await api('/api/tasks/'+encodeURIComponent(id)),s=await r.json();productionSteps(s.progress||0);
+    if(cfg.progress)$(cfg.progress).innerHTML='<b>'+escapeHtml(s.status||'processing')+'</b><p>'+escapeHtml(s.error_message||s.message||'Обработка задачи…')+'</p><div class="ds-progress"><span style="--progress:'+Number(s.progress||0)+'%"></span></div>';
+    if(s.scenes)renderStoryboard($(cfg.story),s.scenes);
+    if(s.status==='completed'||s.status==='failed'){
+      localStorage.removeItem('production_task_id');localStorage.removeItem('production_task_kind');
+      $(cfg.status).textContent=s.status==='completed'?'Готово':'Ошибка';
+      if(s.status==='failed')toast(s.error_message||'Производство завершилось с ошибкой');
+      return
+    }
+  }catch(e){$(cfg.status).textContent=e.message}
+  setTimeout(()=>pollProduction(id,cfg),8000)
+}
+async function restoreProductionAfterLoad(){
+  const id=localStorage.getItem('production_task_id'),kind=localStorage.getItem('production_task_kind')||localStorage.getItem('production_mode');
+  if(!id||!['creative','manuscript','anchor'].includes(kind))return;
+  const cfg=productionConfig(kind);if(!cfg)return;
+  setProductionMode(kind);show('film');
+  try{
+    const r=await api('/api/tasks/'+encodeURIComponent(id)),s=await r.json();
+    if(r.ok&&(s.status==='pending'||s.status==='queued'))await api('/api/tasks/'+encodeURIComponent(id)+'/resume',{method:'POST'});
+    pollProduction(id,cfg)
+  }catch(e){$(cfg.status).textContent=e.message;toast(e.message)}
+}
 $('#creativeGenerate').onclick=()=>createProductionTask('creative');$('#manuscriptGenerate').onclick=()=>createProductionTask('manuscript');$('#anchorGenerate').onclick=()=>createProductionTask('anchor');
 async function loadSettings(){try{$('#workspaceList').innerHTML='<div class="ds-skeleton" style="height:44px"></div><div class="ds-skeleton" style="height:44px"></div>';const r=await api('/api/config'),d=await r.json();$('#settingsApiStatus').innerHTML='<span class="status-dot"></span>'+(d.configured?'API key connected':'API key not configured');$('#onboardingCard').classList.toggle('hidden',!!d.configured);const wm=!!d.watermark?.enabled;$('#watermarkToggle').setAttribute('aria-checked',String(wm));$('#watermarkStatus').textContent=wm?'Watermark enabled':'Watermark disabled';const ws=d.workspaces||[];$('#workspaceList').innerHTML=ws.length?ws.map(x=>'<div class="workspace-item"><div><strong>'+escapeHtml(x.name||x.path)+'</strong><small>'+escapeHtml(x.path||'')+(x.path===d.active_workspace?' · Active':'')+'</small></div>'+(x.path===d.active_workspace?'<span class="ds-chip ds-chip-success">Active</span>':'<button class="ghost" data-workspace="'+escapeHtml(x.path)+'">Use</button>')+'</div>').join(''):'<div class="ds-empty">No workspaces configured.</div>'}catch(e){$('#settingsApiStatus').textContent=e.message}}
 $('#settingsApiSave').onclick=async()=>{const key=$('#settingsApiKey').value.trim();if(!key){toast('Enter an API key');return}try{const f=new FormData();f.append('api_key',key);await api('/api/config',{method:'POST',body:f});$('#settingsApiKey').value='';toast('API key saved');loadSettings()}catch(e){toast(e.message)}};
@@ -475,9 +562,6 @@ $('#generate').onclick=async()=>{let p=$('#prompt').value.trim();if(!p){fieldErr
 $('#mediaType').addEventListener('change',saveSimpleDraft);$('#prompt').addEventListener('input',saveSimpleDraft);document.addEventListener('change',e=>{if(e.target.matches('#videoAspect,#videoQuality,#videoDuration,#imageAspect,#imageQuality')){saveSimpleDraft();syncCreateDock()}});$('#reference').addEventListener('change',syncReferencePreview);
 $('#clear').onclick=()=>{$('#prompt').value='';$('#reference').value='';syncReferencePreview();$('#result').classList.add('hidden');$('#createEmpty').classList.remove('hidden');$('#status').textContent='';saveSimpleDraft()};
 
-async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
-$('#historyList').addEventListener('click',e=>{const b=e.target.closest('[data-task-id]');if(b)openResult(b.dataset.taskId,b.dataset.resultType)});
-
 // Tasks workspace: grid filters, task controls and inline player.
 let taskCache=[],lastTaskRenderKey='';
 function taskDate(x){const raw=String(x.dir_name||'');const m=raw.match(/^(\d{8})_(\d{6})/);return m?m[1].slice(0,4)+'-'+m[1].slice(4,6)+'-'+m[1].slice(6,8)+' '+m[2].slice(0,2)+':'+m[2].slice(2,4):''}
@@ -506,8 +590,6 @@ function downloadTask(id,type){const a=document.createElement('a');a.href=type==
 async function taskAction(action,id){try{if(action==='stop'&&!(await confirmAction('Stop task','The running task will be cancelled and may not be resumable.','Stop task')))return;if(action==='open'){const x=taskCache.find(t=>t.task_id===id);openResult(id,x?.task_type==='image'?'image':'video');return}if(action==='download'){const x=taskCache.find(t=>t.task_id===id);downloadTask(id,x?.task_type==='image'?'image':'video');return}const r=await api('/api/tasks/'+encodeURIComponent(id)+'/'+action,{method:'POST'});toast(action==='stop'?'Task stopped':'Task resumed');await loadHistory();if(action==='resume')pollTask(id)}catch(e){toast(e.message)}}
 $('#historyList').addEventListener('click',e=>{const b=e.target.closest('[data-task-action]');if(b)taskAction(b.dataset.taskAction,b.dataset.taskId)});
 $('#taskSearch').oninput=renderTasks;$('#taskTypeFilter').onchange=renderTasks;$('#taskStatusFilter').onchange=renderTasks;$('#playerClose').onclick=()=>$('#taskPlayer').classList.remove('active');
-async function legacyLoadHistory(){try{let r=await api('/api/tasks');let d=await r.json();let items=d.tasks||[];$('#historyList').innerHTML=items.length?items.map(x=>{let type=x.task_type==='image'?'Изображение':'Видео';let ready=x.status==='completed'&&x.task_id;let action=ready?'<button class="ghost" data-task-id="'+escapeHtml(x.task_id)+'" data-result-type="'+(x.task_type==='image'?'image':'video')+'" style="margin-top:10px">Открыть результат</button>':'';return '<div class="card"><b>'+escapeHtml(type+' · '+(x.creative_name||x.task_id))+'</b><p>Задача '+escapeHtml(x.task_id)+'</p><span class="tag">'+escapeHtml(x.status)+'</span>'+action+'</div>'}).join(''):'<div class="card">Генераций пока нет.</div>'}catch(e){$('#historyList').innerHTML='<div class="card">'+escapeHtml(e.message||'Ошибка загрузки истории')+'</div>'}}
-
 async function pollTask(id,misses=0){try{let r=await api('/api/tasks/'+encodeURIComponent(id));let s=await r.json();if(s.status==='completed'){localStorage.removeItem('simple_task_id');toast('Видео готово');loadHistory();return}if(s.status==='failed'){localStorage.removeItem('simple_task_id');toast('Видео не удалось создать');loadHistory();return}}catch{if(misses>=3){localStorage.removeItem('simple_task_id');toast('Не удалось получить статус задачи');loadHistory();return}}setTimeout(()=>pollTask(id,misses+1),8000)}
 
 let filmTimer=null;async function startFilm(){let idea=$('#filmIdea').value.trim();if(!idea){toast('Опиши идею фильма');return}let n=Number($('#filmScenes').value),dur=Number($('#filmDuration').value);let landscape=$('#filmFormat').value==='landscape';let f=new FormData();f.append('idea',idea);f.append('creative_name',$('#filmName').value.trim());f.append('style',$('#filmStyle').value.trim());f.append('scene_count',String(n));f.append('scene_durations_json',JSON.stringify(Array(n).fill(dur)));f.append('duration_source','manual');f.append('uniform_duration','true');f.append('chaining_mode','keyframes');f.append('video_width',landscape?'1152':'768');f.append('video_height',landscape?'648':'1152');f.append('audio_enabled',$('#filmAudio').value);f.append('audio_voice',$('#filmVoice').value);f.append('subtitle_enabled',$('#filmSubs').value);f.append('subtitle_style_mode','fixed');let ref=$('#filmReference').files[0];if(ref)f.append('reference_image',ref);$('#filmGenerate').disabled=true;$('#filmStatus').textContent='Запускаю производство фильма…';$('#filmProgress').classList.remove('hidden');try{let r=await fetch('/api/tasks/creative',{method:'POST',body:f});let d=await r.json();if(!r.ok)throw Error(d.detail||'Не удалось запустить фильм');$('#filmStatus').textContent='Фильм запущен';localStorage.setItem('film_task_id',d.task_id);watchFilm(d.task_id)}catch(e){$('#filmStatus').textContent=e.message;toast(e.message);$('#filmGenerate').disabled=false}}async function watchFilm(id){if(filmTimer)clearTimeout(filmTimer);try{let r=await fetch('/api/tasks/'+encodeURIComponent(id));if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Не удалось получить статус фильма')}let s=await r.json();let scenes=s.scenes||[];let done=scenes.filter(x=>x.video_status==='completed').length;let total=s.scene_count||scenes.length||Number($('#filmScenes').value);let pct=total?Math.round(done/total*100):0;$('#filmProgress').innerHTML='<div style="padding:18px"><b>Фильм: '+pct+'%</b><p>'+done+' из '+total+' сцен готовы.</p><span class="tag">'+s.status+'</span>'+(s.story_file?'<p>✓ История подготовлена</p>':'')+(s.character_ref_file?'<p>✓ Референс персонажа подготовлен</p>':'')+(s.final_video_file?'<p>✓ Финальный MP4 готов</p>':'')+(s.error_message?'<p style="color:#ff6b6b;word-break:break-word"><b>Ошибка:</b> '+String(s.error_message).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</p>':'')+'</div>';if(s.status==='completed'&&s.final_video_file){$('#filmProgress').innerHTML='<div style="padding:18px"><b>🎬 Фильм готов!</b><p>Все сцены собраны в один MP4.</p><video controls playsinline style="width:100%;margin-top:12px" src="/api/video/'+encodeURIComponent(id)+'"></video><div style="padding-top:12px"><a download="multfilm.mp4" href="/api/video/'+encodeURIComponent(id)+'/download" style="color:#fff">Скачать MP4</a></div></div>';$('#filmStatus').textContent='Готово';localStorage.removeItem('film_task_id');$('#filmGenerate').disabled=false;return}if(s.status==='failed'){localStorage.removeItem('film_task_id');throw Error('Производство фильма завершилось с ошибкой. Можно открыть «История» и проверить задачу.')}filmTimer=setTimeout(()=>watchFilm(id),8000)}catch(e){$('#filmStatus').textContent=e.message;toast(e.message);$('#filmGenerate').disabled=false}}$('#filmGenerate').onclick=startFilm;$('#filmClear').onclick=()=>{$('#filmName').value='';$('#filmIdea').value='';$('#filmReference').value='';$('#filmStatus').textContent='';$('#filmProgress').classList.add('hidden');$('#filmProgress').innerHTML='';localStorage.removeItem('film_draft')};
@@ -552,5 +634,6 @@ async function restoreFilmAfterLoad(){
 function saveFilmDraft(){try{localStorage.setItem('film_draft',JSON.stringify({name:$('#filmName').value,idea:$('#filmIdea').value,style:$('#filmStyle').value,scenes:$('#filmScenes').value,duration:$('#filmDuration').value,format:$('#filmFormat').value,audio:$('#filmAudio').value,voice:$('#filmVoice').value,subs:$('#filmSubs').value}))}catch{}}
 function restoreFilmDraft(){try{const d=JSON.parse(localStorage.getItem('film_draft')||'null');if(!d)return;if(d.name!=null)$('#filmName').value=d.name;if(d.idea!=null)$('#filmIdea').value=d.idea;if(d.style!=null)$('#filmStyle').value=d.style;if(d.scenes!=null)$('#filmScenes').value=d.scenes;if(d.duration!=null)$('#filmDuration').value=d.duration;if(d.format!=null)$('#filmFormat').value=d.format;if(d.audio!=null)$('#filmAudio').value=d.audio;if(d.voice!=null)$('#filmVoice').value=d.voice;if(d.subs!=null)$('#filmSubs').value=d.subs}catch{}}
 ['filmName','filmIdea','filmStyle','filmScenes','filmDuration','filmFormat','filmAudio','filmVoice','filmSubs'].forEach(id=>document.getElementById(id)?.addEventListener('input',saveFilmDraft));
-load().then(()=>{renderMediaParams();restoreSimpleDraft();restoreFilmDraft();styleFilmChoices();restoreFilmAfterLoad()});
+['creativeName','creativeIdea','creativeStyle','creativeChaining','creativeScenes','creativeDuration','creativeFormat','creativeVoice','manuscriptName','manuscriptText','manuscriptStyle','manuscriptDuration','manuscriptFormat','manuscriptVoice','anchorPrompt','anchorScript','anchorFormat','anchorVoice'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>saveProductionDraft(productionMode)));
+load().then(()=>{renderMediaParams();restoreSimpleDraft();restoreFilmDraft();restoreProductionDraft();styleFilmChoices();restoreProductionAfterLoad();restoreFilmAfterLoad()});
 </script><div id="confirmModal" class="ds-modal-backdrop" hidden role="presentation"><div class="ds-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage"><div class="ds-modal-header"><h2 id="confirmTitle">Confirm action</h2><button id="confirmClose" class="ds-btn ds-btn-icon ds-btn-ghost" type="button" aria-label="Close">×</button></div><p id="confirmMessage"></p><div class="ds-modal-actions"><button id="confirmCancel" class="ds-btn ds-btn-secondary" type="button">Cancel</button><button id="confirmOk" class="ds-btn ds-btn-primary" type="button">Confirm</button></div></div></div><div id="toastRegion" class="ds-toast-region" aria-live="polite" aria-atomic="true"></div></body></html>
