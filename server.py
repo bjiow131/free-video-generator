@@ -1123,7 +1123,9 @@ async def _run_pipeline_with_concurrency(
         _queued_tasks.pop(task_id, None)
         if active_pipelines.get(task_id) is pipeline:
             active_pipelines.pop(task_id, None)
-        _pipeline_locks.pop(task_id, None)
+            _pipeline_locks.pop(task_id, None)
+        elif task_id not in active_pipelines:
+            _pipeline_locks.pop(task_id, None)
 
 
 def _launch_background_task(coro):
