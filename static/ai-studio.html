@@ -595,12 +595,21 @@ async function generateVideo(){
   setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации видео…';$('#videoResult').classList.add('hidden');
   try{
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
-    const f=new FormData();f.set('prompt',p);f.set('model','agnes-video-2.5-flash');f.append('mode',mode);f.append('duration',$('#videoDuration').value);f.append('video_width',String(video_width));f.append('video_height',String(video_height));
-    if(ref)f.append('reference_image',ref,'video_character_reference.'+(ref.type||'image/png').split('/')[1].replace('jpeg','jpg'));
-    if($('#videoCharacter').value){
-      f.append('system_prompt','Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.');
+    let reference_image_base64='';
+    if(ref){
+      reference_image_base64=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
+        reader.onerror=()=>reject(new Error('Не удалось прочитать референс изображения'));
+        reader.readAsDataURL(ref);
+      });
     }
-    const q=new URLSearchParams({prompt:p,model:'agnes-video-2.5-flash',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',body:f});const d=await r.json();const taskId=d.task_id;
+    const payload={prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),video_width,video_height,reference_image_base64};
+    if($('#videoCharacter').value){
+      payload.system_prompt='Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.';
+    }
+    const q=new URLSearchParams({prompt:p,model:'agnes-video-2.5-flash',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});
+    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();const taskId=d.task_id;
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
     const poll=async()=>{try{const rr=await api('/api/tasks');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){setTimeout(poll,2500);return}
       if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
