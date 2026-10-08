@@ -261,6 +261,13 @@ button{cursor:pointer}
       <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
       <div class="hint">Готовый кадр автоматически станет исходным изображением для Agnes 2.0.</div>
       <div id="startFrameStatus" class="status"></div><div id="startFrameResult" class="result hidden"></div>
+      <div id="videoProgressPanel" class="card hidden" style="margin-top:14px;padding:16px;border:1px solid var(--border,#dedbd2);border-radius:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><b id="videoProgressHeading">Генерация видео</b><span id="videoEta" style="font-size:13px;color:var(--muted,#777)">Оцениваем время…</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px"><strong id="videoProgressPercent" style="font-size:28px;line-height:1">0%</strong><span id="videoElapsed" style="font-size:12px;color:var(--muted,#777)">Прошло 00:00</span></div>
+        <div style="height:9px;margin-top:10px;border-radius:99px;background:var(--surface-muted,#e7e3d9);overflow:hidden"><div id="videoProgressBar" style="height:100%;width:0%;border-radius:99px;background:var(--accent,#55755d);transition:width .5s ease"></div></div>
+        <div id="videoProgressStage" style="font-size:12px;color:var(--muted,#777);margin-top:9px">Подготовка запроса…</div>
+        <div style="font-size:11px;color:var(--muted,#888);margin-top:6px">Процент отображается по статусу задачи, если модель его передаёт. Оставшееся время — приблизительная оценка.</div>
+      </div>
       <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
     </div>
   </div>
@@ -677,10 +684,65 @@ async function createStartFrame(){
     $('#startFrameStatus').textContent=e.message||'Ошибка создания стартового кадра';toast(e.message||'Ошибка создания стартового кадра');
   }finally{button.disabled=false}
 }
+let videoProgressStartedAt=0;
+let videoEtaDeadline=0;
+let videoProgressTicker=null;
+function videoClock(seconds){
+  seconds=Math.max(0,Math.floor(Number(seconds)||0));
+  return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+}
+function showVideoProgress(){
+  $('#videoProgressPanel').classList.remove('hidden');
+  if(videoProgressTicker)return;
+  videoProgressTicker=setInterval(()=>{
+    if(!videoProgressStartedAt)return;
+    $('#videoElapsed').textContent='Прошло '+videoClock((Date.now()-videoProgressStartedAt)/1000);
+    if(videoEtaDeadline){
+      const left=Math.max(0,Math.ceil((videoEtaDeadline-Date.now())/1000));
+      $('#videoEta').textContent=left>0?'Осталось примерно '+videoClock(left):'Ожидаем завершение…';
+    }
+  },1000);
+}
+function updateVideoProgress(task,taskId){
+  showVideoProgress();
+  const status=String(task.status||'').toLowerCase();
+  const raw=Number(task.progress);
+  const pct=status==='completed'?100:Math.max(0,Math.min(99,Number.isFinite(raw)?raw:0));
+  $('#videoProgressPercent').textContent=Math.round(pct)+'%';
+  $('#videoProgressBar').style.width=pct+'%';
+  $('#videoProgressHeading').textContent=status==='queued'||status==='pending'?'Ожидание очереди':status==='completed'?'Видео готово':status==='failed'?'Ошибка генерации':'Генерация видео';
+  $('#videoProgressStage').textContent=task.progress_message||('Задача '+taskId);
+  const eta=Number(task.eta_seconds);
+  if(task.eta_seconds!==null&&task.eta_seconds!==undefined&&Number.isFinite(eta)&&eta>=0){
+    videoEtaDeadline=Date.now()+eta*1000;
+    $('#videoEta').textContent=eta>0?'Осталось примерно '+videoClock(eta):'Ожидаем завершение…';
+  }
+  if(status==='completed'){
+    $('#videoProgressPercent').textContent='100%';
+    $('#videoProgressBar').style.width='100%';
+    $('#videoEta').textContent='Готово';
+    $('#videoProgressStage').textContent='Видео создано. Загружаем результат…';
+  }else if(status==='failed'){
+    $('#videoEta').textContent='Не завершено';
+    $('#videoProgressStage').textContent=task.error_message||task.progress_message||'Генерация не удалась';
+  }
+}
+function stopVideoProgressTicker(){
+  if(videoProgressTicker){clearInterval(videoProgressTicker);videoProgressTicker=null}
+}
+function finishVideoProgress(label){
+  if(label){
+    $('#videoProgressHeading').textContent=label;
+    $('#videoEta').textContent=label==='Видео готово'?'Готово':'Не завершено';
+  }
+  stopVideoProgressTicker();
+  videoProgressStartedAt=0;
+  videoEtaDeadline=0;
+}
 async function generateVideo(){
   const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
   if(!p){toast('Напиши промпт движения');return}
-  setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');
+  setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
   try{
     let refs=[];
     if(mode==='i2v'||mode==='ti2vid'){
@@ -748,19 +810,20 @@ async function generateVideo(){
       payload.system_prompt='Character identity lock: preserve the exact identity of the selected character across every frame. Match the supplied reference images for facial structure, eyes, eyebrows, nose, lips, jawline, skin tone, natural hair color, hairstyle, age, body proportions, clothing, and distinctive visual details. Treat the references as the immutable identity source, not as loose inspiration. Keep the same person during motion, camera movement, changes of angle, and transitions. Do not redesign, beautify, age, de-age, resize, recolor, morph, replace, or reinterpret the character. Do not change facial geometry or hairstyle between frames. If a requested action conflicts with identity consistency, preserve identity and perform the action with the smallest necessary pose change.';
     }
     const q=new URLSearchParams({prompt:p,model:'agnes-video-v2.0',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});
-    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();const taskId=d.task_id;
+    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||d.error||'Не удалось запустить генерацию');const taskId=d.task_id;if(!taskId)throw new Error('Сервер не вернул номер задачи');
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
-    const poll=async()=>{try{const rr=await api('/api/tasks');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){setTimeout(poll,2500);return}
-      if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
+    const poll=async()=>{try{const rr=await api('/api/tasks');if(!rr.ok)throw new Error('Не удалось получить статус задачи');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){$('#videoProgressStage').textContent='Задача принята сервером. Ожидаем статус…';setTimeout(poll,2500);return}
+      updateVideoProgress(task,taskId);
+      if(task.status==='failed'){throw Error(task.error_message||task.progress_message||'Генерация видео не удалась')}
       if(task.status==='completed'){
         const url='/api/video/'+encodeURIComponent(taskId);
         $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button></div>';
         $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');
-        $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;setGenerateBusy('video',false);return}
-      const pct=Math.max(0,Math.min(100,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
-    }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}};
+        $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;finishVideoProgress('Видео готово');setGenerateBusy('video',false);return}
+      const pct=Math.max(0,Math.min(99,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
+    }catch(e){$('#videoStatus').textContent=e.message;$('#videoProgressStage').textContent=e.message;finishVideoProgress('Ошибка генерации');toast(e.message);setGenerateBusy('video',false)}};
     poll();
-  }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}
+  }catch(e){$('#videoStatus').textContent=e.message;$('#videoProgressStage').textContent=e.message;finishVideoProgress('Ошибка генерации');toast(e.message);setGenerateBusy('video',false)}
 }
 $('#videoGenerate').onclick=generateVideo;
 $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
@@ -768,7 +831,7 @@ $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderV
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#createStartFrame').onclick=createStartFrame;
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';syncStartFramePrompt(true);saveFormState()};
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#videoProgressPanel').classList.add('hidden');stopVideoProgressTicker();videoEtaDeadline=0;videoProgressStartedAt=0;$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';syncStartFramePrompt(true);saveFormState()};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
