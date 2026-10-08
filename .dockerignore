@@ -12,3 +12,6 @@
 *.pyo
 .DS_Store
 .regression_server.log
+
+/generated
+/test_*.png
