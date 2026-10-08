@@ -780,7 +780,12 @@ function finishVideoProgress(label){
   videoEtaDeadline=0;
 }
 async function generateVideo(){
-  const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
+  let p=$('#videoPrompt').value.trim();let mode=$('#videoMode').value;
+  const continuingPreviousScene=Boolean(generatedStartFrameBlob&&generatedStartFrameTaskId.startsWith('continuity:'));
+  if(continuingPreviousScene){
+    mode='i2v';$('#videoMode').value='i2v';
+    p='CONTINUOUS SCENE CONTINUATION: Begin from the supplied final-frame image as the exact visual starting reference. Preserve the same forest layout, path, trees, foliage, lighting direction, color palette, camera position, character pose, screen position, scale, and orientation visible in that image. Do not establish a new location or redesign the environment. Continue the action naturally from that moment with no time jump, no camera reset, no cut, and no sudden change in character appearance.\n\nNEXT ACTION: '+p;
+  }
   if(!p){toast('Напиши промпт движения');return}
   setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
   try{
