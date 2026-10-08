@@ -26,3 +26,31 @@ def test_submit_closes_http_response(monkeypatch):
     result = asyncio.run(scenario())
     assert result == "vid-1"
     assert response.closed is True
+
+
+def test_submit_retries_connection_error(monkeypatch):
+    class Response:
+        status_code = 202
+        headers = {}
+        text = ""
+        def json(self):
+            return {"video_id": "vid-2"}
+        def close(self):
+            pass
+
+    calls = {"count": 0}
+    def post(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise __import__("requests").exceptions.ConnectionError("temporary")
+        return Response()
+
+    async def scenario():
+        api = AgnesVideoAPI(api_key="test", model="agnes-video-2.5-flash")
+        api.retry_base_delay = 0
+        monkeypatch.setattr("core.api.agnes_video.requests.post", post)
+        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter", lambda: type("L", (), {"acquire": lambda self: None})())
+        return await api._submit_with_retry({"model": "x"}, "test")
+
+    assert asyncio.run(scenario()) == "vid-2"
+    assert calls["count"] == 2
