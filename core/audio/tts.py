@@ -147,6 +147,11 @@ class SilentTTSEngine(TTSEngine):
         # P9: 检查 ffmpeg 返回码，失败时抛出异常而非静默返回
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")[:500] if stderr else ""
+            try:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+            except OSError:
+                logger.warning("[TTS] Failed to remove partial silent audio", exc_info=True)
             raise RuntimeError(
                 f"[TTS] ffmpeg silent generation failed (code {proc.returncode}): {err_msg}"
             )
