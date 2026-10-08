@@ -1136,6 +1136,7 @@ def _launch_background_task(coro):
 async def create_simple_task(
     request: Request,
     prompt: str = Form(...),
+    model: str = Form("agnes-video-2.5-flash"),
     mode: str = Form("t2v"),
     duration: int = Form(5),
     video_width: int = Form(1152),
@@ -1153,6 +1154,8 @@ async def create_simple_task(
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
     # P7: 参数校验
+    if model not in {"agnes-video-2.5-flash", "agnes-video-2.5"}:
+        raise HTTPException(status_code=422, detail="Неподдерживаемая модель видео")
     _validate_video_dimensions(video_width, video_height)
     _VALID_MODES = {"t2v", "i2v", "ti2vid", "keyframes"}
     if mode not in _VALID_MODES:
@@ -1182,6 +1185,7 @@ async def create_simple_task(
         task_id=task_id,
         creative_name=f"simple_{task_id}",
         prompt=prompt,
+        model=model,
         mode=video_mode,
         duration=duration,
         video_width=video_width,
