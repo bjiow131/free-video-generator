@@ -872,9 +872,9 @@ async def serve_character_reference(character_id: str, filename: str):
 async def generate_image(request: Request):
     """图片生成：手动解析 multipart/form-data，避免代理/браузер 对 Form(...) обязательных полей造成 422。"""
     form = await request.form()
-    prompt = str(form.get("prompt") or "").strip()
-    size = str(form.get("size") or "1K")
-    ratio = str(form.get("ratio") or "1:1")
+    prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
+    size = str(form.get("size") or request.query_params.get("size") or "1K")
+    ratio = str(form.get("ratio") or request.query_params.get("ratio") or "1:1")
     negative_prompt = str(form.get("negative_prompt") or "")
     system_prompt = str(form.get("system_prompt") or "")
     reference_image = form.get("reference_image")
