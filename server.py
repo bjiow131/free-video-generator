@@ -527,7 +527,7 @@ async def get_config(request: Request):
     active_ws = get_active_workspace()
     wm = get_watermark_config()
     data = {
-        "api_key": "****" + key[-4:] if key else "",
+        "configured": bool(key),
         "source": source,
         "can_clear": source == "config",
         "workspaces": get_workspaces(),
@@ -542,8 +542,11 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 async def save_config(api_key: str = Form(...), request: Request = None):
+    api_key = api_key.strip()
+    if not api_key:
+        raise HTTPException(status_code=422, detail="API Key не может быть пустым")
     set_api_key(api_key)
-    return {"ok": True}
+    return {"ok": True, "configured": True}
 
 
 @app.delete("/api/config")
@@ -591,8 +594,9 @@ async def generate_ideas(keyword: str = Form(...), request: Request = None):
     user_prompt = f"请根据关键词「{keyword}」生成创意概念和视觉风格建议。"
     try:
         result = client.chat_json(system_prompt, user_prompt, max_tokens=2048)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации ИИ: {str(e)}")
+    except Exception:
+        logger.exception("[Ideas] Generation failed")
+        raise HTTPException(status_code=502, detail="Не удалось сгенерировать идеи. Проверьте API и повторите попытку.")
     return {
         "ok": True,
         "concept": result.get("concept", ""),
@@ -776,9 +780,10 @@ async def generate_image(
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
+    prompt = prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
     if len(prompt) > 5000:
-        raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
-    if not prompt.strip():
         raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
 
     _VALID_SIZES = {"1K", "2K", "3K", "4K"}
@@ -828,7 +833,7 @@ async def generate_image(
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
 
     img_filename = "final_image.png"
     img_path = os.path.join(tm.task_dir, img_filename)
@@ -838,7 +843,7 @@ async def generate_image(
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} save failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Не удалось сохранить изображение: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось сохранить изображение на диск.")
 
     state.status = StepStatus.COMPLETED
     state.final_video_file = img_path
