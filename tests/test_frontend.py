@@ -31,7 +31,7 @@ def test_simple_generation_has_mode_specific_controls_and_dock_sync():
     assert "function syncCreateDock()" in source
     assert "durationChip.hidden=type!=='video'" in source
     assert "if(type==='image')" in source
-    assert "id="videoDuration"" in source
+    assert 'id="videoDuration"' in source
     assert 'data-create-type="image"' in source
     assert 'data-create-type="video"' in source
 
