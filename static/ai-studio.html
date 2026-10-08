@@ -400,6 +400,7 @@ async function loadCharacters(){
     if(select)select.innerHTML='<option value="">Без персонажа</option>'+(refs.length?'<option value="miya">Мия</option>':'');
     await populateCharacterReferences(refs);
     renderCharacters(refs);
+    await syncVideoCharacterSelector(refs);
   }catch(e){$('#characterStatus').textContent='Не удалось открыть локальное хранилище: '+e.message}
 }
 let characterObjectUrls=[];
@@ -530,19 +531,21 @@ $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,704]}
-async function syncVideoCharacterSelector(){
+async function syncVideoCharacterSelector(refs){
   const character=$('#videoCharacter'),select=$('#videoCharacterReference');
   if(!character||!select)return;
+  const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
+  character.innerHTML='<option value="">Без персонажа</option>'+(savedRefs.length?'<option value="miya">Мия</option>':'');
   if(character.value!=='miya'){
     select.innerHTML='<option value="">Сначала выбери персонажа</option>';select.disabled=true;return;
   }
-  try{
-    const refs=await getMiaRefs();
-    if(!refs.length){select.innerHTML='<option value="">Нет сохранённых референсов</option>';select.disabled=true;return}
-    const primary=refs.find(r=>r.isPrimary)||refs[0];
-    select.innerHTML=refs.map((r,i)=>'<option value="'+r.id+'"'+(r.id===primary.id?' selected':'')+'>'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-    select.disabled=false;
-  }catch(e){select.innerHTML='<option value="">Не удалось загрузить референсы</option>';select.disabled=true}
+  if(!savedRefs.length){
+    select.innerHTML='<option value="">Нет сохранённых референсов</option>';select.disabled=true;return;
+  }
+  const primary=savedRefs.find(r=>r.isPrimary)||savedRefs[0];
+  select.innerHTML=savedRefs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
+  select.value=String(primary.id);
+  select.disabled=false;
 }
 async function getSelectedVideoReference(){
   const manual=$('#videoReference').files[0];
@@ -617,11 +620,10 @@ async function loadHistory(){
 }
 load().then(async()=>{
   await loadCharacters();
-  await syncVideoCharacterSelector();
   let savedPage='image';
   try{
     savedPage=localStorage.getItem('aistudio_page')||'image';
-    if(!['image','characters','history'].includes(savedPage))savedPage='image';
+    if(!['image','characters','history','video'].includes(savedPage))savedPage='image';
   }catch{}
   show(savedPage,false);
 });</script></body></html>
