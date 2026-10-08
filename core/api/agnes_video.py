@@ -481,7 +481,44 @@ class AgnesVideoAPI:
 
             logger.info("[AgnesVideo] %s: %s", mode_desc, prompt[:80])
 
-        return await self._submit_with_retry(payload, mode_desc, progress_callback=progress_callback)
+        try:
+            return await self._submit_with_retry(payload, mode_desc, progress_callback=progress_callback)
+        except RuntimeError as exc:
+            # The free 2.5 Flash queue is frequently saturated. Do not make the
+            # user wait through all retries when the legacy free video model is
+            # available as a compatible fallback.
+            if self.is_modern and "video queue is full" in str(exc).lower():
+                logger.warning(
+                    "[AgnesVideo] 2.5 queue is full; falling back immediately to %s",
+                    LEGACY_MODEL,
+                )
+                if progress_callback:
+                    progress_callback(
+                        "provider_fallback",
+                        0,
+                        f"Agnes 2.5 перегружен; переключение на {LEGACY_MODEL}",
+                    )
+                fallback = AgnesVideoAPI(
+                    api_key=self.api_key,
+                    model=LEGACY_MODEL,
+                    default_duration=self.default_duration,
+                    max_retries=2,
+                    retry_base_delay=10.0,
+                )
+                fallback.shutdown_event = self.shutdown_event
+                return await fallback.submit_video(
+                    prompt=prompt,
+                    reference_image_paths=reference_image_paths,
+                    duration=duration,
+                    width=width,
+                    height=height,
+                    seed=seed,
+                    negative_prompt=negative_prompt,
+                    mode=mode,
+                    progress_callback=progress_callback,
+                    **kwargs,
+                )
+            raise
 
     @timed_step
     async def wait_for_video(self, video_id: str, progress_callback=None) -> VideoOutput:
