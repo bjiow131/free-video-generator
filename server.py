@@ -1680,6 +1680,7 @@ async def create_task_legacy(
 
 @app.post("/api/tasks/{task_id}/resume")
 async def resume_task(task_id: str, request: Request):
+    _validate_task_id(task_id)
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
