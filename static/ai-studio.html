@@ -235,8 +235,13 @@ button{cursor:pointer}
       <select id="videoDuration" class="select">
         <option value="4">4 сек</option><option value="5" selected>5 сек</option><option value="6">6 сек</option><option value="8">8 сек</option><option value="10">10 сек</option><option value="12">12 сек</option><option value="15">15 сек</option><option value="18">18 сек</option><option value="20">20 сек</option>
       </select>
-      <div class="label">Исходное изображение</div>
+      <div class="label">Персонаж</div>
+      <select id="videoCharacter" class="select"><option value="">Без персонажа</option></select>
+      <div class="label">Референс персонажа <span style="color:#777">(основной)</span></div>
+      <select id="videoCharacterReference" class="select" disabled><option value="">Сначала выбери персонажа</option></select>
+      <div class="label">Исходное изображение <span style="color:#777">(необязательно, если выбран персонаж)</span></div>
       <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
+      <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию. В видео сейчас передаётся один основной референс.</div>
       <div class="label">Промпт движения</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
       <div class="actions"><button id="videoGenerate" class="primary">Создать видео</button><button class="ghost" id="videoClear">Очистить</button></div>
@@ -525,15 +530,42 @@ $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,704]}
+async function syncVideoCharacterSelector(){
+  const character=$('#videoCharacter'),select=$('#videoCharacterReference');
+  if(!character||!select)return;
+  if(character.value!=='miya'){
+    select.innerHTML='<option value="">Сначала выбери персонажа</option>';select.disabled=true;return;
+  }
+  try{
+    const refs=await getMiaRefs();
+    if(!refs.length){select.innerHTML='<option value="">Нет сохранённых референсов</option>';select.disabled=true;return}
+    const primary=refs.find(r=>r.isPrimary)||refs[0];
+    select.innerHTML=refs.map((r,i)=>'<option value="'+r.id+'"'+(r.id===primary.id?' selected':'')+'>'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
+    select.disabled=false;
+  }catch(e){select.innerHTML='<option value="">Не удалось загрузить референсы</option>';select.disabled=true}
+}
+async function getSelectedVideoReference(){
+  const manual=$('#videoReference').files[0];
+  if(manual)return manual;
+  const characterId=$('#videoCharacter').value;
+  if(characterId!=='miya')return null;
+  const refs=await getMiaRefs();
+  const selectedId=Number($('#videoCharacterReference').value);
+  return (refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0]||{}).blob||null;
+}
 async function generateVideo(){
-  const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;const ref=$('#videoReference').files[0];
+  const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
   if(!p){toast('Напиши промпт движения');return}
-  if((mode==='i2v'||mode==='ti2vid')&&!ref){toast('Для этого режима выбери исходное изображение');return}
+  const ref=await getSelectedVideoReference();
+  if((mode==='i2v'||mode==='ti2vid')&&!ref){toast('Для этого режима выбери исходное изображение или персонажа');return}
   setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации видео…';$('#videoResult').classList.add('hidden');
   try{
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
     const f=new FormData();f.append('prompt',p);f.append('model','agnes-video-2.5-flash');f.append('mode',mode);f.append('duration',$('#videoDuration').value);f.append('video_width',String(video_width));f.append('video_height',String(video_height));
-    if(ref)f.append('reference_image',ref);
+    if(ref)f.append('reference_image',ref,'video_character_reference.'+(ref.type||'image/png').split('/')[1].replace('jpeg','jpg'));
+    if($('#videoCharacter').value){
+      f.append('system_prompt','Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.');
+    }
     const r=await api('/api/tasks/simple',{method:'POST',body:f});const d=await r.json();const taskId=d.task_id;
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
     const poll=async()=>{try{const rr=await api('/api/tasks');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){setTimeout(poll,2500);return}
@@ -549,7 +581,8 @@ async function generateVideo(){
   }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}
 }
 $('#videoGenerate').onclick=generateVideo;
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
+$('#videoCharacter').addEventListener('change',syncVideoCharacterSelector);
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
@@ -584,6 +617,7 @@ async function loadHistory(){
 }
 load().then(async()=>{
   await loadCharacters();
+  await syncVideoCharacterSelector();
   let savedPage='image';
   try{
     savedPage=localStorage.getItem('aistudio_page')||'image';
