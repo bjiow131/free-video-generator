@@ -168,3 +168,20 @@ h1,h2,h3,h4,p,button,label,span,small,dt,dd{overflow-wrap:anywhere}
  .prompt-dock{bottom:82px!important;padding:7px}.option-chip{font-size:10px}
  .create-canvas{min-height:42vh}
 }
+/* TASK 3B.2 — theme bridge for screen-specific legacy variables */
+:root[data-theme="light"]{
+ --bg:var(--ds-bg);--panel:var(--ds-surface-1);--panel2:var(--ds-surface-2);--line:var(--ds-border);--line2:var(--ds-border-strong);--text:var(--ds-text-1);--muted:var(--ds-text-2);--dim:var(--ds-text-3);--accent:var(--ds-accent);--soft:rgba(20,20,25,.045);
+}
+:root[data-theme="dark"]{
+ --bg:var(--ds-bg);--panel:var(--ds-surface-1);--panel2:var(--ds-surface-2);--line:var(--ds-border);--line2:var(--ds-border-strong);--text:var(--ds-text-1);--muted:var(--ds-text-2);--dim:var(--ds-text-3);--accent:var(--ds-accent);--soft:rgba(255,255,255,.045);
+}
+:root[data-theme="light"] body{background:var(--ds-bg);color:var(--ds-text-1)}
+:root[data-theme="light"] .side,:root[data-theme="light"] .top{background:color-mix(in srgb,var(--ds-bg) 94%,transparent);color:var(--ds-text-2)}
+:root[data-theme="light"] .nav button{color:var(--ds-text-2)}:root[data-theme="light"] .nav button:hover{color:var(--ds-text-1);background:var(--ds-surface-2)}:root[data-theme="light"] .nav button.active{color:var(--ds-text-1);background:var(--ds-surface-2)}
+:root[data-theme="light"] .card,:root[data-theme="light"] .panel,:root[data-theme="light"] .production-form,:root[data-theme="light"] .production-status{background:var(--ds-surface-1);color:var(--ds-text-1)}
+:root[data-theme="light"] .select,:root[data-theme="light"] input,:root[data-theme="light"] textarea{background:var(--ds-surface-1);color:var(--ds-text-1)}
+:root[data-theme="light"] .primary{background:var(--ds-text-1);border-color:var(--ds-text-1);color:var(--ds-bg)}
+:root[data-theme="light"] .ghost{background:var(--ds-surface-2);color:var(--ds-text-1)}
+:root[data-theme="light"] .create-canvas{background:var(--ds-surface-2)}
+:root[data-theme="light"] .result,:root[data-theme="light"] .player-frame{background:#111}
+:root[data-theme="light"] .credits{color:var(--ds-text-1);background:var(--ds-surface-1)}
