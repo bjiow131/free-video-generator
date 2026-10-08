@@ -1,5 +1,3 @@
-from core.timing import timed_step
-
 """core.pipelines.creative_video -- Creative long-form video pipeline (Type 2).
 
 Ports the original ``core/pipeline.py`` VideoPipeline to the new pipeline
@@ -10,6 +8,8 @@ Steps:
     end_frame_prompts -> pregenerate_end_frames -> generate_videos ->
     audio_subtitle -> concatenate
 """
+
+from core.timing import timed_step
 
 import asyncio
 import json
