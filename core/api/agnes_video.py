@@ -229,7 +229,7 @@ class AgnesVideoAPI:
             await asyncio.sleep(interval)
 
     @timed_step
-    async def _submit_with_retry(self, payload: dict, mode_desc: str) -> str:
+    async def _submit_with_retry(self, payload: dict, mode_desc: str, progress_callback=None) -> str:
         last_error_code = ""
         for attempt in range(self.max_retries):
             if self.shutdown_event and self.shutdown_event.is_set():
@@ -287,6 +287,8 @@ class AgnesVideoAPI:
                     delay = max(1.0, min(delay, 300.0))
                     response_hint = response_text[:300].replace("\n", " ").replace("\r", " ")
                     queue_hint = " [video queue full]" if queue_full else ""
+                    if progress_callback:
+                        progress_callback("queue_retry", 0, f"Agnes busy; retry {attempt + 1}/{self.max_retries} in {delay:.0f}s")
                     logger.warning(
                         "[AgnesVideo] HTTP %s on %s; retry %d/%d in %.0fs%s%s",
                         resp.status_code,
@@ -297,8 +299,10 @@ class AgnesVideoAPI:
                         queue_hint,
                         f": {response_hint}" if response_hint else "",
                     )
-                    await asyncio.sleep(delay)
-                    continue
+                    if attempt + 1 < self.max_retries:
+                        await asyncio.sleep(delay)
+                        continue
+                    break
 
                 # Preserve the provider's structured validation error. The UI previously
                 # reduced responses such as {"detail":[{"loc":[...],"msg":"Field required"}]}
@@ -394,6 +398,7 @@ class AgnesVideoAPI:
         seed: Optional[int] = None,
         negative_prompt: Optional[str] = None,
         mode: Optional[str] = None,
+        progress_callback=None,
         **kwargs,
     ) -> str:
         resolved_refs = [
@@ -476,7 +481,7 @@ class AgnesVideoAPI:
 
             logger.info("[AgnesVideo] %s: %s", mode_desc, prompt[:80])
 
-        return await self._submit_with_retry(payload, mode_desc)
+        return await self._submit_with_retry(payload, mode_desc, progress_callback=progress_callback)
 
     @timed_step
     async def wait_for_video(self, video_id: str, progress_callback=None) -> VideoOutput:
