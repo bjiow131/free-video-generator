@@ -1721,24 +1721,24 @@ async def resume_task(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str, request: Request):
-    if task_id not in active_pipelines and task_id not in _queued_tasks:
-        raise HTTPException(status_code=400, detail="Задача не выполняется")
+    _validate_task_id(task_id)
+    async with _get_pipeline_lock(task_id):
+        if task_id not in active_pipelines and task_id not in _queued_tasks:
+            raise HTTPException(status_code=400, detail="Задача не выполняется")
 
-    # 停止运行中的 pipeline
-    if task_id in active_pipelines:
-        pipeline = active_pipelines[task_id]
-        pipeline.stop()
+        pipeline = active_pipelines.get(task_id)
+        if pipeline is not None:
+            pipeline.stop()
 
-    dir_name = _find_dir_name(task_id)
-    tm = TaskManager(task_id, dir_name=dir_name)
-    state = tm.load()
-    if state and state.status in (StepStatus.RUNNING, StepStatus.QUEUED):
-        tm.update_state(status=StepStatus.PENDING)
-        logger.info(f"[Stop] Task {task_id} status -> pending")
+        dir_name = _find_dir_name(task_id)
+        tm = TaskManager(task_id, dir_name=dir_name)
+        state = tm.load()
+        if state and state.status in (StepStatus.RUNNING, StepStatus.QUEUED):
+            tm.update_state(status=StepStatus.PENDING)
+            logger.info(f"[Stop] Task {task_id} status -> pending")
 
-    logger.info(f"[Stop] Task {task_id} stop requested")
-    return {"ok": True, "task_id": task_id}
-
+        logger.info(f"[Stop] Task {task_id} stop requested")
+        return {"ok": True, "task_id": task_id}
 
 # ═══════════════════════════════════════════════════
 # 并发状态接口
