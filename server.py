@@ -869,17 +869,18 @@ async def serve_character_reference(character_id: str, filename: str):
 
 @app.post("/api/image/generate")
 
-async def generate_image(
-    request: Request,
-    prompt: str = Form(...),
-    size: str = Form("1K"),
-    ratio: str = Form("1:1"),
-    negative_prompt: Optional[str] = Form(None),
-    system_prompt: str = Form(""),
-    reference_image: Optional[UploadFile] = File(None),
-    character_id: Optional[str] = Form(None),
-):
-    """简单图片生成：创建任务 → 直调 Agnes Image API → 保存到任务目录。"""
+async def generate_image(request: Request):
+    """图片生成：手动解析 multipart/form-data，避免代理/браузер 对 Form(...) обязательных полей造成 422。"""
+    form = await request.form()
+    prompt = str(form.get("prompt") or "").strip()
+    size = str(form.get("size") or "1K")
+    ratio = str(form.get("ratio") or "1:1")
+    negative_prompt = str(form.get("negative_prompt") or "")
+    system_prompt = str(form.get("system_prompt") or "")
+    reference_image = form.get("reference_image")
+    if not isinstance(reference_image, UploadFile):
+        reference_image = None
+    character_id = str(form.get("character_id") or "").strip() or None
 
     api_key = get_api_key()
     if not api_key:
