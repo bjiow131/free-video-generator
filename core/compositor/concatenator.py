@@ -484,6 +484,12 @@ class VideoConcatenator:
                     audio_clip_obj.close()
                 except Exception:
                     pass
+            for source_clip in (source_video_clip, source_audio_clip):
+                if source_clip is not None and source_clip is not video_clip and source_clip is not audio_clip_obj:
+                    try:
+                        source_clip.close()
+                    except Exception:
+                        pass
             for tmp in tmp_files:
                 if os.path.exists(tmp):
                     try:
