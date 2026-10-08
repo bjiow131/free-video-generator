@@ -7,18 +7,30 @@
 :root{--bg:#09090b;--panel:#111114;--panel2:#17171c;--line:#27272f;--text:#f7f7f8;--muted:#9b9ba5;--accent:#fff;--soft:#202027}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 70% -10%,#27272f 0%,transparent 60%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,textarea{font:inherit}button{cursor:pointer}.app{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.side{border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}.brand{font-size:21px;font-weight:800;letter-spacing:-.04em;padding:8px}.brand span{color:#888}.nav{display:grid;gap:6px}.nav button{background:none;border:0;color:var(--muted);padding:11px 12px;border-radius:10px;text-align:left}.nav button.active,.nav button:hover{background:var(--soft);color:var(--text)}.bottom{margin-top:auto;color:var(--muted);font-size:12px;padding:8px}.main{min-width:0}.top{height:70px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 34px}.credits{border:1px solid var(--line);background:var(--panel);padding:8px 13px;border-radius:999px}.credits b{color:#fff}.hero{max-width:1120px;margin:0 auto;padding:64px 34px 40px}.eyebrow{color:#aaa;font-size:13px;text-transform:uppercase;letter-spacing:.16em}.hero h1{font-size:clamp(42px,7vw,78px);line-height:.98;letter-spacing:-.065em;margin:14px 0}.hero p{color:var(--muted);max-width:620px;font-size:18px}.grid{max-width:1120px;margin:0 auto;padding:10px 34px 70px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{background:linear-gradient(145deg,#151519,#101014);border:1px solid var(--line);border-radius:18px;padding:20px;min-height:180px;transition:.2s}.card:hover{transform:translateY(-2px);border-color:#3b3b45}.card .icon{font-size:28px}.card h3{margin:18px 0 5px}.card p{margin:0;color:var(--muted);font-size:13px}.tag{display:inline-block;margin-top:15px;padding:5px 8px;border-radius:999px;background:#22222a;color:#bbb;font-size:11px}.workspace{max-width:1120px;margin:0 auto;padding:0 34px 70px;display:grid;grid-template-columns:1.4fr .8fr;gap:16px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px}.panel h2{margin:0 0 5px;letter-spacing:-.03em}.label{display:block;color:#aaa;font-size:12px;margin:20px 0 8px}.select,input,textarea{width:100%;background:#0d0d10;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;outline:none}.select:focus,textarea:focus,input:focus{border-color:#555}.textarea{min-height:190px;resize:vertical}.actions{display:flex;gap:10px;margin-top:14px}.primary{background:#fff;color:#09090b;border:0;padding:12px 18px;border-radius:11px;font-weight:700}.ghost{background:var(--soft);color:#ddd;border:1px solid var(--line);padding:12px 18px;border-radius:11px}.model{padding:14px;border:1px solid var(--line);border-radius:14px;margin-top:10px}.model b{display:block}.model small{color:var(--muted)}.model.active{border-color:#666;background:#1a1a20}.result{margin-top:16px;border-radius:16px;overflow:hidden;background:#0d0d10;border:1px solid var(--line)}.result img{width:100%;display:block}.hidden{display:none!important}.modal{position:fixed;inset:0;background:#000b;display:grid;place-items:center;padding:20px}.modalbox{width:min(430px,100%);background:#141418;border:1px solid var(--line);border-radius:20px;padding:24px}.modalbox h2{margin-top:0}.close{float:right;background:none;border:0;color:#999;font-size:22px}.status{color:var(--muted);font-size:13px;margin-top:10px}.toast{position:fixed;bottom:22px;right:22px;background:#fff;color:#09090b;padding:11px 15px;border-radius:10px;font-weight:600}.section{display:none}.section.active{display:block}@media(max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:12px;flex-direction:row;align-items:center}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap}.bottom{display:none}.grid{grid-template-columns:repeat(2,1fr)}.workspace{grid-template-columns:1fr}.top{padding:0 18px}.hero,.grid,.workspace{padding-left:18px;padding-right:18px}}@media(max-width:560px){.grid{grid-template-columns:1fr}.hero{padding-top:42px}.hero h1{font-size:48px}}
 
+</style><style>/* TASK 3A.1 — unified interaction layer */
+:where(button,a,input,select,textarea){transition:background-color var(--ds-duration-fast) var(--ds-ease),border-color var(--ds-duration-fast) var(--ds-ease),color var(--ds-duration-fast) var(--ds-ease),box-shadow var(--ds-duration-fast) var(--ds-ease),opacity var(--ds-duration-fast) var(--ds-ease),transform var(--ds-duration-fast) var(--ds-ease)}
+:where(button,a):active:not(:disabled){transform:translateY(1px)}
+:where(input,select,textarea)[aria-invalid="true"]{border-color:var(--ds-error)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--ds-error) 16%,transparent)}
+.ds-modal-backdrop[hidden]{display:none}.ds-modal-backdrop{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:rgb(0 0 0/.58);backdrop-filter:blur(8px);animation:ds-fade-in var(--ds-duration) var(--ds-ease)}.ds-modal{width:min(440px,100%);padding:20px;border:1px solid var(--ds-border-strong);border-radius:var(--ds-radius-xl);background:var(--ds-surface-1);box-shadow:var(--ds-shadow-lg);animation:ds-modal-in var(--ds-duration) var(--ds-ease)}.ds-modal h2{margin:0;font-size:17px}.ds-modal p{color:var(--ds-text-2);font-size:13px;line-height:1.55}.ds-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.ds-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.inline-error{margin-top:6px;font-size:11px;line-height:1.4;color:var(--ds-error)}.field-error[hidden]{display:none}
+[data-tooltip]{position:relative}.tooltip{position:absolute;z-index:210;max-width:240px;padding:7px 9px;border:1px solid var(--ds-border-strong);border-radius:8px;background:var(--ds-surface-3);color:var(--ds-text-1);font-size:11px;line-height:1.35;box-shadow:var(--ds-shadow-md)}
+@keyframes ds-fade-in{from{opacity:0}to{opacity:1}}@keyframes ds-modal-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){:where(button,a):active:not(:disabled){transform:none}.ds-modal-backdrop,.ds-modal{animation:none}}
+</style><style>/* TASK 3A.3 — feedback polish and non-destructive tooltip treatment */
+.ds-toast-region{position:fixed;right:16px;bottom:16px;z-index:190;display:grid;gap:8px;width:min(360px,calc(100vw - 32px));pointer-events:none}.ds-toast-region .ds-toast{pointer-events:auto}
+.ds-toast-message{min-width:0;line-height:1.4}.ds-toast-close{margin-left:auto;border:0;background:transparent;color:inherit;min-width:40px;min-height:40px}
 </style></head><body>
 <div class="app">
 <aside class="side" id="appSidebar">
   <div class="brand"><span class="brand-mark">A</span><b>AGNES</b><span>VIDEO</span></div>
-  <nav class="nav" aria-label="Workspace">
-    <button class="active" data-page="home"><span class="nav-icon">⌂</span><span class="nav-label">Simple</span></button>
-    <button data-page="film"><span class="nav-icon">✦</span><span class="nav-label">Creative</span></button>
-    <button data-page="film"><span class="nav-icon">≡</span><span class="nav-label">Manuscript</span></button>
-    <button data-page="create"><span class="nav-icon">◌</span><span class="nav-label">Anchor</span></button>
-    <button data-page="create"><span class="nav-icon">▧</span><span class="nav-label">Images</span></button>
-    <button data-page="history"><span class="nav-icon">◷</span><span class="nav-label">Tasks</span></button>
-    <button data-page="credits"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></button>
+  <nav class="nav" aria-label="Workspace navigation" role="navigation">
+    <button class="active" data-page="create" data-create-type="video"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.8 12 3l9 7.8v9.2a1 1 0 0 1-1 1h-5.2v-6.2H9.2V21H4a1 1 0 0 1-1-1z"/></svg></span><span class="nav-label">Simple</span></button>
+    <button data-page="film" data-production-mode="creative"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 7.1L21 12l-7.3 2.9L12 22l-1.7-7.1L3 12l7.3-2.9z"/></svg></span><span class="nav-label">Creative</span></button>
+    <button data-page="film" data-production-mode="manuscript"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></span><span class="nav-label">Manuscript</span></button>
+    <button data-page="film" data-production-mode="anchor"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/></svg></span><span class="nav-label">Anchor</span></button>
+    <button data-page="create" data-create-type="image"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m5 17 5-5 3 3 2-2 4 4"/></svg></span><span class="nav-label">Images</span></button>
+    <button data-page="history"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span><span class="nav-label">Tasks</span></button>
+    <button data-page="credits"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.8 10.5 2h3l.8 1.8 2 .8 1.8-.8 2.1 2.1-.8 1.8.8 2 .-0.8 1.8.8 2.1-2.1 2.1-1.8-.8-2 .8-1.8-.8-2.1 2.1-2.1-2.1.8-1.8-.8-2-.-0.8-1.8.8-2.1 2.1-2.1 1.8.8z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span></button>
   </nav>
   <div class="shell-collapse"><button id="sidebarToggle" class="ds-btn ds-btn-ghost" type="button" aria-label="Collapse sidebar">‹ <span class="nav-label">Collapse</span></button></div>
   <div class="bottom">Creative workspace<br>Agnes AI connected</div>
@@ -27,14 +39,14 @@
   <div class="top-project"><span class="project-dot"></span><div><strong id="topProjectName">Untitled project</strong><small id="topTaskName">Agnes Video Generator</small></div></div>
   <div class="top-actions">
     <span class="api-status"><i></i><span>API connected</span></span>
-    <select id="languageSwitch" class="shell-select" aria-label="Language"><option value="ru">RU</option><option value="en">EN</option><option value="id">ID</option><option value="es">ES</option><option value="de">DE</option><option value="fr">FR</option><option value="zh">中文</option></select>
+    <select id="languageSwitch" class="shell-select" aria-label="Language"><option value="zh">中文</option><option value="en">EN</option><option value="ru">RU</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="ms">MS</option><option value="id">ID</option></select>
     <button id="themeToggle" class="ds-btn ds-btn-ghost ds-btn-icon" type="button" aria-label="Toggle theme" title="Toggle theme">◐</button>
     <div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div>
   </div>
 </header>
 <section id="home" class="section active"><div class="hero"><div class="eyebrow">One workspace · many models</div><h1>Создавай.<br>Без границ.</h1><p>Единый интерфейс для лучших генеративных моделей. Выбирай модель, задавай идею и получай результат — без переключения между сервисами.</p></div><div class="grid">
-<div class="card" data-page="create"><div class="icon">◈</div><h3>Изображения</h3><p>Agnes Image — генерация и редактирование изображений.</p><span class="tag">Доступно</span></div>
-<div class="card" data-page="create"><div class="icon">◉</div><h3>Видео</h3><p>Agnes Video — генерация видео через Agnes AI.</p><span class="tag">Доступно</span></div>
+<div class="card" data-page="create" data-create-type="image"><div class="icon">◈</div><h3>Изображения</h3><p>Agnes Image — генерация и редактирование изображений.</p><span class="tag">Доступно</span></div>
+<div class="card" data-page="create" data-create-type="video"><div class="icon">◉</div><h3>Видео</h3><p>Agnes Video — генерация видео через Agnes AI.</p><span class="tag">Доступно</span></div>
 <div class="card"><div class="icon">✦</div><h3>Референсы</h3><p>Загружай изображения и используй их как референсы для генерации.</p><span class="tag">Доступно</span></div>
 <div class="card"><div class="icon">⚡</div><h3>Agnes AI</h3><p>Генерация идёт напрямую через твой API-ключ Agnes AI.</p><span class="tag">Подключено</span></div>
 </div></section>
@@ -52,7 +64,7 @@
       <div id="selectedModel" class="model active"></div>
       <div id="mediaParams"></div>
       <details style="margin-top:18px"><summary style="cursor:pointer;color:var(--ds-text-2);font-size:12px;font-weight:700">Advanced options</summary><div class="create-settings"><p class="field-hint">Дополнительные параметры появляются здесь, когда поддерживаются выбранным режимом.</p></div></details>
-      <div id="status" class="status"></div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
     </aside>
     <div class="prompt-dock">
       <div class="prompt-row">
@@ -76,10 +88,10 @@
   <div class="production-shell">
     <div class="production-head">
       <div><div class="eyebrow">Production Studio</div><h1>Creative workspace</h1></div>
-      <div class="mode-tabs" role="tablist">
-        <button class="mode-tab active" data-production-mode="creative" type="button">Creative</button>
-        <button class="mode-tab" data-production-mode="manuscript" type="button">Manuscript</button>
-        <button class="mode-tab" data-production-mode="anchor" type="button">Anchor</button>
+      <div class="mode-tabs" role="tablist" aria-label="Creation mode">
+        <button class="mode-tab active" role="tab" aria-selected="true" data-production-mode="creative" type="button">Creative</button>
+        <button class="mode-tab" role="tab" aria-selected="false" data-production-mode="manuscript" type="button">Manuscript</button>
+        <button class="mode-tab" role="tab" aria-selected="false" data-production-mode="anchor" type="button">Anchor</button>
       </div>
     </div>
     <div class="stepper" id="productionStepper">
@@ -101,7 +113,7 @@
           <div class="label">Reference</div><input id="creativeReference" type="file" accept="image/*">
           <div class="production-actions"><button id="creativeGenerate" class="primary" type="button">Generate</button><button id="creativeClear" class="ghost" type="button">Clear</button></div><div id="creativeStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="creativeProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="creativeStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="creativeProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="creativeStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
     <div class="mode-panel" data-mode-panel="manuscript">
@@ -113,7 +125,7 @@
           <div class="row"><div><div class="label">Format</div><select id="manuscriptFormat" class="select"><option value="portrait">9:16</option><option value="landscape">16:9</option></select></div><div><div class="label">Voice</div><select id="manuscriptVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана</option><option value="ru-RU-DmitryNeural">Дмитрий</option></select></div></div>
           <div class="production-actions"><button id="manuscriptGenerate" class="primary" type="button">Generate</button></div><div id="manuscriptStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="manuscriptProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="manuscriptStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="manuscriptProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="manuscriptStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
     <div class="mode-panel" data-mode-panel="anchor">
@@ -125,14 +137,36 @@
           <div class="label">Reference</div><input id="anchorReference" type="file" accept="image/*">
           <div class="production-actions"><button id="anchorGenerate" class="primary" type="button">Generate</button></div><div id="anchorStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="anchorProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="anchorStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="anchorProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="anchorStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
   </div>
-</section><section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
-<section id="credits" class="section"><div class="hero"><div class="eyebrow">Credits</div><h1 style="font-size:60px">Кредиты</h1><p>AISTUDIO не списывает внутренние кредиты. Генерация выполняется через Agnes AI; фактические лимиты определяются твоим API-ключом.</p><div class="grid" style="padding:20px 0"><div class="card"><h3>Agnes AI</h3><p>Прямое подключение к Agnes API</p><h2>∞</h2></div></div></div></section>
+<div id="legacyFilmHooks" class="hidden" aria-hidden="true">
+<input id="filmName"><textarea id="filmIdea"></textarea><input id="filmStyle"><select id="filmScenes"><option>3</option></select><select id="filmDuration"><option value="5">5</option></select><select id="filmFormat"><option value="portrait">portrait</option></select><input id="filmReference" type="file"><select id="filmAudio"><option value="true">true</option></select><select id="filmVoice"><option value="ru-RU-SvetlanaNeural">voice</option></select><select id="filmSubs"><option value="true">true</option></select><button id="filmGenerate" type="button"></button><button id="filmClear" type="button"></button><div id="filmStatus"></div><div id="filmProgress"></div>
+</div></section><section id="history" class="section">
+  <div class="tasks-shell">
+    <div class="tasks-head"><div><div class="eyebrow">Workspace</div><h1>Tasks</h1></div><span class="api-status"><i></i>Local task history</span></div>
+    <div class="tasks-toolbar"><input id="taskSearch" placeholder="Search tasks…" aria-label="Search tasks"><select id="taskTypeFilter" class="select"><option value="all">All types</option><option value="image">Images</option><option value="video">Videos</option></select><select id="taskStatusFilter" class="select"><option value="all">All statuses</option><option value="completed">Completed</option><option value="pending">Pending</option><option value="queued">Queued</option><option value="failed">Failed</option></select></div>
+    <div id="taskPlayer" class="player-shell"><div id="playerFrame" class="player-frame"></div><aside class="player-meta"><h2 id="playerTitle">Result</h2><dl><div><dt>Type</dt><dd id="playerType">—</dd></div><div><dt>Duration</dt><dd id="playerDuration">—</dd></div><div><dt>Resolution</dt><dd id="playerResolution">—</dd></div><div><dt>Prompt</dt><dd id="playerPrompt">—</dd></div></dl><div class="actions"><button id="playerDownload" class="primary" type="button">Download</button><button id="playerClose" class="ghost" type="button">Close</button></div></aside></div>
+    <div id="historyList" class="tasks-grid" aria-live="polite"></div>
+  </div>
+</section><section id="credits" class="section">
+  <div class="settings-shell">
+    <div class="settings-head"><div class="eyebrow">Workspace</div><h1>Settings</h1></div>
+    <div id="onboardingCard" class="settings-card onboarding full">
+      <h2>Start with Agnes AI</h2><p>Подключи бесплатный API-ключ Agnes AI, чтобы запускать генерацию напрямую из рабочего пространства.</p>
+      <div class="actions"><a class="primary" href="https://platform.agnes-ai.com" target="_blank" rel="noopener">Get API key</a><button id="onboardingDismiss" class="ghost" type="button">Hide</button></div>
+    </div>
+    <div class="settings-grid">
+      <section class="settings-card"><h2>API key</h2><p>Ключ хранится в конфигурации сервера. В интерфейсе он никогда не показывается полностью.</p><div class="api-key-row"><input id="settingsApiKey" class="masked-key" type="password" autocomplete="off" placeholder="Enter API key"><button id="settingsApiSave" class="primary" type="button">Save</button></div><div id="settingsApiStatus" class="setting-status" style="margin-top:10px"><span class="status-dot"></span>Checking status…</div></section>
+      <section class="settings-card"><h2>Appearance</h2><div class="setting-row"><div><strong>Theme</strong><p style="margin:3px 0 0">Follow system or choose manually.</p></div><button id="settingsTheme" class="ds-btn ds-btn-secondary" type="button">Toggle theme</button></div><div class="setting-row"><div><strong>Language</strong><p style="margin:3px 0 0">Interface language.</p></div><select id="settingsLanguage" class="select shell-select"><option value="zh">中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="ms">Bahasa Melayu</option><option value="id">Bahasa Indonesia</option></select></div></section>
+      <section class="settings-card"><h2>Workspace</h2><p>Активная рабочая папка определяет место хранения задач и результатов.</p><div id="workspaceList" class="workspace-list"><div class="ds-skeleton" style="height:44px"></div></div></section>
+      <section class="settings-card"><h2>Watermark</h2><div class="setting-row"><div><strong>Video watermark</strong><p style="margin:3px 0 0">Управление водяным знаком в настройках сервера.</p></div><button id="watermarkToggle" class="ds-switch" type="button" role="switch" aria-checked="false"></button></div><div id="watermarkStatus" class="setting-status"></div></section>
+    </div>
+  </div>
+</section>
 </main></div>
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 <script>
 (function(){
   const key='agnes_theme',root=document.documentElement,saved=localStorage.getItem(key);
@@ -147,31 +181,304 @@
 const sidebar=document.getElementById('appSidebar'),sidebarToggle=document.getElementById('sidebarToggle');
 if(sidebarToggle){sidebarToggle.onclick=()=>{sidebar.classList.toggle('is-collapsed');sidebarToggle.innerHTML=sidebar.classList.contains('is-collapsed')?'› <span class="nav-label">Expand</span>':'‹ <span class="nav-label">Collapse</span>'}}
 const languageSwitch=document.getElementById('languageSwitch');
-if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru';languageSwitch.onchange=()=>localStorage.setItem('agnes_lang',languageSwitch.value)}
-const $=s=>document.querySelector(s), $=s=>document.querySelectorAll(s);let models=[],selected=null;
+if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru';languageSwitch.onchange=()=>{applyUiLanguage(languageSwitch.value);const s=document.getElementById('settingsLanguage');if(s)s.value=languageSwitch.value;toast('Language preference saved')}}
+
+// Interaction layer: confirm dialogs, inline errors and explanatory disabled states.
+let confirmResolve=null;
+function confirmAction(title,message,confirmText='Confirm'){return new Promise(resolve=>{confirmResolve=resolve;$('#confirmTitle').textContent=title;$('#confirmMessage').textContent=message;$('#confirmOk').textContent=confirmText;$('#confirmModal').hidden=false;$('#confirmOk').focus()})}
+function closeConfirm(result){$('#confirmModal').hidden=true;if(confirmResolve){const r=confirmResolve;confirmResolve=null;r(result)}}
+$('#confirmOk').onclick=()=>closeConfirm(true);$('#confirmCancel').onclick=()=>closeConfirm(false);$('#confirmClose').onclick=()=>closeConfirm(false);$('#confirmModal').addEventListener('click',e=>{if(e.target.id==='confirmModal')closeConfirm(false)});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#confirmModal').hidden)closeConfirm(false)});
+function explainDisabled(el,reason){if(!el)return;el.setAttribute('aria-disabled','true');el.dataset.tooltip=reason;el.title=reason;el.setAttribute('aria-label',(el.getAttribute('aria-label')||el.textContent.trim())+' — '+reason)}
+function fieldError(el,message){if(!el)return;el.setAttribute('aria-invalid','true');let e=el.parentElement?.querySelector('.field-error');if(!e){e=document.createElement('div');e.className='inline-error field-error';el.insertAdjacentElement('afterend',e)}e.textContent=message;e.hidden=false}
+function clearFieldError(el){if(!el)return;el.removeAttribute('aria-invalid');const e=el.parentElement?.querySelector('.field-error');if(e)e.hidden=true}
+const $=s=>document.querySelector(s), qsa=s=>document.querySelectorAll(s);
+// TASK 3B — seven-language UI stress layer. Existing API/task payloads remain unchanged.
+const UI_LANGS=['zh','en','ru','ja','ko','ms','id'];
+const UI_TRANSLATIONS={
+  toggleTheme:{zh:'切换主题',en:'Toggle theme',ru:'Сменить тему',ja:'テーマを切替',ko:'테마 전환',ms:'Tukar tema',id:'Ganti tema'},interfaceLanguage:{zh:'界面语言',en:'Interface language',ru:'Язык интерфейса',ja:'インターフェース言語',ko:'인터페이스 언어',ms:'Bahasa antara muka',id:'Bahasa antarmuka'},videoWatermark:{zh:'视频水印',en:'Video watermark',ru:'Водяной знак видео',ja:'動画の透かし',ko:'동영상 워터마크',ms:'Tera air video',id:'Tanda air video'},allTypes:{zh:'全部类型',en:'All types',ru:'Все типы',ja:'すべての種類',ko:'모든 유형',ms:'Semua jenis',id:'Semua jenis'},images:{zh:'图像',en:'Images',ru:'Изображения',ja:'画像',ko:'이미지',ms:'Imej',id:'Gambar'},videos:{zh:'视频',en:'Videos',ru:'Видео',ja:'動画',ko:'동영상',ms:'Video',id:'Video'},allStatuses:{zh:'全部状态',en:'All statuses',ru:'Все статусы',ja:'すべての状態',ko:'모든 상태',ms:'Semua status',id:'Semua status'},completed:{zh:'已完成',en:'Completed',ru:'Завершено',ja:'完了',ko:'완료',ms:'Selesai',id:'Selesai'},pending:{zh:'待处理',en:'Pending',ru:'Ожидает',ja:'保留中',ko:'대기',ms:'Menunggu',id:'Menunggu'},queued:{zh:'排队中',en:'Queued',ru:'В очереди',ja:'キュー',ko:'대기열',ms:'Dalam baris gilir',id:'Dalam antrean'},failed:{zh:'失败',en:'Failed',ru:'Ошибка',ja:'失敗',ko:'실패',ms:'Gagal',id:'Gagal'},navSimple:{zh:'简易',en:'Simple',ru:'Просто',ja:'シンプル',ko:'간편',ms:'Ringkas',id:'Sederhana'},
+  navCreative:{zh:'创意',en:'Creative',ru:'Креатив',ja:'クリエイティブ',ko:'크리에이티브',ms:'Kreatif',id:'Kreatif'},
+  navManuscript:{zh:'文稿',en:'Manuscript',ru:'Сценарий',ja:'原稿',ko:'원고',ms:'Manuskrip',id:'Manuskrip'},
+  navAnchor:{zh:'主播',en:'Anchor',ru:'Ведущий',ja:'アンカー',ko:'앵커',ms:'Anchor',id:'Anchor'},
+  navImages:{zh:'图像',en:'Images',ru:'Изображения',ja:'画像',ko:'이미지',ms:'Imej',id:'Gambar'},
+  navTasks:{zh:'任务',en:'Tasks',ru:'Задачи',ja:'タスク',ko:'작업',ms:'Tugas',id:'Tugas'},
+  navSettings:{zh:'设置',en:'Settings',ru:'Настройки',ja:'設定',ko:'설정',ms:'Tetapan',id:'Pengaturan'},
+  simpleTitle:{zh:'画布已准备好',en:'Your canvas is ready',ru:'Холст готов',ja:'キャンバスの準備ができました',ko:'캔버스가 준비되었습니다',ms:'Kanvas anda sudah sedia',id:'Kanvas siap digunakan'},
+  createHint:{zh:'选择模型，输入想法，然后创建图像或视频。',en:'Choose a model, describe an idea, and create an image or video.',ru:'Выбери модель, задай идею и создай изображение или видео.',ja:'モデルを選び、アイデアを入力して画像または動画を作成します。',ko:'모델을 선택하고 아이디어를 입력해 이미지 또는 영상을 만드세요.',ms:'Pilih model, masukkan idea dan hasilkan imej atau video.',id:'Pilih model, masukkan idea, lalu buat gambar atau video.'},
+  workspace:{zh:'工作区',en:'Workspace',ru:'Рабочая область',ja:'ワークスペース',ko:'워크스페이스',ms:'Ruang kerja',id:'Ruang kerja'},
+  generation:{zh:'生成',en:'Generation',ru:'Генерация',ja:'生成',ko:'생성',ms:'Penjanaan',id:'Generasi'},
+  type:{zh:'类型',en:'Type',ru:'Тип',ja:'種類',ko:'유형',ms:'Jenis',id:'Jenis'},
+  model:{zh:'模型',en:'Model',ru:'Модель',ja:'モデル',ko:'모델',ms:'Model',id:'Model'},
+  advanced:{zh:'高级选项',en:'Advanced options',ru:'Расширенные параметры',ja:'詳細設定',ko:'고급 옵션',ms:'Pilihan lanjutan',id:'Opsi lanjutan'},
+  prompt:{zh:'提示词',en:'Prompt',ru:'Промпт',ja:'プロンプト',ko:'프롬프트',ms:'Prompt',id:'Prompt'},
+  reference:{zh:'＋ 参考图',en:'＋ Reference',ru:'＋ Референс',ja:'＋ 参照画像',ko:'＋ 참조',ms:'＋ Rujukan',id:'＋ Referensi'},
+  generate:{zh:'生成',en:'Generate',ru:'Создать',ja:'生成',ko:'생성',ms:'Jana',id:'Buat'},
+  clear:{zh:'清除',en:'Clear',ru:'Очистить',ja:'クリア',ko:'지우기',ms:'Kosongkan',id:'Bersihkan'},
+  production:{zh:'制作工作室',en:'Production Studio',ru:'Студия производства',ja:'制作スタジオ',ko:'제작 스튜디오',ms:'Studio Produksi',id:'Studio Produksi'},
+  creativeWorkspace:{zh:'创意工作区',en:'Creative workspace',ru:'Креативная студия',ja:'クリエイティブワークスペース',ko:'크리에이티브 작업공간',ms:'Ruang kerja kreatif',id:'Ruang kerja kreatif'},
+  pending:{zh:'待处理',en:'Pending',ru:'Ожидает',ja:'保留中',ko:'대기',ms:'Menunggu',id:'Menunggu'},
+  input:{zh:'输入',en:'Input',ru:'Ввод',ja:'入力',ko:'입력',ms:'Input',id:'Input'},
+  plan:{zh:'计划',en:'Plan',ru:'План',ja:'計画',ko:'계획',ms:'Pelan',id:'Rencana'},
+  scenes:{zh:'场景',en:'Scenes',ru:'Сцены',ja:'シーン',ko:'장면',ms:'Adegan',id:'Adegan'},
+  audio:{zh:'音频',en:'Audio',ru:'Аудио',ja:'音声',ko:'오디오',ms:'Audio',id:'Audio'},
+  final:{zh:'最终',en:'Final',ru:'Финал',ja:'最終',ko:'최종',ms:'Akhir',id:'Final'},
+  tasks:{zh:'任务',en:'Tasks',ru:'Задачи',ja:'タスク',ko:'작業',ms:'Tugas',id:'Tugas'},
+  settings:{zh:'设置',en:'Settings',ru:'Настройки',ja:'設定',ko:'설정',ms:'Tetapan',id:'Pengaturan'},
+  result:{zh:'结果',en:'Result',ru:'Результат',ja:'結果',ko:'결과',ms:'Hasil',id:'Hasil'},
+  duration:{zh:'时长',en:'Duration',ru:'Длительность',ja:'長さ',ko:'길이',ms:'Tempoh',id:'Durasi'},
+  resolution:{zh:'分辨率',en:'Resolution',ru:'Разрешение',ja:'解像度',ko:'해상도',ms:'Resolusi',id:'Resolusi'},
+  download:{zh:'下载',en:'Download',ru:'Скачать',ja:'ダウンロード',ko:'다운로드',ms:'Muat turun',id:'Unduh'},
+  close:{zh:'关闭',en:'Close',ru:'Закрыть',ja:'閉じる',ko:'닫기',ms:'Tutup',id:'Tutup'},
+  apiKey:{zh:'API 密钥',en:'API key',ru:'API-ключ',ja:'APIキー',ko:'API 키',ms:'Kunci API',id:'Kunci API'},
+  appearance:{zh:'外观',en:'Appearance',ru:'Внешний вид',ja:'外観',ko:'화면',ms:'Penampilan',id:'Tampilan'},
+  theme:{zh:'主题',en:'Theme',ru:'Тема',ja:'テーマ',ko:'테마',ms:'Tema',id:'Tema'},
+  language:{zh:'语言',en:'Language',ru:'Язык',ja:'言語',ko:'언어',ms:'Bahasa',id:'Bahasa'},
+  watermark:{zh:'水印',en:'Watermark',ru:'Водяной знак',ja:'透かし',ko:'워터마크',ms:'Tera air',id:'Tanda air'},
+  startAgnes:{zh:'开始使用 Agnes AI',en:'Start with Agnes AI',ru:'Начать с Agnes AI',ja:'Agnes AI を始める',ko:'Agnes AI 시작하기',ms:'Mulakan dengan Agnes AI',id:'Mulai dengan Agnes AI'},
+  getApi:{zh:'获取 API 密钥',en:'Get API key',ru:'Получить API-ключ',ja:'APIキーを取得',ko:'API 키 받기',ms:'Dapatkan kunci API',id:'Dapatkan kunci API'},
+  hide:{zh:'隐藏',en:'Hide',ru:'Скрыть',ja:'非表示',ko:'숨기기',ms:'Sembunyikan',id:'Sembunyikan'},
+  save:{zh:'保存',en:'Save',ru:'Сохранить',ja:'保存',ko:'저장',ms:'Simpan',id:'Simpan'},
+  workspaceActive:{zh:'活动工作区',en:'Active workspace',ru:'Активная рабочая папка',ja:'アクティブなワークスペース',ko:'활성 작업공간',ms:'Ruang kerja aktif',id:'Ruang kerja aktif'},
+  search:{zh:'搜索任务…',en:'Search tasks…',ru:'Поиск задач…',ja:'タスクを検索…',ko:'작업 검색…',ms:'Cari tugas…',id:'Cari tugas…'}
+};
+function applyUiLanguage(lang){
+  if(!UI_LANGS.includes(lang))lang='ru';
+  document.documentElement.lang=lang;
+  const tr=k=>UI_TRANSLATIONS[k]?.[lang]||UI_TRANSLATIONS[k]?.en||k;
+  const textMap={
+    '.nav button[data-create-type="video"] .nav-label':'navSimple','.nav button[data-production-mode="creative"] .nav-label':'navCreative','.nav button[data-production-mode="manuscript"] .nav-label':'navManuscript','.nav button[data-production-mode="anchor"] .nav-label':'navAnchor','.nav button[data-create-type="image"] .nav-label':'navImages','.nav button[data-page="history"] .nav-label':'navTasks','.nav button[data-page="credits"] .nav-label':'navSettings',
+    '#createTitle':'simpleTitle','#createEmpty span':'createHint','.advanced-panel .eyebrow':'workspace','.advanced-panel h2':'generation','#prompt':'prompt','#generate':'generate','#clear':'clear','.production-head .eyebrow':'production','.production-head h1':'creativeWorkspace','.tasks-head h1':'tasks','.settings-head h1':'settings','#playerTitle':'result','#playerDownload':'download','#playerClose':'close'
+  };
+  Object.entries(textMap).forEach(([sel,key])=>{qsa(sel).forEach(el=>{if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){if(el.placeholder)el.placeholder=tr(key)}else el.textContent=tr(key)})});
+  qsa('.step strong').forEach((el,i)=>{const k=['input','plan','scenes','audio','final'][i];el.textContent=String(i+1).padStart(2,'0')+' · '+tr(k)});
+const labelKeys={Type:'type',Model:'model','Advanced options':'advanced','Project name':'workspace',Idea:'prompt','Visual style':'creativeWorkspace',Chaining:'production',Scenes:'scenes',Duration:'duration',Format:'resolution',Voice:'audio',Reference:'reference',Manuscript:'manuscript', 'Video style':'creativeWorkspace','Anchor prompt':'prompt',Script:'prompt'};
+qsa('.label').forEach(el=>{if(!el.dataset.uiBase)el.dataset.uiBase=el.textContent.trim();const k=labelKeys[el.dataset.uiBase];if(k)el.textContent=tr(k)});
+qsa('.mode-tab').forEach((el,i)=>el.textContent=tr(['navCreative','navManuscript','navAnchor'][i]));
+qsa('.production-actions .primary').forEach(el=>el.textContent=tr('generate'));qsa('.production-actions .ghost').forEach(el=>el.textContent=tr('clear'));
+qsa('#taskSearch').forEach(el=>el.placeholder=tr('search'));
+qsa('#settingsLanguage').forEach(el=>el.setAttribute('aria-label',tr('language')));const settingsText={'#settingsTheme':'toggleTheme','.settings-card:nth-of-type(4) strong':'videoWatermark'};Object.entries(settingsText).forEach(([sel,key])=>qsa(sel).forEach(el=>el.textContent=tr(key)));
+const themeBtn=$('#themeToggle');if(themeBtn)themeBtn.setAttribute('title',tr('toggleTheme'));
+
+  qsa('.step span').forEach(el=>{if(!/\d+%/.test(el.textContent))el.textContent=tr('pending')});
+  const setSel=(sel,key)=>{const el=$(sel);if(el)el.setAttribute('aria-label',tr(key))};const optionText={ 'All types':{k:'allTypes'},'Images':{k:'images'},'Videos':{k:'videos'},'All statuses':{k:'allStatuses'},'Completed':{k:'completed'},'Pending':{k:'pending'},'Queued':{k:'queued'},'Failed':{k:'failed'} };
+qsa('#taskTypeFilter option,#taskStatusFilter option').forEach(el=>{const base=el.dataset.uiBase||el.textContent.trim();el.dataset.uiBase=base;const key=optionText[base]?.k;if(key&&UI_TRANSLATIONS[key])el.textContent=tr(key)});
+
+  setSel('#prompt','prompt');setSel('#taskSearch','search');
+  localStorage.setItem('agnes_lang',lang);
+}
+applyUiLanguage(localStorage.getItem('agnes_lang')||'ru');
+let models=[],selected=null;
+let productionMode='creative',productionSockets={};
+const draftSaveTimers={};
+function scheduleDraftSave(key,fn,delay=250){clearTimeout(draftSaveTimers[key]);draftSaveTimers[key]=setTimeout(()=>{delete draftSaveTimers[key];fn()},delay)}
+function setProductionMode(mode){productionMode=mode;$('.mode-tab').forEach(b=>{const active=b.dataset.productionMode===mode;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});$('.mode-panel').forEach(p=>p.classList.toggle('active',p.dataset.modePanel===mode));resetProductionStepper()}
+function resetProductionStepper(){$('#productionStepper .step').forEach((s,i)=>{s.classList.remove('running','done','failed');s.querySelector('span').textContent=i===0?'Ready':'Pending'})}
+$('.mode-tab').forEach(b=>b.onclick=()=>setProductionMode(b.dataset.productionMode));
+function formatDims(format){return format==='portrait'?[768,1152]:[1152,648]}
+function productionSteps(progress){const pct=Number(progress)||0,idx=pct>=95?4:pct>=65?3:pct>=35?2:pct>0?1:0;$('#productionStepper .step').forEach((s,i)=>{s.classList.remove('running','done');if(i<idx)s.classList.add('done');if(i===idx)s.classList.add('running');s.querySelector('span').textContent=i<idx?'Done':i===idx?Math.round(pct)+'%':'Pending'})}
+function renderStoryboard(container,scenes){if(!container)return;container.innerHTML=(scenes||[]).map((x,i)=>'<article class="story-card"><div class="story-thumb">'+(x.video_file?'<video muted playsinline src="/api/video/'+encodeURIComponent(x.task_id||'')+'"></video>':'Scene '+(i+1))+'</div><div class="story-body"><strong>Scene '+(i+1)+' · '+escapeHtml(String(x.duration||''))+'s</strong><p>'+escapeHtml(x.prompt||x.description||'Ожидает генерации')+'</p></div></article>').join('')}
+function connectProductionWS(id,progressEl,storyEl,statusEl){try{const proto=location.protocol==='https:'?'wss':'ws',ws=new WebSocket(proto+'://'+location.host+'/ws/'+encodeURIComponent(id));productionSockets[id]=ws;ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type!=='progress')return;productionSteps(m.progress);if(progressEl)progressEl.innerHTML='<b>'+escapeHtml(m.step||'Processing')+'</b><p>'+escapeHtml(m.message||m.status||'')+'</p><div class="ds-progress"><span style="--progress:'+Number(m.progress||0)+'%"></span></div>';if(m.data?.scenes)renderStoryboard(storyEl,m.data.scenes);if(statusEl)statusEl.textContent=Math.round(Number(m.progress||0))+'% · '+(m.message||m.status||'')}catch{}};ws.onclose=()=>{delete productionSockets[id]}}catch{}}
+function productionConfig(kind){
+  return {
+    creative:{
+      endpoint:'/api/tasks/creative',
+      form:()=>{
+        const [w,h]=formatDims($('#creativeFormat').value),n=Number($('#creativeScenes').value),d=Number($('#creativeDuration').value),f=new FormData();
+        f.append('idea',$('#creativeIdea').value.trim());f.append('creative_name',$('#creativeName').value.trim());f.append('style',$('#creativeStyle').value);
+        f.append('chaining_mode',$('#creativeChaining').value);f.append('video_width',w);f.append('video_height',h);f.append('scene_count',n);
+        f.append('uniform_duration','true');f.append('scene_durations_json',JSON.stringify(Array(n).fill(d)));f.append('audio_enabled','true');f.append('audio_voice',$('#creativeVoice').value);
+        if($('#creativeReference').files[0])f.append('reference_image',$('#creativeReference').files[0]);return f
+      },status:'#creativeStatus',progress:'#creativeProgress',story:'#creativeStoryboard'
+    },
+    manuscript:{
+      endpoint:'/api/tasks/manuscript',
+      form:()=>{
+        const [w,h]=formatDims($('#manuscriptFormat').value),f=new FormData();
+        f.append('manuscript_text',$('#manuscriptText').value.trim());f.append('video_style',$('#manuscriptStyle').value);f.append('creative_name',$('#manuscriptName').value.trim());
+        f.append('video_width',w);f.append('video_height',h);f.append('video_duration',$('#manuscriptDuration').value);f.append('audio_enabled','true');f.append('audio_voice',$('#manuscriptVoice').value);return f
+      },status:'#manuscriptStatus',progress:'#manuscriptProgress',story:'#manuscriptStoryboard'
+    },
+    anchor:{
+      endpoint:'/api/tasks/anchor',
+      form:()=>{
+        const [w,h]=formatDims($('#anchorFormat').value),f=new FormData();
+        f.append('anchor_prompt',$('#anchorPrompt').value);f.append('script_text',$('#anchorScript').value.trim());f.append('video_width',w);f.append('video_height',h);
+        f.append('audio_enabled','true');f.append('audio_voice',$('#anchorVoice').value);if($('#anchorReference').files[0])f.append('anchor_reference_image',$('#anchorReference').files[0]);return f
+      },status:'#anchorStatus',progress:'#anchorProgress',story:'#anchorStoryboard'
+    }
+  }[kind]
+}
+function saveProductionDraft(kind){
+  try{
+    localStorage.setItem('production_mode',kind);
+    const draft={
+      name:$('#creativeName').value,idea:$('#creativeIdea').value,style:$('#creativeStyle').value,chaining:$('#creativeChaining').value,
+      scenes:$('#creativeScenes').value,duration:$('#creativeDuration').value,format:$('#creativeFormat').value,voice:$('#creativeVoice').value,
+      manuscriptName:$('#manuscriptName').value,manuscriptText:$('#manuscriptText').value,manuscriptStyle:$('#manuscriptStyle').value,
+      manuscriptDuration:$('#manuscriptDuration').value,manuscriptFormat:$('#manuscriptFormat').value,manuscriptVoice:$('#manuscriptVoice').value,
+      anchorPrompt:$('#anchorPrompt').value,anchorScript:$('#anchorScript').value,anchorFormat:$('#anchorFormat').value,anchorVoice:$('#anchorVoice').value
+    };
+    localStorage.setItem('production_draft',JSON.stringify(draft))
+  }catch{}
+}
+function restoreProductionDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem('production_draft')||'null');if(!d)return;
+    const set=(id,key)=>{if(d[key]!=null&&$(id))$(id).value=d[key]};
+    [['#creativeName','name'],['#creativeIdea','idea'],['#creativeStyle','style'],['#creativeChaining','chaining'],['#creativeScenes','scenes'],['#creativeDuration','duration'],['#creativeFormat','format'],['#creativeVoice','voice'],
+     ['#manuscriptName','manuscriptName'],['#manuscriptText','manuscriptText'],['#manuscriptStyle','manuscriptStyle'],['#manuscriptDuration','manuscriptDuration'],['#manuscriptFormat','manuscriptFormat'],['#manuscriptVoice','manuscriptVoice'],
+     ['#anchorPrompt','anchorPrompt'],['#anchorScript','anchorScript'],['#anchorFormat','anchorFormat'],['#anchorVoice','anchorVoice']].forEach(x=>set(x[0],x[1]));
+    const mode=localStorage.getItem('production_mode');if(mode&&['creative','manuscript','anchor'].includes(mode))setProductionMode(mode)
+  }catch{}
+}
+async function createProductionTask(kind){
+  const cfg=productionConfig(kind);if(!cfg)return;
+  const field=kind==='creative'?'#creativeIdea':kind==='manuscript'?'#manuscriptText':'#anchorScript';
+  if(!$(field).value.trim()){fieldError(field,'Добавьте текст перед запуском.');$(field).focus();return}
+  clearFieldError(field);saveProductionDraft(kind);$(cfg.status).textContent='Запуск…';
+  try{
+    const r=await api(cfg.endpoint,{method:'POST',body:cfg.form()}),d=await r.json();
+    localStorage.setItem('production_task_id',d.task_id);localStorage.setItem('production_task_kind',kind);
+    $(cfg.status).textContent='Задача запущена';connectProductionWS(d.task_id,$(cfg.progress),$(cfg.story),$(cfg.status));pollProduction(d.task_id,cfg)
+  }catch(e){$(cfg.status).textContent=e.message;toast(e.message)}
+}
+async function pollProduction(id,cfg){
+  try{
+    const r=await api('/api/tasks/'+encodeURIComponent(id)),s=await r.json();productionSteps(s.progress||0);
+    if(cfg.progress)$(cfg.progress).innerHTML='<b>'+escapeHtml(s.status||'processing')+'</b><p>'+escapeHtml(s.error_message||s.message||'Обработка задачи…')+'</p><div class="ds-progress"><span style="--progress:'+Number(s.progress||0)+'%"></span></div>';
+    if(s.scenes)renderStoryboard($(cfg.story),s.scenes);
+    if(s.status==='completed'||s.status==='failed'){
+      localStorage.removeItem('production_task_id');localStorage.removeItem('production_task_kind');
+      $(cfg.status).textContent=s.status==='completed'?'Готово':'Ошибка';
+      if(s.status==='failed')toast(s.error_message||'Производство завершилось с ошибкой');
+      return
+    }
+  }catch(e){$(cfg.status).textContent=e.message}
+  setTimeout(()=>pollProduction(id,cfg),8000)
+}
+async function restoreProductionAfterLoad(){
+  const id=localStorage.getItem('production_task_id'),kind=localStorage.getItem('production_task_kind')||localStorage.getItem('production_mode');
+  if(!id||!['creative','manuscript','anchor'].includes(kind))return;
+  const cfg=productionConfig(kind);if(!cfg)return;
+  setProductionMode(kind);show('film');
+  try{
+    const r=await api('/api/tasks/'+encodeURIComponent(id)),s=await r.json();
+    if(r.ok&&(s.status==='pending'||s.status==='queued'))await api('/api/tasks/'+encodeURIComponent(id)+'/resume',{method:'POST'});
+    pollProduction(id,cfg)
+  }catch(e){$(cfg.status).textContent=e.message;toast(e.message)}
+}
+$('#creativeGenerate').onclick=()=>createProductionTask('creative');$('#manuscriptGenerate').onclick=()=>createProductionTask('manuscript');$('#anchorGenerate').onclick=()=>createProductionTask('anchor');
+async function loadSettings(){try{$('#workspaceList').innerHTML='<div class="ds-skeleton" style="height:44px"></div><div class="ds-skeleton" style="height:44px"></div>';const r=await api('/api/config'),d=await r.json();$('#settingsApiStatus').innerHTML='<span class="status-dot"></span>'+(d.configured?'API key connected':'API key not configured');$('#onboardingCard').classList.toggle('hidden',!!d.configured);const wm=!!d.watermark?.enabled;$('#watermarkToggle').setAttribute('aria-checked',String(wm));$('#watermarkStatus').textContent=wm?'Watermark enabled':'Watermark disabled';const ws=d.workspaces||[];$('#workspaceList').innerHTML=ws.length?ws.map(x=>'<div class="workspace-item"><div><strong>'+escapeHtml(x.name||x.path)+'</strong><small>'+escapeHtml(x.path||'')+(x.path===d.active_workspace?' · Active':'')+'</small></div>'+(x.path===d.active_workspace?'<span class="ds-chip ds-chip-success">Active</span>':'<button class="ghost" data-workspace="'+escapeHtml(x.path)+'">Use</button>')+'</div>').join(''):'<div class="ds-empty">No workspaces configured.</div>'}catch(e){$('#settingsApiStatus').textContent=e.message}}
+$('#settingsApiSave').onclick=async()=>{const key=$('#settingsApiKey').value.trim();if(!key){toast('Enter an API key');return}try{const f=new FormData();f.append('api_key',key);await api('/api/config',{method:'POST',body:f});$('#settingsApiKey').value='';toast('API key saved');loadSettings()}catch(e){toast(e.message)}};
+$('#watermarkToggle').onclick=async()=>{const enabled=$('#watermarkToggle').getAttribute('aria-checked')!=='true';try{const f=new FormData();f.append('enabled',String(enabled));await api('/api/config/watermark',{method:'POST',body:f});$('#watermarkToggle').setAttribute('aria-checked',String(enabled));$('#watermarkStatus').textContent=enabled?'Watermark enabled':'Watermark disabled'}catch(e){toast(e.message)}};
+$('#workspaceList').addEventListener('click',async e=>{const b=e.target.closest('[data-workspace]');if(!b)return;try{const f=new FormData();f.append('path',b.dataset.workspace);await api('/api/workspaces/active',{method:'POST',body:f});toast('Workspace activated');loadSettings()}catch(e){toast(e.message)}});
+$('#settingsTheme').onclick=()=>$('#themeToggle').click();$('#settingsLanguage').value=localStorage.getItem('agnes_lang')||'ru';$('#settingsLanguage').onchange=()=>{applyUiLanguage($('#settingsLanguage').value);$('#languageSwitch').value=$('#settingsLanguage').value;toast('Language preference saved')};$('#onboardingDismiss').onclick=()=>$('#onboardingCard').classList.add('hidden');
+
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
-function show(page){$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory()}
-$$('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.page));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
+function fieldError(sel,message){const el=$(sel);if(!el)return;el.setAttribute('aria-invalid','true');let id=sel.replace('#','')+'Error',e=document.getElementById(id);if(!e){e=document.createElement('div');e.id=id;e.className='field-error';e.setAttribute('role','alert');el.insertAdjacentElement('afterend',e)}e.textContent=message;el.setAttribute('aria-describedby',id)}
+function clearFieldError(sel){const el=$(sel);if(!el)return;el.removeAttribute('aria-invalid');const e=document.getElementById(sel.replace('#','')+'Error');if(e)e.remove();el.removeAttribute('aria-describedby')}
+function show(page){$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory();if(page==='credits')loadSettings()}
+qsa('.nav button').forEach(b=>b.onclick=()=>{
+  show(b.dataset.page);
+  if(b.dataset.createType){$('#mediaType').value=b.dataset.createType;renderModels();syncCreateDock()}
+  if(b.dataset.productionMode)setProductionMode(b.dataset.productionMode);
+  qsa('.nav button').forEach(n=>n.classList.toggle('active',n===b))
+});
+qsa('.card[data-page]').forEach(b=>b.onclick=()=>{
+  show(b.dataset.page);
+  if(b.dataset.createType){$('#mediaType').value=b.dataset.createType;renderModels();syncCreateDock()}
+});
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
 async function load(){models=[{id:'agnes-image-2.5-flash',name:'Agnes Image 2.5 Flash',provider:'Agnes AI',type:'image',credits:0,status:'ready',description:'Генерация и редактирование изображений'},{id:'agnes-video-2.5-flash',name:'Agnes Video 2.5 Flash',provider:'Agnes AI',type:'video',credits:0,status:'ready',description:'Text-to-video и image-to-video'},{id:'agnes-video-2.5',name:'Agnes Video 2.5',provider:'Agnes AI',type:'video',credits:0,status:'ready',description:'Text-to-video, image-to-video и keyframes'}];renderModels()}
 function styleChoiceSelects(ids){ids.forEach(id=>{const s=document.getElementById(id);if(!s||s.parentElement.querySelector('.choice-grid'))return;s.classList.add('choice-native');const g=document.createElement('div');g.className='choice-grid';[...s.options].forEach(o=>{const b=document.createElement('button');b.type='button';b.textContent=o.textContent.split(' — ')[0];b.title=o.textContent;b.dataset.value=o.value;b.onclick=()=>{s.value=o.value;s.dispatchEvent(new Event('change',{bubbles:true}));syncChoice(s,g)};g.appendChild(b)});s.insertAdjacentElement('afterend',g);syncChoice(s,g)})}
 function syncChoice(s,g){g.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.value===s.value))}
 function styleMediaChoices(){styleChoiceSelects(['imageAspect','imageQuality','videoAspect','videoQuality','videoDuration'])}
+function syncMediaChoiceButtons(){qsa('#mediaParams select').forEach(s=>{const g=s.parentElement.querySelector('.choice-grid');if(g)syncChoice(s,g)})}
+function syncCreateDock(){
+  const type=$('#mediaType')?.value==='video'?'video':'image';
+  const aspect=$(type==='video'?'#videoAspect':'#imageAspect')?.value||'—';
+  const quality=$(type==='video'?'#videoQuality':'#imageQuality')?.value||'—';
+  const duration=$('#videoDuration')?.value||'—';
+  const durationChip=$('#durationChip');
+  if($('#modeChip'))$('#modeChip').textContent='Mode · '+type;
+  if($('#aspectChip'))$('#aspectChip').textContent='Aspect · '+aspect;
+  if($('#resolutionChip'))$('#resolutionChip').textContent=(type==='video'?'Quality · ':'Resolution · ')+quality;
+  if(durationChip){durationChip.hidden=type!=='video';durationChip.textContent='Duration · '+duration}
+  $('#generate')?.setAttribute('aria-label',type==='video'?'Создать видео':'Создать изображение');
+  syncMediaChoiceButtons();
+}
 function styleFilmChoices(){styleChoiceSelects(['filmScenes','filmDuration','filmFormat','filmAudio','filmVoice','filmSubs'])}
-function renderMediaParams(){const type=$('#mediaType').value;const box=$('#mediaParams');if(!box)return;if(type==='image'){box.innerHTML='<div class="label">Формат</div><select id="imageAspect" class="select"><option value="1:1">1:1 — квадрат</option><option value="9:16">9:16 — вертикальный</option><option value="16:9">16:9 — горизонтальный</option><option value="3:4">3:4 — вертикальный</option><option value="4:3">4:3 — горизонтальный</option></select><div class="label">Качество</div><select id="imageQuality" class="select"><option value="1K">1K</option><option value="2K">2K</option><option value="3K">3K</option><option value="4K">4K</option></select>';}else{box.innerHTML='<div class="label">Формат</div><select id="videoAspect" class="select"><option value="16:9">16:9 — горизонтальный</option><option value="9:16">9:16 — вертикальный</option><option value="1:1">1:1 — квадрат</option></select><div class="label">Качество</div><select id="videoQuality" class="select"><option value="720P">720P — Agnes Video 2.5 Flash</option></select><div class="label">Длительность видео</div><select id="videoDuration" class="select"><option value="4">4 секунды</option><option value="5" selected>5 секунд</option><option value="6">6 секунд</option><option value="8">8 секунд</option><option value="10">10 секунд</option><option value="12">12 секунд</option></select>';}styleMediaChoices()}function renderModels(){let type=$('#mediaType').value;let list=models.filter(m=>m.type===type);let saved='';try{let d=JSON.parse(localStorage.getItem('simple_draft')||'null');saved=type==='image'?(d?.imageModel||''):(d?.videoModel||'')}catch{}$('#models').innerHTML=list.map(m=>`<button class="model ${selected?.id===m.id?'active':''}" data-model="${m.id}" style="width:100%;text-align:left;color:#fff;background:#0d0d10"><b>${m.name}</b><small>${m.provider} · ${m.credits ? m.credits+' кредитов' : 'без внутренних кредитов'} · ${m.status==='ready'?'Доступно':'Скоро'}</small></button>`).join('');selected=list.find(m=>m.id===saved&&m.status==='ready')||list.find(m=>m.id===selected?.id&&m.status==='ready')||list.find(m=>m.status==='ready')||list[0];refreshModel();renderMediaParams();$('[data-model]').forEach(b=>b.onclick=()=>{selected=models.find(m=>m.id===b.dataset.model);refreshModel();saveSimpleDraft()})}
-function refreshModel(){if(!selected)return;$('#selectedModel').innerHTML='<b>'+selected.name+'</b><small>'+selected.provider+' · '+selected.description+'</small>';$$('[data-model]').forEach(b=>b.classList.toggle('active',b.dataset.model===selected.id));$('#generate').disabled=selected.status!=='ready';$('#generate').textContent=selected?.type==='video'?'Создать видео':'Создать изображение'}
+function renderMediaParams(){
+  const type=$('#mediaType').value,box=$('#mediaParams');if(!box)return;
+  if(type==='image'){
+    box.innerHTML='<div class="label">Формат</div><select id="imageAspect" class="select"><option value="1:1">1:1 — квадрат</option><option value="9:16">9:16 — вертикальный</option><option value="16:9">16:9 — горизонтальный</option><option value="3:4">3:4 — вертикальный</option><option value="4:3">4:3 — горизонтальный</option></select><div class="label">Качество</div><select id="imageQuality" class="select"><option value="1K">1K</option><option value="2K">2K</option><option value="3K">3K</option><option value="4K">4K</option></select>';
+  }else{
+    box.innerHTML='<div class="label">Формат</div><select id="videoAspect" class="select"><option value="16:9">16:9 — горизонтальный</option><option value="9:16">9:16 — вертикальный</option><option value="1:1">1:1 — квадрат</option></select><div class="label">Качество</div><select id="videoQuality" class="select"><option value="720P">720P — Agnes Video 2.5 Flash</option></select><div class="label">Длительность видео</div><select id="videoDuration" class="select"><option value="4">4 секунды</option><option value="5" selected>5 секунд</option><option value="6">6 секунд</option><option value="8">8 секунд</option><option value="10">10 секунд</option><option value="12">12 секунд</option></select>';
+  }
+  styleMediaChoices();syncCreateDock();
+}function renderModels(){let type=$('#mediaType').value;let list=models.filter(m=>m.type===type);let saved='';try{let d=JSON.parse(localStorage.getItem('simple_draft')||'null');saved=type==='image'?(d?.imageModel||''):(d?.videoModel||'')}catch{}$('#models').innerHTML=list.map(m=>`<button class="model ${selected?.id===m.id?'active':''}" data-model="${m.id}" style="width:100%;text-align:left;color:#fff;background:#0d0d10"><b>${m.name}</b><small>${m.provider} · ${m.credits ? m.credits+' кредитов' : 'без внутренних кредитов'} · ${m.status==='ready'?'Доступно':'Скоро'}</small></button>`).join('');selected=list.find(m=>m.id===saved&&m.status==='ready')||list.find(m=>m.id===selected?.id&&m.status==='ready')||list.find(m=>m.status==='ready')||list[0];refreshModel();renderMediaParams();$('[data-model]').forEach(b=>b.onclick=()=>{selected=models.find(m=>m.id===b.dataset.model);refreshModel();saveSimpleDraft()})}
+function refreshModel(){if(!selected)return;$('#selectedModel').innerHTML='<b>'+selected.name+'</b><small>'+selected.provider+' · '+selected.description+'</small>';qsa('[data-model]').forEach(b=>b.classList.toggle('active',b.dataset.model===selected.id));$('#generate').disabled=selected.status!=='ready';$('#generate').textContent=selected?.type==='video'?'Создать видео':'Создать изображение'}
 $('#mediaType').onchange=()=>{renderModels();syncCreateDock()};
 function saveSimpleDraft(){try{let d=JSON.parse(localStorage.getItem('simple_draft')||'{}');let type=$('#mediaType').value;if(selected?.type===type)d[type==='image'?'imageModel':'videoModel']=selected.id;d.mediaType=type;d.prompt=$('#prompt').value;d.videoAspect=$('#videoAspect')?.value||d.videoAspect||'';d.videoQuality=$('#videoQuality')?.value||d.videoQuality||'';d.videoDuration=$('#videoDuration')?.value||d.videoDuration||'';d.imageAspect=$('#imageAspect')?.value||d.imageAspect||'';d.imageQuality=$('#imageQuality')?.value||d.imageQuality||'';localStorage.setItem('simple_draft',JSON.stringify(d))}catch{}}
-function restoreSimpleDraft(){try{const d=JSON.parse(localStorage.getItem('simple_draft')||'null');if(!d)return;if(d.prompt!=null)$('#prompt').value=d.prompt;if(d.mediaType)$('#mediaType').value=d.mediaType;renderModels();const wanted=(d.mediaType==='image'?d.imageModel:d.videoModel)||d.model||'';if(wanted){const m=models.find(x=>x.id===wanted);if(m){selected=m;refreshModel()}}renderMediaParams();if(d.videoAspect&&$('#videoAspect'))$('#videoAspect').value=d.videoAspect;if(d.videoQuality&&$('#videoQuality'))$('#videoQuality').value=d.videoQuality;if(d.videoDuration&&$('#videoDuration'))$('#videoDuration').value=d.videoDuration;if(d.imageAspect&&$('#imageAspect'))$('#imageAspect').value=d.imageAspect;if(d.imageQuality&&$('#imageQuality'))$('#imageQuality').value=d.imageQuality}catch{}}
-$('#generate').onclick=async()=>{let p=$('#prompt').value.trim();if(!p){toast('Напиши промпт');return}if(!selected||selected.status!=='ready'){toast('Модель пока недоступна');return}saveSimpleDraft();let f=new FormData();f.append('prompt',p);f.append('model',selected.id);if($('#reference').files[0])f.append('reference_image',$('#reference').files[0]);$('#status').textContent='Запуск генерации…';$('#generate').disabled=true;try{if(selected.type==='image'){f.append('size',$('#imageQuality')?.value||'1K');f.append('ratio',$('#imageAspect')?.value||'1:1');let r=await api('/api/image/generate',{method:'POST',body:f});let d=await r.json();let url='/api/image/'+encodeURIComponent(d.task_id);$('#createEmpty').classList.add('hidden');$('#result').innerHTML='<img src="'+url+'"><div style="padding:12px"><a download="ai-studio.png" href="/api/image/'+encodeURIComponent(d.task_id)+'/download" style="color:#fff">Скачать изображение</a></div>';$('#result').classList.remove('hidden');$('#status').textContent='Готово'}else{const hasReference=!!$('#reference').files[0];f.append('mode',hasReference?'i2v':'t2v');f.append('duration',$('#videoDuration').value);const ratio=$('#videoAspect')?.value||'16:9';const dims={ '16:9':[1152,648], '9:16':[768,1152], '1:1':[1024,1024] }[ratio]||[1152,648];f.append('video_width',dims[0]);f.append('video_height',dims[1]);f.append('quality',$('#videoQuality')?.value||'720P');let r=await api('/api/tasks/simple',{method:'POST',body:f});let d=await r.json();localStorage.setItem('simple_task_id',d.task_id);$('#createEmpty').classList.add('hidden');$('#result').innerHTML='<div style="padding:18px">Видео генерируется. Статус обновляется автоматически.</div>';$('#result').classList.remove('hidden');$('#status').textContent='Видео обрабатывается';show('history');pollTask(d.task_id)}}catch(e){$('#status').textContent=e.message;toast(e.message)}finally{$('#generate').disabled=selected?.status!=='ready'}};
-$('#mediaType').addEventListener('change',saveSimpleDraft);$('#prompt').addEventListener('input',saveSimpleDraft);document.addEventListener('change',e=>{if(e.target.matches('#videoAspect,#videoQuality,#videoDuration,#imageAspect,#imageQuality')){saveSimpleDraft();syncCreateDock()}});$('#reference').addEventListener('change',syncReferencePreview);
-$('#clear').onclick=()=>{$('#prompt').value='';$('#reference').value='';syncReferencePreview();$('#result').classList.add('hidden');$('#createEmpty').classList.remove('hidden');$('#status').textContent='';saveSimpleDraft()};
+function restoreSimpleDraft(){
+  try{
+    const d=JSON.parse(localStorage.getItem('simple_draft')||'null');if(!d)return;
+    if(d.prompt!=null)$('#prompt').value=d.prompt;
+    if(d.mediaType)$('#mediaType').value=d.mediaType;
+    renderModels();
+    const wanted=(d.mediaType==='image'?d.imageModel:d.videoModel)||d.model||'';
+    if(wanted){const m=models.find(x=>x.id===wanted&&x.type===$('#mediaType').value);if(m){selected=m;refreshModel()}}
+    renderMediaParams();
+    if(d.videoAspect&&$('#videoAspect'))$('#videoAspect').value=d.videoAspect;
+    if(d.videoQuality&&$('#videoQuality'))$('#videoQuality').value=d.videoQuality;
+    if(d.videoDuration&&$('#videoDuration'))$('#videoDuration').value=d.videoDuration;
+    if(d.imageAspect&&$('#imageAspect'))$('#imageAspect').value=d.imageAspect;
+    if(d.imageQuality&&$('#imageQuality'))$('#imageQuality').value=d.imageQuality;
+    syncCreateDock();
+  }catch{}
+}
+function restoreSimpleImageResult(){
+  const id=localStorage.getItem('simple_image_task_id');if(!id)return;
+  const url='/api/image/'+encodeURIComponent(id);
+  $('#createEmpty').classList.add('hidden');
+  $('#result').innerHTML='<img src="'+url+'" alt="Сгенерированное изображение"><div style="padding:12px"><a download="ai-studio.png" href="/api/image/'+encodeURIComponent(id)+'/download" style="color:#fff">Скачать изображение</a></div>';
+  $('#result').classList.remove('hidden');
+  $('#status').textContent='Последнее изображение восстановлено';
+  const imageResult=$('#result img');
+  imageResult.addEventListener('error',()=>{localStorage.removeItem('simple_image_task_id');$('#result').innerHTML='<div class="generation-error"><b>Изображение больше недоступно.</b><p>Создайте новое изображение.</p></div>';$('#createEmpty').classList.remove('hidden');$('#status').textContent='Результат недоступен'});
+}
+$('#generate').onclick=async()=>{let p=$('#prompt').value.trim();if(!p){fieldError('#prompt','Введите промпт для генерации.');$('#prompt').focus();return}clearFieldError('#prompt');if(!selected||selected.status!=='ready'){toast('Модель пока недоступна');return}saveSimpleDraft();let f=new FormData();f.append('prompt',p);f.append('model',selected.id);if($('#reference').files[0])f.append('reference_image',$('#reference').files[0]);$('#status').textContent='Запуск генерации…';$('#generate').disabled=true;try{if(selected.type==='image'){f.append('size',$('#imageQuality')?.value||'1K');f.append('ratio',$('#imageAspect')?.value||'1:1');let r=await api('/api/image/generate',{method:'POST',body:f});let d=await r.json().catch(()=>({}));if(!r.ok||!d.task_id)throw Error(d.detail||d.error||'Не удалось запустить генерацию изображения');let url='/api/image/'+encodeURIComponent(d.task_id);localStorage.setItem('simple_image_task_id',d.task_id);$('#createEmpty').classList.add('hidden');$('#result').innerHTML='<img src="'+url+'" alt="Сгенерированное изображение"><div style="padding:12px"><a download="ai-studio.png" href="/api/image/'+encodeURIComponent(d.task_id)+'/download" style="color:#fff">Скачать изображение</a></div>';$('#result').classList.remove('hidden');const imageResult=$('#result img');imageResult.addEventListener('error',()=>{imageResult.parentElement.innerHTML='<div class="generation-error"><b>Изображение не удалось загрузить.</b><p>Попробуйте повторить генерацию.</p><button class="ghost" type="button" data-retry-generation>Повторить</button></div>';$('#status').textContent='Ошибка загрузки результата';$('#result [data-retry-generation]')?.addEventListener('click',()=>$('#generate').click())});$('#status').textContent='Готово'}else{const hasReference=!!$('#reference').files[0];f.append('mode',hasReference?'i2v':'t2v');f.append('duration',$('#videoDuration').value);const ratio=$('#videoAspect')?.value||'16:9';const dims={ '16:9':[1152,648], '9:16':[768,1152], '1:1':[1024,1024] }[ratio]||[1152,648];f.append('video_width',dims[0]);f.append('video_height',dims[1]);f.append('quality',$('#videoQuality')?.value||'720P');let r=await api('/api/tasks/simple',{method:'POST',body:f});let d=await r.json().catch(()=>({}));if(!r.ok||!d.task_id)throw Error(d.detail||d.error||'Не удалось запустить генерацию видео');localStorage.setItem('simple_task_id',d.task_id);$('#createEmpty').classList.add('hidden');$('#result').innerHTML='<div style="padding:18px">Видео генерируется. Статус обновляется автоматически.</div>';$('#result').classList.remove('hidden');$('#status').textContent='Видео обрабатывается';show('history');pollTask(d.task_id)}}catch(e){$('#status').textContent=e.message;toast(e.message)}finally{$('#generate').disabled=selected?.status!=='ready'}};
+$('#mediaType').addEventListener('change',saveSimpleDraft);$('#prompt').addEventListener('input',()=>scheduleDraftSave('simple',saveSimpleDraft));document.addEventListener('change',e=>{if(e.target.matches('#videoAspect,#videoQuality,#videoDuration,#imageAspect,#imageQuality')){saveSimpleDraft();syncCreateDock()}});$('#reference').addEventListener('change',syncReferencePreview);
+$('#clear').onclick=()=>{$('#prompt').value='';$('#reference').value='';localStorage.removeItem('simple_image_task_id');syncReferencePreview();$('#result').classList.add('hidden');$('#createEmpty').classList.remove('hidden');$('#status').textContent='';saveSimpleDraft()};
 
-async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
-$('#historyList').addEventListener('click',e=>{const b=e.target.closest('[data-task-id]');if(b)openResult(b.dataset.taskId,b.dataset.resultType)});
-async function loadHistory(){try{let r=await api('/api/tasks');let d=await r.json();let items=d.tasks||[];$('#historyList').innerHTML=items.length?items.map(x=>{let type=x.task_type==='image'?'Изображение':'Видео';let ready=x.status==='completed'&&x.task_id;let action=ready?'<button class="ghost" data-task-id="'+escapeHtml(x.task_id)+'" data-result-type="'+(x.task_type==='image'?'image':'video')+'" style="margin-top:10px">Открыть результат</button>':'';return '<div class="card"><b>'+escapeHtml(type+' · '+(x.creative_name||x.task_id))+'</b><p>Задача '+escapeHtml(x.task_id)+'</p><span class="tag">'+escapeHtml(x.status)+'</span>'+action+'</div>'}).join(''):'<div class="card">Генераций пока нет.</div>'}catch(e){$('#historyList').innerHTML='<div class="card">'+escapeHtml(e.message||'Ошибка загрузки истории')+'</div>'}}
-
+// Tasks workspace: grid filters, task controls and inline player.
+let taskCache=[],lastTaskRenderKey='';
+function taskDate(x){const raw=String(x.dir_name||'');const m=raw.match(/^(\d{8})_(\d{6})/);return m?m[1].slice(0,4)+'-'+m[1].slice(4,6)+'-'+m[1].slice(6,8)+' '+m[2].slice(0,2)+':'+m[2].slice(2,4):''}
+function taskMatches(x){const q=($('#taskSearch')?.value||'').toLowerCase().trim(),type=$('#taskTypeFilter')?.value||'all',status=$('#taskStatusFilter')?.value||'all';const hay=(x.creative_name||x.task_id||x.prompt||'').toLowerCase();return (!q||hay.includes(q))&&(type==='all'||(x.task_type==='image'?type==='image':type==='video'))&&(status==='all'||x.status===status)}
+function renderTasks(){
+  const list=taskCache.filter(taskMatches);const renderKey=JSON.stringify([$('#taskSearch')?.value||'', $('#taskTypeFilter')?.value||'', $('#taskStatusFilter')?.value||'', list.map(x=>[x.task_id,x.status,x.task_type,x.creative_name,x.prompt,x.idea,x.updated_at||x.created_at])]);
+  if(renderKey===lastTaskRenderKey){$('#historyList').setAttribute('aria-busy','false');return}lastTaskRenderKey=renderKey;
+  $('#historyList').setAttribute('aria-busy','false');
+  $('#historyList').innerHTML=list.length?list.map(x=>{
+    const type=x.task_type==='image'?'image':'video', ready=x.status==='completed', date=taskDate(x);
+    const prompt=x.prompt||x.idea||x.manuscript_text||x.script_text||'';
+    const thumb=ready?(type==='image'
+      ? '<img loading="lazy" decoding="async" src="/api/image/'+encodeURIComponent(x.task_id)+'" alt="">'
+      : '<video loading="lazy" preload="metadata" muted playsinline src="/api/video/'+encodeURIComponent(x.task_id)+'"></video>')
+      : '<span>'+escapeHtml(x.status||'queued')+'</span>';
+    const statusClass=ready?'ds-chip-success':x.status==='failed'?'ds-chip-error':'ds-chip-warning';
+    const actions=ready
+      ? '<button class="ghost" data-task-action="open" data-task-id="'+escapeHtml(x.task_id)+'">Open</button><button class="ghost" data-task-action="download" data-task-id="'+escapeHtml(x.task_id)+'" data-task-type="'+type+'">Download</button>'
+      : '<button class="ghost" data-task-action="resume" data-task-id="'+escapeHtml(x.task_id)+'">Resume</button><button class="ghost" data-task-action="stop" data-task-id="'+escapeHtml(x.task_id)+'">Stop</button>';
+    return '<article class="task-card"><div class="task-thumb">'+thumb+'</div><div class="task-info"><div class="task-title"><strong>'+escapeHtml(x.creative_name||x.task_id)+'</strong><span class="ds-chip '+statusClass+'">'+escapeHtml(x.status||'queued')+'</span></div><div class="task-meta"><span class="ds-chip">'+type+'</span><span class="ds-chip">'+escapeHtml(date)+'</span></div><div class="task-actions">'+actions+'</div></div></article>';
+  }).join(''):'<div class="ds-empty" style="grid-column:1/-1"><div><strong>No tasks yet</strong><p>Создай изображение или видео — результаты появятся здесь.</p></div></div>';
+}
+async function loadHistory(){try{$('#historyList').setAttribute('aria-busy','true');$('#historyList').innerHTML='<div class="ds-skeleton" style="height:220px;grid-column:1/-1"></div><div class="ds-skeleton" style="height:220px"></div><div class="ds-skeleton" style="height:220px"></div>';const r=await api('/api/tasks');const d=await r.json();taskCache=d.tasks||[];lastTaskRenderKey='';renderTasks()}catch(e){$('#historyList').innerHTML='<div class="ds-empty" style="grid-column:1/-1">'+escapeHtml(e.message||'Ошибка загрузки истории')+'</div>'}}
+async function openResult(id,type){const x=taskCache.find(t=>t.task_id===id)||{};let d=x;try{const r=await api('/api/tasks/'+encodeURIComponent(id));d=await r.json()}catch{}const frame=$('#playerFrame');frame.innerHTML=type==='image'?'<img src="/api/image/'+encodeURIComponent(id)+'" alt="Generated image">':'<video controls playsinline src="/api/video/'+encodeURIComponent(id)+'"></video>';$('#playerTitle').textContent=d.creative_name||id;$('#playerType').textContent=type;$('#playerDuration').textContent=d.video_duration||d.duration||'—';$('#playerResolution').textContent=(d.video_width&&d.video_height)?d.video_width+'×'+d.video_height:d.size||'—';$('#playerPrompt').textContent=d.prompt||d.idea||d.manuscript_text||d.script_text||'—';$('#playerDownload').onclick=()=>downloadTask(id,type);$('#taskPlayer').classList.add('active');$('#taskPlayer').scrollIntoView({behavior:'smooth',block:'start'})}
+function downloadTask(id,type){const a=document.createElement('a');a.href=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';a.download=type==='image'?'ai-studio.png':'video.mp4';a.click()}
+async function taskAction(action,id){try{if(action==='stop'&&!(await confirmAction('Stop task','The running task will be cancelled and may not be resumable.','Stop task')))return;if(action==='open'){const x=taskCache.find(t=>t.task_id===id);openResult(id,x?.task_type==='image'?'image':'video');return}if(action==='download'){const x=taskCache.find(t=>t.task_id===id);downloadTask(id,x?.task_type==='image'?'image':'video');return}const r=await api('/api/tasks/'+encodeURIComponent(id)+'/'+action,{method:'POST'});toast(action==='stop'?'Task stopped':'Task resumed');await loadHistory();if(action==='resume')pollTask(id)}catch(e){toast(e.message)}}
+$('#historyList').addEventListener('click',e=>{const b=e.target.closest('[data-task-action]');if(b)taskAction(b.dataset.taskAction,b.dataset.taskId)});
+$('#taskSearch').oninput=renderTasks;$('#taskTypeFilter').onchange=renderTasks;$('#taskStatusFilter').onchange=renderTasks;$('#playerClose').onclick=()=>$('#taskPlayer').classList.remove('active');
 async function pollTask(id,misses=0){try{let r=await api('/api/tasks/'+encodeURIComponent(id));let s=await r.json();if(s.status==='completed'){localStorage.removeItem('simple_task_id');toast('Видео готово');loadHistory();return}if(s.status==='failed'){localStorage.removeItem('simple_task_id');toast('Видео не удалось создать');loadHistory();return}}catch{if(misses>=3){localStorage.removeItem('simple_task_id');toast('Не удалось получить статус задачи');loadHistory();return}}setTimeout(()=>pollTask(id,misses+1),8000)}
 
 let filmTimer=null;async function startFilm(){let idea=$('#filmIdea').value.trim();if(!idea){toast('Опиши идею фильма');return}let n=Number($('#filmScenes').value),dur=Number($('#filmDuration').value);let landscape=$('#filmFormat').value==='landscape';let f=new FormData();f.append('idea',idea);f.append('creative_name',$('#filmName').value.trim());f.append('style',$('#filmStyle').value.trim());f.append('scene_count',String(n));f.append('scene_durations_json',JSON.stringify(Array(n).fill(dur)));f.append('duration_source','manual');f.append('uniform_duration','true');f.append('chaining_mode','keyframes');f.append('video_width',landscape?'1152':'768');f.append('video_height',landscape?'648':'1152');f.append('audio_enabled',$('#filmAudio').value);f.append('audio_voice',$('#filmVoice').value);f.append('subtitle_enabled',$('#filmSubs').value);f.append('subtitle_style_mode','fixed');let ref=$('#filmReference').files[0];if(ref)f.append('reference_image',ref);$('#filmGenerate').disabled=true;$('#filmStatus').textContent='Запускаю производство фильма…';$('#filmProgress').classList.remove('hidden');try{let r=await fetch('/api/tasks/creative',{method:'POST',body:f});let d=await r.json();if(!r.ok)throw Error(d.detail||'Не удалось запустить фильм');$('#filmStatus').textContent='Фильм запущен';localStorage.setItem('film_task_id',d.task_id);watchFilm(d.task_id)}catch(e){$('#filmStatus').textContent=e.message;toast(e.message);$('#filmGenerate').disabled=false}}async function watchFilm(id){if(filmTimer)clearTimeout(filmTimer);try{let r=await fetch('/api/tasks/'+encodeURIComponent(id));if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Не удалось получить статус фильма')}let s=await r.json();let scenes=s.scenes||[];let done=scenes.filter(x=>x.video_status==='completed').length;let total=s.scene_count||scenes.length||Number($('#filmScenes').value);let pct=total?Math.round(done/total*100):0;$('#filmProgress').innerHTML='<div style="padding:18px"><b>Фильм: '+pct+'%</b><p>'+done+' из '+total+' сцен готовы.</p><span class="tag">'+s.status+'</span>'+(s.story_file?'<p>✓ История подготовлена</p>':'')+(s.character_ref_file?'<p>✓ Референс персонажа подготовлен</p>':'')+(s.final_video_file?'<p>✓ Финальный MP4 готов</p>':'')+(s.error_message?'<p style="color:#ff6b6b;word-break:break-word"><b>Ошибка:</b> '+String(s.error_message).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</p>':'')+'</div>';if(s.status==='completed'&&s.final_video_file){$('#filmProgress').innerHTML='<div style="padding:18px"><b>🎬 Фильм готов!</b><p>Все сцены собраны в один MP4.</p><video controls playsinline style="width:100%;margin-top:12px" src="/api/video/'+encodeURIComponent(id)+'"></video><div style="padding-top:12px"><a download="multfilm.mp4" href="/api/video/'+encodeURIComponent(id)+'/download" style="color:#fff">Скачать MP4</a></div></div>';$('#filmStatus').textContent='Готово';localStorage.removeItem('film_task_id');$('#filmGenerate').disabled=false;return}if(s.status==='failed'){localStorage.removeItem('film_task_id');throw Error('Производство фильма завершилось с ошибкой. Можно открыть «История» и проверить задачу.')}filmTimer=setTimeout(()=>watchFilm(id),8000)}catch(e){$('#filmStatus').textContent=e.message;toast(e.message);$('#filmGenerate').disabled=false}}$('#filmGenerate').onclick=startFilm;$('#filmClear').onclick=()=>{$('#filmName').value='';$('#filmIdea').value='';$('#filmReference').value='';$('#filmStatus').textContent='';$('#filmProgress').classList.add('hidden');$('#filmProgress').innerHTML='';localStorage.removeItem('film_draft')};
@@ -215,6 +522,7 @@ async function restoreFilmAfterLoad(){
 }
 function saveFilmDraft(){try{localStorage.setItem('film_draft',JSON.stringify({name:$('#filmName').value,idea:$('#filmIdea').value,style:$('#filmStyle').value,scenes:$('#filmScenes').value,duration:$('#filmDuration').value,format:$('#filmFormat').value,audio:$('#filmAudio').value,voice:$('#filmVoice').value,subs:$('#filmSubs').value}))}catch{}}
 function restoreFilmDraft(){try{const d=JSON.parse(localStorage.getItem('film_draft')||'null');if(!d)return;if(d.name!=null)$('#filmName').value=d.name;if(d.idea!=null)$('#filmIdea').value=d.idea;if(d.style!=null)$('#filmStyle').value=d.style;if(d.scenes!=null)$('#filmScenes').value=d.scenes;if(d.duration!=null)$('#filmDuration').value=d.duration;if(d.format!=null)$('#filmFormat').value=d.format;if(d.audio!=null)$('#filmAudio').value=d.audio;if(d.voice!=null)$('#filmVoice').value=d.voice;if(d.subs!=null)$('#filmSubs').value=d.subs}catch{}}
-['filmName','filmIdea','filmStyle','filmScenes','filmDuration','filmFormat','filmAudio','filmVoice','filmSubs'].forEach(id=>document.getElementById(id)?.addEventListener('input',saveFilmDraft));
-load().then(()=>{renderMediaParams();restoreSimpleDraft();restoreFilmDraft();styleFilmChoices();restoreFilmAfterLoad()});
-</script></body></html>
+['filmName','filmIdea','filmStyle','filmScenes','filmDuration','filmFormat','filmAudio','filmVoice','filmSubs'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>scheduleDraftSave('film',saveFilmDraft)));
+['creativeName','creativeIdea','creativeStyle','creativeChaining','creativeScenes','creativeDuration','creativeFormat','creativeVoice','manuscriptName','manuscriptText','manuscriptStyle','manuscriptDuration','manuscriptFormat','manuscriptVoice','anchorPrompt','anchorScript','anchorFormat','anchorVoice'].forEach(id=>document.getElementById(id)?.addEventListener('input',()=>scheduleDraftSave('production',()=>saveProductionDraft(productionMode))));
+load().then(()=>{renderMediaParams();restoreSimpleDraft();restoreFilmDraft();restoreProductionDraft();styleFilmChoices();restoreSimpleImageResult();restoreProductionAfterLoad();restoreFilmAfterLoad()});
+</script><div id="confirmModal" class="ds-modal-backdrop" hidden role="presentation"><div class="ds-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage"><div class="ds-modal-header"><h2 id="confirmTitle">Confirm action</h2><button id="confirmClose" class="ds-btn ds-btn-icon ds-btn-ghost" type="button" aria-label="Close">×</button></div><p id="confirmMessage"></p><div class="ds-modal-actions"><button id="confirmCancel" class="ds-btn ds-btn-secondary" type="button">Cancel</button><button id="confirmOk" class="ds-btn ds-btn-primary" type="button">Confirm</button></div></div></div><div id="toastRegion" class="ds-toast-region" aria-live="polite" aria-atomic="true"></div></body></html>
