@@ -1,4 +1,4 @@
-# AI Studio API — Free AI Video Generator
+# Agnes Video Generator — Free AI Video Generator
 
 
 > **Completely free AI video generator** — Built on Agnes AI APIs; the client has no subscription layer and requires no local GPU. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
@@ -33,7 +33,7 @@ To be honest, Agnes's video model isn't perfect yet. The generated frames are so
 | **Keyframes Animation** | Yes | Yes | Yes | Not available | Not available |
 | **Local GPU Required** | No (cloud API) | No (cloud) | No (cloud) | No (cloud) | No (cloud) |
 | **Watermark** | Optional; disabled by default | Built-in watermark | Built-in watermark | C2PA metadata | Built-in watermark |
-| **Usage Limit** | No subscription; local client guard is 20 requests/min | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
+| **Usage Limit** | No subscription; local concurrency guard uses `AGNES_RATE_LIMIT` (20/min default, 50% safety budget) | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
 
 ## Core Features
 
@@ -57,7 +57,7 @@ All core AI capabilities use the configured Agnes AI account; watermarking is op
 | Video Generation | `agnes-video-2.5-flash` / `agnes-video-2.5` | Configured Agnes AI access |
 | Text-to-Speech Narration | Edge TTS (Microsoft) | Free, no extra API key needed |
 
-All AI API calls share a global rate limiter. `AGNES_RATE_LIMIT` defaults to 20 requests/minute and the client uses a 50% safety factor by default. Long-running video jobs are persisted locally so they can be resumed after a restart.
+All AI API calls share a global rate limiter. `AGNES_RATE_LIMIT` defaults to 20 requests/minute; task concurrency reserves 50% of that configured limit for safety (10 weighted slots by default). Long-running video jobs are persisted locally so they can be resumed after a restart.
 
 ### AI Narration & Smart Subtitles
 
@@ -119,7 +119,7 @@ cd free-video-generator
 start_windows.bat
 ```
 
-`start_windows.bat` creates the local Python environment, checks FFmpeg, installs dependencies, starts FastAPI, and opens `http://127.0.0.1:8765` in your browser. No account, deployment, or external server is required.
+`start_windows.bat` starts an already-created local Python environment, checks FFmpeg, starts FastAPI, and opens `http://127.0.0.1:8765`. If `.venv` does not exist, create it first as shown by the script. No account, deployment, or external server is required.
 
 For Linux/macOS, use `./start.sh`.
 
@@ -339,11 +339,11 @@ free-video-generator/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Serve Web UI |
-| GET | `/api/config` | Configuration status, workspaces and watermark settings |
-| POST | `/api/config` | Save API key |
+| GET | `/health` | Service and FFmpeg health |\n| GET | `/api/config` | Configuration status, workspaces and watermark settings |
+| POST | `/api/config` | Save API key |\n| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |\n| POST | `/api/workspaces/pick-directory` | Pick a local directory |\n| POST | `/api/config/watermark` | Configure optional watermark |
 | DELETE | `/api/config` | Delete configured API key |
 | GET | `/api/voices` | List available TTS voices |
-| POST | `/api/image/generate` | Image generation |
+| POST | `/api/ideas/generate` | Generate creative ideas |\n| POST | `/api/image/generate` | Image generation |
 | GET | `/api/image/{task_id}` | Serve generated image |
 | POST | `/api/tasks/simple` | Create simple video task |
 | POST | `/api/tasks/creative` | Create creative video task |
@@ -443,7 +443,7 @@ MIT
 
 ### Is Free Video Generator really free? Are there any hidden costs?
 
-The application itself does not charge for software usage. Agnes AI availability, quotas, and pricing are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
+The application itself does not charge for software usage. Agnes AI availability, quotas, pricing, and any provider-side limits are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
 
 ### Do I need a GPU to run this AI video generator?
 
@@ -463,7 +463,7 @@ Yes. You can upload reference images for character or scene consistency across s
 
 ### What languages does the UI support?
 
-The Web UI supports Russian UI: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Subtitles are generated in the source text language with CJK font support built-in.
+The current Web UI is primarily Russian-language; CJK text is supported in generated subtitles through the bundled fonts. Subtitles are generated in the source text language with CJK font support built-in.
 
 ### Can I host this on my own server?
 
