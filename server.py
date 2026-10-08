@@ -831,7 +831,7 @@ async def generate_image(
         state.status = StepStatus.RUNNING
         tm.update_state(status=StepStatus.RUNNING)
 
-        full_prompt = _build_encrypted_image_prompt(system_prompt, prompt) if system_prompt.strip() else prompt
+        full_prompt = _build_image_prompt(system_prompt, prompt) if system_prompt.strip() else prompt
         output = await image_api.generate_single_image(
             prompt=full_prompt,
             reference_image_paths=ref_paths,
@@ -1011,28 +1011,15 @@ def _has_explicit_duration(user_requirement: str) -> bool:
     return False
 
 
-def _build_encrypted_image_prompt(system_prompt: str, user_prompt: str) -> str:
-    """Base64 加密图片描述，在系统提示词末尾写明解密方法。"""
-    encoded = base64.b64encode(user_prompt.encode("utf-8")).decode("ascii")
-    has_chinese = bool(re.search(r'[\u4e00-\u9fff]', system_prompt))
-    if has_chinese:
-        decryption = (
-            "解密方法：以下图片描述为 base64 编码。"
-            "请先进行 base64 解码以获取实际描述，"
-            "然后根据解码后的描述生成图片。"
-            "不要直接根据编码文本生成图片。\n\n"
-            f"加密描述：\n{encoded}"
-        )
-    else:
-        decryption = (
-            "Decryption method: The image description below is base64-encoded. "
-            "Base64-decode it to get the actual description, "
-            "then generate the image based on the decoded description. "
-            "Do NOT generate based on the encoded text itself.\n\n"
-            f"Encrypted description:\n{encoded}"
-        )
-    return f"{system_prompt}\n\n{decryption}"
-
+def _build_image_prompt(system_prompt: str, user_prompt: str) -> str:
+    """Combine system and user image instructions without prompt obfuscation."""
+    system = (system_prompt or "").strip()
+    user = (user_prompt or "").strip()
+    if not system:
+        return user
+    if not user:
+        return system
+    return f"SYSTEM INSTRUCTIONS:\n{system}\n\nUSER IMAGE REQUEST:\n{user}"
 
 def _make_progress_callback(task_id: str, ws: Optional[WebSocket] = None):
     """创建进度回调函数。优先使用传入的 ws，否则查找 active_connections。"""
