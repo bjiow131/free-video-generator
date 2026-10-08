@@ -409,6 +409,36 @@ class AgnesVideoAPI:
         )
         return await self.wait_for_video(video_id, progress_callback)
 
+    def _select_legacy_references(self, refs: Sequence[str]) -> list:
+        """Choose up to three useful views for legacy Agnes keyframes."""
+        refs = list(refs or [])
+        if len(refs) <= 3:
+            return refs
+        # The browser sends references in the user's chosen order. When there
+        # are 4–5 selected, prefer the primary/front/three-quarter/profile/full
+        # views when their stored filenames make the role identifiable.
+        keywords = (
+            ("primary", "основ", "front", "фронт", "лицо"),
+            ("three", "3/4", "three-quarter", "quarter", "три четвер"),
+            ("left", "лев", "right", "прав", "profile", "профил", "side", "бок"),
+            ("full", "полный", "рост", "fullbody", "full-body"),
+        )
+        selected = []
+        for group in keywords:
+            for ref in refs:
+                name = os.path.basename(str(ref)).lower()
+                if any(k in name for k in group) and ref not in selected:
+                    selected.append(ref)
+                    break
+            if len(selected) == 3:
+                return selected
+        for ref in refs:
+            if ref not in selected:
+                selected.append(ref)
+            if len(selected) == 3:
+                break
+        return selected
+
     @timed_step
     async def submit_video(
         self,
@@ -496,7 +526,7 @@ class AgnesVideoAPI:
                 # Agnes v2.0 keyframes accepts at most 3 images. The UI may
                 # provide up to 5 references for newer models, so cap only
                 # the legacy payload rather than rejecting the whole request.
-                legacy_refs = resolved_refs[:3]
+                legacy_refs = self._select_legacy_references(resolved_refs)
                 payload["extra_body"] = {
                     "image": legacy_refs,
                     "mode": "keyframes",
