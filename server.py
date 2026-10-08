@@ -163,9 +163,9 @@ def _parse_bg_color(raw: str) -> tuple:
         except ValueError as exc:
             raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100") from exc
         if 0 <= alpha <= 1:
-            alpha_value = round(alpha * 255)
+            alpha_value = int(alpha * 255)
         elif 0 <= alpha <= 100:
-            alpha_value = round(alpha / 100 * 255)
+            alpha_value = int(alpha / 100 * 255)
         else:
             raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100")
         return (*rgb, alpha_value)
