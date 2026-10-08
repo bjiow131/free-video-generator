@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.api.agnes_image — Agnes Image API 封装（从 core/image_generator.py 迁移）"""
 
 import asyncio
@@ -97,6 +98,7 @@ class AgnesImageAPI:
         mime = mimetypes.guess_type(path)[0] or "image/png"
         return f"data:{mime};base64,{b64}"
 
+    @timed_step
     async def _resolve_image_ref(self, ref: str) -> str:
         if ref.startswith(("http://", "https://", "data:")):
             return ref
@@ -104,6 +106,7 @@ class AgnesImageAPI:
             return await self._path_to_b64(ref)
         return ref
 
+    @timed_step
     async def generate_single_image(
         self,
         prompt: str,
