@@ -189,7 +189,7 @@ button{cursor:pointer}
 </style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
-<button class="active" data-page="image">Изображения</button><button data-page="video">Видео</button><button data-page="history">История</button>
+<button class="active" data-page="image">Изображения</button><button data-page="history">История</button>
 </nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
 <main class="main"><header class="top"><div>Локальный сервер</div><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></header>
 
@@ -214,26 +214,6 @@ button{cursor:pointer}
   </div>
 </section>
 
-<section id="video" class="section">
-  <div class="hero"><div class="eyebrow">Video Studio</div><h1 style="font-size:52px">Видео</h1><p>Создавай видео через Agnes AI. Здесь только параметры видео — без переключения типа генерации.</p></div>
-  <div class="workspace">
-    <div class="panel">
-      <h2>Генерация видео</h2>
-      <div class="label">Модель</div><div id="videoModels"></div>
-      <div class="label">Формат</div>
-      <select id="videoAspect" class="select"><option value="16:9">16:9 — горизонтальный</option><option value="9:16">9:16 — вертикальный</option><option value="1:1">1:1 — квадрат</option></select>
-      <div class="label">Качество</div><select id="videoQuality" class="select"><option value="720P">720P — Agnes Video</option></select>
-      <div class="label">Длительность</div>
-      <select id="videoDuration" class="select"><option value="4">4 секунды</option><option value="5" selected>5 секунд</option><option value="6">6 секунд</option><option value="8">8 секунд</option><option value="10">10 секунд</option><option value="12">12 секунд</option></select>
-      <div class="label">Промпт</div><textarea id="videoPrompt" class="textarea" placeholder="Опиши видео, которое хочешь получить…"></textarea>
-      <div class="label">Референс <span style="color:#777">(необязательно)</span></div><input id="videoReference" type="file" accept="image/*">
-      <div class="actions"><button id="videoGenerate" class="primary">Создать видео</button><button class="ghost" id="videoClear">Очистить</button></div>
-      <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
-    </div>
-    <div class="panel"><h2>Выбранная модель</h2><div id="videoSelectedModel" class="model active"></div><div class="label">Движок</div><div style="font-size:30px;font-weight:800">Agnes AI</div><p style="color:#888;font-size:13px">Генерация выполняется напрямую через Agnes AI.</p></div>
-  </div>
-</section>
-
 <section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
 </main></div>
 <div id="toast" class="toast hidden"></div>
@@ -246,10 +226,9 @@ document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListene
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
 async function load(){
   models=[
-    {id:'agnes-image-2.1-flash',name:'Agnes Image 2.1 Flash',provider:'Agnes AI',type:'image',credits:0,status:'ready',description:'Генерация и редактирование изображений'},
-    {id:'agnes-video-v2.0',name:'Agnes Video v2.0',provider:'Agnes AI',type:'video',credits:0,status:'ready',description:'Text-to-video и image-to-video'}
+    {id:'agnes-image-2.1-flash',name:'Agnes Image 2.1 Flash',provider:'Agnes AI',type:'image',credits:0,status:'ready',description:'Генерация и редактирование изображений'}
   ];
-  renderDedicatedModels('image');renderDedicatedModels('video');
+  renderDedicatedModels('image');
 }
 function renderDedicatedModels(type){
   const box=$('#'+type+'Models'), list=models.filter(m=>m.type===type);
@@ -273,23 +252,9 @@ async function generateImage(){
     $('#imageResult').classList.remove('hidden');$('#imageStatus').textContent='Готово';
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
-async function generateVideo(){
-  const p=$('#videoPrompt').value.trim();if(!p){toast('Напиши промпт');return}
-  setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации…';
-  try{
-    const f=new FormData();f.append('prompt',p);f.append('mode','t2v');f.append('duration',$('#videoDuration').value);
-    const ratio=$('#videoAspect').value;const dims={'16:9':[1280,704],'9:16':[720,1280],'1:1':[720,720]};const videoDims=dims[ratio]||dims['16:9'];
-    f.append('video_width',videoDims[0]);f.append('video_height',videoDims[1]);f.append('quality',$('#videoQuality').value);
-    const ref=$('#videoReference').files[0];if(ref)f.append('reference_image',ref);
-    const r=await api('/api/tasks/simple',{method:'POST',body:f});const d=await r.json();localStorage.setItem('simple_task_id',d.task_id);
-    $('#videoResult').innerHTML='<div style="padding:18px">Видео генерируется. Статус обновляется в разделе «История».</div>';$('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Видео обрабатывается';
-    show('history');pollTask(d.task_id);
-  }catch(e){$('#videoStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('video',false)}
-}
 $('#imageGenerate').onclick=generateImage;
 $('#videoGenerate').onclick=generateVideo;
 $('#imageClear').onclick=()=>{$('#imagePrompt').value='';$('#imageReference').value='';$('#imageResult').classList.add('hidden');$('#imageStatus').textContent=''};
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
 async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
 let historyTimer=null;
 function formatEta(sec){
@@ -320,4 +285,4 @@ async function loadHistory(){
 async function pollTask(id,misses=0){try{let r=await api('/api/tasks/'+encodeURIComponent(id));let s=await r.json();if(s.status==='completed'){localStorage.removeItem('simple_task_id');toast('Видео готово');loadHistory();return}if(s.status==='failed'){localStorage.removeItem('simple_task_id');toast('Видео не удалось создать');loadHistory();return}}catch{if(misses>=3){localStorage.removeItem('simple_task_id');toast('Не удалось получить статус задачи');loadHistory();return}}setTimeout(()=>pollTask(id,misses+1),8000)}
 
 function restoreFilmAfterLoad(){const savedFilmTask=localStorage.getItem('film_task_id');if(savedFilmTask){localStorage.removeItem('film_task_id');show('history');loadHistory();return}const savedSimpleTask=localStorage.getItem('simple_task_id');if(savedSimpleTask){show('history');pollTask(savedSimpleTask)}}
-load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','video','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false);restoreFilmAfterLoad()});</script></body></html>
+load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false);restoreFilmAfterLoad()});</script></body></html>
