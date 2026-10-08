@@ -150,6 +150,10 @@ class BaseTaskState(BaseModel):
     video_height: int = 648
     final_video_file: str = ""
     error_message: str = ""
+    progress: float = 0.0
+    progress_message: str = ""
+    eta_seconds: Optional[int] = None
+    started_at: Optional[float] = None
 
 
 class SimpleVideoTask(BaseTaskState):
