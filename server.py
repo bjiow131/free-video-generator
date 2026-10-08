@@ -1446,13 +1446,15 @@ def _launch_background_task(coro):
 async def create_simple_task(request: Request):
     """Create a simple video task with explicit multipart parsing."""
     form = await request.form()
-    prompt = str(form.get("prompt") or "").strip()
-    model = str(form.get("model") or "agnes-video-2.5-flash").strip()
-    mode = str(form.get("mode") or "t2v").strip()
+    # Some reverse proxies/clients can drop multipart fields while preserving
+    # the query string. The browser mirrors the scalar video parameters there.
+    prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
+    model = str(form.get("model") or request.query_params.get("model") or "agnes-video-2.5-flash").strip()
+    mode = str(form.get("mode") or request.query_params.get("mode") or "t2v").strip()
     try:
-        duration = int(form.get("duration") or 5)
-        video_width = int(form.get("video_width") or 1152)
-        video_height = int(form.get("video_height") or 648)
+        duration = int(form.get("duration") or request.query_params.get("duration") or 5)
+        video_width = int(form.get("video_width") or request.query_params.get("video_width") or 1152)
+        video_height = int(form.get("video_height") or request.query_params.get("video_height") or 648)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"Некорректные параметры видео: {exc}")
     seed_raw = form.get("seed")
