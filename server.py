@@ -1002,6 +1002,20 @@ async def generate_image(request: Request):
         tm.update_state(status=StepStatus.RUNNING)
 
         full_prompt = _build_image_prompt(system_prompt, prompt) if system_prompt.strip() else prompt
+        # Saved characters are identity references: preserve stable visual attributes
+        # from the reference (especially hair color) unless the user explicitly asks
+        # for a change. This is intentionally added only for character-based i2i.
+        if character_id and ref_paths:
+            full_prompt = (
+                full_prompt
+                + "\n\nCharacter identity lock: preserve the character's exact identity and "
+                  "stable physical attributes from the reference image. Keep the same natural "
+                  "hair color, hair tone, hairstyle, facial features, eye color, skin tone, "
+                  "and overall appearance. Do not lighten, darken, recolor, or otherwise alter "
+                  "the hair color. Do not redesign the character. If the user prompt conflicts "
+                  "with these identity attributes, preserve the reference identity unless the "
+                  "user explicitly requests that specific attribute to change."
+            )
         output = await image_api.generate_single_image(
             prompt=full_prompt,
             reference_image_paths=ref_paths,
