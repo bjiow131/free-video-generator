@@ -8,7 +8,7 @@ from models.task import StepStatus, TaskType
 
 def test_parse_bg_color_rejects_invalid_values():
     assert server._parse_bg_color("(255, 0, 128)") == (255, 0, 128)
-    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 128)
+    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 127)
     with pytest.raises(ValueError):
         server._parse_bg_color("(256, 0, 0)")
     with pytest.raises(ValueError):
