@@ -18,3 +18,9 @@ def test_save_task_removes_partial_file_on_write_failure(monkeypatch, tmp_path):
         pipeline._save_task("video-123")
 
     assert not (tmp_path / "task.json.tmp").exists()
+
+
+def test_simple_pipeline_saves_video_off_async_loop():
+    import inspect
+    source = inspect.getsource(SimpleVideoPipeline)
+    assert "await asyncio.to_thread(video_output.save, video_path)" in source
