@@ -1794,9 +1794,10 @@ async def cleanup_regression(request: Request):
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
+        logger.error("[Cleanup] Failed to read regression manifest", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"读取清单失败: {e}")
+            detail="Не удалось прочитать список результатов тестирования.") from e
 
     removed_dirs = 0
     removed_files = 0
