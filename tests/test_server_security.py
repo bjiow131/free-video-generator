@@ -83,6 +83,34 @@ def test_origin_and_host_validation():
     assert not server._origin_matches_host("https://evil.example", "localhost:8765")
     assert not server._request_host_allowed("evil.example:8765")
 
+    # Local bind hosts are accepted with or without a port, including
+    # alternate Docker-published ports.
+    for host in (
+        "localhost",
+        "localhost:8765",
+        "localhost:8080",
+        "127.0.0.1",
+        "127.0.0.1:8080",
+        "[::1]",
+        "[::1]:8080",
+        "0.0.0.0",
+        "0.0.0.0:8080",
+    ):
+        assert server._request_host_allowed(host)
+
+    # Configured/public hosts remain exact matches; arbitrary hosts stay blocked.
+    assert server._request_host_allowed("localhost:8765")
+    assert not server._request_host_allowed("evil.example")
+    assert not server._request_host_allowed("evil.example:8080")
+
+
+def test_configured_host_normalization():
+    assert server._normalize_configured_host("example.com") == "example.com"
+    assert server._normalize_configured_host("example.com:8080") == "example.com:8080"
+    assert server._normalize_configured_host("https://example.com/") == "example.com"
+    assert server._normalize_configured_host("http://example.com:8443/path") == "example.com:8443"
+    assert server._normalize_configured_host("") == ""
+
 
 @pytest.mark.asyncio
 async def test_upload_magic_and_content_type_validation(tmp_path, monkeypatch):
