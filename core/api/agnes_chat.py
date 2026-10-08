@@ -128,7 +128,9 @@ class AgnesChatAPI:
                     time.sleep(delay)
                     continue
                 resp.raise_for_status()
-                return resp.json()
+                result = resp.json()
+                resp.close()
+                return result
             except (requests.ConnectionError, requests.Timeout) as e:
                 last_exc = e
                 if attempt < _MAX_RETRIES - 1:
