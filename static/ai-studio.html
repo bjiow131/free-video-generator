@@ -134,14 +134,14 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 <div class="app">
 <aside class="side" id="appSidebar">
   <div class="brand"><span class="brand-mark">A</span><b>AGNES</b><span>VIDEO</span></div>
-  <nav class="nav" aria-label="Workspace">
-    <button class="active" data-page="create" data-create-type="video"><span class="nav-icon">⌂</span><span class="nav-label">Simple</span></button>
-    <button data-page="film" data-production-mode="creative"><span class="nav-icon">✦</span><span class="nav-label">Creative</span></button>
-    <button data-page="film" data-production-mode="manuscript"><span class="nav-icon">≡</span><span class="nav-label">Manuscript</span></button>
-    <button data-page="film" data-production-mode="anchor"><span class="nav-icon">◌</span><span class="nav-label">Anchor</span></button>
-    <button data-page="create" data-create-type="image"><span class="nav-icon">▧</span><span class="nav-label">Images</span></button>
-    <button data-page="history"><span class="nav-icon">◷</span><span class="nav-label">Tasks</span></button>
-    <button data-page="credits"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></button>
+  <nav class="nav" aria-label="Workspace navigation" role="navigation">
+    <button class="active" data-page="create" data-create-type="video"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.8 12 3l9 7.8v9.2a1 1 0 0 1-1 1h-5.2v-6.2H9.2V21H4a1 1 0 0 1-1-1z"/></svg></span><span class="nav-label">Simple</span></button>
+    <button data-page="film" data-production-mode="creative"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 7.1L21 12l-7.3 2.9L12 22l-1.7-7.1L3 12l7.3-2.9z"/></svg></span><span class="nav-label">Creative</span></button>
+    <button data-page="film" data-production-mode="manuscript"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></span><span class="nav-label">Manuscript</span></button>
+    <button data-page="film" data-production-mode="anchor"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/></svg></span><span class="nav-label">Anchor</span></button>
+    <button data-page="create" data-create-type="image"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="m5 17 5-5 3 3 2-2 4 4"/></svg></span><span class="nav-label">Images</span></button>
+    <button data-page="history"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg></span><span class="nav-label">Tasks</span></button>
+    <button data-page="credits"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 3.8 10.5 2h3l.8 1.8 2 .8 1.8-.8 2.1 2.1-.8 1.8.8 2 .-0.8 1.8.8 2.1-2.1 2.1-1.8-.8-2 .8-1.8-.8-2.1 2.1-2.1-2.1.8-1.8-.8-2-.-0.8-1.8.8-2.1 2.1-2.1 1.8.8z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span></button>
   </nav>
   <div class="shell-collapse"><button id="sidebarToggle" class="ds-btn ds-btn-ghost" type="button" aria-label="Collapse sidebar">‹ <span class="nav-label">Collapse</span></button></div>
   <div class="bottom">Creative workspace<br>Agnes AI connected</div>
@@ -175,7 +175,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
       <div id="selectedModel" class="model active"></div>
       <div id="mediaParams"></div>
       <details style="margin-top:18px"><summary style="cursor:pointer;color:var(--ds-text-2);font-size:12px;font-weight:700">Advanced options</summary><div class="create-settings"><p class="field-hint">Дополнительные параметры появляются здесь, когда поддерживаются выбранным режимом.</p></div></details>
-      <div id="status" class="status"></div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
     </aside>
     <div class="prompt-dock">
       <div class="prompt-row">
@@ -224,7 +224,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
           <div class="label">Reference</div><input id="creativeReference" type="file" accept="image/*">
           <div class="production-actions"><button id="creativeGenerate" class="primary" type="button">Generate</button><button id="creativeClear" class="ghost" type="button">Clear</button></div><div id="creativeStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="creativeProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="creativeStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="creativeProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="creativeStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
     <div class="mode-panel" data-mode-panel="manuscript">
@@ -236,7 +236,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
           <div class="row"><div><div class="label">Format</div><select id="manuscriptFormat" class="select"><option value="portrait">9:16</option><option value="landscape">16:9</option></select></div><div><div class="label">Voice</div><select id="manuscriptVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана</option><option value="ru-RU-DmitryNeural">Дмитрий</option></select></div></div>
           <div class="production-actions"><button id="manuscriptGenerate" class="primary" type="button">Generate</button></div><div id="manuscriptStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="manuscriptProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="manuscriptStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="manuscriptProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="manuscriptStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
     <div class="mode-panel" data-mode-panel="anchor">
@@ -248,7 +248,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
           <div class="label">Reference</div><input id="anchorReference" type="file" accept="image/*">
           <div class="production-actions"><button id="anchorGenerate" class="primary" type="button">Generate</button></div><div id="anchorStatus" class="status"></div>
         </form>
-        <aside class="production-status"><h3>Live production</h3><div id="anchorProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="anchorStoryboard" class="storyboard"></div></aside>
+        <aside class="production-status"><h3>Live production</h3><div id="anchorProgress" class="production-progress" role="status" aria-live="polite"><span class="field-hint">Статус появится после запуска.</span></div><div id="anchorStoryboard" class="storyboard"></div></aside>
       </div>
     </div>
   </div>
@@ -259,7 +259,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
     <div class="tasks-head"><div><div class="eyebrow">Workspace</div><h1>Tasks</h1></div><span class="api-status"><i></i>Local task history</span></div>
     <div class="tasks-toolbar"><input id="taskSearch" placeholder="Search tasks…" aria-label="Search tasks"><select id="taskTypeFilter" class="select"><option value="all">All types</option><option value="image">Images</option><option value="video">Videos</option></select><select id="taskStatusFilter" class="select"><option value="all">All statuses</option><option value="completed">Completed</option><option value="pending">Pending</option><option value="queued">Queued</option><option value="failed">Failed</option></select></div>
     <div id="taskPlayer" class="player-shell"><div id="playerFrame" class="player-frame"></div><aside class="player-meta"><h2 id="playerTitle">Result</h2><dl><div><dt>Type</dt><dd id="playerType">—</dd></div><div><dt>Duration</dt><dd id="playerDuration">—</dd></div><div><dt>Resolution</dt><dd id="playerResolution">—</dd></div><div><dt>Prompt</dt><dd id="playerPrompt">—</dd></div></dl><div class="actions"><button id="playerDownload" class="primary" type="button">Download</button><button id="playerClose" class="ghost" type="button">Close</button></div></aside></div>
-    <div id="historyList" class="tasks-grid"></div>
+    <div id="historyList" class="tasks-grid" aria-live="polite"></div>
   </div>
 </section><section id="credits" class="section">
   <div class="settings-shell">
