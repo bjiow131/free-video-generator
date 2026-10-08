@@ -141,7 +141,7 @@ class SimpleVideoPipeline(BasePipeline):
             self.task_manager.update_state(video_id=saved_video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {saved_video_id[:16]}...", 0.3)
             video_output = await self.video_api.wait_for_video(saved_video_id)
-            video_output.save(video_path)
+            await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
         # 也检查 state 中的 video_id（旧版 resume 兼容）
@@ -150,7 +150,7 @@ class SimpleVideoPipeline(BasePipeline):
             self._save_task(self._state.video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {self._state.video_id[:16]}...", 0.3)
             video_output = await self.video_api.wait_for_video(self._state.video_id)
-            video_output.save(video_path)
+            await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
         # 构建参考图列表
@@ -190,7 +190,7 @@ class SimpleVideoPipeline(BasePipeline):
         await self._emit("video_gen", "running", f"等待视频生成 {video_id[:16]}...", 0.3)
 
         video_output = await self.video_api.wait_for_video(video_id)
-        video_output.save(video_path)
+        await asyncio.to_thread(video_output.save, video_path)
 
         await self._emit("video_gen", "completed", "视频生成完成", 0.9)
         return video_path
