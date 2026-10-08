@@ -38,6 +38,16 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 </main></div>
 <div id="toast" class="toast hidden"></div>
 <script>
+(function(){
+  const key='agnes_theme',root=document.documentElement,saved=localStorage.getItem(key);
+  if(saved==='light'||saved==='dark')root.dataset.theme=saved;
+  document.addEventListener('DOMContentLoaded',function(){
+    const b=document.getElementById('themeToggle');if(!b)return;
+    const sync=function(){const current=root.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');b.textContent=current==='dark'?'☼':'◐';b.setAttribute('aria-label',current==='dark'?'Use light theme':'Use dark theme')};
+    b.onclick=function(){const current=root.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');const next=current==='dark'?'light':'dark';root.dataset.theme=next;localStorage.setItem(key,next);sync()};
+    sync();
+  });
+})();
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);let models=[],selected=null;
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
