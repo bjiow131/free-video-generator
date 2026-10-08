@@ -31,8 +31,8 @@ ffmpeg -version
 
 ```bash
 # 克隆项目（如尚未克隆）
-git clone https://github.com/your-org/agnes-video-generator.git
-cd agnes-video-generator
+git clone https://github.com/bjiow131/free-video-generator.git
+cd free-video-generator
 
 # 一键启动（自动创建 venv、安装依赖、启动服务）
 ./start.sh
@@ -228,9 +228,9 @@ print('All subtitle multi-line tests passed!')
 | TTS | edge_tts >= 6.1.0（免费，无需 API Key） |
 | 字幕 | srt >= 3.5.0 + moviepy（词级细粒度 + 多行换行） |
 | 前端 | 原生 HTML/CSS/JS + Tailwind CDN（单文件 `static/index.html`，7 语言 i18n） |
-| LLM | Agnes Chat API (`agnes-2.0-flash`) — 免费 |
-| 图片模型 | `agnes-image-2.1-flash` (t2i) / `agnes-image-2.0-flash` (i2i) — 免费 |
-| 视频模型 | `agnes-video-v2.0` — 免费 |
+| LLM | Agnes Chat API (`agnes-3.0-flash`) — 免费 |
+| 图片模型 | `agnes-image-2.5-flash` (t2i) / `agnes-image-2.5-flash` (i2i) — 免费 |
+| 视频模型 | `agnes-video-2.5-flash / agnes-video-2.5` — 免费 |
 | 日志 | `logging.getLogger(__name__)` |
 
 ---
@@ -261,7 +261,7 @@ agnes-video-generator/
 │   │   ├── agnes_chat.py             # LLM Chat API（text + multimodal + JSON mode）
 │   │   ├── agnes_image.py            # 图片生成 API（t2i + i2i + ref image）
 │   │   ├── agnes_video.py            # 视频生成 API（t2v/i2v/ti2vid/keyframes + 轮询 + 重试）
-│   │   └── rate_limiter.py           # 全局令牌桶限速器（20 次/分钟，Chat+Image+Video 共享）
+│   │   └── rate_limiter.py           # 全局令牌桶限速器（20 配置上限 / 默认 10 有效请求/分钟，Chat+Image+Video 共享）
 │   │
 │   ├── audio/
 │   │   ├── __init__.py
