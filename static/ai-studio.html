@@ -373,6 +373,12 @@ function applyUiLanguage(lang){
   };
   Object.entries(textMap).forEach(([sel,key])=>{qsa(sel).forEach(el=>{if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){if(el.placeholder)el.placeholder=tr(key)}else el.textContent=tr(key)})});
   qsa('.step strong').forEach((el,i)=>{const k=['input','plan','scenes','audio','final'][i];el.textContent=String(i+1).padStart(2,'0')+' · '+tr(k)});
+const labelKeys={Type:'type',Model:'model','Advanced options':'advanced','Project name':'workspace',Idea:'prompt','Visual style':'creativeWorkspace',Chaining:'production',Scenes:'scenes',Duration:'duration',Format:'resolution',Voice:'audio',Reference:'reference',Manuscript:'manuscript', 'Video style':'creativeWorkspace','Anchor prompt':'prompt',Script:'prompt'};
+qsa('.label').forEach(el=>{if(!el.dataset.uiBase)el.dataset.uiBase=el.textContent.trim();const k=labelKeys[el.dataset.uiBase];if(k)el.textContent=tr(k)});
+qsa('.mode-tab').forEach((el,i)=>el.textContent=tr(['navCreative','navManuscript','navAnchor'][i]));
+qsa('.production-actions .primary').forEach(el=>el.textContent=tr('generate'));qsa('.production-actions .ghost').forEach(el=>el.textContent=tr('clear'));
+qsa('#taskSearch').forEach(el=>el.placeholder=tr('search'));
+qsa('#settingsLanguage').forEach(el=>el.setAttribute('aria-label',tr('language')));
   qsa('.step span').forEach(el=>{if(!/\d+%/.test(el.textContent))el.textContent=tr('pending')});
   const setSel=(sel,key)=>{const el=$(sel);if(el)el.setAttribute('aria-label',tr(key))};
   setSel('#prompt','prompt');setSel('#taskSearch','search');
