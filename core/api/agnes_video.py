@@ -419,7 +419,7 @@ class AgnesVideoAPI:
                 "prompt": prompt,
                 "mode": (
                     "text" if not resolved_refs
-                    else "img2video" if requested_mode in {"i2v", "ti2vid", "img2video"} and len(resolved_refs) == 1
+                    else "keyframe" if requested_mode in {"i2v", "ti2vid", "img2video"} and len(resolved_refs) == 1
                     else "keyframe" if requested_mode in {"keyframes", "keyframe"} and len(resolved_refs) in {1, 2}
                     else "reference"
                 ),
@@ -431,7 +431,7 @@ class AgnesVideoAPI:
             if seed is not None:
                 payload["seed"] = seed
             if len(resolved_refs) == 1:
-                if payload["mode"] == "img2video":
+                if payload["mode"] == "keyframe":
                     payload["first_frame"] = resolved_refs[0]
                 else:
                     payload["images"] = [resolved_refs[0]]
