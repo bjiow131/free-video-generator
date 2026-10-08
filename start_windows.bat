@@ -5,11 +5,11 @@ set "PYTHONIOENCODING=utf-8"
 chcp 65001 >nul
 cd /d "%~dp0"
 
-title Free Video Generator - Local Server
+title Agnes Video Generator - Local Server
 
 echo.
 echo ==========================================
-echo   FREE VIDEO GENERATOR
+echo   AGNES VIDEO GENERATOR
 echo ==========================================
 echo.
 
@@ -53,13 +53,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting Free Video Generator...
+echo Starting Agnes Video Generator...
 echo.
 
 REM --- Start the local server ---
 start "" /b ".venv\Scripts\python.exe" server.py
 
-echo Waiting for Free Video Generator...
+echo Waiting for Agnes Video Generator...
 
 :wait
 timeout /t 2 /nobreak >nul
@@ -67,7 +67,7 @@ curl -s http://127.0.0.1:8765/health >nul 2>&1
 if errorlevel 1 goto wait
 
 echo.
-echo Server is running!
+echo Agnes Video Generator is running!
 echo http://127.0.0.1:8765
 echo.
 
@@ -83,7 +83,7 @@ if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
 
 echo.
 echo ==========================================
-echo   Free Video Generator is running!
+echo   Agnes Video Generator is running!
 echo ==========================================
 echo.
 echo Local server: http://127.0.0.1:8765
