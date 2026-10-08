@@ -237,11 +237,12 @@ button{cursor:pointer}
       </select>
       <div class="label">Персонаж</div>
       <select id="videoCharacter" class="select"><option value="">Без персонажа</option></select>
-      <div class="label">Референс персонажа <span style="color:#777">(основной)</span></div>
-      <select id="videoCharacterReference" class="select" disabled><option value="">Сначала выбери персонажа</option></select>
+      <div class="label">Референсы персонажа <span style="color:#777">(можно выбрать несколько)</span></div>
+      <select id="videoCharacterReference" class="select" multiple size="5" disabled><option value="">Сначала выбери персонажа</option></select>
+      <div class="hint">На iPhone нажимай на нужные референсы по очереди. Выбранные изображения будут переданы модели вместе для сохранения внешности.</div>
       <div class="label">Исходное изображение <span style="color:#777">(необязательно, если выбран персонаж)</span></div>
       <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
-      <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию. В видео сейчас передаётся один основной референс.</div>
+      <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
       <div class="label">Промпт движения</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
       <div class="actions"><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
@@ -551,10 +552,12 @@ async function syncVideoCharacterSelector(refs){
     select.disabled=true;
     return;
   }
-  const currentRef=select.value;
+  const currentRefs=Array.from(select.selectedOptions||[]).map(o=>String(o.value));
   const primary=savedRefs.find(r=>r.isPrimary)||savedRefs[0];
   select.innerHTML=savedRefs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-  select.value=savedRefs.some(r=>String(r.id)===currentRef)?currentRef:String(primary.id);
+  const keep=currentRefs.filter(id=>savedRefs.some(r=>String(r.id)===id));
+  if(keep.length) Array.from(select.options).forEach(o=>{o.selected=keep.includes(o.value)});
+  else if(primary) Array.from(select.options).forEach(o=>{o.selected=String(primary.id)===o.value});
   select.disabled=false;
 }
 async function handleVideoCharacterChange(){
@@ -570,7 +573,7 @@ async function handleVideoCharacterChange(){
     if(!refs.length)throw new Error('У Мии нет сохранённых референсов');
     const primary=refs.find(r=>r.isPrimary)||refs[0];
     select.innerHTML=refs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-    select.value=String(primary.id);
+    Array.from(select.options).forEach(o=>{o.selected=String(primary.id)===o.value});
     select.disabled=false;
   }catch(e){
     select.innerHTML='<option value="">Не удалось загрузить референсы</option>';
@@ -578,51 +581,61 @@ async function handleVideoCharacterChange(){
     toast(e.message||'Не удалось загрузить персонажа');
   }
 }
-async function getSelectedVideoReference(){
+async function getSelectedVideoReferences(){
   const manual=$('#videoReference').files[0];
-  if(manual)return manual;
+  if(manual)return [manual];
   const characterId=$('#videoCharacter').value;
-  if(characterId!=='miya')return null;
+  if(characterId!=='miya')return [];
   const refs=await getMiaRefs();
-  const selectedId=Number($('#videoCharacterReference').value);
-  return (refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0]||{}).blob||null;
+  const selectedIds=Array.from($('#videoCharacterReference').selectedOptions||[])
+    .map(o=>Number(o.value)).filter(Number.isFinite);
+  const chosen=selectedIds.length
+    ? refs.filter(r=>selectedIds.includes(r.id))
+    : [refs.find(r=>r.isPrimary)||refs[0]].filter(Boolean);
+  return chosen.slice(0,5).map(r=>r.blob).filter(b=>b instanceof Blob);
 }
+
 async function generateVideo(){
   const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
   if(!p){toast('Напиши промпт движения');return}
   setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');
   try{
-    let ref=null;
+    let refs=[];
     try{
-      ref=await getSelectedVideoReference();
+      refs=await getSelectedVideoReferences();
     }catch(e){
-      const msg=e?.message||'Не удалось получить референс';
+      const msg=e?.message||'Не удалось получить референсы';
       console.error('[Video] Reference preparation failed',e);
-      $('#videoStatus').textContent='Ошибка референса: '+msg;
+      $('#videoStatus').textContent='Ошибка референсов: '+msg;
       toast(msg);
       setGenerateBusy('video',false);
       return;
     }
-    if((mode==='i2v'||mode==='ti2vid')&&!ref){
+    if((mode==='i2v'||mode==='ti2vid')&&!refs.length){
       const msg='Для этого режима выбери исходное изображение или персонажа';
       $('#videoStatus').textContent=msg;
       toast(msg);
       setGenerateBusy('video',false);
       return;
     }
-    console.info('[Video] Generate clicked',{mode,duration:$('#videoDuration').value,aspect:$('#videoAspect').value,hasReference:!!ref});
+    console.info('[Video] Generate clicked',{mode,duration:$('#videoDuration').value,aspect:$('#videoAspect').value,referenceCount:refs.length});
     $('#videoStatus').textContent='Отправка запроса на сервер…';
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
-    let reference_image_base64='';
-    if(ref){
-      reference_image_base64=await new Promise((resolve,reject)=>{
+    let reference_images_base64=[];
+    for(const ref of refs){
+      const b64=await new Promise((resolve,reject)=>{
         const reader=new FileReader();
         reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
         reader.onerror=()=>reject(new Error('Не удалось прочитать референс изображения'));
         reader.readAsDataURL(ref);
       });
+      if(b64)reference_images_base64.push(b64);
     }
-    const payload={prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),video_width,video_height,reference_image_base64};
+    const payload={
+      prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),
+      video_width,video_height,reference_image_base64:reference_images_base64[0]||'',
+      reference_images_base64
+    };
     if($('#videoCharacter').value){
       payload.system_prompt='Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.';
     }
