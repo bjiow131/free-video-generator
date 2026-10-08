@@ -615,7 +615,7 @@ class ManuscriptVideoPipeline(BasePipeline):
             for retry in range(_WAIT_RETRIES):
                 try:
                     video_output = await self.video_api.wait_for_video(video_id)
-                    video_output.save(video_path)
+                    await asyncio.to_thread(video_output.save, video_path)
                     break
                 except Exception as e:
                     if retry < _WAIT_RETRIES - 1:
