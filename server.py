@@ -1305,12 +1305,23 @@ async def create_simple_task(
     )
 
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
-    if reference_image and reference_image.filename:
-        state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
+    uploaded_paths = []
+    try:
+        if reference_image and reference_image.filename:
+            state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
+            uploaded_paths.append(state.reference_image)
 
-    # 处理尾帧图上传（keyframes 模式）
-    if end_frame_image and end_frame_image.filename:
-        state.end_frame_image = await _save_image_upload(end_frame_image, f"{task_id}_end")
+        # 处理尾帧图上传（keyframes 模式）
+        if end_frame_image and end_frame_image.filename:
+            state.end_frame_image = await _save_image_upload(end_frame_image, f"{task_id}_end")
+            uploaded_paths.append(state.end_frame_image)
+    except Exception:
+        for upload_path in uploaded_paths:
+            try:
+                os.remove(upload_path)
+            except OSError:
+                logger.warning("[Upload] Failed to remove partial upload: %s", upload_path)
+        raise
 
     pipeline = _create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
     active_pipelines[task_id] = pipeline
