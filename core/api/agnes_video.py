@@ -216,6 +216,11 @@ class AgnesVideoAPI:
                         f"[AgnesVideo] Polling failed after "
                         f"{max_consecutive_failures} consecutive errors for {video_id[:16]}"
                     )
+            finally:
+                try:
+                    resp.close()
+                except (NameError, AttributeError):
+                    pass
 
             # Poll frequently enough for responsive UI updates while staying near the local 20 RPM guard.
             await asyncio.sleep(interval)
