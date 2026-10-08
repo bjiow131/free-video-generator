@@ -257,27 +257,37 @@ async function generateImage(){
     $('#imageResult').classList.remove('hidden');$('#imageStatus').textContent='Готово';
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
-function sanitizeFilename(name){return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/\\s+/g,' ').slice(0,120)||'Мия'}
+function sanitizeFilename(name){return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').slice(0,120)||'Мия'}
+let saveImageBlob=null;
 async function openSaveModal(taskId){
   const modal=$('#saveModal'), input=$('#saveFilename');
-  modal.classList.remove('hidden'); input.value='Мия'; setTimeout(()=>{input.focus();input.select()},50);
-  modal.dataset.taskId=taskId;
-}
-function closeSaveModal(){$('#saveModal').classList.add('hidden')}
-async function saveImageWithName(){
-  const taskId=$('#saveModal').dataset.taskId, name=sanitizeFilename($('#saveFilename').value);
+  modal.dataset.taskId=taskId; modal.classList.remove('hidden'); input.value='Мия';
+  input.disabled=true; $('#saveContinue').disabled=true;
+  $('#saveContinue').textContent='Загрузка…';
   try{
     const response=await fetch('/api/image/'+encodeURIComponent(taskId)+'/download');
     if(!response.ok)throw Error('Не удалось получить изображение');
-    const blob=await response.blob();
-    const file=new File([blob],name+'.png',{type:blob.type||'image/png'});
+    saveImageBlob=await response.blob();
+    input.disabled=false; $('#saveContinue').disabled=false; $('#saveContinue').textContent='Продолжить';
+    setTimeout(()=>{input.focus();input.select()},50);
+  }catch(e){
+    $('#saveContinue').disabled=true; $('#saveContinue').textContent='Ошибка загрузки';
+    toast(e.message||'Не удалось получить изображение');
+  }
+}
+function closeSaveModal(){$('#saveModal').classList.add('hidden');saveImageBlob=null}
+function saveImageWithName(){
+  const name=sanitizeFilename($('#saveFilename').value);
+  if(!saveImageBlob){toast('Изображение ещё загружается');return}
+  try{
+    const file=new File([saveImageBlob],name+'.png',{type:saveImageBlob.type||'image/png'});
     if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({title:name,files:[file]});
+      navigator.share({title:name,files:[file]}).then(()=>{closeSaveModal();toast('Файл сохранён')}).catch(e=>{if(e.name!=='AbortError')toast(e.message||'Не удалось сохранить файл')});
     }else{
-      const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+      const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=name+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      closeSaveModal();toast('Файл сохранён');
     }
-    closeSaveModal();toast('Файл сохранён');
-  }catch(e){if(e.name!=='AbortError')toast(e.message||'Не удалось сохранить файл')}
+  }catch(e){toast(e.message||'Не удалось сохранить файл')}
 }
 $('#saveClose').onclick=closeSaveModal;
 $('#saveCancel').onclick=closeSaveModal;
