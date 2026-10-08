@@ -83,6 +83,7 @@ class AgnesVideoAPI:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.shutdown_event = None
+        self._poll_api = self
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -506,6 +507,7 @@ class AgnesVideoAPI:
                     retry_base_delay=10.0,
                 )
                 fallback.shutdown_event = self.shutdown_event
+                self._poll_api = fallback
                 return await fallback.submit_video(
                     prompt=prompt,
                     reference_image_paths=reference_image_paths,
@@ -522,7 +524,8 @@ class AgnesVideoAPI:
 
     @timed_step
     async def wait_for_video(self, video_id: str, progress_callback=None) -> VideoOutput:
-        final = await self._poll_task(video_id, progress_callback=progress_callback)
+        poll_api = getattr(self, "_poll_api", self)
+        final = await poll_api._poll_task(video_id, progress_callback=progress_callback)
         video_url = (
             final.get("url")
             or final.get("video_url")
