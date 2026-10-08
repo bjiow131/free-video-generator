@@ -511,44 +511,45 @@ async function generateImage(){
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
 function sanitizeFilename(name){return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').slice(0,120)||'Мия'}
-let saveImageBlob=null;
-async function openSaveModal(taskId){
+let saveFileBlob=null,saveFileExtension='png',saveFileType='image/png';
+async function openSaveModal(taskId,type='image'){
   const modal=$('#saveModal'), input=$('#saveFilename');
-  modal.dataset.taskId=taskId; modal.classList.remove('hidden'); input.value='Мия';
+  modal.dataset.taskId=taskId; modal.dataset.fileType=type; modal.classList.remove('hidden'); input.value=type==='video'?'Мия — видео':'Мия';
   input.disabled=true; $('#saveContinue').disabled=true;
-  $('#saveContinue').textContent='Загрузка…';
+  $('#saveContinue').textContent='Загрузка…'; saveFileBlob=null;
   try{
-    // Получаем уже отображаемый результат через обычный image endpoint.
-    // Это надёжнее, чем отдельный download-route на мобильных браузерах/Render.
-    const response=await fetch('/api/image/'+encodeURIComponent(taskId),{cache:'no-store'});
-    if(!response.ok)throw Error('Не удалось получить изображение');
-    saveImageBlob=await response.blob();
-    if(!saveImageBlob.size)throw Error('Получен пустой файл изображения');
-    input.disabled=false; $('#saveContinue').disabled=false; $('#saveContinue').textContent='Продолжить';
+    const endpoint=type==='video'?'/api/video/':'/api/image/';
+    const response=await fetch(endpoint+encodeURIComponent(taskId),{cache:'no-store'});
+    if(!response.ok)throw Error('Не удалось получить '+(type==='video'?'видео':'изображение'));
+    saveFileBlob=await response.blob();
+    if(!saveFileBlob.size)throw Error('Получен пустой файл');
+    saveFileExtension=type==='video'?'mp4':'png';
+    saveFileType=saveFileBlob.type||(type==='video'?'video/mp4':'image/png');
+    input.disabled=false; $('#saveContinue').disabled=false; $('#saveContinue').textContent='Сохранить';
     setTimeout(()=>{input.focus();input.select()},50);
   }catch(e){
     $('#saveContinue').disabled=true; $('#saveContinue').textContent='Ошибка загрузки';
-    toast(e.message||'Не удалось получить изображение');
+    toast(e.message||'Не удалось получить файл');
   }
 }
-function closeSaveModal(){$('#saveModal').classList.add('hidden');saveImageBlob=null}
-function saveImageWithName(){
+function closeSaveModal(){$('#saveModal').classList.add('hidden');saveFileBlob=null}
+function saveFileWithName(){
   const name=sanitizeFilename($('#saveFilename').value);
-  if(!saveImageBlob){toast('Изображение ещё загружается');return}
+  if(!saveFileBlob){toast('Файл ещё загружается');return}
   try{
-    const file=new File([saveImageBlob],name+'.png',{type:saveImageBlob.type||'image/png'});
+    const file=new File([saveFileBlob],name+'.'+saveFileExtension,{type:saveFileType});
     if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({title:name,files:[file]}).then(()=>{closeSaveModal();toast('Файл сохранён')}).catch(e=>{if(e.name!=='AbortError')toast(e.message||'Не удалось сохранить файл')});
     }else{
-      const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=name+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=name+'.'+saveFileExtension;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
       closeSaveModal();toast('Файл сохранён');
     }
   }catch(e){toast(e.message||'Не удалось сохранить файл')}
 }
 $('#saveClose').onclick=closeSaveModal;
 $('#saveCancel').onclick=closeSaveModal;
-$('#saveContinue').onclick=saveImageWithName;
-$('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
+$('#saveContinue').onclick=saveFileWithName;
+$('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveFileWithName()});
 function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,720]}
 function getSelectedVideoReferenceIds(){
   return Array.from(document.querySelectorAll('#videoCharacterReference input[type="checkbox"]:checked')).map(x=>String(x.value));
@@ -685,8 +686,8 @@ async function generateVideo(){
       if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
       if(task.status==='completed'){
         const url='/api/video/'+encodeURIComponent(taskId);
-        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Открыть видео</button><a class="ghost" id="downloadVideoButton" href="/api/video/'+encodeURIComponent(taskId)+'/download" download="ai-studio-video.mp4" style="display:inline-flex;align-items:center;text-decoration:none">Скачать видео</a></div>';
-        $('#saveVideoButton').onclick=()=>openResult(taskId,'video');
+        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button></div>';
+        $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');
         $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;setGenerateBusy('video',false);return}
       const pct=Math.max(0,Math.min(100,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
     }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}};
@@ -698,7 +699,7 @@ $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
 $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderVideoReferencePicker(refs,refs.slice(0,5).map(r=>String(r.id)));saveFormState()};
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';saveFormState()};
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';saveFormState()};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
