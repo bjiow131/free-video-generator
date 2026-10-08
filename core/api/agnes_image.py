@@ -138,7 +138,24 @@ class AgnesImageAPI:
                 "image": resolved,
             }
 
-        logger.info(f"[AgnesImage] Generating ({'i2i' if use_i2i else 't2i'}): {prompt[:80]}...")
+        reference_diagnostics = []
+        for path, resolved_ref in zip(reference_image_paths, resolved if reference_image_paths else []):
+            reference_diagnostics.append({
+                "file": os.path.basename(path),
+                "source_bytes": os.path.getsize(path) if os.path.isfile(path) else None,
+                "resolved_format": "data-url" if resolved_ref.startswith("data:") else ("http-url" if resolved_ref.startswith(("http://", "https://")) else "base64-or-path"),
+                "resolved_chars": len(resolved_ref),
+            })
+        logger.info(
+            "[AgnesImageRequest] mode=%s model=%s refs=%s size=%s ratio=%s prompt_chars=%s reference_details=%s",
+            "i2i" if use_i2i else "t2i",
+            model,
+            len(reference_image_paths),
+            size or "1K",
+            ratio or "default",
+            len(prompt),
+            reference_diagnostics,
+        )
 
         session = _make_session()
         try:
