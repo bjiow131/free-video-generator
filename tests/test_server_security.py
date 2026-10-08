@@ -291,4 +291,4 @@ def test_subtitle_overlay_closes_video_when_composition_fails(monkeypatch, tmp_p
             str(tmp_path / "out.mp4"),
         )
     assert video.closed is True
-    assert subs.closed is False
+    assert subs.closed is True
