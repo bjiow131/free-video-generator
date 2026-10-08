@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.pipelines.simple_video — 简单视频生成流水线（类型 1）
 
 用户输入 prompt → 选择模式（t2v/i2v/keyframes）→ 调用 Agnes Video API → 返回视频。
@@ -132,6 +133,7 @@ class SimpleVideoPipeline(BasePipeline):
             eta_seconds=eta,
         )
 
+    @timed_step
     async def _submit_and_wait(self) -> str:
         """提交视频任务并等待完成。支持 resume。"""
         video_path = os.path.join(self.working_dir, "final_video.mp4")
