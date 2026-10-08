@@ -414,7 +414,7 @@ def _validate_workspace_path(raw_path: str) -> str:
     for protected_dir in protected:
         try:
             if os.path.commonpath([candidate, protected_dir]) == protected_dir:
-                if os.path.realpath(candidate) != os.path.realpath(_default_working_dir()):
+                if os.path.realpath(candidate) != os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".working_dir")):
                     raise HTTPException(status_code=422, detail="Нельзя использовать системную или служебную папку как рабочую")
         except ValueError:
             continue
