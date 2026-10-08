@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.api.rate_limiter — Agnes API 全局限速器（令牌桶算法）
 
 所有 Agnes API 调用（Chat / Image / Video，含轮询）共享同一个令牌桶，
