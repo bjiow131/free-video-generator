@@ -205,6 +205,7 @@ button{cursor:pointer}
       <div class="label">Качество</div>
       <select id="imageQuality" class="select"><option value="1K">1K</option><option value="2K">2K</option><option value="3K">3K</option><option value="4K">4K</option></select>
       <div class="label">Персонаж</div><select id="imageCharacter" class="select"><option value="">Без персонажа</option></select>
+      <div class="label">Референс персонажа</div><select id="imageCharacterReference" class="select" disabled><option value="">Сначала выбери персонажа</option></select>
       <div class="label">Промпт</div><textarea id="imagePrompt" class="textarea" placeholder="Опиши изображение, которое хочешь получить…"></textarea>
       <div class="label">Референс <span style="color:#777">(необязательно)</span></div><input id="imageReference" type="file" accept="image/*">
       <div class="actions"><button id="imageGenerate" class="primary">Создать изображение</button><button class="ghost" id="imageClear">Очистить</button></div>
@@ -312,11 +313,40 @@ async function setPrimaryMiaRef(id){
     toast('Основной референс изменён');
   }catch(e){toast(e.message||'Не удалось изменить основной референс')}
 }
+async function populateCharacterReferences(refs){
+  const select=$('#imageCharacterReference');
+  if(!select)return;
+  if(!refs.length){
+    select.innerHTML='<option value="">Нет сохранённых референсов</option>';
+    select.disabled=true;
+    return;
+  }
+  select.disabled=false;
+  select.innerHTML=refs.map((r,i)=>{
+    const name=escapeHtml(r.name||('Референс '+(i+1)));
+    return '<option value="'+r.id+'">'+name+(r.isPrimary?' · основной':'')+'</option>';
+  }).join('');
+  const primary=refs.find(r=>r.isPrimary)||refs[0];
+  select.value=String(primary.id);
+}
+async function syncCharacterReferenceSelector(){
+  const character=$('#imageCharacter');
+  const select=$('#imageCharacterReference');
+  if(!character||!select)return;
+  if(character.value!=='miya'){
+    select.innerHTML='<option value="">Сначала выбери персонажа</option>';
+    select.disabled=true;
+    return;
+  }
+  try{await populateCharacterReferences(await getMiaRefs())}
+  catch(e){select.innerHTML='<option value="">Не удалось загрузить референсы</option>';select.disabled=true}
+}
 async function loadCharacters(){
   try{
     const refs=await getMiaRefs();
     const select=$('#imageCharacter');
     if(select)select.innerHTML='<option value="">Без персонажа</option>'+(refs.length?'<option value="miya">Мия</option>':'');
+    await populateCharacterReferences(refs);
     renderCharacters(refs);
   }catch(e){$('#characterStatus').textContent='Не удалось открыть локальное хранилище: '+e.message}
 }
@@ -367,8 +397,9 @@ async function generateImage(){
     if(ref) f.append('reference_image',ref);
     else if(characterId==='miya'){
       const refs=await getMiaRefs();
-      const primary=refs.find(r=>r.isPrimary)||refs[0];
-      if(primary) f.append('reference_image',primary.blob,'miya_primary.'+(primary.name.split('.').pop()||'png'));
+      const selectedId=Number($('#imageCharacterReference').value);
+      const chosen=refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0];
+      if(chosen) f.append('reference_image',chosen.blob,'miya_ref.'+(chosen.name.split('.').pop()||'png'));
     }
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
@@ -414,6 +445,7 @@ $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 $('#imageGenerate').onclick=generateImage;
+$('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
 $('#characterSave').onclick=saveCharacterPack;
 $('#imageClear').onclick=()=>{$('#imagePrompt').value='';$('#imageReference').value='';$('#imageResult').classList.add('hidden');$('#imageStatus').textContent=''};
 async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
