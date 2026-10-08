@@ -756,7 +756,7 @@ async function generateVideo(){
         console.error('[Video] Reference preparation failed',e);
         $('#videoStatus').textContent='Ошибка референсов: '+msg;
         toast(msg);
-        setGenerateBusy('video',false);
+        setGenerateBusy('video',false);stopVideoProgressTicker();
         return;
       }
     }
@@ -764,7 +764,7 @@ async function generateVideo(){
       const msg='Для этого режима выбери исходное изображение или персонажа';
       $('#videoStatus').textContent=msg;
       toast(msg);
-      setGenerateBusy('video',false);
+      setGenerateBusy('video',false);stopVideoProgressTicker();
       return;
     }
     const duration=Number($('#videoDuration').value);
@@ -820,7 +820,7 @@ async function generateVideo(){
       const pct=Math.max(0,Math.min(100,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
     }catch(e){$('#videoStatus').textContent=e.message;$('#videoProgressStage').textContent=e.message;toast(e.message);setGenerateBusy('video',false);stopVideoProgressTicker()}};
     poll();
-  }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}
+  }catch(e){$('#videoStatus').textContent=e.message;$('#videoProgressStage').textContent=e.message;$('#videoEta').textContent='Не завершено';toast(e.message);setGenerateBusy('video',false);stopVideoProgressTicker()}
 }
 $('#videoGenerate').onclick=generateVideo;
 $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
