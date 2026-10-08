@@ -877,9 +877,9 @@ async def generate_image(request: Request):
     ratio = str(form.get("ratio") or request.query_params.get("ratio") or "1:1")
     negative_prompt = str(form.get("negative_prompt") or "")
     system_prompt = str(form.get("system_prompt") or "")
-    reference_images = [item for item in form.getlist("reference_images") if isinstance(item, UploadFile) and item.filename]
+    reference_images = [item for item in form.getlist("reference_images") if getattr(item, "filename", None) and hasattr(item, "read")]
     single_reference = form.get("reference_image")
-    if not reference_images and isinstance(single_reference, UploadFile) and single_reference.filename:
+    if not reference_images and getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
         reference_images = [single_reference]
     character_id = str(form.get("character_id") or "").strip() or None
 
