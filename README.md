@@ -464,7 +464,7 @@ Yes. You can upload reference images for character or scene consistency across s
 
 ### What languages does the UI support?
 
-The current Web UI is primarily Russian-language; CJK text is supported in generated subtitles through the bundled fonts. Subtitles are generated in the source text language with CJK font support built-in.
+The Web UI includes seven UI languages: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Generated subtitles remain source-text driven and use the project's bundled CJK font support.
 
 ### Can I host this on my own server?
 
@@ -482,6 +482,12 @@ The `design/redesign` branch contains the final UI polish pass: responsive shell
 
 ### Screenshots
 
-Browser screenshots are intended to live under `docs/design/screenshots/`. They are not committed in this branch because the available repository tooling does not provide a browser/screenshot runtime; no synthetic images are substituted for real application screenshots.
+Reference screenshots for the final UI are intended to live under `docs/design/screenshots/`.
 
-For visual QA, capture the following states after deploying the branch: dark/light at 1440px, 768px and 360px, plus the Simple, Creative, Tasks and Settings screens.
+The redesign was structurally verified on the branch, including responsive breakpoints, seven-language coverage, theme tokens, accessibility hooks, lazy media attributes, and JavaScript syntax. A live browser screenshot set is intentionally not fabricated: the repository-connected verification environment cannot reach the Render deployment or provide a browser session against the deployed backend. Capture real application screenshots after deployment for:
+- dark/light at 1440px;
+- dark/light at 768px;
+- dark/light at 360px;
+- Simple, Creative, Tasks, and Settings states.
+
+The implementation is designed so these captures can be added without changing the application code.
