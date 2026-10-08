@@ -260,3 +260,35 @@ def test_video_download_validates_each_redirect(monkeypatch, tmp_path):
         video_utils.download_video("https://public.example/video.mp4", str(tmp_path / "x.mp4"))
     assert "validated:https://public.example/video.mp4" in calls
     assert "validated:http://127.0.0.1/private" in calls
+
+
+def test_subtitle_overlay_closes_video_when_composition_fails(monkeypatch, tmp_path):
+    from core.audio import subtitle as subtitle_module
+
+    class DummyClip:
+        w = 640
+        h = 360
+        def __init__(self):
+            self.closed = False
+        def close(self):
+            self.closed = True
+        def with_position(self, position):
+            return self
+
+    video = DummyClip()
+    subs = DummyClip()
+    monkeypatch.setattr(subtitle_module, "VideoFileClip", lambda path: video)
+    monkeypatch.setattr(subtitle_module, "SubtitlesClip", lambda *args, **kwargs: subs)
+    monkeypatch.setattr(subtitle_module, "CompositeVideoClip", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("compose failed")))
+    monkeypatch.setattr("core.config.resolve_font_path", lambda font: font)
+    style = server.SubtitleStyle()
+
+    with pytest.raises(RuntimeError, match="compose failed"):
+        subtitle_module.SubtitleGenerator.overlay_subtitles_to_video(
+            str(tmp_path / "video.mp4"),
+            str(tmp_path / "captions.srt"),
+            style,
+            str(tmp_path / "out.mp4"),
+        )
+    assert video.closed is True
+    assert subs.closed is False
