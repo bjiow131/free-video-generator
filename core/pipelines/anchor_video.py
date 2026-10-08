@@ -1,4 +1,5 @@
 from core.timing import timed_step
+
 """core.pipelines.anchor_video -- 数字人口播流水线（类型 4）
 
 支持两种音频模式：
@@ -81,6 +82,7 @@ class AnchorPipeline(BasePipeline):
     # Main Run
     # ==================================================================
 
+    @timed_step
     async def run(self, state: AnchorVideoTask) -> str:
         self._state = state
         self._state.status = StepStatus.RUNNING
