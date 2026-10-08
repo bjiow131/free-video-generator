@@ -125,9 +125,14 @@ class AgnesChatAPI:
                         f"retry {attempt + 1}/{_MAX_RETRIES} in {delay:.0f}s. "
                         f"body={body_preview!r}"
                     )
+                    resp.close()
                     time.sleep(delay)
                     continue
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                except Exception:
+                    resp.close()
+                    raise
                 result = resp.json()
                 resp.close()
                 return result
