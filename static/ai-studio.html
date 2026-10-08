@@ -186,7 +186,7 @@ button{cursor:pointer}
   body:after{width:75vw;height:75vw;left:-30vw}
 }
 
-</style></head><body>
+.reference-picker{margin-top:8px}.reference-picker-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:8px}.reference-picker-actions .ghost{padding:7px 10px;font-size:11px}.reference-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.reference-option{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid #d9d3c7;border-radius:12px;background:rgba(250,248,242,.86);cursor:pointer;min-width:0}.reference-option:has(input:checked){border-color:#8da18b;background:#edf3e9;box-shadow:inset 3px 0 0 #5b7b61}.reference-option input{width:auto;margin:0;accent-color:#365b42}.reference-option span{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:560px){.reference-options{grid-template-columns:1fr}.reference-picker-actions .hint{width:100%}}</style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
 <button class="active" data-page="image">Изображения</button><button data-page="video">Видео</button><button data-page="characters">Персонажи</button><button data-page="history">История</button>
@@ -238,8 +238,11 @@ button{cursor:pointer}
       <div class="label">Персонаж</div>
       <select id="videoCharacter" class="select"><option value="">Без персонажа</option></select>
       <div class="label">Референсы персонажа <span style="color:#777">(можно выбрать несколько)</span></div>
-      <select id="videoCharacterReference" class="select" multiple size="5" disabled><option value="">Сначала выбери персонажа</option></select>
-      <div class="hint">На iPhone нажимай на нужные референсы по очереди. Выбранные изображения будут переданы модели вместе для сохранения внешности.</div>
+      <div id="videoReferencePicker" class="reference-picker" aria-label="Референсы персонажа">
+        <div class="reference-picker-actions"><button type="button" class="ghost" id="videoSelectAllRefs">Выбрать все</button><button type="button" class="ghost" id="videoClearAllRefs">Снять все</button><span id="videoReferenceCount" class="hint">0 выбрано</span></div>
+        <div id="videoCharacterReference" class="reference-options"><div class="hint">Сначала выбери персонажа</div></div>
+      </div>
+      <div class="hint">Нажимай на карточки на iPhone. Выбранные изображения передаются модели вместе для сохранения внешности.</div>
       <div class="label">Исходное изображение <span style="color:#777">(необязательно, если выбран персонаж)</span></div>
       <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
@@ -534,50 +537,52 @@ $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,720]}
-async function syncVideoCharacterSelector(refs){
-  const character=$('#videoCharacter'),select=$('#videoCharacterReference');
-  if(!character||!select)return;
-  const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
-  if(!savedRefs.length){
-    character.innerHTML='<option value="">Без персонажа</option>';
-    select.innerHTML='<option value="">Нет сохранённых персонажей</option>';
-    select.disabled=true;
-    return;
+function getSelectedVideoReferenceIds(){
+  return Array.from(document.querySelectorAll('#videoCharacterReference input[type="checkbox"]:checked')).map(x=>String(x.value));
+}
+function updateVideoReferenceCount(){
+  const n=getSelectedVideoReferenceIds().length;
+  const el=$('#videoReferenceCount'); if(el)el.textContent=n+' выбрано';
+}
+function renderVideoReferencePicker(refs, selectedIds){
+  const select=$('#videoCharacterReference'); if(!select)return;
+  if(!refs.length){
+    select.innerHTML='<div class="hint">Нет сохранённых референсов</div>';
+    updateVideoReferenceCount(); return;
   }
+  const ids=Array.isArray(selectedIds)?selectedIds.map(String):[];
+  const primary=refs.find(r=>r.isPrimary)||refs[0];
+  const keep=ids.length?ids.filter(id=>refs.some(r=>String(r.id)===id)):[String(primary.id)];
+  select.innerHTML=refs.map((r,i)=>'<label class="reference-option"><input type="checkbox" value="'+r.id+'"'+(keep.includes(String(r.id))?' checked':'')+'><span>'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</span></label>').join('');
+  select.querySelectorAll('input').forEach(x=>x.addEventListener('change',()=>{updateVideoReferenceCount();saveFormState()}));
+  updateVideoReferenceCount();
+}
+async function syncVideoCharacterSelector(refs){
+  const character=$('#videoCharacter');
+  if(!character)return;
+  const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
   const currentCharacter=character.value;
   character.innerHTML='<option value="">Без персонажа</option><option value="miya">Мия</option>';
   if(currentCharacter==='miya')character.value='miya';
   if(character.value!=='miya'){
-    select.innerHTML='<option value="">Сначала выбери персонажа</option>';
-    select.disabled=true;
-    return;
+    $('#videoCharacterReference').innerHTML='<div class="hint">Сначала выбери персонажа</div>';
+    updateVideoReferenceCount(); return;
   }
-  const currentRefs=Array.from(select.selectedOptions||[]).map(o=>String(o.value));
-  const primary=savedRefs.find(r=>r.isPrimary)||savedRefs[0];
-  select.innerHTML=savedRefs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-  const keep=currentRefs.filter(id=>savedRefs.some(r=>String(r.id)===id));
-  if(keep.length) Array.from(select.options).forEach(o=>{o.selected=keep.includes(o.value)});
-  else if(primary) Array.from(select.options).forEach(o=>{o.selected=String(primary.id)===o.value});
-  select.disabled=false;
+  renderVideoReferencePicker(savedRefs,getSelectedVideoReferenceIds());
 }
 async function handleVideoCharacterChange(){
-  const character=$('#videoCharacter'),select=$('#videoCharacterReference');
-  if(!character||!select)return;
+  const character=$('#videoCharacter');
+  if(!character)return;
   if(character.value!=='miya'){
-    select.innerHTML='<option value="">Сначала выбери персонажа</option>';
-    select.disabled=true;
-    return;
+    $('#videoCharacterReference').innerHTML='<div class="hint">Сначала выбери персонажа</div>';
+    updateVideoReferenceCount(); return;
   }
   try{
     const refs=await getMiaRefs();
     if(!refs.length)throw new Error('У Мии нет сохранённых референсов');
-    const primary=refs.find(r=>r.isPrimary)||refs[0];
-    select.innerHTML=refs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-    Array.from(select.options).forEach(o=>{o.selected=String(primary.id)===o.value});
-    select.disabled=false;
+    renderVideoReferencePicker(refs,[]);
   }catch(e){
-    select.innerHTML='<option value="">Не удалось загрузить референсы</option>';
-    select.disabled=true;
+    $('#videoCharacterReference').innerHTML='<div class="hint">Не удалось загрузить референсы</div>';
     toast(e.message||'Не удалось загрузить персонажа');
   }
 }
@@ -587,8 +592,7 @@ async function getSelectedVideoReferences(){
   const characterId=$('#videoCharacter').value;
   if(characterId!=='miya')return [];
   const refs=await getMiaRefs();
-  const selectedIds=Array.from($('#videoCharacterReference').selectedOptions||[])
-    .map(o=>Number(o.value)).filter(Number.isFinite);
+  const selectedIds=getSelectedVideoReferenceIds().map(Number).filter(Number.isFinite);
   const chosen=selectedIds.length
     ? refs.filter(r=>selectedIds.includes(r.id))
     : [refs.find(r=>r.isPrimary)||refs[0]].filter(Boolean);
@@ -669,7 +673,10 @@ async function generateVideo(){
   }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}
 }
 $('#videoGenerate').onclick=generateVideo;
-$('#videoCharacter').addEventListener('change',syncVideoCharacterSelector);
+$('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
+$('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderVideoReferencePicker(refs,refs.slice(0,5).map(r=>String(r.id)));saveFormState()};
+$('#videoClearAllRefs').onclick=()=>{renderVideoReferencePicker([],[]);saveFormState();};
+
 $('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
 
 $('#imageGenerate').onclick=generateImage;
