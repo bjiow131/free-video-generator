@@ -173,6 +173,7 @@ def _build_position(subtitle_position: str) -> tuple:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 # Suppress noisy WebSocket heartbeat / protocol logs from uvicorn and websockets
