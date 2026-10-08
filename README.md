@@ -475,3 +475,13 @@ Absolutely. The project is designed for self-hosting. Just clone the repo, run `
 Check the [GitHub Issues](https://github.com/bjiow131/free-video-generator/issues) page for existing reports or open a new one. The project also includes a comprehensive `AGENTS.md` for AI-agent-assisted debugging. For feature requests, bug reports, or questions, the Issues page is the best place.
 
 **Keywords**: free AI video generator, AI video generation tool, text to video AI, free AI video maker, AI video creator, open source video generator, text-to-video, image-to-video, keyframes video, AI narration, auto subtitles, multi-scene video, zero cost AI video, no subscription AI video tool, digital anchor, self-hosted AI video generator, open source alternative to Runway
+
+## Design refresh — QA
+
+The `design/redesign` branch contains the final UI polish pass: responsive shell, creation workspace, production storyboard, task grid/player, settings/onboarding, focus states, reduced-motion support, lazy media loading and inline validation.
+
+### Screenshots
+
+Browser screenshots are intended to live under `docs/design/screenshots/`. They are not committed in this branch because the available repository tooling does not provide a browser/screenshot runtime; no synthetic images are substituted for real application screenshots.
+
+For visual QA, capture the following states after deploying the branch: dark/light at 1440px, 768px and 360px, plus the Simple, Creative, Tasks and Settings screens.
