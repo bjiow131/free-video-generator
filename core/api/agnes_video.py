@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """Agnes Video API client.
 
 Supports the current Agnes Video 2.5 protocol and the legacy v2.0 protocol.
@@ -145,6 +146,7 @@ class AgnesVideoAPI:
                 best = (nf, fr)
         return best or DURATION_PRESETS[5]
 
+    @timed_step
     async def _poll_task(
         self,
         video_id: str,
@@ -225,6 +227,7 @@ class AgnesVideoAPI:
             # Poll frequently enough for responsive UI updates while staying near the local 20 RPM guard.
             await asyncio.sleep(interval)
 
+    @timed_step
     async def _submit_with_retry(self, payload: dict, mode_desc: str) -> str:
         last_error_code = ""
         for attempt in range(self.max_retries):
@@ -325,6 +328,7 @@ class AgnesVideoAPI:
             f"{self.max_retries} attempts. The service may be busy; please retry later."
         )
 
+    @timed_step
     async def generate_single_video(
         self,
         prompt: str,
@@ -349,6 +353,7 @@ class AgnesVideoAPI:
         )
         return await self.wait_for_video(video_id, progress_callback)
 
+    @timed_step
     async def submit_video(
         self,
         prompt: str,
@@ -428,6 +433,7 @@ class AgnesVideoAPI:
 
         return await self._submit_with_retry(payload, mode_desc)
 
+    @timed_step
     async def wait_for_video(self, video_id: str, progress_callback=None) -> VideoOutput:
         final = await self._poll_task(video_id, progress_callback=progress_callback)
         video_url = (
