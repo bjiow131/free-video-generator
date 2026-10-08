@@ -214,7 +214,18 @@ button{cursor:pointer}
 
 <section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
 </main></div>
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast hidden"></div><div id="saveModal" class="modal hidden">
+  <div class="modalbox">
+    <button class="close" id="saveClose" aria-label="Закрыть">×</button>
+    <h2>Сохранить файл</h2>
+    <div class="status">Введите имя файла</div>
+    <input id="saveFilename" type="text" value="Мия" autocomplete="off" style="margin-top:12px">
+    <div class="actions">
+      <button class="ghost" id="saveCancel">Отмена</button>
+      <button class="primary" id="saveContinue">Продолжить</button>
+    </div>
+  </div>
+</div>
 <script>
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);let models=[],selected=null;
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -241,10 +252,37 @@ async function generateImage(){
     const ref=$('#imageReference').files[0];if(ref)f.append('reference_image',ref);
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
-    $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><a download="ai-studio.png" href="/api/image/'+encodeURIComponent(d.task_id)+'/download" style="color:#365b42">Скачать изображение</a></div>';
+    $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
+    $('#saveImageButton').onclick=()=>openSaveModal(d.task_id);
     $('#imageResult').classList.remove('hidden');$('#imageStatus').textContent='Готово';
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
+function sanitizeFilename(name){return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/\\s+/g,' ').slice(0,120)||'Мия'}
+async function openSaveModal(taskId){
+  const modal=$('#saveModal'), input=$('#saveFilename');
+  modal.classList.remove('hidden'); input.value='Мия'; setTimeout(()=>{input.focus();input.select()},50);
+  modal.dataset.taskId=taskId;
+}
+function closeSaveModal(){$('#saveModal').classList.add('hidden')}
+async function saveImageWithName(){
+  const taskId=$('#saveModal').dataset.taskId, name=sanitizeFilename($('#saveFilename').value);
+  try{
+    const response=await fetch('/api/image/'+encodeURIComponent(taskId)+'/download');
+    if(!response.ok)throw Error('Не удалось получить изображение');
+    const blob=await response.blob();
+    const file=new File([blob],name+'.png',{type:blob.type||'image/png'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({title:name,files:[file]});
+    }else{
+      const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+    closeSaveModal();toast('Файл сохранён');
+  }catch(e){if(e.name!=='AbortError')toast(e.message||'Не удалось сохранить файл')}
+}
+$('#saveClose').onclick=closeSaveModal;
+$('#saveCancel').onclick=closeSaveModal;
+$('#saveContinue').onclick=saveImageWithName;
+$('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
 $('#imageGenerate').onclick=generateImage;
 $('#imageClear').onclick=()=>{$('#imagePrompt').value='';$('#imageReference').value='';$('#imageResult').classList.add('hidden');$('#imageStatus').textContent=''};
 async function openResult(id,type){try{let base=type==='image'?'/api/image/':'/api/video/';let download=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';let url=base+encodeURIComponent(id);let w=window.open();if(w){w.document.write(type==='video'?'<title>AI Studio — результат</title><video controls autoplay style="max-width:100%;height:auto" src="'+url+'"></video><p><a download="video.mp4" href="'+download+'">Скачать видео</a></p>':'<title>AI Studio — результат</title><img style="max-width:100%" src="'+url+'"><p><a download="ai-studio.png" href="'+download+'">Скачать изображение</a></p>')}}catch(e){toast(e.message)}}
