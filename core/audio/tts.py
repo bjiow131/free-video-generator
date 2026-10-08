@@ -1,8 +1,9 @@
-from core.timing import timed_step
 """core.audio.tts — TTS 统一接口：EdgeTTSEngine + SilentTTSEngine
 
 基于 edge_tts（免费 Azure Edge TTS）和静音占位两种实现。
 """
+from core.timing import timed_step
+
 
 import asyncio
 import logging
