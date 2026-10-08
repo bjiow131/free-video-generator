@@ -188,3 +188,21 @@ h1,h2,h3,h4,p,button,label,span,small,dt,dd{overflow-wrap:anywhere}
 /* TASK 3B.3 — option rail and touch-target hardening */
 .option-row{display:flex;align-items:center;gap:6px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;max-width:100%;scrollbar-width:none}.option-row::-webkit-scrollbar{display:none}.option-chip{flex:0 0 auto}
 @media(max-width:900px){.option-row{touch-action:pan-x}.mode-tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap}.mode-tab{flex:0 0 auto}}
+
+/* TASK 4.1 — simple generation parameter polish */
+#mediaParams{display:grid;gap:8px;margin-top:14px}
+#mediaParams .label{margin:8px 0 0}
+#mediaParams .choice-grid{margin-top:0}
+#durationChip[hidden]{display:none!important}
+.option-chip{transition:background-color var(--ds-duration-fast) var(--ds-ease),border-color var(--ds-duration-fast) var(--ds-ease),color var(--ds-duration-fast) var(--ds-ease),transform var(--ds-duration-fast) var(--ds-ease)}
+.option-chip[hidden]{display:none!important}
+.option-chip[data-state="active"]{border-color:var(--ds-border-strong);background:var(--ds-surface-3);color:var(--ds-text-1)}
+.create-result{min-height:120px}
+.create-result img,.create-result video{object-fit:contain}
+@media(max-width:900px){
+  #mediaParams{grid-template-columns:1fr 1fr}
+  #mediaParams .label{grid-column:1/-1}
+}
+@media(max-width:600px){
+  #mediaParams{grid-template-columns:1fr}
+}
