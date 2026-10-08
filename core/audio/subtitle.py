@@ -1,4 +1,3 @@
-from core.timing import timed_step
 """core.audio.subtitle — SRT 字幕生成 + moviepy 叠加
 
 将 edge_tts SubMaker cues 转换为 SRT 格式，并通过 moviepy SubtitlesClip 叠加到视频。
@@ -6,6 +5,8 @@ from core.timing import timed_step
 v2.1: 支持细粒度字幕分割，避免 5 秒视频只有 1 条字幕的问题。
 v3.0: 支持任意位置（四角/百分比/坐标）、逐场景精拆分、突出字幕时⻓加成。
 """
+from core.timing import timed_step
+
 
 import datetime
 import logging
