@@ -20,12 +20,61 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 .result{margin-top:16px;border-radius:16px;overflow:hidden;background:#080a0e;border:1px solid var(--line)}.result img,.result video{width:100%;display:block}.hidden{display:none!important}.status{color:#7e8695;font-size:12px;margin-top:11px;min-height:18px}.toast{position:fixed;bottom:22px;right:22px;background:#f4f5f7;color:#090a0d;padding:11px 15px;border-radius:11px;font-weight:700;box-shadow:0 16px 50px rgba(0,0,0,.4);z-index:200}.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(16px);display:grid;place-items:center;padding:20px;z-index:100}.modalbox{width:min(430px,100%);background:#14171e;border:1px solid var(--line2);border-radius:20px;padding:24px}.modalbox h2{margin-top:0}.close{float:right;background:none;border:0;color:#999;font-size:22px}.section{display:none}.section.active{display:block}#models{display:grid;grid-template-columns:1fr;gap:0}#models .model{width:100%!important}#selectedModel{margin-top:13px}#result a{color:#f2f3f5!important;text-decoration:none}
 @media(max-width:1000px){.app{grid-template-columns:1fr}.side{position:sticky;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:9px 12px;flex-direction:row;align-items:center}.brand{padding:8px 10px}.nav{display:flex;overflow:auto;gap:3px}.nav button{white-space:nowrap;padding:9px 10px}.nav button:before{display:none}.bottom{display:none}.grid{grid-template-columns:repeat(2,1fr)}.workspace{grid-template-columns:1fr}.top{padding:0 18px}.hero,.grid,.workspace{padding-left:18px;padding-right:18px}}
 @media(max-width:600px){.side{overflow:hidden}.brand{font-size:14px;flex:0 0 auto}.brand:before{width:23px;height:23px;border-radius:7px}.nav{min-width:0}.nav button{font-size:12px}.grid{grid-template-columns:1fr}.hero{padding-top:48px}.hero h1{font-size:50px}.panel{padding:18px;border-radius:18px}.workspace{padding-bottom:45px}.top{height:60px}.credits{font-size:11px}}
-.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:7px;margin-top:8px}.choice-grid button{min-height:42px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:#8f96a5;font-size:11px;font-weight:700;line-height:1.2;transition:.16s}.choice-grid button:hover{background:rgba(255,255,255,.07);color:#e8eaf0;border-color:var(--line2)}.choice-grid button.active{background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.055));border-color:rgba(255,255,255,.28);color:#fff;box-shadow:inset 0 1px rgba(255,255,255,.08),0 7px 24px rgba(0,0,0,.18)}.choice-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}.field-hint{color:var(--dim);font-size:10px;margin-top:6px}.dropzone{position:relative;border:1px dashed rgba(255,255,255,.16);border-radius:14px;padding:18px;text-align:center;background:rgba(255,255,255,.025);transition:.18s}.dropzone:hover,.dropzone.drag{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.05)}.dropzone strong{display:block;font-size:12px}.dropzone span{display:block;color:var(--dim);font-size:10px;margin-top:4px}.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer}.dropzone.has-file{border-style:solid;border-color:rgba(123,230,165,.35)}</style></head><body>
+.choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:7px;margin-top:8px}.choice-grid button{min-height:42px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:#8f96a5;font-size:11px;font-weight:700;line-height:1.2;transition:.16s}.choice-grid button:hover{background:rgba(255,255,255,.07);color:#e8eaf0;border-color:var(--line2)}.choice-grid button.active{background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.055));border-color:rgba(255,255,255,.28);color:#fff;box-shadow:inset 0 1px rgba(255,255,255,.08),0 7px 24px rgba(0,0,0,.18)}.choice-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}.field-hint{color:var(--dim);font-size:10px;margin-top:6px}.dropzone{position:relative;border:1px dashed rgba(255,255,255,.16);border-radius:14px;padding:18px;text-align:center;background:rgba(255,255,255,.025);transition:.18s}.dropzone:hover,.dropzone.drag{border-color:rgba(255,255,255,.32);background:rgba(255,255,255,.05)}.dropzone strong{display:block;font-size:12px}.dropzone span{display:block;color:var(--dim);font-size:10px;margin-top:4px}.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer}.dropzone.has-file{border-style:solid;border-color:rgba(123,230,165,.35)}/* TASK 2.1 — application shell */
+.app{grid-template-columns:224px minmax(0,1fr)}
+.side{width:224px;padding:18px 10px 14px;transition:width var(--ds-duration) var(--ds-ease)}
+.brand{padding:9px 12px 22px}
+.brand-mark{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:linear-gradient(145deg,#f4f4f6,#747784);color:#0b0b0d;font-size:11px;font-weight:900}
+.brand span{margin-left:auto}
+.nav button{display:flex;align-items:center;gap:11px;width:100%;min-height:42px;padding:9px 11px}
+.nav .nav-icon{width:22px;flex:0 0 22px;text-align:center;font-size:14px;color:#8b91a0}
+.nav .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav button.active .nav-icon{color:var(--ds-text-1)}
+.shell-collapse{margin-top:8px}
+.shell-collapse button{width:100%;min-height:38px}
+.top{height:64px;padding:0 24px}
+.top-project{display:flex!important;align-items:center;gap:10px;min-width:0;color:var(--ds-text-1);font-weight:750}
+.top-project small{display:block;color:var(--ds-text-2);font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-project .project-dot{width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:var(--ds-success);box-shadow:0 0 12px color-mix(in srgb,var(--ds-success) 65%,transparent)}
+.top-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.api-status{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 11px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-pill);background:var(--ds-surface-1);color:var(--ds-text-2);font-size:11px}
+.api-status i{width:6px;height:6px;border-radius:50%;background:var(--ds-success)}
+.shell-select{min-height:36px!important;width:auto!important;padding:7px 28px 7px 10px!important;font-size:11px!important;border-radius:var(--ds-radius-pill)!important}
+@media(max-width:900px){
+ .app{grid-template-columns:1fr}.side{width:auto;position:sticky;height:auto;padding:8px 10px;flex-direction:row;gap:8px;overflow:hidden}
+ .brand{padding:6px 8px;flex:0 0 auto}.brand span{display:none}.nav{display:flex;min-width:0;overflow:auto;gap:3px}
+ .nav button{width:auto;flex:0 0 auto;min-height:40px}.nav .nav-icon{display:none}.nav .nav-label{max-width:none}
+ .shell-collapse{display:none}.bottom{display:none}
+}
+@media(min-width:901px){
+ .side.is-collapsed{width:72px}.app:has(.side.is-collapsed){grid-template-columns:72px minmax(0,1fr)}
+ .side.is-collapsed .brand{justify-content:center;padding-left:6px;padding-right:6px}.side.is-collapsed .brand span,.side.is-collapsed .nav-label,.side.is-collapsed .bottom{display:none}
+ .side.is-collapsed .nav button{justify-content:center;padding-left:8px;padding-right:8px}.side.is-collapsed .nav .nav-icon{display:block}
+}</style></head><body>
 <div class="app">
-<aside class="side"><div class="brand">AGNES<span>VIDEO</span></div><nav class="nav">
-<button class="active" data-page="home">Обзор</button><button data-page="create">Создать</button><button data-page="film">Мультфильм</button><button data-page="history">История</button><button data-page="credits">Кредиты</button>
-</nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
-<main class="main"><header class="top"><div>Agnes Video Generator</div><div style="display:flex;align-items:center;gap:8px"><button id="themeToggle" class="ds-btn ds-btn-ghost ds-btn-icon" type="button" aria-label="Toggle theme" title="Toggle theme">◐</button><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></div></header>
+<aside class="side" id="appSidebar">
+  <div class="brand"><span class="brand-mark">A</span><b>AGNES</b><span>VIDEO</span></div>
+  <nav class="nav" aria-label="Workspace">
+    <button class="active" data-page="home"><span class="nav-icon">⌂</span><span class="nav-label">Simple</span></button>
+    <button data-page="film"><span class="nav-icon">✦</span><span class="nav-label">Creative</span></button>
+    <button data-page="film"><span class="nav-icon">≡</span><span class="nav-label">Manuscript</span></button>
+    <button data-page="create"><span class="nav-icon">◌</span><span class="nav-label">Anchor</span></button>
+    <button data-page="create"><span class="nav-icon">▧</span><span class="nav-label">Images</span></button>
+    <button data-page="history"><span class="nav-icon">◷</span><span class="nav-label">Tasks</span></button>
+    <button data-page="credits"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></button>
+  </nav>
+  <div class="shell-collapse"><button id="sidebarToggle" class="ds-btn ds-btn-ghost" type="button" aria-label="Collapse sidebar">‹ <span class="nav-label">Collapse</span></button></div>
+  <div class="bottom">Creative workspace<br>Agnes AI connected</div>
+</aside>
+<main class="main"><header class="top">
+  <div class="top-project"><span class="project-dot"></span><div><strong id="topProjectName">Untitled project</strong><small id="topTaskName">Agnes Video Generator</small></div></div>
+  <div class="top-actions">
+    <span class="api-status"><i></i><span>API connected</span></span>
+    <select id="languageSwitch" class="shell-select" aria-label="Language"><option value="ru">RU</option><option value="en">EN</option><option value="id">ID</option><option value="es">ES</option><option value="de">DE</option><option value="fr">FR</option><option value="zh">中文</option></select>
+    <button id="themeToggle" class="ds-btn ds-btn-ghost ds-btn-icon" type="button" aria-label="Toggle theme" title="Toggle theme">◐</button>
+    <div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div>
+  </div>
+</header>
 <section id="home" class="section active"><div class="hero"><div class="eyebrow">One workspace · many models</div><h1>Создавай.<br>Без границ.</h1><p>Единый интерфейс для лучших генеративных моделей. Выбирай модель, задавай идею и получай результат — без переключения между сервисами.</p></div><div class="grid">
 <div class="card" data-page="create"><div class="icon">◈</div><h3>Изображения</h3><p>Agnes Image — генерация и редактирование изображений.</p><span class="tag">Доступно</span></div>
 <div class="card" data-page="create"><div class="icon">◉</div><h3>Видео</h3><p>Agnes Video — генерация видео через Agnes AI.</p><span class="tag">Доступно</span></div>
@@ -48,7 +97,11 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
     sync();
   });
 })();
-const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);let models=[],selected=null;
+const sidebar=document.getElementById('appSidebar'),sidebarToggle=document.getElementById('sidebarToggle');
+if(sidebarToggle){sidebarToggle.onclick=()=>{sidebar.classList.toggle('is-collapsed');sidebarToggle.innerHTML=sidebar.classList.contains('is-collapsed')?'› <span class="nav-label">Expand</span>':'‹ <span class="nav-label">Collapse</span>'}}
+const languageSwitch=document.getElementById('languageSwitch');
+if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru';languageSwitch.onchange=()=>localStorage.setItem('agnes_lang',languageSwitch.value)}
+const $=s=>document.querySelector(s), $=s=>document.querySelectorAll(s);let models=[],selected=null;
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
 function show(page){$$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory()}
