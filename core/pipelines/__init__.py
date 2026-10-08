@@ -4,6 +4,7 @@ BasePipeline 抽象基类 + 四种流水线导出。
 """
 
 import asyncio
+import time
 import json
 import logging
 import os
@@ -53,10 +54,24 @@ class BasePipeline(ABC):
         progress: float = 0.0,
         data: dict = None,
     ):
-        """发送进度消息到前端。"""
+        """发送并持久化进度消息。"""
+        if self._state is not None:
+            now = time.time()
+            if getattr(self._state, "started_at", None) is None:
+                self._state.started_at = now
+            pct = max(0.0, min(100.0, float(progress or 0.0) * 100.0))
+            eta = None
+            if pct > 0.5 and pct < 100.0:
+                elapsed = max(0.0, now - float(self._state.started_at))
+                eta = max(1, round(elapsed * (100.0 / pct - 1.0)))
+            self._state.progress = pct
+            self._state.progress_message = message or status or ""
+            self._state.eta_seconds = eta
+            self.task_manager.update_state(progress=pct, progress_message=self._state.progress_message, eta_seconds=eta, started_at=self._state.started_at)
         if self.progress_callback:
             await self.progress_callback(step, status, message, progress, data or {})
-
+    
+    
     def _is_shutdown(self) -> bool:
         """检查是否收到停止信号。"""
         if self._stop_event.is_set():
