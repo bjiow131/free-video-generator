@@ -118,6 +118,20 @@ class SimpleVideoPipeline(BasePipeline):
                 logger.debug(f"[Simple] Failed to load cached task.json: {e}")
         return None
 
+    def _record_video_progress(self, status: str, progress: float) -> None:
+        pct = max(0.0, min(100.0, float(progress or 0.0)))
+        overall = min(99.0, 10.0 + pct * 0.9)
+        eta = None
+        started = getattr(self._state, "started_at", None)
+        if started and overall > 0.5:
+            import time
+            eta = max(1, round((time.time() - started) * (100.0 / overall - 1.0)))
+        self.task_manager.update_state(
+            progress=overall,
+            progress_message=f"Agnes: {status or 'обработка'} · {pct:.0f}%",
+            eta_seconds=eta,
+        )
+
     async def _submit_and_wait(self) -> str:
         """提交视频任务并等待完成。支持 resume。"""
         video_path = os.path.join(self.working_dir, "final_video.mp4")
@@ -140,7 +154,7 @@ class SimpleVideoPipeline(BasePipeline):
             self._state.video_id = saved_video_id
             self.task_manager.update_state(video_id=saved_video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {saved_video_id[:16]}...", 0.3)
-            video_output = await self.video_api.wait_for_video(saved_video_id)
+            video_output = await self.video_api.wait_for_video(saved_video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
             await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
@@ -149,7 +163,7 @@ class SimpleVideoPipeline(BasePipeline):
             logger.info(f"[Simple] Resuming from state video_id: {self._state.video_id}")
             self._save_task(self._state.video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {self._state.video_id[:16]}...", 0.3)
-            video_output = await self.video_api.wait_for_video(self._state.video_id)
+            video_output = await self.video_api.wait_for_video(self._state.video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
             await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
@@ -189,7 +203,7 @@ class SimpleVideoPipeline(BasePipeline):
 
         await self._emit("video_gen", "running", f"等待视频生成 {video_id[:16]}...", 0.3)
 
-        video_output = await self.video_api.wait_for_video(video_id)
+        video_output = await self.video_api.wait_for_video(video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
         await asyncio.to_thread(video_output.save, video_path)
 
         await self._emit("video_gen", "completed", "视频生成完成", 0.9)
