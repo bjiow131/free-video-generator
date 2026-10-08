@@ -534,6 +534,22 @@ function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect=
 async function syncVideoCharacterSelector(refs){
   const character=$('#videoCharacter'),select=$('#videoCharacterReference');
   if(!character||!select)return;
+  const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
+  const selectedCharacter=character.value;
+  character.innerHTML='<option value="">Без персонажа</option>'+(savedRefs.length?'<option value="miya">Мия</option>':'');
+  if(selectedCharacter==='miya' && savedRefs.length) character.value='miya';
+  if(!character.value || character.value!=='miya'){
+    select.innerHTML='<option value="">Сначала выбери персонажа</option>';select.disabled=true;return;
+  }
+  if(!savedRefs.length){
+    select.innerHTML='<option value="">Нет сохранённых референсов</option>';select.disabled=true;return;
+  }
+  const primary=savedRefs.find(r=>r.isPrimary)||savedRefs[0];
+  const selectedReference=select.value;
+  select.innerHTML=savedRefs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
+  if(savedRefs.some(r=>String(r.id)===selectedReference)) select.value=selectedReference;
+  else select.value=String(primary.id);
+  select.disabled=false;
   if(!character.dataset.changeBound){
     character.addEventListener('change',async()=>{
       try{await syncVideoCharacterSelector(await getMiaRefs())}
@@ -541,18 +557,6 @@ async function syncVideoCharacterSelector(refs){
     });
     character.dataset.changeBound='1';
   }
-  const savedRefs=Array.isArray(refs)?refs:await getMiaRefs();
-  character.innerHTML='<option value="">Без персонажа</option>'+(savedRefs.length?'<option value="miya">Мия</option>':'');
-  if(character.value!=='miya'){
-    select.innerHTML='<option value="">Сначала выбери персонажа</option>';select.disabled=true;return;
-  }
-  if(!savedRefs.length){
-    select.innerHTML='<option value="">Нет сохранённых референсов</option>';select.disabled=true;return;
-  }
-  const primary=savedRefs.find(r=>r.isPrimary)||savedRefs[0];
-  select.innerHTML=savedRefs.map((r,i)=>'<option value="'+r.id+'">'+escapeHtml(r.name||('Референс '+(i+1)))+(r.isPrimary?' · основной':'')+'</option>').join('');
-  select.value=String(primary.id);
-  select.disabled=false;
 }
 async function getSelectedVideoReference(){
   const manual=$('#videoReference').files[0];
