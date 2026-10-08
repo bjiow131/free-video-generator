@@ -872,19 +872,33 @@ async def serve_character_reference(character_id: str, filename: str):
 
 async def generate_image(request: Request):
     """图片生成：手动解析 multipart/form-data，避免代理/браузер 对 Form(...) обязательных полей造成 422。"""
-    form = await request.form()
-    prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
-    size = str(form.get("size") or request.query_params.get("size") or "1K")
-    ratio = str(form.get("ratio") or request.query_params.get("ratio") or "1:1")
-    negative_prompt = str(form.get("negative_prompt") or "")
-    system_prompt = str(form.get("system_prompt") or "")
-    reference_images = [item for item in form.getlist("reference_images") if getattr(item, "filename", None) and hasattr(item, "read")]
-    single_reference = form.get("reference_image")
-    if getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
-        reference_images.insert(0, single_reference)
-    character_id = str(form.get("character_id") or "").strip() or None
-    # Fallback for browsers/proxies that drop multipart file parts: accept a base64 image field.
-    reference_image_base64 = str(form.get("reference_image_base64") or "").strip()
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type.startswith("application/json"):
+        body = await request.json()
+        form = body
+        prompt = str(body.get("prompt") or request.query_params.get("prompt") or "").strip()
+        size = str(body.get("size") or request.query_params.get("size") or "1K")
+        ratio = str(body.get("ratio") or request.query_params.get("ratio") or "1:1")
+        negative_prompt = str(body.get("negative_prompt") or "")
+        system_prompt = str(body.get("system_prompt") or "")
+        reference_images = []
+        single_reference = None
+        character_id = str(body.get("character_id") or "").strip() or None
+        reference_image_base64 = str(body.get("reference_image_base64") or "").strip()
+    else:
+        form = await request.form()
+        prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
+        size = str(form.get("size") or request.query_params.get("size") or "1K")
+        ratio = str(form.get("ratio") or request.query_params.get("ratio") or "1:1")
+        negative_prompt = str(form.get("negative_prompt") or "")
+        system_prompt = str(form.get("system_prompt") or "")
+        reference_images = [item for item in form.getlist("reference_images") if getattr(item, "filename", None) and hasattr(item, "read")]
+        single_reference = form.get("reference_image")
+        if getattr(single_reference, "filename", None) and hasattr(single_reference, "read"):
+            reference_images.insert(0, single_reference)
+        character_id = str(form.get("character_id") or "").strip() or None
+        reference_image_base64 = str(form.get("reference_image_base64") or "").strip()
+    # Base64 is the reliable transport for saved browser references.
     if reference_image_base64 and not reference_images:
         try:
             import base64
