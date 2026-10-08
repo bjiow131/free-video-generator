@@ -195,29 +195,37 @@ class AgnesImageAPI:
                     f"[AgnesImage] max retries ({max_retries}) exceeded"
                 )
 
-        try:
-            result = resp.json()
-        finally:
             try:
-                resp.close()
+                result = resp.json()
             finally:
-                session.close()
+                try:
+                    resp.close()
+                finally:
+                    session.close()
 
-        if "error" in result:
-            err = result["error"]
-            raise RuntimeError(f"Agnes image error: {err.get('message', err)}")
+            if "error" in result:
+                err = result["error"]
+                raise RuntimeError(f"Agnes image error: {err.get('message', err)}")
 
-        data_list = result.get("data", [])
-        if not data_list:
-            raise RuntimeError("Agnes image: no data returned")
+            data_list = result.get("data", [])
+            if not data_list:
+                raise RuntimeError("Agnes image: no data returned")
 
-        url = data_list[0].get("url", "")
-        if not url:
-            b64_data = data_list[0].get("b64_json", "")
-            if b64_data:
-                logger.info("[AgnesImage] Got base64 response, saving...")
-                return ImageOutput(fmt="b64", ext="png", data=b64_data)
-            raise RuntimeError("Agnes image: no URL or base64 in response")
+            url = data_list[0].get("url", "")
+            if not url:
+                b64_data = data_list[0].get("b64_json", "")
+                if b64_data:
+                    logger.info("[AgnesImage] Got base64 response, saving...")
+                    return ImageOutput(fmt="b64", ext="png", data=b64_data)
+                raise RuntimeError("Agnes image: no URL or base64 in response")
 
-        logger.info(f"[AgnesImage] Done: {url[:80]}...")
-        return ImageOutput(fmt="url", ext="png", data=url)
+            logger.info(f"[AgnesImage] Done: {url[:80]}...")
+            return ImageOutput(fmt="url", ext="png", data=url)
+
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+            session.close()
