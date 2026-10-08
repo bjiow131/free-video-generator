@@ -1,11 +1,11 @@
-from core.timing import timed_step
-
 """core.pipelines.anchor_video -- 数字人口播流水线（类型 4）
 
 支持两种音频模式：
   - post_stitch: 生成一段短 i2v 视频循环 + TTS 后拼接音频（音频可控，嘴型较难匹配）
   - model: 交由视频模型自身生成音频（音频由模型控制，效果不可控）
 """
+
+from core.timing import timed_step
 
 import asyncio
 import json
