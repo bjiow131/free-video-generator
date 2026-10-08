@@ -673,7 +673,7 @@ async function generateVideo(){
 $('#videoGenerate').onclick=generateVideo;
 $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
 $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderVideoReferencePicker(refs,refs.slice(0,5).map(r=>String(r.id)));saveFormState()};
-$('#videoClearAllRefs').onclick=()=>{renderVideoReferencePicker([],[]);saveFormState();};
+$('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';saveFormState()};
 
