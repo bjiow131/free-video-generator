@@ -394,6 +394,28 @@ def _write_upload_bytes(path: str, data: bytes) -> None:
     with open(path, "wb") as f:
         f.write(data)
 
+
+def _cleanup_uploaded_references(state: BaseTaskState) -> None:
+    """Remove uploaded reference images after a task reaches a terminal success state."""
+    candidates = []
+    for attr in ("reference_image", "end_frame_image"):
+        value = getattr(state, attr, "")
+        if value:
+            candidates.append(value)
+    end_frames = getattr(state, "end_frame_images", None) or []
+    if isinstance(end_frames, (list, tuple)):
+        candidates.extend(end_frames)
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            logger.warning("[Upload] Failed to remove temporary reference image: %s", path)
+
+
 def _validate_workspace_path(raw_path: str) -> str:
     """Validate a workspace path before it is persisted or created."""
     path = (raw_path or "").strip()
@@ -1190,6 +1212,8 @@ async def _run_pipeline_with_concurrency(
                 )
             except Exception:
                 logger.exception("[Concurrency] Failed to release slot for %s", task_id)
+        if acquired and getattr(state, "status", None) == StepStatus.COMPLETED:
+            _cleanup_uploaded_references(state)
         _queued_tasks.pop(task_id, None)
         if active_pipelines.get(task_id) is pipeline:
             active_pipelines.pop(task_id, None)
