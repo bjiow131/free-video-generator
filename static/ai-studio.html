@@ -179,13 +179,51 @@ button{cursor:pointer}
   body:before{width:90vw;height:90vw;right:-35vw}
   body:after{width:75vw;height:75vw;left:-30vw}
 }
+
+/* Scroll storytelling / frame-scrub layer */
+.scroll-story{position:relative;min-height:360vh;margin:0 auto;padding:0 34px 90px;max-width:1380px}
+.scroll-story__sticky{position:sticky;top:62px;height:calc(100vh - 62px);min-height:620px;display:grid;place-items:center;overflow:hidden;border-radius:34px}
+.scroll-story__backdrop{position:absolute;inset:0;border:1px solid rgba(215,208,194,.9);border-radius:34px;background:linear-gradient(145deg,#fbfaf4 0%,#edf1e8 42%,#e9eee8 65%,#f8eee5 100%);box-shadow:0 30px 80px rgba(71,65,50,.12)}
+.scroll-story__backdrop:before,.scroll-story__backdrop:after{content:"";position:absolute;border-radius:50%;filter:blur(2px);transition:transform .15s linear}
+.scroll-story__backdrop:before{width:55vw;height:55vw;right:-18vw;top:-22vw;background:radial-gradient(circle,#d7e2d2 0 17%,#b9cdb8 18% 28%,transparent 29%)}
+.scroll-story__backdrop:after{width:48vw;height:48vw;left:-20vw;bottom:-24vw;background:radial-gradient(circle,#f0d2bd 0 16%,#e8c2aa 17% 26%,transparent 27%)}
+.scroll-story__frame{position:relative;width:min(82vw,940px);aspect-ratio:16/9;border-radius:28px;overflow:hidden;box-shadow:0 35px 90px rgba(52,60,48,.2);background:#cdd8ca;transform:scale(.82);transition:transform .1s linear}
+.scroll-story__frame:before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,.35),transparent 38%,rgba(28,50,31,.16));z-index:2;pointer-events:none}
+.scroll-story__land,.scroll-story__sun,.scroll-story__mountain,.scroll-story__ridge,.scroll-story__tree{position:absolute;transition:transform .08s linear}
+.scroll-story__land{inset:52% -8% -12%;background:linear-gradient(165deg,#7f9b78 0 35%,#536f54 36% 68%,#334b38 69%);clip-path:polygon(0 30%,18% 18%,34% 28%,48% 10%,63% 24%,78% 8%,100% 20%,100% 100%,0 100%)}
+.scroll-story__sun{width:16%;aspect-ratio:1;border-radius:50%;right:16%;top:13%;background:#fff1cf;box-shadow:0 0 80px 30px rgba(255,239,192,.35)}
+.scroll-story__mountain{left:-5%;bottom:30%;width:70%;height:52%;background:linear-gradient(150deg,#f8f6ec 0 27%,#9bad99 28% 62%,#657b68 63%);clip-path:polygon(0 100%,24% 39%,39% 61%,55% 8%,71% 53%,83% 30%,100% 100%)}
+.scroll-story__ridge{right:-8%;bottom:25%;width:58%;height:43%;background:#819583;clip-path:polygon(0 100%,27% 38%,44% 61%,64% 17%,100% 100%);opacity:.82}
+.scroll-story__tree{left:12%;bottom:13%;width:9%;height:31%;background:#294633;clip-path:polygon(50% 0,88% 35%,70% 35%,100% 67%,72% 67%,91% 100%,9% 100%,28% 67%,0 67%,30% 35%,12% 35%)}
+.scroll-story__copy{position:absolute;z-index:4;left:7%;top:11%;max-width:470px;pointer-events:none}
+.scroll-story__eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.2em;font-weight:800;color:rgba(40,61,43,.65);margin-bottom:13px}
+.scroll-story__copy h2{font-size:clamp(42px,6vw,78px);line-height:.92;letter-spacing:-.07em;margin:0;color:#243126;max-width:520px}
+.scroll-story__copy p{font-size:15px;line-height:1.7;color:#566158;max-width:420px;margin:20px 0 0}
+.scroll-story__progress{position:absolute;z-index:5;left:7%;right:7%;bottom:7%;height:3px;background:rgba(45,65,48,.16);border-radius:999px;overflow:hidden}
+.scroll-story__progress i{display:block;height:100%;width:0;background:#355a41;border-radius:999px}
+.scroll-story__step{position:absolute;right:7%;bottom:9%;z-index:5;font-size:11px;font-weight:800;letter-spacing:.14em;color:rgba(45,65,48,.62)}
+.scroll-story__hint{position:absolute;z-index:5;left:50%;bottom:4%;transform:translateX(-50%);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:rgba(45,65,48,.5)}
+@media(max-width:900px){.scroll-story{padding-left:18px;padding-right:18px}.scroll-story__sticky{top:60px;height:calc(100vh - 60px);min-height:520px}.scroll-story__frame{width:94vw;aspect-ratio:4/5;border-radius:23px}.scroll-story__copy{left:8%;right:8%;top:9%}.scroll-story__copy h2{font-size:clamp(38px,11vw,62px)}.scroll-story__copy p{font-size:13px;max-width:330px}.scroll-story__land{inset:55% -12% -8%}.scroll-story__mountain{bottom:27%;width:105%;height:45%}.scroll-story__ridge{bottom:25%;width:82%;height:37%}}
+@media(prefers-reduced-motion:reduce){.scroll-story__frame,.scroll-story__land,.scroll-story__sun,.scroll-story__mountain,.scroll-story__ridge,.scroll-story__tree{transition:none!important}}
 </style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
 <button class="active" data-page="home">Обзор</button><button data-page="create">Создать</button><button data-page="film">Мультфильм</button><button data-page="history">История</button><button data-page="credits">Кредиты</button>
 </nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
 <main class="main"><header class="top"><div>Локальный сервер</div><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></header>
-<section id="home" class="section active"><div class="hero"><div class="eyebrow">One workspace · many models</div><h1>Создавай.<br>Без границ.</h1><p>Единый интерфейс для лучших генеративных моделей. Выбирай модель, задавай идею и получай результат — без переключения между сервисами.</p></div><div class="grid">
+<section id="home" class="section active"><div class="hero"><div class="eyebrow">One workspace · many models</div><h1>Создавай.<br>Без границ.</h1><p>Единый интерфейс для лучших генеративных моделей. Выбирай модель, задавай идею и получай результат — без переключения между сервисами.</p></div><div class="scroll-story" id="scrollStory" aria-label="Интерактивная история создания">
+<div class="scroll-story__sticky">
+<div class="scroll-story__backdrop"></div>
+<div class="scroll-story__frame" id="scrubFrame">
+<div class="scroll-story__sun" id="scrubSun"></div>
+<div class="scroll-story__mountain" id="scrubMountain"></div>
+<div class="scroll-story__ridge" id="scrubRidge"></div>
+<div class="scroll-story__land" id="scrubLand"></div>
+<div class="scroll-story__tree" id="scrubTree"></div>
+<div class="scroll-story__copy"><div class="scroll-story__eyebrow" id="scrubEyebrow">SCROLL STORY · 01</div><h2 id="scrubTitle">Идея<br>становится сценой.</h2><p id="scrubText">Прокручивай страницу. Положение скролла управляет кадром — от чистого замысла до готового визуального результата.</p></div>
+<div class="scroll-story__progress"><i id="scrubProgress"></i></div><div class="scroll-story__step" id="scrubStep">01 / 06</div><div class="scroll-story__hint">scroll to direct the frame</div>
+</div></div></div>
+<div class="grid">
 <div class="card" data-page="create"><div class="icon">◈</div><h3>Изображения</h3><p>Agnes Image — генерация и редактирование изображений.</p><span class="tag">Доступно</span></div>
 <div class="card" data-page="create"><div class="icon">◉</div><h3>Видео</h3><p>Agnes Video — генерация видео через Agnes AI.</p><span class="tag">Доступно</span></div>
 <div class="card"><div class="icon">✦</div><h3>Референсы</h3><p>Загружай изображения и используй их как референсы для генерации.</p><span class="tag">Доступно</span></div>
@@ -219,5 +257,7 @@ function restoreFilmAfterLoad(){const savedFilmTask=localStorage.getItem('film_t
 function saveFilmDraft(){try{localStorage.setItem('film_draft',JSON.stringify({name:$('#filmName').value,idea:$('#filmIdea').value,style:$('#filmStyle').value,scenes:$('#filmScenes').value,duration:$('#filmDuration').value,format:$('#filmFormat').value,audio:$('#filmAudio').value,voice:$('#filmVoice').value,subs:$('#filmSubs').value}))}catch{}}
 function restoreFilmDraft(){try{const d=JSON.parse(localStorage.getItem('film_draft')||'null');if(!d)return;if(d.name!=null)$('#filmName').value=d.name;if(d.idea!=null)$('#filmIdea').value=d.idea;if(d.style!=null)$('#filmStyle').value=d.style;if(d.scenes!=null)$('#filmScenes').value=d.scenes;if(d.duration!=null)$('#filmDuration').value=d.duration;if(d.format!=null)$('#filmFormat').value=d.format;if(d.audio!=null)$('#filmAudio').value=d.audio;if(d.voice!=null)$('#filmVoice').value=d.voice;if(d.subs!=null)$('#filmSubs').value=d.subs}catch{}}
 ['filmName','filmIdea','filmStyle','filmScenes','filmDuration','filmFormat','filmAudio','filmVoice','filmSubs'].forEach(id=>document.getElementById(id)?.addEventListener('input',saveFilmDraft));
+
+function initScrollStory(){const root=$('#scrollStory');if(!root)return;const title=$('#scrubTitle'),textEl=$('#scrubText'),eyebrow=$('#scrubEyebrow'),step=$('#scrubStep'),progress=$('#scrubProgress'),frame=$('#scrubFrame'),sun=$('#scrubSun'),mountain=$('#scrubMountain'),ridge=$('#scrubRidge'),land=$('#scrubLand'),tree=$('#scrubTree');const scenes=[['SCROLL STORY · 01','Идея<br>становится сценой.','Прокручивай страницу. Положение скролла управляет кадром — от чистого замысла до готового визуального результата.'],['SCROLL STORY · 02','Свет<br>находит форму.','Кадр раскрывается: меняется масштаб, глубина и направление движения.'],['SCROLL STORY · 03','Композиция<br>оживает.','Передний и задний планы расходятся, создавая ощущение настоящего движения камеры.'],['SCROLL STORY · 04','История<br>движется вперёд.','Каждый участок прокрутки становится новым состоянием сцены, а не просто новым блоком страницы.'],['SCROLL STORY · 05','Кадр<br>собран.','Визуальные слои сходятся в один цельный момент — как покадровый монтаж.'],['SCROLL STORY · 06','Теперь<br>создавай.','После истории начинается рабочее пространство: выбери модель, задай идею и запусти генерацию.']];let last=-1,raf=0;function tick(){raf=0;const rect=root.getBoundingClientRect(),travel=Math.max(1,root.offsetHeight-window.innerHeight),p=Math.max(0,Math.min(1,-rect.top/travel)),raw=p*(scenes.length-1),i=Math.min(scenes.length-1,Math.floor(raw)),local=raw-i;if(i!==last){const s=scenes[i];eyebrow.textContent=s[0];title.innerHTML=s[1];textEl.textContent=s[2];step.textContent=String(i+1).padStart(2,'0')+' / '+String(scenes.length).padStart(2,'0');last=i}progress.style.width=(p*100)+'%';const e=i+local;frame.style.transform='scale('+(0.82+Math.min(1,e/(scenes.length-1))*.18)+')';sun.style.transform='translate('+(-e*42)+'px,'+(e*28)+'px) scale('+(1+e*.16)+')';mountain.style.transform='translate('+(-e*38)+'px,'+(-e*12)+'px) scale('+(1+e*.08)+')';ridge.style.transform='translate('+(e*44)+'px,'+(-e*4)+'px)';land.style.transform='translateY('+(e*18)+'px) scale('+(1+e*.035)+')';tree.style.transform='translateX('+(e*24)+'px) translateY('+(e*6)+'px)';}function onScroll(){if(!raf)raf=requestAnimationFrame(tick)}window.addEventListener('scroll',onScroll,{passive:true});window.addEventListener('resize',onScroll);tick()}
 load().then(()=>{restoreFilmDraft();restoreFilmAfterLoad()});
 </script></body></html>
