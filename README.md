@@ -8,7 +8,7 @@
 > — Bruce Yang, Founder of Agnes AI
 
 
-## Why Free Video Generator?
+## Why Agnes Video Generator?
 
 Making AI videos today has an absurdly high barrier. Overseas services like Runway and Pika charge monthly subscriptions of tens of dollars. Domestic platforms like Jimeng and Keling charge by the second once their free quotas run out. Want to run open-source models locally? A GPU capable of video generation easily costs over ten thousand RMB. For most people who want to try AI video creation, the door is essentially closed.
 
@@ -16,9 +16,9 @@ We believe what Bruce Yang said — AI should be a more equitable capability. Wo
 
 To be honest, Agnes's video model isn't perfect yet. The generated frames are sometimes unstable, and complex actions occasionally deform. But it is **completely free with no usage limits**, and it iterates fast. We choose to grow with it rather than wait for a "perfect" commercial solution. If you share this mindset, then this project is for you — all you need is a free [Agnes AI](https://platform.agnes-ai.com) API key and an ordinary computer that can run Python to start creating AI videos at zero cost.
 
-### Comparison: Free Video Generator vs. Commercial AI Video Tools
+### Comparison: Agnes Video Generator vs. Commercial AI Video Tools
 
-| Feature | Free Video Generator | Runway Gen-3 | Pika 2.0 | OpenAI Sora | Kling 1.6 |
+| Feature | Agnes Video Generator | Runway Gen-3 | Pika 2.0 | OpenAI Sora | Kling 1.6 |
 |---------|:---:|:---:|:---:|:---:|:---:|
 | **Price** | Free | $15–$95/month | $10–$28/month | $20+/month (limited) | Free quota, then pay-per-second |
 | **Open Source** | Yes (MIT) | No | No | No | No |
@@ -442,7 +442,7 @@ MIT
 
 ## FAQ
 
-### Is Free Video Generator really free? Are there any hidden costs?
+### Is Agnes Video Generator really free? Are there any hidden costs?
 
 The application itself does not charge for software usage. Agnes AI availability, quotas, pricing, and any provider-side limits are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
 
@@ -452,7 +452,7 @@ No. All AI compute runs in the cloud via Agnes AI's free API. You just need a re
 
 ### How is this different from Runway, Pika, or Sora?
 
-Unlike commercial AI video tools that charge $10-$95/month, Free Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the comparison table above for general positioning; third-party prices and limits can change.
+Unlike commercial AI video tools that charge $10-$95/month, Agnes Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the comparison table above for general positioning; third-party prices and limits can change.
 
 ### What video generation modes are supported?
 
