@@ -1462,7 +1462,7 @@ async def create_simple_task(request: Request):
     # Some reverse proxies/clients can drop multipart fields while preserving
     # the query string. Scalar parameters are mirrored in the query string.
     prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
-    model = str(form.get("model") or request.query_params.get("model") or "agnes-video-v2.0").strip()
+    model = "agnes-video-v2.0"  # Always submit directly to Agnes 2.0; do not probe 2.5 first.
     mode = str(form.get("mode") or request.query_params.get("mode") or "t2v").strip()
     try:
         duration = int(form.get("duration") or request.query_params.get("duration") or 5)
