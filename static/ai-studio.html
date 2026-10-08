@@ -421,7 +421,8 @@ async function generateImage(){
     const refDiagnostics=sentRefs.map(([key,value])=>({field:key,type:value.type||'unknown',size:value.size,name:value.name||'blob'}));
     console.info('[Image request diagnostics]',{character:characterId||'none',manualReference:!!ref,referenceCount:sentRefs.length,references:refDiagnostics,size:$('#imageQuality').value,ratio:$('#imageAspect').value});
     $('#imageStatus').textContent='Персонаж: '+(characterId||'нет')+' · Отправка запроса: референсов '+sentRefs.length+'; '+(sentRefs.map(([,v])=>(v.type||'unknown')+', '+Math.round(v.size/1024)+' КБ').join(' | ')||'без референса');
-    const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
+    const requestBody=sentRefs.length?{prompt:p,size:$('#imageQuality').value,ratio:$('#imageAspect').value,character_id:characterId||'',reference_image_base64:f.get('reference_image_base64')||''}:{prompt:p,size:$('#imageQuality').value,ratio:$('#imageAspect').value,character_id:characterId||''};
+    const r=await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(requestBody)});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
     $('#saveImageButton').onclick=()=>openSaveModal(d.task_id);
