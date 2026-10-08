@@ -1445,9 +1445,20 @@ def _launch_background_task(coro):
 @app.post("/api/tasks/simple")
 async def create_simple_task(request: Request):
     """Create a simple video task with explicit multipart parsing."""
-    form = await request.form()
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type.startswith("application/json"):
+        body = await request.json()
+        form = body
+        reference_image = None
+        end_frame_image = None
+        reference_image_base64 = str(body.get("reference_image_base64") or "").strip()
+    else:
+        form = await request.form()
+        reference_image = form.get("reference_image")
+        end_frame_image = form.get("end_frame_image")
+        reference_image_base64 = str(form.get("reference_image_base64") or "").strip()
     # Some reverse proxies/clients can drop multipart fields while preserving
-    # the query string. The browser mirrors the scalar video parameters there.
+    # the query string. Scalar parameters are mirrored in the query string.
     prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
     model = str(form.get("model") or request.query_params.get("model") or "agnes-video-2.5-flash").strip()
     mode = str(form.get("mode") or request.query_params.get("mode") or "t2v").strip()
@@ -1464,9 +1475,7 @@ async def create_simple_task(request: Request):
         raise HTTPException(status_code=422, detail="Некорректный seed")
     negative_prompt = str(form.get("negative_prompt") or "")
     system_prompt = str(form.get("system_prompt") or "")
-    reference_image = form.get("reference_image")
-    end_frame_image = form.get("end_frame_image")
-    logger.info("[Simple] multipart keys=%s prompt_present=%s prompt_len=%d", sorted(form.keys()), bool(prompt), len(prompt))
+    logger.info("[Simple] content_type=%s keys=%s prompt_present=%s prompt_len=%d reference_base64=%s", content_type.split(";", 1)[0], sorted(form.keys()), bool(prompt), len(prompt), bool(reference_image_base64))
 
 
 
@@ -1519,7 +1528,23 @@ async def create_simple_task(request: Request):
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
     uploaded_paths = []
     try:
-        if reference_image and reference_image.filename:
+        if reference_image_base64:
+            import base64
+            encoded = reference_image_base64
+            if encoded.startswith("data:") and "," in encoded:
+                encoded = encoded.split(",", 1)[1]
+            raw = base64.b64decode(encoded, validate=True)
+            if len(raw) > MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
+            header = raw[:16]
+            extension = next((ext for ext, check in _ALLOWED_IMAGE_SIGNATURES.items() if check(header)), None)
+            if extension is None:
+                raise HTTPException(status_code=422, detail="Поддерживаются только изображения PNG, JPG/JPEG и WEBP")
+            path = os.path.join(get_upload_dir(), f"{task_id}_ref{extension}")
+            await asyncio.to_thread(_write_upload_bytes, path, raw)
+            state.reference_image = path
+            uploaded_paths.append(path)
+        elif reference_image and reference_image.filename:
             state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
             uploaded_paths.append(state.reference_image)
 
