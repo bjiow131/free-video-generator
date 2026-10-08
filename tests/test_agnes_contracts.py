@@ -1,3 +1,4 @@
+import pytest
 from core.api.agnes_video import AgnesVideoAPI, MODERN_MODELS
 from core.config import SUPPORTED_AGNES_VIDEO_DURATIONS
 
