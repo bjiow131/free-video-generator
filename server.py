@@ -802,7 +802,73 @@ async def comfyui_preview(request: Request):
 # ═══════════════════════════════════════════════════
 
 
+@app.get("/api/characters")
+async def list_characters():
+    """Return saved character reference packs."""
+    root = os.path.join(get_working_dir(), "characters")
+    os.makedirs(root, exist_ok=True)
+    result = []
+    for name in sorted(os.listdir(root)):
+        folder = os.path.join(root, name)
+        meta_path = os.path.join(folder, "character.json")
+        if not os.path.isdir(folder) or not os.path.isfile(meta_path):
+            continue
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            refs = []
+            for filename in meta.get("references", []):
+                path = os.path.join(folder, os.path.basename(filename))
+                if os.path.isfile(path):
+                    refs.append({"name": filename, "url": f"/api/characters/{name}/references/{filename}"})
+            result.append({"id": name, "name": meta.get("name", name), "references": refs, "primary": meta.get("primary")})
+        except (OSError, json.JSONDecodeError):
+            logger.warning("[Characters] Failed to read %s", meta_path, exc_info=True)
+    return {"characters": result}
+
+
+@app.post("/api/characters")
+async def create_character(name: str = Form(...), reference_images: List[UploadFile] = File(...)):
+    """Create or replace a character reference pack."""
+    clean_name = re.sub(r"[^a-zA-Z0-9_-]+", "-", name.strip()).strip("-_").lower()
+    if not clean_name:
+        raise HTTPException(status_code=422, detail="Недопустимое имя персонажа")
+    if len(reference_images) > 12:
+        raise HTTPException(status_code=422, detail="Можно загрузить не более 12 референсов")
+    root = os.path.join(get_working_dir(), "characters", clean_name)
+    os.makedirs(root, exist_ok=True)
+    saved = []
+    for index, upload in enumerate(reference_images):
+        if not upload or not upload.filename:
+            continue
+        ext = os.path.splitext(upload.filename)[1].lower()
+        if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
+            continue
+        filename = f"ref_{index+1:02d}{ext}"
+        path = os.path.join(root, filename)
+        with open(path, "wb") as f:
+            shutil.copyfileobj(upload.file, f)
+        saved.append(filename)
+    if not saved:
+        raise HTTPException(status_code=422, detail="Нужно загрузить хотя бы один референс")
+    meta = {"id": clean_name, "name": name.strip()[:80], "references": saved, "primary": saved[0]}
+    with open(os.path.join(root, "character.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "character": {"id": clean_name, "name": meta["name"], "references": saved, "primary": saved[0]}}
+
+
+@app.get("/api/characters/{character_id}/references/{filename}")
+async def serve_character_reference(character_id: str, filename: str):
+    clean_id = re.sub(r"[^a-zA-Z0-9_-]", "", character_id)
+    clean_file = os.path.basename(filename)
+    path = os.path.join(get_working_dir(), "characters", clean_id, clean_file)
+    if not clean_id or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Референс не найден")
+    return FileResponse(path, media_type="image/*")
+
+
 @app.post("/api/image/generate")
+
 async def generate_image(
     request: Request,
     prompt: str = Form(...),
@@ -811,6 +877,7 @@ async def generate_image(
     negative_prompt: Optional[str] = Form(None),
     system_prompt: str = Form(""),
     reference_image: UploadFile = File(None),
+    character_id: Optional[str] = Form(None),
 ):
     """简单图片生成：创建任务 → 直调 Agnes Image API → 保存到任务目录。"""
 
@@ -854,6 +921,18 @@ async def generate_image(
     ref_paths = []
     if reference_image and reference_image.filename:
         ref_paths.append(await _save_image_upload(reference_image, f"img_ref_{uuid.uuid4().hex[:8]}"))
+    elif character_id:
+        clean_id = re.sub(r"[^a-zA-Z0-9_-]", "", character_id)
+        meta_path = os.path.join(get_working_dir(), "characters", clean_id, "character.json")
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            primary = os.path.basename(meta.get("primary", ""))
+            character_ref = os.path.join(get_working_dir(), "characters", clean_id, primary)
+            if primary and os.path.isfile(character_ref):
+                ref_paths.append(character_ref)
+        except (OSError, json.JSONDecodeError):
+            raise HTTPException(status_code=404, detail="Референс персонажа не найден")
 
     try:
         state.status = StepStatus.RUNNING
@@ -873,13 +952,13 @@ async def generate_image(
         logger.error(f"[Image] Task {task_id} failed: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
     finally:
-        # Reference images for the one-shot image endpoint are temporary inputs;
-        # the generated task does not retain them, so remove them after the API call.
-        for ref_path in ref_paths:
-            try:
-                os.remove(ref_path)
-            except OSError:
-                logger.warning("[Image] Failed to remove temporary reference image: %s", ref_path)
+        # Only remove temporary uploads; persistent character references stay in the character pack.
+        if reference_image and reference_image.filename:
+            for ref_path in ref_paths:
+                try:
+                    os.remove(ref_path)
+                except OSError:
+                    logger.warning("[Image] Failed to remove temporary reference image: %s", ref_path)
 
     img_filename = "final_image.png"
     img_path = os.path.join(tm.task_dir, img_filename)
