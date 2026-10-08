@@ -936,6 +936,24 @@ async def generate_image(request: Request):
         except (OSError, json.JSONDecodeError):
             raise HTTPException(status_code=404, detail="Референс персонажа не найден")
 
+    logger.info(
+        "[ImageRequest] task=%s character_id=%s uploaded_reference_fields=%s accepted_references=%s refs=%s size=%s ratio=%s prompt_chars=%s",
+        task_id,
+        character_id or "none",
+        len(reference_images),
+        len(ref_paths),
+        [
+            {
+                "file": os.path.basename(path),
+                "bytes": os.path.getsize(path) if os.path.isfile(path) else None,
+            }
+            for path in ref_paths
+        ],
+        size,
+        ratio,
+        len(prompt),
+    )
+
     try:
         state.status = StepStatus.RUNNING
         tm.update_state(status=StepStatus.RUNNING)
