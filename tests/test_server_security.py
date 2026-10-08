@@ -326,3 +326,12 @@ def test_watermark_render_closes_moviepy_clips_on_failure(monkeypatch, tmp_path)
 
     assert watermark._render_watermark_png(str(tmp_path / "wm.png"), 640, 360) is False
     assert all(c.closed for c in clips)
+
+
+def test_history_ui_does_not_embed_task_id_in_inline_javascript():
+    from pathlib import Path
+
+    html = Path(__file__).resolve().parents[1] / "static" / "ai-studio.html"
+    source = html.read_text(encoding="utf-8")
+    assert "onclick="openResult" not in source
+    assert "escapeHtml(x.status)" in source
