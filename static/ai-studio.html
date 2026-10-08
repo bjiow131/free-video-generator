@@ -410,7 +410,11 @@ async function generateImage(){
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
     $('#saveImageButton').onclick=()=>openSaveModal(d.task_id);
-    $('#imageResult').classList.remove('hidden');$('#imageStatus').textContent='Готово · отправлено референсов: '+sentRefs.length+(sentRefs.length?' ('+sentRefs.map(([,v])=>Math.round(v.size/1024)+' КБ').join(', ')+')':'');
+    $('#imageResult').classList.remove('hidden');
+    const diag=d.diagnostics||{};
+    const diagRefs=Array.isArray(diag.references)?diag.references:[];
+    const diagText=diagRefs.map((x,i)=>'R'+(i+1)+': '+(x.bytes?Math.round(x.bytes/1024)+' КБ':'?')+(x.sha256?' · SHA256 '+x.sha256:'')).join(' | ');
+    $('#imageStatus').textContent='Готово · '+(diag.mode||'режим неизвестен')+' · модель '+(diag.model||'?')+' · референсов '+(diag.accepted_references??sentRefs.length)+(diagText?' · '+diagText:'');
   }catch(e){$('#imageStatus').textContent=e.message;toast(e.message)}finally{setGenerateBusy('image',false)}
 }
 function sanitizeFilename(name){return String(name||'').trim().replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,' ').slice(0,120)||'Мия'}
