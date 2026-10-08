@@ -993,20 +993,18 @@ def _parse_duration(user_requirement: str) -> int:
     """Extract a supported scene duration from seven supported languages."""
     text_value = (user_requirement or "").strip()
     supported = sorted(SUPPORTED_AGNES_VIDEO_DURATIONS)
+    valid_duration_keys = sorted(DURATION_FRAME_MAP)
     for pattern in _DURATION_PATTERNS[:-1]:
         match = re.search(pattern, text_value, re.IGNORECASE)
         if match:
             value = int(match.group(1))
-            if value in supported:
-                return value
-            return min(supported, key=lambda item: abs(item - value))
+            return min(valid_duration_keys, key=lambda item: abs(item - value))
     return 5
 
 def _has_explicit_duration(user_requirement: str) -> bool:
     """检查 user_requirement 中是否显式提到了时长。支持 7 种语言。"""
-    for pattern in _DURATION_PATTERNS:
-        if re.search(pattern, user_requirement, re.IGNORECASE):
-            return True
+    text_value = (user_requirement or "").strip()
+    return any(re.search(pattern, text_value, re.IGNORECASE) for pattern in _DURATION_PATTERNS[:-1])
     return False
 
 
