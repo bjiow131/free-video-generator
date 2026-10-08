@@ -109,11 +109,14 @@ def test_bg_color_parsing():
     assert server._parse_bg_color("black@0.5") == (0, 0, 0, 128)
     assert server._parse_bg_color("black@50") == (0, 0, 0, 128)
     assert server._parse_bg_color("(1, 2, 3, 4)") == (1, 2, 3, 4)
+    assert server._parse_bg_color([1, 2, 3]) == (1, 2, 3)
     assert server._parse_bg_color("transparent") is None
     with pytest.raises(ValueError):
         server._parse_bg_color("black@101")
     with pytest.raises(ValueError):
         server._parse_bg_color("not-a-color")
+    with pytest.raises(ValueError):
+        server._parse_bg_color((256, 0, 0))
 
 
 @pytest.mark.parametrize(
