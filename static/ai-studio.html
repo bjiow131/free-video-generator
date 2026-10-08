@@ -425,6 +425,13 @@ function renderCharacters(refs){
     const url=URL.createObjectURL(r.blob);characterObjectUrls.push(url);
     const primary=!!r.isPrimary;
     const displayName=escapeHtml(r.name||('Референс '+(i+1)));
+    const lower=String(r.name||'').toLowerCase();
+    let viewLabel='Ракурс';
+    if(/left|лев|слева|левая/i.test(lower))viewLabel='Левый профиль';
+    else if(/right|прав|справа|правая/i.test(lower))viewLabel='Правый профиль';
+    else if(/3\s*[/_-]?\s*4|three.?quarter|три четверт/i.test(lower))viewLabel='3/4';
+    else if(/front|фронт|анфас|сперед/i.test(lower))viewLabel='Анфас';
+    else if(/full|полный рост|рост|fullbody/i.test(lower))viewLabel='Полный рост';
     return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="'+displayName+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">'+displayName+(primary?' · основной':'')+'</div><input id="refName_'+r.id+'" type="text" value="'+displayName+'" maxlength="80" style="margin-top:8px;padding:8px 10px;font-size:12px" aria-label="Название референса"><button class="ghost" style="width:100%;margin-top:7px;padding:8px 10px" onclick="renameMiaRef('+r.id+',document.getElementById(\'refName_'+r.id+'\').value)">Сохранить название</button><button class="'+(primary?'primary':'ghost')+'" style="width:100%;margin-top:7px;padding:8px 10px" onclick="setPrimaryMiaRef('+r.id+')">'+(primary?'Основной референс':'Сделать основным')+'</button></div>';
   }).join('');
 }
