@@ -129,3 +129,11 @@ button[disabled],button:disabled,input:disabled,select:disabled,textarea:disable
 }
 
 .field-error{margin-top:6px;color:var(--ds-error);font-size:11px;line-height:1.4}.field-error::before{content:"! ";font-weight:800}input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--ds-error)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--ds-error) 16%,transparent)!important}
+/* TASK 3A.2 — consistency overrides for legacy primitives */
+:where(.primary,.ghost,.danger,.card,.model,.field,.status,.production-actions button,.top,.side,.main){box-sizing:border-box}
+.primary,.ghost,.danger{font-family:var(--ds-font);font-weight:var(--ds-weight-medium);border-radius:var(--ds-radius-md);min-height:40px}
+.primary{background:var(--ds-text-1);color:var(--ds-bg);border:1px solid var(--ds-text-1);padding:0 16px}.primary:hover:not(:disabled){box-shadow:var(--ds-shadow-sm);transform:translateY(-1px)}
+.ghost{background:var(--ds-surface-2);color:var(--ds-text-1);border:1px solid var(--ds-border);padding:0 14px}.ghost:hover:not(:disabled){background:var(--ds-surface-3);border-color:var(--ds-border-strong)}
+.card,.model,.field,.production-status,.task-card,.settings-card{border-radius:var(--ds-radius-lg)}
+.status{min-height:20px;color:var(--ds-text-2);font-size:12px}
+@media(prefers-reduced-motion:reduce){.primary:hover:not(:disabled){transform:none}}
