@@ -185,3 +185,9 @@ def test_state_change_origin_policy_accepts_same_origin_and_rejects_cross_origin
     assert server._origin_matches_host("http://localhost:8765", "localhost:8765")
     assert not server._origin_matches_host("http://127.0.0.1:8765", "localhost:8765")
     assert not server._origin_matches_host("http://evil.example", "localhost:8765")
+
+
+def test_duration_parser_never_returns_unsupported_key(monkeypatch):
+    monkeypatch.setattr(server, "DURATION_FRAME_MAP", {4: 1, 6: 1})
+    assert server._parse_duration("5 seconds") == 4
+    assert server._parse_duration("6 seconds") == 6
