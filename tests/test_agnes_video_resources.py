@@ -54,3 +54,28 @@ def test_submit_retries_connection_error(monkeypatch):
 
     assert asyncio.run(scenario()) == "vid-2"
     assert calls["count"] == 2
+
+
+def test_poll_closes_http_response(monkeypatch):
+    import asyncio
+
+    class Response:
+        def __init__(self):
+            self.closed = False
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"status": "completed", "progress": 100, "video_id": "vid-3"}
+        def close(self):
+            self.closed = True
+
+    response = Response()
+    async def scenario():
+        api = AgnesVideoAPI(api_key="test", model="agnes-video-2.5-flash")
+        monkeypatch.setattr("core.api.agnes_video.requests.get", lambda *a, **k: response)
+        monkeypatch.setattr("core.api.agnes_video.get_rate_limiter", lambda: type("L", (), {"acquire": lambda self: None})())
+        return await api._poll_task("vid-3", interval=0, max_poll_duration=5)
+
+    result = asyncio.run(scenario())
+    assert result["status"] == "completed"
+    assert response.closed is True
