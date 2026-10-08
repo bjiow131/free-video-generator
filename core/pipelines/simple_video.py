@@ -200,6 +200,7 @@ class SimpleVideoPipeline(BasePipeline):
             height=self._state.video_height,
             seed=self._state.seed,
             negative_prompt=self._state.negative_prompt,
+            mode=getattr(self._state.mode, "value", self._state.mode),
         )
 
         # 持久化 video_id + curl 命令
