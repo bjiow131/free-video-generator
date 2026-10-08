@@ -161,6 +161,7 @@ class SimpleVideoTask(BaseTaskState):
     task_type: Literal[TaskType.SIMPLE] = TaskType.SIMPLE
 
     prompt: str = ""
+    model: str = "agnes-video-2.5-flash"
     mode: VideoMode = VideoMode.T2V
     reference_image: str = ""
     end_frame_image: str = ""
