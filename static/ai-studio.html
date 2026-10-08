@@ -252,10 +252,13 @@ button{cursor:pointer}
       <div class="label">Исходное изображение <span style="color:#777">(необязательно, если выбран персонаж)</span></div>
       <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
-      <div class="label">Промпт движения</div>
-      <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
+      <div class="label">Промпт движения для видео</div>
+      <textarea id="videoPrompt" class="textarea" placeholder="Что делает Мия? Как движется камера? Что происходит в сцене?"></textarea>
+      <div class="label">Промпт стартового кадра <span style="color:#777">(создаётся автоматически, можно редактировать)</span></div>
+      <textarea id="startFramePrompt" class="textarea" placeholder="Сначала опиши сцену выше — здесь появится промпт для изображения." rows="5"></textarea>
+      <div class="hint">Видео-промпт отвечает за движение. Промпт кадра — за то, как выглядит первый момент: персонаж, фон, композиция и свет. Автопромпт не отправляет дополнительный запрос и его можно исправить вручную.</div>
       <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
-      <div class="hint">Сначала создай кадр сцены. Он будет автоматически передан в Agnes 2.0 как исходное изображение для видео.</div>
+      <div class="hint">Готовый кадр автоматически станет исходным изображением для Agnes 2.0.</div>
       <div id="startFrameStatus" class="status"></div><div id="startFrameResult" class="result hidden"></div>
       <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
     </div>
@@ -615,15 +618,31 @@ async function getSelectedVideoReferences(){
 
 let generatedStartFrameBlob=null;
 let generatedStartFrameTaskId='';
+function buildStartFramePrompt(videoPrompt){
+  const source=String(videoPrompt||'').trim();
+  if(!source)return '';
+  return 'Create one polished cinematic opening still for an animated film. Depict the scene at the instant just BEFORE the main movement described in the video prompt begins.\n\nSCENE AND STORY CONTEXT (derived from the video prompt): '+source+'\n\nCOMPOSITION: show a clear, readable first-frame composition with the main character fully integrated into the environment. The background must fill the entire image edge-to-edge and continue naturally behind and around the character. Establish the location, foreground, midground and background. Use coherent perspective, natural contact shadows, consistent lighting and believable environmental details. Keep the character's full silhouette cleanly separated from the background without looking cut out.\n\nCONTINUITY: if a character reference is supplied, preserve that character's identity, face, hair, clothing, body proportions and visual style. No white studio background, blank backdrop, transparency, collage, storyboard panels, borders, text, lettering, logos or watermarks. This is a single still image, not an action sequence. Compose for '+$('#videoAspect').value+' aspect ratio.';
+}
+function syncStartFramePrompt(force=false){
+  const videoPrompt=$('#videoPrompt'), framePrompt=$('#startFramePrompt');
+  if(!videoPrompt||!framePrompt)return;
+  if(force||!framePrompt.dataset.userEdited){
+    framePrompt.value=buildStartFramePrompt(videoPrompt.value);
+  }
+}
+$('#startFramePrompt').addEventListener('input',()=>{$('#startFramePrompt').dataset.userEdited='true'});
+$('#videoPrompt').addEventListener('input',()=>syncStartFramePrompt());
+$('#videoAspect').addEventListener('change',()=>syncStartFramePrompt());
 async function createStartFrame(){
   const prompt=$('#videoPrompt').value.trim();
+  const imagePrompt=$('#startFramePrompt').value.trim();
   if(!prompt){toast('Сначала напиши описание сцены и движения');return}
+  if(!imagePrompt){toast('Добавь описание стартового кадра');return}
   const button=$('#createStartFrame');button.disabled=true;
-  $('#startFrameStatus').textContent='Создаю исходный кадр…';
+  $('#startFrameStatus').textContent='Создаю стартовый кадр…';
   $('#startFrameResult').classList.add('hidden');
   try{
     const aspect=$('#videoAspect').value;
-    const imagePrompt='Create a single polished cinematic FIRST FRAME for a vertical animated film scene. This is a still image, not a collage, not a storyboard, no text or lettering. Scene and character action: '+prompt+'. Show the character fully integrated into the environment, with the background filling the entire frame edge-to-edge. Natural coherent lighting, consistent perspective, detailed environment, no white or blank background, no cutout character, no transparency. Compose for '+aspect+' aspect ratio.';
     const payload={prompt:imagePrompt,size:'1K',ratio:aspect,character_id:$('#videoCharacter').value||''};
     let refs=[];
     if($('#videoCharacter').value==='miya'){
@@ -747,7 +766,7 @@ $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderV
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#createStartFrame').onclick=createStartFrame;
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';saveFormState()};
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';syncStartFramePrompt(true);saveFormState()};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
@@ -788,7 +807,7 @@ const FORM_STATE_KEY='aistudio_form_state_v2';
 const FORM_STATE_IDS=[
   'imageAspect','imageQuality','imageCharacter','imageCharacterReference',
   'imagePrompt','videoMode','videoAspect','videoDuration','videoQuality','videoCharacter',
-  'videoCharacterReference','videoPrompt'
+  'videoCharacterReference','videoPrompt','startFramePrompt'
 ];
 function saveFormState(){
   try{
