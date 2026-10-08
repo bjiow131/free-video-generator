@@ -205,6 +205,6 @@ Light theme reduces opacity and uses neutral shadows.
 - Mobile layouts collapse columns rather than shrinking controls below usable touch targets.
 - CJK and Cyrillic text use the same typographic stack and inherit the same line-height rules.
 
-## Implementation boundary for Task 1
+## Final implementation notes
 
-This system is implemented as shared tokens and base component primitives only. Individual screen redesign belongs to later tasks. Existing element IDs, JavaScript hooks, API endpoints, request fields and task/WebSocket contracts remain unchanged.
+The final implementation uses these shared tokens/primitives across the application shell, Simple/Image creation, Creative/Manuscript/Anchor production, Tasks, and Settings. The screen layer additionally provides responsive bottom navigation, horizontally scrollable option/tab rails, seven-language UI stress coverage (`zh`, `en`, `ru`, `ja`, `ko`, `ms`, `id`), inline validation, ARIA progress/toast announcements, and theme bridging for legacy screen variables.\n\nPerformance-sensitive behavior keeps task-list rendering cached by filter/data signature, lazy-loads task thumbnails/media, avoids external font dependencies, and uses polling/WebSocket updates without animation loops. Existing element IDs, JavaScript hooks, API endpoints, request fields and task/WebSocket contracts remain unchanged.
