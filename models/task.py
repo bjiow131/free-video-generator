@@ -77,7 +77,7 @@ class SubtitleStyle(BaseModel):
                        "yellow": (255, 255, 0)}.get(parts[0].strip().lower(), (0, 0, 0))
                 return (*rgb, int(float(parts[1]) * 255))
             if v.lower() in ("none", "transparent", ""):
-                return None
+                return (0, 0, 0, 0)
         return (0, 0, 0, 128)
 
 
