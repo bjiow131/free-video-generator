@@ -296,10 +296,10 @@ class AgnesVideoAPI:
                     f"Agnes video submit failed (HTTP {resp.status_code}): {error_text}"
                 )
 
-            except (requests.exceptions.Timeout, asyncio.TimeoutError) as exc:
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, asyncio.TimeoutError) as exc:
                 delay = min(self.retry_base_delay * (attempt + 1), 300.0)
                 logger.warning(
-                    "[AgnesVideo] Timeout on %s: %s; retry in %.0fs",
+                    "[AgnesVideo] Transient network error on %s: %s; retry in %.0fs",
                     mode_desc, exc, delay,
                 )
                 await asyncio.sleep(delay)
