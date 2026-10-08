@@ -272,14 +272,24 @@ async function replaceMiaRefs(files){
   });
 }
 async function setPrimaryMiaRef(id){
-  const db=await characterDb();
-  await new Promise((resolve,reject)=>{
-    const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs');
-    const q=store.getAll();
-    q.onsuccess=()=>{(q.result||[]).forEach(r=>store.put({...r,isPrimary:r.id===id}));};
-    q.onerror=()=>reject(q.error);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
-  });
-  await loadCharacters(); toast('Основной референс изменён');
+  try{
+    const db=await characterDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs');
+      const q=store.getAll();
+      q.onsuccess=()=>{
+        const refs=q.result||[];
+        refs.forEach(r=>{r.isPrimary=(r.id===id);store.put(r)});
+      };
+      q.onerror=()=>reject(q.error||new Error('Не удалось прочитать референсы'));
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error('Не удалось изменить основной референс'));
+      tx.onabort=()=>reject(tx.error||new Error('Операция отменена'));
+    });
+    const refs=await getMiaRefs();
+    renderCharacters(refs);
+    toast('Основной референс изменён');
+  }catch(e){toast(e.message||'Не удалось изменить основной референс')}
 }
 async function loadCharacters(){
   try{
