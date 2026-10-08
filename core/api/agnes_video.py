@@ -393,6 +393,11 @@ class AgnesVideoAPI:
                 payload["seed"] = seed
             if len(resolved_refs) == 1:
                 payload["first_frame"] = resolved_refs[0]
+                # Some Agnes 2.5 validators require both keyframe fields even
+                # for a single-image animation. Reusing the same source frame
+                # keeps this an image-to-video request without introducing a
+                # second visual reference.
+                payload["last_frame"] = resolved_refs[0]
             elif len(resolved_refs) == 2:
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
