@@ -698,7 +698,9 @@ async function useLastVideoFrame(taskId,button){
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
     toast('Финальный кадр выбран для следующей сцены');
   }catch(e){
+    generatedStartFrameBlob=null;generatedStartFrameTaskId='';
     $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
+    $('#startFrameResult').classList.add('hidden');
     toast(e.message||'Не удалось извлечь финальный кадр');
   }finally{
     if(button){button.disabled=false;button.textContent=originalLabel}
