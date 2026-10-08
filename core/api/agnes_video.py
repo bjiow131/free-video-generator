@@ -303,6 +303,11 @@ class AgnesVideoAPI:
                     mode_desc, exc, delay,
                 )
                 await asyncio.sleep(delay)
+            finally:
+                try:
+                    resp.close()
+                except (NameError, AttributeError):
+                    pass
 
         if last_error_code == "video_queue_full":
             raise RuntimeError(
