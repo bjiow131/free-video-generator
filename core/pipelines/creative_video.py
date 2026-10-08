@@ -543,7 +543,7 @@ class CreativeVideoPipeline(BasePipeline):
             prompt=char_prompt,
             size=f"{self._state.video_width}x{self._state.video_height}",
         )
-        img_output.save(ref_img_path)
+        await asyncio.to_thread(img_output.save, ref_img_path)
 
         self._state.step_character_ref = StepStatus.COMPLETED
         self._state.character_ref_prompt = char_prompt
@@ -898,7 +898,7 @@ class CreativeVideoPipeline(BasePipeline):
                             reference_image_paths=ref_images,
                             size=f"{vw}x{vh}",
                         )
-                        img_output.save(end_frame_path)
+                        await asyncio.to_thread(img_output.save, end_frame_path)
                         pregenerated[scene_idx] = end_frame_path
                         cached[str(scene_idx)] = end_frame_path
                         break
@@ -928,7 +928,7 @@ class CreativeVideoPipeline(BasePipeline):
                     prompt=end_frame_prompt,
                     size=f"{vw}x{vh}",
                 )
-                img_output.save(end_frame_path)
+                await asyncio.to_thread(img_output.save, end_frame_path)
                 pregenerated[scene_idx] = end_frame_path
                 cached[str(scene_idx)] = end_frame_path
 
@@ -1194,7 +1194,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(info["video_id"])
-                video_output.save(info["video_path"])
+                await asyncio.to_thread(video_output.save, info["video_path"])
                 self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
                 await self._emit(
                     "video_gen", "running",
@@ -1317,7 +1317,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(existing_video_id)
-                video_output.save(video_path)
+                await asyncio.to_thread(video_output.save, video_path)
                 self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
             except Exception as e:
                 self._set_scene_video_status(scene_idx, StepStatus.FAILED)
@@ -1354,7 +1354,7 @@ class CreativeVideoPipeline(BasePipeline):
                     reference_image_paths=[last_frame_url],
                     size=f"{vw}x{vh}",
                 )
-                img_output.save(transition_path)
+                await asyncio.to_thread(img_output.save, transition_path)
                 current_image = transition_path
 
             await self._emit(
@@ -1483,7 +1483,7 @@ class CreativeVideoPipeline(BasePipeline):
                                 prompt=end_frame_prompt,
                                 size=f"{vw}x{vh}",
                             )
-                        img_output.save(end_frame_path)
+                        await asyncio.to_thread(img_output.save, end_frame_path)
 
             first_frame_url = await self.video_generator._resolve_image_ref(current_first_frame)
             end_frame_url = await self.video_generator._resolve_image_ref(end_frame_path)
@@ -1549,7 +1549,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(info["video_id"])
-                video_output.save(info["video_path"])
+                await asyncio.to_thread(video_output.save, info["video_path"])
                 await self._emit(
                     "video_gen", "running",
                     f"场景 {scene_idx+1}/{total}: 完成",
