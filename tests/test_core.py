@@ -561,7 +561,7 @@ class TestLocalWindowsContracts:
         assert 'curl -s http://127.0.0.1:8765/health' in bat
         assert 'http://127.0.0.1:8765' in bat
         assert '.venv\\Scripts\\python.exe' in bat
-        assert '"%PYTHON%" server.py' in bat
+        assert 'start "" /b ".venv\\Scripts\\python.exe" server.py' in bat
 
     def test_tts_retry_temp_path_is_defined_before_attempt(self):
         import inspect
