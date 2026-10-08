@@ -84,3 +84,46 @@ button{min-height:40px}
 @keyframes ds-shimmer{to{background-position:-200% 0}}
 @media(max-width:640px){.ds-segmented{width:100%}.ds-segmented>*{flex:1 0 auto}.ds-toast{right:16px;bottom:16px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
+
+/* TASK 3.1 — interaction, responsive and accessibility polish */
+html,body{max-width:100%;overflow-x:hidden}
+button,a,input,textarea,select{min-height:40px}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--ds-accent);outline-offset:3px}
+button[disabled],button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allowed;opacity:.48}
+.nav-icon svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ds-btn-icon{min-width:40px;padding:0}
+.ds-toast{display:flex;align-items:flex-start;gap:8px;animation:ds-toast-in var(--ds-duration) var(--ds-ease)}
+.ds-progress>span{transform-origin:left center;will-change:width}
+.task-thumb img,.task-thumb video,.result img,.result video,.story-thumb img,.story-thumb video{content-visibility:auto}
+.storyboard,.choice-grid,.nav{scrollbar-width:thin;scrollbar-color:var(--ds-border-strong) transparent}
+.create-stage,.prompt-dock,.advanced-panel,.production-grid,.tasks-shell,.settings-shell{min-width:0}
+@keyframes ds-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:900px){
+  .side{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;z-index:80;border-top:1px solid var(--ds-border);border-bottom:0;padding:6px max(8px,env(safe-area-inset-left)) max(6px,env(safe-area-inset-bottom));background:color-mix(in srgb,var(--ds-bg) 90%,transparent);backdrop-filter:blur(20px)}
+  .side .brand,.side .shell-collapse,.side .bottom{display:none}
+  .nav{width:100%;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;overflow:visible}
+  .nav button{min-width:0;min-height:48px;justify-content:center;flex-direction:column;gap:3px;padding:5px 2px;border-radius:10px}
+  .nav button:before{display:none}
+  .nav .nav-icon{width:20px;flex-basis:20px}
+  .nav .nav-label{display:block;width:100%;font-size:9px;text-align:center;line-height:1.1}
+  .main{padding-bottom:72px}
+  .top{padding-left:14px;padding-right:14px}
+}
+@media(max-width:600px){
+  .top-project small{display:none}
+  .top-actions .api-status{display:none}
+  .top-actions{gap:4px}
+  .hero,.grid,.workspace,.production-shell,.tasks-shell,.settings-shell{max-width:none}
+  .choice-grid{display:flex;overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}
+  .choice-grid button{flex:0 0 auto;min-width:82px}
+  .prompt-dock{position:sticky!important;bottom:78px!important}
+  .create-stage{padding-bottom:10px}
+  .tasks-grid{grid-template-columns:1fr}
+}
+@media(min-width:901px) and (max-width:1100px){.app{grid-template-columns:200px minmax(0,1fr)}.side{width:200px}}
+@media(min-width:1101px) and (max-width:1500px){.app{grid-template-columns:224px minmax(0,1fr)}.side{width:224px}}
+@media(min-width:1501px){.app{grid-template-columns:240px minmax(0,1fr)}.side{width:240px}}
+@media(prefers-reduced-motion:reduce){
+  .ds-toast{animation:none!important}
+  .task-card:hover,.card:hover,.primary:hover{transform:none!important}
+}
