@@ -183,10 +183,14 @@ class SimpleVideoPipeline(BasePipeline):
 
         # 构建参考图列表
         ref_images = []
-        if self._state.reference_image:
+        stored_refs = getattr(self._state, "reference_images", None) or []
+        if stored_refs:
+            ref_images.extend([p for p in stored_refs if p])
+        elif self._state.reference_image:
             ref_images.append(self._state.reference_image)
         if self._state.end_frame_image:
             ref_images.append(self._state.end_frame_image)
+        ref_images = ref_images[:5]
 
         await self._emit("video_gen", "running", f"提交视频任务 (mode={self._state.mode})...", 0.1)
 
