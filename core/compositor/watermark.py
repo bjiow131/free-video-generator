@@ -90,6 +90,10 @@ def _render_watermark_png(
     line1_text = lines[0] if len(lines) > 0 else ""
     line2_text = lines[1] if len(lines) > 1 else ""
 
+    t1 = None
+    t2 = None
+    bg = None
+    composite = None
     try:
         t1 = TextClip(text=line1_text, font=font_path, font_size=font_size,
                        color="white", stroke_color="black", stroke_width=1)
@@ -125,6 +129,13 @@ def _render_watermark_png(
     except Exception as e:
         logger.error(f"[Watermark] Render PNG failed: {e}")
         return False
+    finally:
+        for clip in (composite, bg, t1, t2):
+            if clip is not None:
+                try:
+                    clip.close()
+                except Exception:
+                    logger.warning("[Watermark] Failed to close MoviePy clip", exc_info=True)
 
 
 def add_watermark(
