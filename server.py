@@ -128,10 +128,16 @@ def _parse_bg_color(raw: str) -> tuple:
     """Parse a subtitle background color as RGB/RGBA or named@alpha."""
     if raw is None:
         return (0, 0, 0, 128)
-    if isinstance(raw, tuple):
+    if isinstance(raw, (tuple, list)):
         if len(raw) not in (3, 4):
             raise ValueError("Цвет должен содержать 3 или 4 компонента")
-        return tuple(int(max(0, min(255, value))) for value in raw)
+        try:
+            values = tuple(int(value) for value in raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("RGB/RGBA компоненты должны быть целыми числами") from exc
+        if any(value < 0 or value > 255 for value in values):
+            raise ValueError("RGB/RGBA компоненты должны быть от 0 до 255")
+        return values
     if not isinstance(raw, str):
         raise ValueError("Цвет должен быть строкой")
     raw = raw.strip()
