@@ -206,9 +206,57 @@ def test_config_get_does_not_expose_api_key(monkeypatch):
 def test_rate_limiter_does_not_set_refill_clock_in_future():
     from core.api.rate_limiter import AgnesRateLimiter
 
-    limiter = AgnesRateLimiter(rate_per_minute=60, max_burst=1)
+    limiter = AgnesRateLimiter(rate_per_minute=6000, max_burst=1)
     limiter.tokens = 0.0
     before = time.monotonic()
     limiter.acquire()
     assert limiter.last_refill <= time.monotonic()
     assert limiter.last_refill >= before
+
+
+def test_image_download_validates_each_redirect(monkeypatch, tmp_path):
+    from utils import image as image_utils
+
+    calls = []
+    class Response:
+        status_code = 302
+        headers = {"Location": "http://127.0.0.1/private"}
+        is_redirect = True
+        def close(self):
+            pass
+
+    monkeypatch.setattr(image_utils.requests, "get", lambda *args, **kwargs: (calls.append(args[0]) or Response()))
+    def validate(url):
+        calls.append("validated:" + url)
+        if "127.0.0.1" in url:
+            raise ValueError("blocked")
+    monkeypatch.setattr(image_utils, "_validate_download_url", validate)
+
+    with pytest.raises(ValueError, match="blocked"):
+        image_utils.download_image("https://public.example/image.png", str(tmp_path / "x.png"))
+    assert "validated:https://public.example/image.png" in calls
+    assert "validated:http://127.0.0.1/private" in calls
+
+
+def test_video_download_validates_each_redirect(monkeypatch, tmp_path):
+    from utils import video as video_utils
+
+    calls = []
+    class Response:
+        status_code = 302
+        headers = {"Location": "http://127.0.0.1/private"}
+        is_redirect = True
+        def close(self):
+            pass
+
+    monkeypatch.setattr(video_utils.requests, "get", lambda *args, **kwargs: (calls.append(args[0]) or Response()))
+    def validate(url):
+        calls.append("validated:" + url)
+        if "127.0.0.1" in url:
+            raise ValueError("blocked")
+    monkeypatch.setattr(video_utils, "_validate_download_url", validate)
+
+    with pytest.raises(ValueError, match="blocked"):
+        video_utils.download_video("https://public.example/video.mp4", str(tmp_path / "x.mp4"))
+    assert "validated:https://public.example/video.mp4" in calls
+    assert "validated:http://127.0.0.1/private" in calls
