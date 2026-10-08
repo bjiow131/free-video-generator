@@ -279,11 +279,16 @@ async function loadCharacters(){
     renderCharacters(refs);
   }catch(e){$('#characterStatus').textContent='Не удалось открыть локальное хранилище: '+e.message}
 }
+let characterObjectUrls=[];
 function renderCharacters(refs){
   const box=$('#characterRefs'),status=$('#characterStatus');if(!box||!status)return;
+  characterObjectUrls.forEach(url=>URL.revokeObjectURL(url));characterObjectUrls=[];
   if(!refs.length){status.textContent='Загрузите референсы Мии (до 12 изображений).';box.innerHTML='';return}
   status.textContent='Сохранено референсов: '+refs.length+' · хранится на этом устройстве';
-  box.innerHTML=refs.map((r,i)=>'<div class="card" style="padding:10px;min-height:0"><img src="'+URL.createObjectURL(r.blob)+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(i===0?' · основной':'')+'</div></div>').join('');
+  box.innerHTML=refs.map((r,i)=>{
+    const url=URL.createObjectURL(r.blob);characterObjectUrls.push(url);
+    return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(i===0?' · основной':'')+'</div></div>';
+  }).join('');
 }
 async function saveCharacterPack(){
   const files=$('#characterFiles').files;
