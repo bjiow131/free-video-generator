@@ -602,7 +602,13 @@ async function generateVideo(){
   try{
     let refs=[];
     try{
-      refs=await getSelectedVideoReferences();
+      console.info('[Video] Preparing references…');
+      $('#videoStatus').textContent='Подготовка референсов…';
+      refs=await Promise.race([
+        getSelectedVideoReferences(),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('Подготовка референсов заняла слишком много времени')),20000))
+      ]);
+      console.info('[Video] References ready',{referenceCount:refs.length}); 
     }catch(e){
       const msg=e?.message||'Не удалось получить референсы';
       console.error('[Video] Reference preparation failed',e);
@@ -622,7 +628,10 @@ async function generateVideo(){
     $('#videoStatus').textContent='Отправка запроса на сервер…';
     const [video_width,video_height]=videoDimensions($('#videoAspect').value);
     let reference_images_base64=[];
-    for(const ref of refs){
+    for(let idx=0;idx<refs.length;idx++){
+      const ref=refs[idx];
+      $('#videoStatus').textContent='Чтение референса '+(idx+1)+' из '+refs.length+'…';
+      console.info('[Video] Reading reference '+(idx+1)+'/'+refs.length);
       const b64=await new Promise((resolve,reject)=>{
         const reader=new FileReader();
         reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
@@ -630,7 +639,12 @@ async function generateVideo(){
         reader.readAsDataURL(ref);
       });
       if(b64)reference_images_base64.push(b64);
+      console.info('[Video] Reference '+(idx+1)+' ready');
     }
+    if(!reference_images_base64.length && refs.length){
+      throw new Error('Не удалось прочитать выбранные референсы');
+    }
+    console.info('[Video] Sending request',{referenceCount:reference_images_base64.length});
     const payload={
       prompt:p,model:'agnes-video-2.5-flash',mode,duration:Number($('#videoDuration').value),
       video_width,video_height,reference_image_base64:reference_images_base64[0]||'',
