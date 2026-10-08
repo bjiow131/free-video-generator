@@ -115,6 +115,13 @@ class SimpleVideoPipeline(BasePipeline):
         """提交视频任务并等待完成。支持 resume。"""
         video_path = os.path.join(self.working_dir, "final_video.mp4")
 
+        # Keep the API client aligned with the persisted task model before both
+        # fresh submissions and resume polling. This is critical after restart.
+        selected_model = getattr(self._state, "model", "") or self.video_api.model
+        if selected_model != self.video_api.model:
+            self.video_api = AgnesVideoAPI(api_key=self.api_key, model=selected_model)
+            self.video_api.shutdown_event = self.shutdown_event
+
         if os.path.exists(video_path):
             logger.info("[Simple] Video already exists, skipping")
             return video_path
