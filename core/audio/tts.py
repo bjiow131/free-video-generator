@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.audio.tts — TTS 统一接口：EdgeTTSEngine + SilentTTSEngine
 
 基于 edge_tts（免费 Azure Edge TTS）和静音占位两种实现。
@@ -18,6 +19,7 @@ class TTSEngine(ABC):
     """TTS 抽象基类。"""
 
     @abstractmethod
+    @timed_step
     async def generate(
         self, text: str, output_path: str, voice: str = "zh-CN-XiaoxiaoNeural", rate: str = "+0%"
     ) -> Tuple[str, object]:
@@ -32,6 +34,7 @@ class EdgeTTSEngine(TTSEngine):
     包含逐词时间戳 cues，可用于生成 SRT 字幕。
     """
 
+    @timed_step
     async def generate(
         self, text: str, output_path: str, voice: str = "zh-CN-XiaoxiaoNeural", rate: str = "+0%"
     ) -> Tuple[str, "edge_tts.SubMaker"]:
@@ -102,6 +105,7 @@ class SilentTTSEngine(TTSEngine):
     生成指定时长的静音音频，返回空 cues。用于用户关闭旁白时仍需要字幕时间轴的场景。
     """
 
+    @timed_step
     async def generate(
         self,
         text: str,
