@@ -65,37 +65,35 @@ class AgnesRateLimiter:
         """阻塞式获取一个令牌。
 
         如果桶中有令牌，立即消耗并返回。
-        否则计算等待时间并 ``time.sleep()`` 直到令牌可用。
+        否则在锁内等待令牌补充，确保多个线程不会同时预留同一个令牌。
         """
         with self._lock:
-            now = time.monotonic()
-            elapsed = now - self.last_refill
-            self.tokens = min(
-                self.max_tokens,
-                self.tokens + elapsed * self.refill_rate,
-            )
-            self.last_refill = now
+            while True:
+                now = time.monotonic()
+                elapsed = max(0.0, now - self.last_refill)
+                self.tokens = min(
+                    self.max_tokens,
+                    self.tokens + elapsed * self.refill_rate,
+                )
+                self.last_refill = now
 
-            if self.tokens >= 1.0:
-                self.tokens -= 1.0
-                return
+                if self.tokens >= 1.0:
+                    self.tokens -= 1.0
+                    return
 
-            # 需要等待的时间
-            wait_time = (1.0 - self.tokens) / self.refill_rate
-            self.tokens = 0.0
-            # 更新 refill 时间基准，防止 sleep 期间令牌被其他线程"偷走"
-            self.last_refill = now + wait_time
+                wait_time = (1.0 - self.tokens) / self.refill_rate
+                self.tokens = 0.0
 
-        # sleep 在锁外执行，避免阻塞其他线程的 refill 计算
-        if wait_time > 0.05:
-            self._total_waits += 1
-            self._total_wait_seconds += wait_time
-            logger.info(
-                f"[RateLimiter] 限速等待 {wait_time:.1f}s "
-                f"(累计等待 {self._total_waits} 次, "
-                f"{self._total_wait_seconds:.0f}s)"
-            )
-            time.sleep(wait_time)
+                if wait_time > 0.05:
+                    self._total_waits += 1
+                    self._total_wait_seconds += wait_time
+                    logger.info(
+                        f"[RateLimiter] 限速等待 {wait_time:.1f}s "
+                        f"(累计等待 {self._total_waits} 次, "
+                        f"{self._total_wait_seconds:.0f}s)"
+                    )
+                time.sleep(wait_time)
+                self.last_refill = time.monotonic()
 
     async def acquire_async(self) -> None:
         """异步获取令牌（内部使用 ``asyncio.to_thread``）。"""
