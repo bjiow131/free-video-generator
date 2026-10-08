@@ -104,7 +104,7 @@ class SimpleVideoPipeline(BasePipeline):
         task_file = os.path.join(self.working_dir, "task.json")
         if os.path.exists(task_file):
             try:
-                with open(task_file, "r") as f:
+                with open(task_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data.get("video_id") or data.get("task_id")
             except Exception as e:
