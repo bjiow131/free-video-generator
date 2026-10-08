@@ -793,6 +793,9 @@ class CreativeVideoPipeline(BasePipeline):
         limit = max(1, int(os.getenv("MAX_PARALLEL_SCENES", "3")))
         semaphore = asyncio.Semaphore(limit)
         results = dict(cached)
+        normalized_ref = None
+        if self._state.generate_end_frames_from_ref and character_ref_path:
+            normalized_ref = await self._get_normalized_character_ref(character_ref_path)
 
         async def generate_one(scene_idx: int):
             if self._is_shutdown():
@@ -820,7 +823,6 @@ class CreativeVideoPipeline(BasePipeline):
                 for attempt in range(3):
                     try:
                         if self._state.generate_end_frames_from_ref and character_ref_path:
-                            normalized_ref = await self._get_normalized_character_ref(character_ref_path)
                             refs = [normalized_ref]
                             img_output = await self.image_generator.generate_single_image(
                                 prompt=prompt, reference_image_paths=refs, size=f"{vw}x{vh}"
