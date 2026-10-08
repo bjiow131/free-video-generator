@@ -295,13 +295,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
 
-# Local-only browser UI: allow only the two loopback origins used by the
-# built-in server.  The UI itself is same-origin, but keeping explicit CORS
-# support is useful for localhost development without exposing the API to
-# arbitrary websites.
+# Local-only browser UI.  PORT controls the in-process listener; Docker
+# deployments may expose that listener on a different external port.
+_LOCAL_SERVER_PORT = int(os.environ.get("PORT", "8765"))
 _LOCAL_CORS_ORIGINS = [
-    "http://127.0.0.1:8765",
-    "http://localhost:8765",
+    f"http://127.0.0.1:{_LOCAL_SERVER_PORT}",
+    f"http://localhost:{_LOCAL_SERVER_PORT}",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -311,18 +310,46 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-_LOCAL_SERVER_PORT = int(os.environ.get("PORT", "8765"))
-_LOCAL_ALLOWED_HOSTS = {
-    f"127.0.0.1:{_LOCAL_SERVER_PORT}",
-    f"localhost:{_LOCAL_SERVER_PORT}",
-}
+def _normalize_configured_host(raw_host: str) -> str:
+    """Normalize ALLOWED_HOST/PUBLIC_HOST values to a Host-header form."""
+    value = (raw_host or "").strip().lower()
+    if not value:
+        return ""
+    if "://" not in value:
+        value = "http://" + value
+    try:
+        return urlsplit(value).netloc
+    except ValueError:
+        return ""
+
+_LOCAL_ALLOWED_HOSTS = set()
 for _configured_host in (
     os.environ.get("ALLOWED_HOST", ""),
     os.environ.get("PUBLIC_HOST", ""),
     os.environ.get("RENDER_EXTERNAL_HOSTNAME", ""),
 ):
-    if _configured_host:
-        _LOCAL_ALLOWED_HOSTS.add(_configured_host.lower().removeprefix("https://").removeprefix("http://").rstrip("/"))
+    normalized = _normalize_configured_host(_configured_host)
+    if normalized:
+        _LOCAL_ALLOWED_HOSTS.add(normalized)
+
+def _host_without_port(host: str) -> str:
+    """Return the hostname portion while preserving IPv6 bracket notation."""
+    value = (host or "").strip().lower()
+    try:
+        parsed = urlsplit("http://" + value)
+        return parsed.hostname or ""
+    except ValueError:
+        return ""
+
+def _request_host_allowed(host: str) -> bool:
+    """Allow configured hosts plus local bind addresses on any port."""
+    normalized = (host or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _LOCAL_ALLOWED_HOSTS:
+        return True
+    hostname = _host_without_port(normalized)
+    return hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 def _origin_matches_host(origin: str, host: str) -> bool:
     """Require a supplied Origin to be same-origin with the validated Host."""
@@ -330,12 +357,12 @@ def _origin_matches_host(origin: str, host: str) -> bool:
         return True
     try:
         parsed = urlsplit(origin)
-        return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == host
+        return (
+            parsed.scheme in {"http", "https"}
+            and parsed.netloc.lower() == (host or "").strip().lower()
+        )
     except ValueError:
         return False
-
-def _request_host_allowed(host: str) -> bool:
-    return host in _LOCAL_ALLOWED_HOSTS
 
 @app.middleware("http")
 async def local_origin_guard(request: Request, call_next):
