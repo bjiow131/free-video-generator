@@ -1153,6 +1153,13 @@ async def _run_pipeline_with_concurrency(
         await _run_pipeline(pipeline, state)
     except asyncio.CancelledError:
         _queued_tasks.pop(task_id, None)
+        # Cancellation can happen while queued (before semaphore acquisition).
+        # Persist a non-queued state before re-raising so a cancelled task cannot
+        # remain stuck as QUEUED after the background task disappears.
+        try:
+            task_manager.update_state(status=StepStatus.PENDING)
+        except Exception:
+            logger.exception("[Concurrency] Failed to persist cancelled task %s", task_id)
         logger.info(f"[Concurrency] Task {task_id} cancelled")
         raise
     finally:
