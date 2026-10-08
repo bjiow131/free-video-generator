@@ -267,9 +267,19 @@ async function replaceMiaRefs(files){
   const db=await characterDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs'); store.clear();
-    [...files].forEach((file,index)=>store.add({name:file.name||('ref_'+(index+1)),blob:file,order:index+1}));
+    [...files].forEach((file,index)=>store.add({name:file.name||('ref_'+(index+1)),blob:file,order:index+1,isPrimary:index===0}));
     tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
   });
+}
+async function setPrimaryMiaRef(id){
+  const db=await characterDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs');
+    const q=store.getAll();
+    q.onsuccess=()=>{(q.result||[]).forEach(r=>store.put({...r,isPrimary:r.id===id}));};
+    q.onerror=()=>reject(q.error);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  await loadCharacters(); toast('Основной референс изменён');
 }
 async function loadCharacters(){
   try{
@@ -287,7 +297,8 @@ function renderCharacters(refs){
   status.textContent='Сохранено референсов: '+refs.length+' · хранится на этом устройстве';
   box.innerHTML=refs.map((r,i)=>{
     const url=URL.createObjectURL(r.blob);characterObjectUrls.push(url);
-    return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(i===0?' · основной':'')+'</div></div>';
+    const primary=!!r.isPrimary;
+    return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(primary?' · основной':'')+'</div><button class="'+(primary?'primary':'ghost')+'" style="width:100%;margin-top:8px;padding:8px 10px" onclick="setPrimaryMiaRef('+r.id+')">'+(primary?'Основной референс':'Сделать основным')+'</button></div>';
   }).join('');
 }
 async function saveCharacterPack(){
@@ -324,7 +335,8 @@ async function generateImage(){
     if(ref) f.append('reference_image',ref);
     else if(characterId==='miya'){
       const refs=await getMiaRefs();
-      if(refs.length) f.append('reference_image',refs[0].blob,'miya_primary.'+(refs[0].name.split('.').pop()||'png'));
+      const primary=refs.find(r=>r.isPrimary)||refs[0];
+      if(primary) f.append('reference_image',primary.blob,'miya_primary.'+(primary.name.split('.').pop()||'png'));
     }
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
