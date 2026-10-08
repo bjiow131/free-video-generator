@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.pipelines.creative_video -- Creative long-form video pipeline (Type 2).
 
 Ports the original ``core/pipeline.py`` VideoPipeline to the new pipeline
@@ -65,6 +66,7 @@ def _localize_preserve_tags(scene_text: str) -> dict:
     }
 
 
+@timed_step
 async def _run_ffmpeg_async(cmd: List[str], timeout: float = 30.0) -> None:
     """异步执行 ffmpeg 命令，等价于 ``subprocess.run(cmd, check=True, timeout=...)``。
 
@@ -221,6 +223,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 0: Image Analysis
     # ==================================================================
 
+    @timed_step
     async def _step_image_analysis(
         self, reference_image: str, end_frame_images: list
     ) -> str:
@@ -292,6 +295,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 0: Resolve Scene Configuration (v3.x)
     # ==================================================================
 
+    @timed_step
     async def _step_resolve_scene_config(self) -> None:
         """Resolve scene count and per-scene durations.
 
@@ -429,6 +433,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 1: Story
     # ==================================================================
 
+    @timed_step
     async def _step_story(self, image_context: str) -> str:
         """Develop a story from the user idea, requirements, style, and image context.
 
@@ -476,6 +481,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 2: Character Reference
     # ==================================================================
 
+    @timed_step
     async def _step_character_reference(self, story: str) -> str:
         """Generate or reuse a character reference image.
 
@@ -560,6 +566,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 3: Script
     # ==================================================================
 
+    @timed_step
     async def _step_script(self, story: str) -> list:
         """Write a scene-by-scene script from the story.
 
@@ -644,6 +651,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 3.5: End Frame Prompts (keyframes mode)
     # ==================================================================
 
+    @timed_step
     async def _step_end_frame_prompts(self, story: str, scenes: list) -> list:
         """Generate end-frame prompt for each scene (keyframes mode only).
 
@@ -767,6 +775,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 3.6: Pre-generate End Frames (keyframes mode)
     # ==================================================================
 
+    @timed_step
     async def _step_pregenerate_end_frames(
         self, scenes: list, end_frame_prompts: list, character_ref_path: str
     ) -> dict:
@@ -1000,6 +1009,7 @@ class CreativeVideoPipeline(BasePipeline):
                 logger.debug(f"[Pipeline] Failed to load cached task.json for scene: {e}")
         return None
 
+    @timed_step
     async def _step_generate_videos(
         self,
         scenes: list,
@@ -1111,6 +1121,7 @@ class CreativeVideoPipeline(BasePipeline):
             return float(self._state.scenes[scene_idx].duration)
         return float(self._state.video_duration)
 
+    @timed_step
     async def _generate_independent_scenes(
         self, scenes: list, character_ref_path: str, vw: int, vh: int
     ) -> list:
@@ -1217,6 +1228,7 @@ class CreativeVideoPipeline(BasePipeline):
 
         return all_video_paths
 
+    @timed_step
     async def _generate_chained_scenes(
         self, scenes: list, reference_image: str, vw: int, vh: int
     ) -> list:
@@ -1365,6 +1377,7 @@ class CreativeVideoPipeline(BasePipeline):
 
         return all_video_paths
 
+    @timed_step
     async def _generate_keyframe_scenes(
         self,
         scenes: list,
@@ -1649,6 +1662,7 @@ class CreativeVideoPipeline(BasePipeline):
         self._state.narrations = narrations
         self.task_manager.update_state(narrations=narrations)
 
+    @timed_step
     async def _step_generate_narrations(self, story: str, scenes: list) -> None:
         """Use LLM to generate a single narration text for the entire video.
 
@@ -1710,6 +1724,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 5: Audio Generation (v3.0 split from subtitle)
     # ==================================================================
 
+    @timed_step
     async def _step_audio(self) -> Optional[object]:
         """Generate TTS narration audio (or silent fallback) for the entire video.
 
@@ -1790,6 +1805,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 6: Subtitle Generation (v3.0 split from audio)
     # ==================================================================
 
+    @timed_step
     async def _step_subtitle(self, sub_maker: Optional[object] = None) -> None:
         """Generate SRT subtitles for the entire video.
 
@@ -1891,6 +1907,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Step 6: Concatenation (MODIFIED in v2.0)
     # ==================================================================
 
+    @timed_step
     async def _step_concatenate(self, all_video_paths: list) -> str:
         """Concatenate scene videos into the final output.
 
