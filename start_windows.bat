@@ -3,7 +3,7 @@ setlocal EnableExtensions
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 chcp 65001 >nul
-cd /d "C:\AI\free-video-generator"
+cd /d "%~dp0"
 
 title Free Video Generator - Local Server
 
@@ -33,7 +33,7 @@ echo.
 REM --- Python virtual environment ---
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] Python virtual environment not found:
-    echo C:\AI\free-video-generator\.venv
+    echo %~dp0.venv
     echo.
     echo Create it with:
     echo   py -3 -m venv .venv
