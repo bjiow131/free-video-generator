@@ -617,21 +617,23 @@ async function generateVideo(){
   setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');
   try{
     let refs=[];
-    try{
-      console.info('[Video] Preparing references…');
-      $('#videoStatus').textContent='Подготовка референсов…';
-      refs=await Promise.race([
-        getSelectedVideoReferences(),
-        new Promise((_,reject)=>setTimeout(()=>reject(new Error('Подготовка референсов заняла слишком много времени')),20000))
-      ]);
-      console.info('[Video] References ready',{referenceCount:refs.length}); 
-    }catch(e){
-      const msg=e?.message||'Не удалось получить референсы';
-      console.error('[Video] Reference preparation failed',e);
-      $('#videoStatus').textContent='Ошибка референсов: '+msg;
-      toast(msg);
-      setGenerateBusy('video',false);
-      return;
+    if(mode==='i2v'||mode==='ti2vid'){
+      try{
+        console.info('[Video] Preparing references…');
+        $('#videoStatus').textContent='Подготовка референсов…';
+        refs=await Promise.race([
+          getSelectedVideoReferences(),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error('Подготовка референсов заняла слишком много времени')),20000))
+        ]);
+        console.info('[Video] References ready',{referenceCount:refs.length});
+      }catch(e){
+        const msg=e?.message||'Не удалось получить референсы';
+        console.error('[Video] Reference preparation failed',e);
+        $('#videoStatus').textContent='Ошибка референсов: '+msg;
+        toast(msg);
+        setGenerateBusy('video',false);
+        return;
+      }
     }
     if((mode==='i2v'||mode==='ti2vid')&&!refs.length){
       const msg='Для этого режима выбери исходное изображение или персонажа';
