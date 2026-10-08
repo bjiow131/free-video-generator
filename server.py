@@ -844,6 +844,14 @@ async def generate_image(
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} failed: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
+    finally:
+        # Reference images for the one-shot image endpoint are temporary inputs;
+        # the generated task does not retain them, so remove them after the API call.
+        for ref_path in ref_paths:
+            try:
+                os.remove(ref_path)
+            except OSError:
+                logger.warning("[Image] Failed to remove temporary reference image: %s", ref_path)
 
     img_filename = "final_image.png"
     img_path = os.path.join(tm.task_dir, img_filename)
