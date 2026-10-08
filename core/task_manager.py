@@ -39,11 +39,19 @@ class TaskManager:
     def __init__(self, task_id: str, dir_name: str = None):
         self.task_id = task_id
         self.dir_name = dir_name or task_id
+        if (
+            not self.dir_name
+            or os.path.basename(self.dir_name) != self.dir_name
+            or self.dir_name in {".", ".."}
+            or "/" in self.dir_name
+            or chr(92) in self.dir_name
+        ):
+            raise ValueError("Invalid task directory name")
 
-        self.task_dir = os.path.join(
-            get_working_dir(),
-            self.dir_name
-        )
+        working_dir = os.path.realpath(get_working_dir())
+        self.task_dir = os.path.realpath(os.path.join(working_dir, self.dir_name))
+        if os.path.commonpath([working_dir, self.task_dir]) != working_dir:
+            raise ValueError("Task directory escapes working directory")
 
         self._task_file = os.path.join(
             self.task_dir,

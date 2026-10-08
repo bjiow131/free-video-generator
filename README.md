@@ -1,26 +1,26 @@
-# Free Video Generator — Completely Free AI Video Generator
+# Agnes Video Generator — Free AI Video Generator
 
 
-> **Completely free AI video generator** — Built on Agnes AI's free models, no subscription, no high-end GPU, no usage limits. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
+> **Completely free AI video generator** — Built on Agnes AI APIs; the client has no subscription layer and requires no local GPU. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
 
 > "The solution is not to suppress AI, but to make it a more equitable capability, so that everyone knows how to create more with AI. This is a very important vision for our company — to make world-class AI belong to everyone. What we can do may be insignificant, but this vision is very long-term and enduring."
 >
 > — Bruce Yang, Founder of Agnes AI
 
 
-## Why Free Video Generator?
+## Why Agnes Video Generator?
 
 Making AI videos today has an absurdly high barrier. Overseas services like Runway and Pika charge monthly subscriptions of tens of dollars. Domestic platforms like Jimeng and Keling charge by the second once their free quotas run out. Want to run open-source models locally? A GPU capable of video generation easily costs over ten thousand RMB. For most people who want to try AI video creation, the door is essentially closed.
 
 We believe what Bruce Yang said — AI should be a more equitable capability. World-class AI should belong to everyone, not just those who can afford the bill.
 
-To be honest, Agnes's video model isn't perfect yet. The generated frames are sometimes unstable, and complex actions occasionally deform. But it is **completely free with no usage limits**, and it iterates fast. We choose to grow with it rather than wait for a "perfect" commercial solution. If you share this mindset, then this project is for you — all you need is a free [Agnes AI](https://platform.agnes-ai.com) API key and an ordinary computer that can run Python to start creating AI videos at zero cost.
+To be honest, Agnes's video model isn't perfect yet. The generated frames are sometimes unstable, and complex actions occasionally deform. The client has no subscription layer; actual Agnes AI quotas, rate limits, and availability are controlled by the provider. We choose to grow with it rather than wait for a "perfect" commercial solution. If you share this mindset, then this project is for you — all you need is a free [Agnes AI](https://platform.agnes-ai.com) API key and an ordinary computer that can run Python to start creating AI videos at zero cost.
 
-### Comparison: Free Video Generator vs. Commercial AI Video Tools
+### Comparison: Agnes Video Generator vs. Commercial AI Video Tools
 
-| Feature | Free Video Generator | Runway Gen-3 | Pika 2.0 | OpenAI Sora | Kling 1.6 |
+| Feature | Agnes Video Generator | Runway Gen-3 | Pika 2.0 | OpenAI Sora | Kling 1.6 |
 |---------|:---:|:---:|:---:|:---:|:---:|
-| **Price** | Free | $15–$95/month | $10–$28/month | $20+/month (limited) | Free quota, then pay-per-second |
+| **Price** | No client subscription | $15–$95/month | $10–$28/month | $20+/month (limited) | Free quota, then pay-per-second |
 | **Open Source** | Yes (MIT) | No | No | No | No |
 | **Self-Hosted** | Yes | No | No | No | No |
 | **Max Video Length** | 20s per clip, unlimited scenes | 10s per clip | 10s per clip | 20s per clip | 10s per clip |
@@ -32,8 +32,8 @@ To be honest, Agnes's video model isn't perfect yet. The generated frames are so
 | **Image-to-Video** | Yes | Yes | Yes | Image inputs | Yes |
 | **Keyframes Animation** | Yes | Yes | Yes | Not available | Not available |
 | **Local GPU Required** | No (cloud API) | No (cloud) | No (cloud) | No (cloud) | No (cloud) |
-| **Watermark** | No watermark | Built-in watermark | Built-in watermark | C2PA metadata | Built-in watermark |
-| **Usage Limit** | No subscription; local client guard is 20 requests/min | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
+| **Watermark** | Configurable; disabled by default in local configuration | Built-in watermark | Built-in watermark | C2PA metadata | Built-in watermark |
+| **Usage Limit** | No subscription; local concurrency guard uses `AGNES_RATE_LIMIT` (20/min default, 50% safety budget) | Billed by compute | Billed by generation | Billed by generation | Billed by generation |
 
 ## Core Features
 
@@ -48,16 +48,16 @@ To be honest, Agnes's video model isn't perfect yet. The generated frames are so
 
 ### Completely Free AI Model Chain
 
-All core AI capabilities are **completely free** — no trial period, no watermarks, no token limits:
+All core AI capabilities use the configured Agnes AI account. Watermarking is configurable and disabled by default in the local configuration:
 
 | Capability | Model | Cost |
 |-----------|-------|------|
-| Text / Script Generation | `agnes-3.0-flash` | Free |
-| Image Generation | `agnes-image-2.5-flash` | Free |
-| Video Generation | `agnes-video-2.5-flash` | Free |
+| Text / Script Generation | `agnes-3.0-flash` | Configured Agnes AI access |
+| Image Generation | `agnes-image-2.5-flash` | Configured Agnes AI access |
+| Video Generation | `agnes-video-2.5-flash` / `agnes-video-2.5` | Configured Agnes AI access |
 | Text-to-Speech Narration | Edge TTS (Microsoft) | Free, no extra API key needed |
 
-All AI API calls share a global rate limiter (20 requests/min by default), with automatic retries and backoff. Long-running video jobs are persisted locally so they can be resumed after a restart.
+All AI API calls share a global rate limiter. `AGNES_RATE_LIMIT` defaults to 20 requests/minute; task concurrency reserves 50% of that configured limit for safety (10 weighted slots by default). The exact effective throughput also depends on task type and the global API limiter. Long-running video jobs are persisted locally so they can be resumed after a restart.
 
 ### AI Narration & Smart Subtitles
 
@@ -98,7 +98,7 @@ Designed specifically for AI coding assistants (Claude, Cursor, etc.), with a co
 
 ### Multilingual Web UI
 
-One-click launch, operate entirely in the browser. Interface available in **7 languages**: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, Bahasa Indonesia.
+One-click launch, operate entirely in the browser. Interface available in **Russian UI**: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, Bahasa Indonesia.
 
 ## Quick Start
 
@@ -119,7 +119,7 @@ cd free-video-generator
 start_windows.bat
 ```
 
-`start_windows.bat` creates the local Python environment, checks FFmpeg, installs dependencies, starts FastAPI, and opens `http://127.0.0.1:8765` in your browser. No account, deployment, or external server is required.
+`start_windows.bat` requires an existing `.venv`, a Windows `AGNES_API_KEY`, and FFmpeg in PATH. It starts FastAPI and opens `http://127.0.0.1:8765`. Create the environment first as shown by the script.
 
 For Linux/macOS, use `./start.sh`.
 
@@ -142,7 +142,7 @@ $env:AGNES_API_KEY = "your-api-key"
 export AGNES_API_KEY="your-api-key"
 ```
 
-Or save it through the Web UI. The local endpoint accepts multipart form data:
+On Windows, the launcher requires `AGNES_API_KEY` in the environment. For other local launches, the key can also be saved through the Web UI. The local endpoint accepts multipart form data:
 
 ```bash
 curl -X POST http://localhost:8765/api/config -F "api_key=your-api-key"
@@ -276,16 +276,16 @@ free-video-generator/
 ├── requirements.txt                  # Python dependencies
 ├── server.py                         # FastAPI server (REST + WebSocket)
 ├── static/
-│   └── index.html                    # Frontend SPA — 5 task tabs, 7 languages (Tailwind CSS)
+│   └── ai-studio.html                # Frontend SPA served at `/`
 ├── core/
 │   ├── config.py                     # API key, font resolution, default configs
 │   ├── screenwriter.py               # Screenwriter Agent (LLM-powered story/script/narration)
 │   ├── task_manager.py               # Task state persistence & checkpoint resume
 │   ├── api/
-│   │   ├── agnes_chat.py             # LLM Chat API (agnes-2.0-flash)
-│   │   ├── agnes_image.py            # Image generation API (agnes-image-2.1-flash / 2.0-flash)
-│   │   ├── agnes_video.py            # Video generation API (agnes-video-v2.0)
-│   │   └── rate_limiter.py           # Global token bucket rate limiter (16 requests/min)
+│   │   ├── agnes_chat.py             # LLM Chat API (agnes-3.0-flash)
+│   │   ├── agnes_image.py            # Image generation API (agnes-image-2.5-flash)
+│   │   ├── agnes_video.py             # Video generation API (agnes-video-2.5-flash / 2.5)
+│   │   └── rate_limiter.py            # Global token bucket limiter controlled by AGNES_RATE_LIMIT
 │   ├── audio/
 │   │   ├── tts.py                    # Edge TTS engine + silent fallback engine
 │   │   └── subtitle.py               # SRT generation (fine-grained word-level) + overlay
@@ -319,9 +319,9 @@ free-video-generator/
 |-------|--------|-------|
 | Backend | Python FastAPI | Async + WebSocket |
 | Frontend | HTML/CSS/JS + Tailwind CSS CDN | Zero build steps, single-file SPA |
-| LLM | Agnes Chat (`agnes-2.0-flash`) | Free — story, script, narration generation |
-| Image AI | `agnes-image-2.1-flash` (t2i) / `agnes-image-2.5-flash` (i2i) | Free — reference images, end frames, standalone image generation |
-| Video AI | `agnes-video-v2.0` | Free — text-to-video, image-to-video, keyframes |
+| LLM | Agnes Chat (`agnes-3.0-flash`) | Story, script and narration generation |
+| Image AI | `agnes-image-2.5-flash` | Reference images, end frames and standalone image generation |
+| Video AI | `agnes-video-2.5-flash` / `agnes-video-2.5` | Text-to-video, image-to-video and keyframes |
 | TTS | Edge TTS (Microsoft) | Free — 4 Chinese voices, no extra API key needed |
 | Subtitles | moviepy + srt | Fine-grained word-level SRT, multi-line wrapping |
 | Video Processing | moviepy + ffmpeg | Concatenation, subtitle overlay, audio mixing |
@@ -339,12 +339,17 @@ free-video-generator/
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Serve Web UI |
-| GET | `/api/config` | Get API key (masked) |
+| GET | `/health` | Service and FFmpeg health |
+| GET | `/api/config` | Configuration status, workspaces and watermark settings |
 | POST | `/api/config` | Save API key |
-| DELETE | `/api/config` | Delete API key |
+| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |
+| POST | `/api/workspaces/pick-directory` | Pick a local directory |
+| POST | `/api/config/watermark` | Configure optional watermark |
+| DELETE | `/api/config` | Delete configured API key |
 | GET | `/api/voices` | List available TTS voices |
+| POST | `/api/ideas/generate` | Generate creative ideas |
 | POST | `/api/image/generate` | Image generation |
-| GET | `/api/image/{task_id}` | Query image task status |
+| GET | `/api/image/{task_id}` | Serve generated image |
 | POST | `/api/tasks/simple` | Create simple video task |
 | POST | `/api/tasks/creative` | Create creative video task |
 | POST | `/api/tasks/manuscript` | Create manuscript video task |
@@ -354,8 +359,14 @@ free-video-generator/
 | GET | `/api/tasks/{id}` | Get task details |
 | POST | `/api/tasks/{id}/resume` | Resume an interrupted task |
 | POST | `/api/tasks/{id}/stop` | Stop a running task |
-| GET | `/api/video/{id}` | Download/stream final video |
+| GET | `/api/video/{id}` | Stream final video |
+| GET | `/api/image/{id}/download` | Download final image |
+| GET | `/api/video/{id}/download` | Download final video |
 | WS | `/ws/{id}` | WebSocket real-time progress |
+| POST | `/api/workspaces/pick-directory` | Pick a local directory |
+| GET | `/api/concurrency` | Concurrency and rate status |
+| POST | `/api/cleanup-regression` | Clean regression artifacts |
+| GET/POST | `/api/comfyui/status`, `/api/comfyui/generate`, `/api/comfyui/preview` | Optional ComfyUI integration |
 
 ## Important Notes
 
@@ -384,7 +395,7 @@ All important operations are logged to the server console:
 
 ### Output Directory
 
-All AI video task artifacts are stored under `.working_dir/{timestamp}_{task_id}/`:
+All AI task artifacts are stored under `.working_dir/{timestamp}_{task_id}/`. This filesystem state is persistent only when the directory itself is persistent (for example, a local disk or Docker volume):
 
 ```
 .working_dir/{timestamp}_{task_id}/
@@ -411,15 +422,15 @@ This project is built upon the following open-source projects:
 - [ViMax](https://github.com/HKUDS/ViMax) — AI video generation framework by HKU Data Science Lab
 - [vimax-agnes](https://github.com/easyeye163/vimax-agnes) — Agnes AI adaptation based on ViMax
 
-Special thanks to [Agnes AI](https://platform.agnes-ai.com) for providing **completely free**, high-quality AI model APIs (text, image, and video generation) — this project runs at absolute zero cost thanks to their generosity.
+Special thanks to [Agnes AI](https://platform.agnes-ai.com) for providing access to its AI model APIs (text, image, and video generation) — this project runs at absolute zero cost thanks to their generosity.
 
 ## Feedback & Contributing
 
-Bug reports and feature suggestions are welcome via [GitHub Issues](../../issues).
+Bug reports and feature suggestions are welcome via [GitHub Issues](https://github.com/bjiow131/free-video-generator/issues).
 
 ## Support the Developer
 
-Free Video Generator is open-source software. It has no built-in paid plans or subscription system.
+Agnes Video Generator is open-source software. It has no built-in paid plans or subscription system.
 
 
 
@@ -431,9 +442,9 @@ MIT
 
 ## FAQ
 
-### Is Free Video Generator really free? Are there any hidden costs?
+### Is Agnes Video Generator really free? Are there any hidden costs?
 
-Yes, it is **completely free**. The application does not charge for its own software. Agnes AI availability, quotas, and pricing are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
+The application itself does not charge for software usage. Agnes AI availability, quotas, pricing, and any provider-side limits are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
 
 ### Do I need a GPU to run this AI video generator?
 
@@ -441,7 +452,7 @@ No. All AI compute runs in the cloud via Agnes AI's free API. You just need a re
 
 ### How is this different from Runway, Pika, or Sora?
 
-Unlike commercial AI video tools that charge $10-$95/month, Free Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the comparison table above for general positioning; third-party prices and limits can change.
+Unlike commercial AI video tools that charge $10-$95/month, Agnes Video Generator is completely free and open-source (MIT). It offers built-in multi-scene pipelines, AI narration, auto subtitles, and digital anchor — features that require third-party tools or manual editing elsewhere. See the comparison table above for general positioning; third-party prices and limits can change.
 
 ### What video generation modes are supported?
 
@@ -453,14 +464,30 @@ Yes. You can upload reference images for character or scene consistency across s
 
 ### What languages does the UI support?
 
-The Web UI supports 7 languages: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Subtitles are generated in the source text language with CJK font support built-in.
+The Web UI includes seven UI languages: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Generated subtitles remain source-text driven and use the project's bundled CJK font support.
 
 ### Can I host this on my own server?
 
-Absolutely. The project is designed for self-hosting. Just clone the repo, run `./start.sh`, and the server starts on `http://localhost:8765`. No external dependencies, no cloud lock-in. See the [Quick Start](#quick-start) section above.
+Absolutely. The project is designed for self-hosting. Just clone the repo, run `./start.sh`, and the server starts on `http://localhost:8765`. No local GPU is required; Agnes AI is the external model provider. See the [Quick Start](#quick-start) section above.
 
 ### How do I get help or report issues?
 
-Check the [GitHub Issues](https://github.com/uglylee/free-video-generator/issues) page for existing reports or open a new one. The project also includes a comprehensive `AGENTS.md` for AI-agent-assisted debugging. For feature requests, bug reports, or questions, the Issues page is the best place.
+Check the [GitHub Issues](https://github.com/bjiow131/free-video-generator/issues) page for existing reports or open a new one. The project also includes a comprehensive `AGENTS.md` for AI-agent-assisted debugging. For feature requests, bug reports, or questions, the Issues page is the best place.
 
 **Keywords**: free AI video generator, AI video generation tool, text to video AI, free AI video maker, AI video creator, open source video generator, text-to-video, image-to-video, keyframes video, AI narration, auto subtitles, multi-scene video, zero cost AI video, no subscription AI video tool, digital anchor, self-hosted AI video generator, open source alternative to Runway
+
+## Design refresh — QA
+
+The `design/redesign` branch contains the final UI polish pass: responsive shell, creation workspace, production storyboard, task grid/player, settings/onboarding, focus states, reduced-motion support, lazy media loading and inline validation.
+
+### Screenshots
+
+Reference screenshots for the final UI are intended to live under `docs/design/screenshots/`.
+
+The redesign was structurally verified on the branch, including responsive breakpoints, seven-language coverage, theme tokens, accessibility hooks, lazy media attributes, and JavaScript syntax. A live browser screenshot set is intentionally not fabricated: the repository-connected verification environment cannot reach the Render deployment or provide a browser session against the deployed backend. Capture real application screenshots after deployment for:
+- dark/light at 1440px;
+- dark/light at 768px;
+- dark/light at 360px;
+- Simple, Creative, Tasks, and Settings states.
+
+The implementation is designed so these captures can be added without changing the application code.

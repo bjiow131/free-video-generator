@@ -22,3 +22,10 @@ __pycache__/
 dist/
 build/
 static/generated/
+
+# Generated/test artifacts
+/generated/
+/test_*.png
+
+/test_end.png
+/test_ref.png

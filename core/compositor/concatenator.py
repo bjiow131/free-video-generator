@@ -391,16 +391,20 @@ class VideoConcatenator:
         # ── Step 5: moviepy 合成视频+音频+字幕 ──
         video_clip = None
         audio_clip_obj = None
+        source_video_clip = None
+        source_audio_clip = None
         subtitle_clips = []
         final_clip = None
         try:
-            video_clip = VideoFileClip(video_input)
-            audio_clip_obj = AudioFileClip(audio_input)
+            source_video_clip = VideoFileClip(video_input)
+            source_audio_clip = AudioFileClip(audio_input)
+            video_clip = source_video_clip
+            audio_clip_obj = source_audio_clip
 
             # 掐头去尾确保完全对齐
-            target_dur = min(video_clip.duration, audio_clip_obj.duration)
-            video_clip = video_clip.subclipped(0, target_dur)
-            audio_clip_obj = audio_clip_obj.subclipped(0, target_dur)
+            target_dur = min(source_video_clip.duration, source_audio_clip.duration)
+            video_clip = source_video_clip.subclipped(0, target_dur)
+            audio_clip_obj = source_audio_clip.subclipped(0, target_dur)
 
             video_with_audio = video_clip.with_audio(audio_clip_obj)
 
@@ -484,6 +488,12 @@ class VideoConcatenator:
                     audio_clip_obj.close()
                 except Exception:
                     pass
+            for source_clip in (source_video_clip, source_audio_clip):
+                if source_clip is not None and source_clip is not video_clip and source_clip is not audio_clip_obj:
+                    try:
+                        source_clip.close()
+                    except Exception:
+                        pass
             for tmp in tmp_files:
                 if os.path.exists(tmp):
                     try:
@@ -555,6 +565,11 @@ class VideoConcatenator:
         # FFmpeg concat files are written as UTF-8 with forward-slash paths,
         # which keeps Windows drive paths portable and avoids backslash escaping issues.
         concat_path = clip_path.replace(chr(92), "/")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in concat_path):
+            raise ValueError("Anchor clip path contains unsupported control characters")
+        # FFmpeg concat scripts have their own quoting syntax; escape backslashes
+        # and apostrophes so a filename cannot terminate the file directive.
+        concat_path = concat_path.replace("\\", "\\\\").replace("'", "'\\''")
         with open(concat_file, "w", encoding="utf-8", newline="\n") as f:
             for _ in range(n):
                 f.write(f"file '{concat_path}'\n")
@@ -562,31 +577,41 @@ class VideoConcatenator:
 
         # Step 4: Concatenate with xfade cross-fade transitions
         try:
-            subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", concat_file,
-                 "-c", "copy",
-                 "-t", str(needed),
-                 looped_path],
-                stdin=subprocess.DEVNULL,
-                check=True, capture_output=True, timeout=300,
-            )
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"[Compositor] Simple concat failed: {e.stderr[:200]}, trying xfade")
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                     "-i", concat_file,
+                     "-c", "copy",
+                     "-t", str(needed),
+                     looped_path],
+                    stdin=subprocess.DEVNULL,
+                    check=True, capture_output=True, timeout=300,
+                )
+            except subprocess.CalledProcessError as e:
+                stderr = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else str(e.stderr or "")
+                logger.warning(f"[Compositor] Simple concat failed: {stderr[:200]}, trying fallback")
 
-            # Portable fallback: re-encode a stream-looped input instead of relying
-            # on a fragile filter graph or shell-specific path syntax.
-            subprocess.run(
-                ["ffmpeg", "-y",
-                 "-stream_loop", str(n - 1), "-i", clip_path,
-                 "-t", str(needed),
-                 "-c:v", "libx264",
-                 "-preset", "fast",
-                 "-pix_fmt", "yuv420p",
-                 looped_path],
-                stdin=subprocess.DEVNULL,
-                check=True, capture_output=True, timeout=300,
-            )
+                # Portable fallback: re-encode a stream-looped input instead of relying
+                # on a fragile filter graph or shell-specific path syntax.
+                subprocess.run(
+                    ["ffmpeg", "-y",
+                     "-stream_loop", str(n - 1), "-i", clip_path,
+                     "-t", str(needed),
+                     "-c:v", "libx264",
+                     "-preset", "fast",
+                     "-pix_fmt", "yuv420p",
+                     looped_path],
+                    stdin=subprocess.DEVNULL,
+                    check=True, capture_output=True, timeout=300,
+                )
+        except Exception:
+            for tmp in (looped_path, concat_file):
+                try:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                except OSError:
+                    logger.warning("[Compositor] Failed to clean anchor temp file %s", tmp, exc_info=True)
+            raise
 
         # Step 5: Overlay audio and subtitles
         concat_video_clip = None

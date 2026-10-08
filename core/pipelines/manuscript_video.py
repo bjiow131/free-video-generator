@@ -489,7 +489,7 @@ class ManuscriptVideoPipeline(BasePipeline):
         task_file = os.path.join(para_dir, "task.json")
         if os.path.exists(task_file):
             try:
-                with open(task_file, "r") as f:
+                with open(task_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data.get("video_id") or data.get("task_id")
             except Exception as e:
@@ -615,7 +615,7 @@ class ManuscriptVideoPipeline(BasePipeline):
             for retry in range(_WAIT_RETRIES):
                 try:
                     video_output = await self.video_api.wait_for_video(video_id)
-                    video_output.save(video_path)
+                    await asyncio.to_thread(video_output.save, video_path)
                     break
                 except Exception as e:
                     if retry < _WAIT_RETRIES - 1:

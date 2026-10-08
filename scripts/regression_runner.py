@@ -45,7 +45,7 @@ import requests
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 回归测试专用工作目录：固定独立空间，与用户日常任务隔离
-REGRESSION_WORKING_DIR = os.path.join(PROJECT_ROOT, ".regression_workspace")
+REGRESSION_WORKING_DIR = os.path.abspath(os.environ.get("AGNES_REGRESSION_WORKING_DIR", os.path.join(PROJECT_ROOT, ".regression_workspace")))
 # 环境变量名，服务端 get_working_dir() 据此切换到回归专用空间
 REGRESSION_WORKING_DIR_ENV = "AGNES_REGRESSION_WORKING_DIR"
 WORKING_DIR = REGRESSION_WORKING_DIR
@@ -53,7 +53,7 @@ UPLOAD_DIR = os.path.join(WORKING_DIR, "uploads")
 REPORT_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_report.json")
 REPORT_MD_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_report.md")
 ISSUES_MD_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_issues.md")
-SERVER_URL = "http://localhost:8765"
+SERVER_URL = os.environ.get("REGRESSION_SERVER_URL", "http://localhost:8765").rstrip("/")
 SERVER_LOG = os.path.join(PROJECT_ROOT, ".regression_server.log")
 MANIFEST_PATH = os.path.join(WORKING_DIR, ".regression_manifest.json")
 TEST_REF_IMAGE = os.path.join(PROJECT_ROOT, "test_ref.png")
@@ -280,7 +280,7 @@ class ReportManager:
 
     def _load_or_create(self) -> dict:
         if os.path.exists(self.path):
-            with open(self.path) as f:
+            with open(self.path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             done = data.get("summary", {}).get("completed", 0)
             failed = data.get("summary", {}).get("failed", 0)
@@ -374,7 +374,7 @@ class ReportManager:
         # 原子写：先写 .tmp 再 os.replace，避免崩溃/中断时损坏续传依据
         # （与 RegressionManifest.save 保持一致，见 fix_plan_v2.md B4.4）
         tmp = self.path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         os.replace(tmp, self.path)
 
@@ -568,7 +568,7 @@ class ReportManager:
 
         content = "\n".join(lines)
         os.makedirs(os.path.dirname(report_md_path), exist_ok=True)
-        with open(report_md_path, "w") as f:
+        with open(report_md_path, "w", encoding="utf-8") as f:
             f.write(content)
         logger.info(f"MD 报告: {report_md_path}")
 
@@ -673,7 +673,7 @@ class ReportManager:
 
         content = "\n".join(lines)
         os.makedirs(os.path.dirname(issues_md_path), exist_ok=True)
-        with open(issues_md_path, "w") as f:
+        with open(issues_md_path, "w", encoding="utf-8") as f:
             f.write(content)
         logger.info(f"问题清单: {issues_md_path}")
 
@@ -706,7 +706,7 @@ class RegressionManifest:
         }
         if os.path.exists(path):
             try:
-                with open(path, "r") as f:
+                with open(path, "r", encoding="utf-8") as f:
                     existing = json.load(f)
                 # Merge with existing manifest (for resume mode)
                 self.data["task_dirs"] = list(existing.get("task_dirs", []))
@@ -740,7 +740,7 @@ class RegressionManifest:
         self.data["updated_at"] = datetime.now(timezone.utc).isoformat()
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         tmp = self.path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
         os.replace(tmp, self.path)
 
@@ -755,7 +755,7 @@ def cleanup_regression_artifacts() -> dict:
         return {"ok": False, "error": "未找到回归测试产物清单，可能没有执行过回归测试"}
 
     try:
-        with open(MANIFEST_PATH, "r") as f:
+        with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
             manifest = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         return {"ok": False, "error": f"读取清单失败: {e}"}
@@ -908,7 +908,7 @@ async def ensure_server(auto_start: bool = False) -> bool:
     _server_process = subprocess.Popen(
         [python, "server.py"],
         cwd=PROJECT_ROOT,
-        stdout=open(SERVER_LOG, "w"),
+        stdout=open(SERVER_LOG, "w", encoding="utf-8"),
         stderr=subprocess.STDOUT,
         preexec_fn=os.setsid,
         env=env,
@@ -993,7 +993,7 @@ def _get_whisper_model():
 def _load_task_state(task_dir: str) -> dict:
     ts = os.path.join(task_dir, "task_state.json")
     if os.path.exists(ts):
-        with open(ts) as f:
+        with open(ts, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
 
@@ -1146,7 +1146,7 @@ def _validate_sync(dir_name: str, scenario: ScenarioConfig) -> dict:
     sd: dict = {}
     if os.path.exists(ts):
         try:
-            with open(ts) as f:
+            with open(ts, "r", encoding="utf-8") as f:
                 sd = json.load(f)
         except Exception:
             pass
@@ -1325,7 +1325,7 @@ def _validate_sync(dir_name: str, scenario: ScenarioConfig) -> dict:
     if os.path.exists(tj_root):
         _task_json_found = True
         try:
-            with open(tj_root) as f:
+            with open(tj_root, "r", encoding="utf-8") as f:
                 tjd = json.load(f)
             _has_video_id = bool(tjd.get("video_id") or tjd.get("id"))
         except Exception:
@@ -1350,7 +1350,7 @@ def _validate_sync(dir_name: str, scenario: ScenarioConfig) -> dict:
                         _task_json_found = True
                         if not _has_video_id:
                             try:
-                                with open(tj_sub) as f:
+                                with open(tj_sub, "r", encoding="utf-8") as f:
                                     tjd = json.load(f)
                                 _has_video_id = bool(tjd.get("video_id") or tjd.get("id"))
                             except Exception:
@@ -1407,7 +1407,7 @@ def _validate_sync(dir_name: str, scenario: ScenarioConfig) -> dict:
         fn10 = os.path.join(task_dir, "full_subtitle.srt")
         checks["R10_full_subtitle"] = os.path.exists(fn10)
         if os.path.exists(fn10):
-            with open(fn10) as f:
+            with open(fn10, "r", encoding="utf-8") as f:
                 srt_content = f.read()
             checks["R10_srt_entries"] = srt_content.count("\n\n") + 1 if "\n\n" in srt_content else 1
         else:

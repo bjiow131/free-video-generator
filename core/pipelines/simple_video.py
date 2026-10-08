@@ -96,15 +96,22 @@ class SimpleVideoPipeline(BasePipeline):
         """
         task_file = os.path.join(self.working_dir, "task.json")
         tmp_file = task_file + ".tmp"
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump({"video_id": video_id}, f, indent=2)
-        os.replace(tmp_file, task_file)
+        try:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump({"video_id": video_id}, f, indent=2)
+            os.replace(tmp_file, task_file)
+        except Exception:
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+            raise
 
     def _load_task(self) -> Optional[str]:
         task_file = os.path.join(self.working_dir, "task.json")
         if os.path.exists(task_file):
             try:
-                with open(task_file, "r") as f:
+                with open(task_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data.get("video_id") or data.get("task_id")
             except Exception as e:
@@ -134,7 +141,7 @@ class SimpleVideoPipeline(BasePipeline):
             self.task_manager.update_state(video_id=saved_video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {saved_video_id[:16]}...", 0.3)
             video_output = await self.video_api.wait_for_video(saved_video_id)
-            video_output.save(video_path)
+            await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
         # 也检查 state 中的 video_id（旧版 resume 兼容）
@@ -143,7 +150,7 @@ class SimpleVideoPipeline(BasePipeline):
             self._save_task(self._state.video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {self._state.video_id[:16]}...", 0.3)
             video_output = await self.video_api.wait_for_video(self._state.video_id)
-            video_output.save(video_path)
+            await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
         # 构建参考图列表
@@ -183,7 +190,7 @@ class SimpleVideoPipeline(BasePipeline):
         await self._emit("video_gen", "running", f"等待视频生成 {video_id[:16]}...", 0.3)
 
         video_output = await self.video_api.wait_for_video(video_id)
-        video_output.save(video_path)
+        await asyncio.to_thread(video_output.save, video_path)
 
         await self._emit("video_gen", "completed", "视频生成完成", 0.9)
         return video_path

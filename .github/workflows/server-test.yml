@@ -53,8 +53,6 @@ jobs:
           from pathlib import Path
           bat = Path("start_windows.bat").read_text(encoding="utf-8")
           required = [
-              'set "HOST=127.0.0.1"',
-              'set "PORT=8765"',
               '.venv\\Scripts\\python.exe',
               'server.py',
               'where ffmpeg',

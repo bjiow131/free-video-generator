@@ -87,9 +87,10 @@ async def _run_ffmpeg_async(cmd: List[str], timeout: float = 30.0) -> None:
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
         raise
     if proc.returncode != 0:
         err = stderr.decode(errors="replace")[:500] if stderr else ""
@@ -235,7 +236,7 @@ class CreativeVideoPipeline(BasePipeline):
         if self._state.step_image_analysis == StepStatus.COMPLETED:
             analysis_file = self._state.image_analysis_file
             if os.path.exists(analysis_file):
-                with open(analysis_file, "r") as f:
+                with open(analysis_file, "r", encoding="utf-8") as f:
                     content = f.read()
                 # 检测之前分析失败留下的错误文本，强制重新分析
                 if "(分析失败" in content:
@@ -275,7 +276,7 @@ class CreativeVideoPipeline(BasePipeline):
         )
 
         analysis_file = os.path.join(self.working_dir, "image_analysis.txt")
-        with open(analysis_file, "w") as f:
+        with open(analysis_file, "w", encoding="utf-8") as f:
             f.write(image_context)
 
         self._state.step_image_analysis = StepStatus.COMPLETED
@@ -441,7 +442,7 @@ class CreativeVideoPipeline(BasePipeline):
             story_path = self._state.story_file
             if os.path.exists(story_path):
                 logger.info("[Pipeline] Step story: SKIP (already completed, file exists)")
-                with open(story_path, "r") as f:
+                with open(story_path, "r", encoding="utf-8") as f:
                     return f.read()
             logger.warning("[Pipeline] Step story: marked completed but file missing, re-running")
 
@@ -459,7 +460,7 @@ class CreativeVideoPipeline(BasePipeline):
         )
 
         story_path = os.path.join(self.working_dir, "story.txt")
-        with open(story_path, "w") as f:
+        with open(story_path, "w", encoding="utf-8") as f:
             f.write(story)
 
         self._state.step_story = StepStatus.COMPLETED
@@ -521,7 +522,7 @@ class CreativeVideoPipeline(BasePipeline):
         if os.path.exists(ref_img_path) and os.path.exists(ref_prompt_path):
             self._state.step_character_ref = StepStatus.COMPLETED
             self._state.character_ref_file = ref_img_path
-            with open(ref_prompt_path, "r") as f:
+            with open(ref_prompt_path, "r", encoding="utf-8") as f:
                 self._state.character_ref_prompt = f.read()
             self.task_manager.update_state(
                 step_character_ref=StepStatus.COMPLETED,
@@ -534,7 +535,7 @@ class CreativeVideoPipeline(BasePipeline):
         char_prompt = await asyncio.to_thread(
             self.screenwriter.extract_character_description, story, self._state.style
         )
-        with open(ref_prompt_path, "w") as f:
+        with open(ref_prompt_path, "w", encoding="utf-8") as f:
             f.write(char_prompt)
 
         await self._emit("character_ref", "running", "正在生成角色参考图 (t2i)...", 0.12)
@@ -542,7 +543,7 @@ class CreativeVideoPipeline(BasePipeline):
             prompt=char_prompt,
             size=f"{self._state.video_width}x{self._state.video_height}",
         )
-        img_output.save(ref_img_path)
+        await asyncio.to_thread(img_output.save, ref_img_path)
 
         self._state.step_character_ref = StepStatus.COMPLETED
         self._state.character_ref_prompt = char_prompt
@@ -572,7 +573,7 @@ class CreativeVideoPipeline(BasePipeline):
             script_path = self._state.script_file
             if os.path.exists(script_path):
                 logger.info("[Pipeline] Step script: SKIP (already completed, file exists)")
-                with open(script_path, "r") as f:
+                with open(script_path, "r", encoding="utf-8") as f:
                     scenes = json.load(f)
                 if self._state.scene_count == len(scenes):
                     return scenes
@@ -591,7 +592,7 @@ class CreativeVideoPipeline(BasePipeline):
         )
 
         script_path = os.path.join(self.working_dir, "script.json")
-        with open(script_path, "w") as f:
+        with open(script_path, "w", encoding="utf-8") as f:
             json.dump(scenes, f, ensure_ascii=False, indent=2)
 
         self._state.scene_count = len(scenes)
@@ -661,7 +662,7 @@ class CreativeVideoPipeline(BasePipeline):
             prompts_path = self._state.end_frame_prompts_file
             if os.path.exists(prompts_path):
                 logger.info("[Pipeline] Step end_frame_prompts: SKIP (already completed, file exists)")
-                with open(prompts_path, "r") as f:
+                with open(prompts_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             logger.warning("[Pipeline] Step end_frame_prompts: marked completed but file missing, re-running")
 
@@ -679,7 +680,7 @@ class CreativeVideoPipeline(BasePipeline):
         )
 
         prompts_path = os.path.join(self.working_dir, "end_frame_prompts.json")
-        with open(prompts_path, "w") as f:
+        with open(prompts_path, "w", encoding="utf-8") as f:
             json.dump(end_frame_prompts, f, ensure_ascii=False, indent=2)
 
         self._state.step_end_frame_prompts = StepStatus.COMPLETED
@@ -897,7 +898,7 @@ class CreativeVideoPipeline(BasePipeline):
                             reference_image_paths=ref_images,
                             size=f"{vw}x{vh}",
                         )
-                        img_output.save(end_frame_path)
+                        await asyncio.to_thread(img_output.save, end_frame_path)
                         pregenerated[scene_idx] = end_frame_path
                         cached[str(scene_idx)] = end_frame_path
                         break
@@ -927,7 +928,7 @@ class CreativeVideoPipeline(BasePipeline):
                     prompt=end_frame_prompt,
                     size=f"{vw}x{vh}",
                 )
-                img_output.save(end_frame_path)
+                await asyncio.to_thread(img_output.save, end_frame_path)
                 pregenerated[scene_idx] = end_frame_path
                 cached[str(scene_idx)] = end_frame_path
 
@@ -992,7 +993,7 @@ class CreativeVideoPipeline(BasePipeline):
         task_file = os.path.join(scene_dir, "task.json")
         if os.path.exists(task_file):
             try:
-                with open(task_file, "r") as f:
+                with open(task_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data.get("video_id") or data.get("task_id")
             except Exception as e:
@@ -1193,7 +1194,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(info["video_id"])
-                video_output.save(info["video_path"])
+                await asyncio.to_thread(video_output.save, info["video_path"])
                 self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
                 await self._emit(
                     "video_gen", "running",
@@ -1316,7 +1317,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(existing_video_id)
-                video_output.save(video_path)
+                await asyncio.to_thread(video_output.save, video_path)
                 self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
             except Exception as e:
                 self._set_scene_video_status(scene_idx, StepStatus.FAILED)
@@ -1353,7 +1354,7 @@ class CreativeVideoPipeline(BasePipeline):
                     reference_image_paths=[last_frame_url],
                     size=f"{vw}x{vh}",
                 )
-                img_output.save(transition_path)
+                await asyncio.to_thread(img_output.save, transition_path)
                 current_image = transition_path
 
             await self._emit(
@@ -1482,7 +1483,7 @@ class CreativeVideoPipeline(BasePipeline):
                                 prompt=end_frame_prompt,
                                 size=f"{vw}x{vh}",
                             )
-                        img_output.save(end_frame_path)
+                        await asyncio.to_thread(img_output.save, end_frame_path)
 
             first_frame_url = await self.video_generator._resolve_image_ref(current_first_frame)
             end_frame_url = await self.video_generator._resolve_image_ref(end_frame_path)
@@ -1548,7 +1549,7 @@ class CreativeVideoPipeline(BasePipeline):
             )
             try:
                 video_output = await self.video_generator.wait_for_video(info["video_id"])
-                video_output.save(info["video_path"])
+                await asyncio.to_thread(video_output.save, info["video_path"])
                 await self._emit(
                     "video_gen", "running",
                     f"场景 {scene_idx+1}/{total}: 完成",

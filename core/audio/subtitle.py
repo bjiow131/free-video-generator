@@ -703,6 +703,9 @@ class SubtitleGenerator:
 
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
+        video_clip = None
+        subtitles_clip = None
+        final = None
         try:
             video_clip = VideoFileClip(video_path)
 
@@ -761,9 +764,6 @@ class SubtitleGenerator:
                 logger="bar",
             )
 
-            video_clip.close()
-            final.close()
-
             logger.info(f"[Subtitle] Overlay complete: {output_path}")
             return output_path
 
@@ -771,3 +771,10 @@ class SubtitleGenerator:
             # P10: 不再静默降级复制原视频，向上抛异常让调用方决定
             logger.error(f"[Subtitle] Overlay failed: {e}")
             raise
+        finally:
+            for clip in (final, subtitles_clip, video_clip):
+                if clip is not None:
+                    try:
+                        clip.close()
+                    except Exception:
+                        logger.warning("[Subtitle] Failed to close MoviePy clip", exc_info=True)

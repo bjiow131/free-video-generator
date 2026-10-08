@@ -90,9 +90,11 @@ class AgnesVideoAPI:
     def is_modern(self) -> bool:
         return self.model in MODERN_MODELS
 
-    def _path_to_b64(self, path: str) -> str:
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
+    async def _path_to_b64(self, path: str) -> str:
+        def _read() -> str:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        b64 = await asyncio.to_thread(_read)
         mime = mimetypes.guess_type(path)[0] or "image/png"
         return f"data:{mime};base64,{b64}"
 
@@ -101,7 +103,7 @@ class AgnesVideoAPI:
         if ref.startswith(("http://", "https://", "data:")):
             return ref
         if os.path.exists(ref):
-            return self._path_to_b64(ref)
+            return await self._path_to_b64(ref)
         return ref
 
     def _aspect_ratio(self, width: int, height: int) -> str:
@@ -214,6 +216,11 @@ class AgnesVideoAPI:
                         f"[AgnesVideo] Polling failed after "
                         f"{max_consecutive_failures} consecutive errors for {video_id[:16]}"
                     )
+            finally:
+                try:
+                    resp.close()
+                except (NameError, AttributeError):
+                    pass
 
             # Poll frequently enough for responsive UI updates while staying near the local 20 RPM guard.
             await asyncio.sleep(interval)
@@ -294,13 +301,18 @@ class AgnesVideoAPI:
                     f"Agnes video submit failed (HTTP {resp.status_code}): {error_text}"
                 )
 
-            except (requests.exceptions.Timeout, asyncio.TimeoutError) as exc:
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, asyncio.TimeoutError) as exc:
                 delay = min(self.retry_base_delay * (attempt + 1), 300.0)
                 logger.warning(
-                    "[AgnesVideo] Timeout on %s: %s; retry in %.0fs",
+                    "[AgnesVideo] Transient network error on %s: %s; retry in %.0fs",
                     mode_desc, exc, delay,
                 )
                 await asyncio.sleep(delay)
+            finally:
+                try:
+                    resp.close()
+                except (NameError, AttributeError):
+                    pass
 
         if last_error_code == "video_queue_full":
             raise RuntimeError(

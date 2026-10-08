@@ -46,9 +46,8 @@ class TestSubtitleStyle:
 
     def test_bg_color_transparent(self):
         from models.task import SubtitleStyle
-        # SubtitleStyle.bg_color 类型为 tuple，transparent 解析为 None 会触发 Pydantic 类型错误
-        with pytest.raises(Exception):
-            SubtitleStyle(bg_color="transparent")
+        style = SubtitleStyle(bg_color="transparent")
+        assert style.bg_color == (0, 0, 0, 0)
 
     def test_bg_color_tuple_passthrough(self):
         from models.task import SubtitleStyle
@@ -513,7 +512,7 @@ class TestTaskIdSafety:
 class TestLocalEntrypoints:
     def test_local_server_module_is_importable(self):
         from server import app
-        assert app.title == "Agnes Video Generator"
+        assert app.title == "AI Studio API"
 
 
 class TestSimpleVideoPersistence:
@@ -558,10 +557,10 @@ class TestLocalWindowsContracts:
     def test_start_windows_launcher_points_to_local_server(self):
         from pathlib import Path
         bat = Path("start_windows.bat").read_text(encoding="utf-8")
-        assert 'set "HOST=127.0.0.1"' in bat
-        assert 'set "PORT=8765"' in bat
+        assert 'curl -s http://127.0.0.1:8765/health' in bat
+        assert 'http://127.0.0.1:8765' in bat
         assert '.venv\\Scripts\\python.exe' in bat
-        assert '"%PYTHON%" server.py' in bat
+        assert 'start "" /b ".venv\\Scripts\\python.exe" server.py' in bat
 
     def test_tts_retry_temp_path_is_defined_before_attempt(self):
         import inspect

@@ -136,82 +136,98 @@ class AgnesImageAPI:
 
         logger.info(f"[AgnesImage] Generating ({'i2i' if use_i2i else 't2i'}): {prompt[:80]}...")
 
-        resp = None
         session = _make_session()
-        for attempt in range(max_retries):
-            try:
-                # 全局限速：在发起 HTTP 请求前获取令牌
-                await asyncio.to_thread(get_rate_limiter().acquire)
-                resp = await asyncio.to_thread(
-                    session.post,
-                    f"{BASE_URL}/images/generations",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=(30, 360),  # 读取超时 6 分钟：图片生成（尤其 i2i）服务端需要较长时间
+        try:
+            for attempt in range(max_retries):
+                try:
+                    # 全局限速：在发起 HTTP 请求前获取令牌
+                    await asyncio.to_thread(get_rate_limiter().acquire)
+                    resp = await asyncio.to_thread(
+                        session.post,
+                        f"{BASE_URL}/images/generations",
+                        headers=self.headers,
+                        json=payload,
+                        timeout=(30, 360),  # 读取超时 6 分钟：图片生成（尤其 i2i）服务端需要较长时间
+                    )
+    
+                    # 429 限流：退避重试
+                    if resp.status_code == 429 and attempt < max_retries - 1:
+                        delay = retry_base_delay * (attempt + 1)
+                        logger.warning(
+                            f"[AgnesImage] 429 rate limit, "
+                            f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
+                        )
+                        resp.close()
+                        await asyncio.sleep(delay)
+                        continue
+    
+                    # 5xx 服务端错误：退避重试
+                    if resp.status_code >= 500 and attempt < max_retries - 1:
+                        delay = retry_base_delay * (attempt + 1)
+                        logger.warning(
+                            f"[AgnesImage] {resp.status_code} server error, "
+                            f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
+                        )
+                        resp.close()
+                        await asyncio.sleep(delay)
+                        continue
+    
+                    if resp.status_code != 200:
+                        logger.error(f"[AgnesImage] Non-retryable error: HTTP {resp.status_code}, body: {resp.text[:500]}")
+                    resp.raise_for_status()
+                    break
+    
+                except (requests.ConnectionError, requests.Timeout) as e:
+                    if attempt < max_retries - 1:
+                        delay = retry_base_delay * (attempt + 1)
+                        logger.warning(
+                            f"[AgnesImage] {type(e).__name__}, "
+                            f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise
+            else:
+                # 重试耗尽
+                if resp is not None:
+                    logger.error(f"[AgnesImage] max retries exceeded, last response: {resp.status_code} {resp.text[:500]}")
+                    resp.raise_for_status()
+                logger.error(f"[AgnesImage] max retries ({max_retries}) exceeded with no response")
+                raise RuntimeError(
+                    f"[AgnesImage] max retries ({max_retries}) exceeded"
                 )
 
-                # 429 限流：退避重试
-                if resp.status_code == 429 and attempt < max_retries - 1:
-                    delay = retry_base_delay * (attempt + 1)
-                    logger.warning(
-                        f"[AgnesImage] 429 rate limit, "
-                        f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
-                    )
-                    await asyncio.sleep(delay)
-                    continue
+            try:
+                result = resp.json()
+            finally:
+                try:
+                    resp.close()
+                finally:
+                    session.close()
 
-                # 5xx 服务端错误：退避重试
-                if resp.status_code >= 500 and attempt < max_retries - 1:
-                    delay = retry_base_delay * (attempt + 1)
-                    logger.warning(
-                        f"[AgnesImage] {resp.status_code} server error, "
-                        f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
-                    )
-                    await asyncio.sleep(delay)
-                    continue
+            if "error" in result:
+                err = result["error"]
+                raise RuntimeError(f"Agnes image error: {err.get('message', err)}")
 
-                if resp.status_code != 200:
-                    logger.error(f"[AgnesImage] Non-retryable error: HTTP {resp.status_code}, body: {resp.text[:500]}")
-                resp.raise_for_status()
-                break
+            data_list = result.get("data", [])
+            if not data_list:
+                raise RuntimeError("Agnes image: no data returned")
 
-            except (requests.ConnectionError, requests.Timeout) as e:
-                if attempt < max_retries - 1:
-                    delay = retry_base_delay * (attempt + 1)
-                    logger.warning(
-                        f"[AgnesImage] {type(e).__name__}, "
-                        f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                raise
-        else:
-            # 重试耗尽
+            url = data_list[0].get("url", "")
+            if not url:
+                b64_data = data_list[0].get("b64_json", "")
+                if b64_data:
+                    logger.info("[AgnesImage] Got base64 response, saving...")
+                    return ImageOutput(fmt="b64", ext="png", data=b64_data)
+                raise RuntimeError("Agnes image: no URL or base64 in response")
+
+            logger.info(f"[AgnesImage] Done: {url[:80]}...")
+            return ImageOutput(fmt="url", ext="png", data=url)
+
+        finally:
             if resp is not None:
-                logger.error(f"[AgnesImage] max retries exceeded, last response: {resp.status_code} {resp.text[:500]}")
-                resp.raise_for_status()
-            logger.error(f"[AgnesImage] max retries ({max_retries}) exceeded with no response")
-            raise RuntimeError(
-                f"[AgnesImage] max retries ({max_retries}) exceeded"
-            )
-
-        result = resp.json()
-
-        if "error" in result:
-            err = result["error"]
-            raise RuntimeError(f"Agnes image error: {err.get('message', err)}")
-
-        data_list = result.get("data", [])
-        if not data_list:
-            raise RuntimeError("Agnes image: no data returned")
-
-        url = data_list[0].get("url", "")
-        if not url:
-            b64_data = data_list[0].get("b64_json", "")
-            if b64_data:
-                logger.info("[AgnesImage] Got base64 response, saving...")
-                return ImageOutput(fmt="b64", ext="png", data=b64_data)
-            raise RuntimeError("Agnes image: no URL or base64 in response")
-
-        logger.info(f"[AgnesImage] Done: {url[:80]}...")
-        return ImageOutput(fmt="url", ext="png", data=url)
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+            session.close()

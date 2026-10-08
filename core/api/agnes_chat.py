@@ -125,10 +125,19 @@ class AgnesChatAPI:
                         f"retry {attempt + 1}/{_MAX_RETRIES} in {delay:.0f}s. "
                         f"body={body_preview!r}"
                     )
+                    resp.close()
                     time.sleep(delay)
                     continue
-                resp.raise_for_status()
-                return resp.json()
+                try:
+                    resp.raise_for_status()
+                except Exception:
+                    resp.close()
+                    raise
+                try:
+                    result = resp.json()
+                finally:
+                    resp.close()
+                return result
             except (requests.ConnectionError, requests.Timeout) as e:
                 last_exc = e
                 if attempt < _MAX_RETRIES - 1:

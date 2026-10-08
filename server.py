@@ -12,7 +12,6 @@ resume 端点根据 task_type 自动选择对应的 Pipeline。
 """
 
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -126,24 +125,51 @@ _queued_tasks: Dict[str, int] = {}
 
 
 def _parse_bg_color(raw: str) -> tuple:
-    """将 bg_color 字符串解析为 moviepy 2.x 兼容的 RGBA 元组。"""
-    if isinstance(raw, tuple):
-        return raw
-    if isinstance(raw, str):
-        if raw.startswith("(") and raw.endswith(")"):
-            return tuple(int(x.strip()) for x in raw[1:-1].split(","))
-        if "@" in raw:
-            parts = raw.split("@", 1)
-            color_name = parts[0].strip().lower()
-            alpha_pct = float(parts[1])
-            rgb = {"black": (0, 0, 0), "white": (255, 255, 255),
-                   "red": (255, 0, 0), "blue": (0, 0, 255),
-                   "yellow": (255, 255, 0)}.get(color_name, (0, 0, 0))
-            return (*rgb, int(alpha_pct * 255))
-        if raw.lower() in ("none", "transparent", ""):
-            return None
-    return (0, 0, 0, 128)
-
+    """Parse a subtitle background color as RGB/RGBA or named@alpha."""
+    if raw is None:
+        return (0, 0, 0, 128)
+    if isinstance(raw, (tuple, list)):
+        if len(raw) not in (3, 4):
+            raise ValueError("Цвет должен содержать 3 или 4 компонента")
+        try:
+            values = tuple(int(value) for value in raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("RGB/RGBA компоненты должны быть целыми числами") from exc
+        if any(value < 0 or value > 255 for value in values):
+            raise ValueError("RGB/RGBA компоненты должны быть от 0 до 255")
+        return values
+    if not isinstance(raw, str):
+        raise ValueError("Цвет должен быть строкой")
+    raw = raw.strip()
+    if raw.lower() in ("none", "transparent", ""):
+        return None
+    if raw.startswith("(") and raw.endswith(")"):
+        try:
+            values = [int(x.strip()) for x in raw[1:-1].split(",")]
+        except ValueError as exc:
+            raise ValueError("Недопустимый цветовой формат") from exc
+        if len(values) not in (3, 4) or any(value < 0 or value > 255 for value in values):
+            raise ValueError("RGB/RGBA компоненты должны быть от 0 до 255")
+        return tuple(values)
+    if "@" in raw:
+        color_name, alpha_raw = raw.split("@", 1)
+        rgb = {"black": (0, 0, 0), "white": (255, 255, 255),
+               "red": (255, 0, 0), "blue": (0, 0, 255),
+               "yellow": (255, 255, 0)}.get(color_name.strip().lower())
+        if rgb is None:
+            raise ValueError("Неподдерживаемый цвет фона")
+        try:
+            alpha = float(alpha_raw.strip())
+        except ValueError as exc:
+            raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100") from exc
+        if 0 <= alpha <= 1:
+            alpha_value = int(alpha * 255)
+        elif 0 <= alpha <= 100:
+            alpha_value = int(alpha / 100 * 255)
+        else:
+            raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100")
+        return (*rgb, alpha_value)
+    raise ValueError("Недопустимый формат цвета фона")
 
 def _build_position(subtitle_position: str) -> tuple:
     """将 'bottom'/'top' 转为 moviepy 兼容的位置元组。"""
@@ -153,6 +179,7 @@ def _build_position(subtitle_position: str) -> tuple:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 # Suppress noisy WebSocket heartbeat / protocol logs from uvicorn and websockets
@@ -288,12 +315,17 @@ _LOCAL_ALLOWED_HOSTS = {
     f"127.0.0.1:{_LOCAL_SERVER_PORT}",
     f"localhost:{_LOCAL_SERVER_PORT}",
 }
+for _configured_host in (
+    os.environ.get("ALLOWED_HOST", ""),
+    os.environ.get("PUBLIC_HOST", ""),
+    os.environ.get("RENDER_EXTERNAL_HOSTNAME", ""),
+):
+    if _configured_host:
+        _LOCAL_ALLOWED_HOSTS.add(_configured_host.lower().removeprefix("https://").removeprefix("http://").rstrip("/"))
 
 def _origin_matches_host(origin: str, host: str) -> bool:
-    """Allow same-origin requests on localhost and deployed HTTPS hosts."""
+    """Require a supplied Origin to be same-origin with the validated Host."""
     if not origin:
-        return True
-    if origin in _LOCAL_CORS_ORIGINS:
         return True
     try:
         parsed = urlsplit(origin)
@@ -301,15 +333,18 @@ def _origin_matches_host(origin: str, host: str) -> bool:
     except ValueError:
         return False
 
+def _request_host_allowed(host: str) -> bool:
+    return host in _LOCAL_ALLOWED_HOSTS
+
 @app.middleware("http")
 async def local_origin_guard(request: Request, call_next):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         origin = request.headers.get("origin")
         host = request.headers.get("host", "").lower()
+        if not _request_host_allowed(host):
+            return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
         if not _origin_matches_host(origin, host):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый источник запроса"})
-        if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
-            return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
     return await call_next(request)
 
 def get_upload_dir() -> str:
@@ -328,25 +363,31 @@ async def _save_image_upload(upload: UploadFile, stem: str) -> str:
     if not upload or not upload.filename:
         return ""
     await upload.seek(0)
-    header = await upload.read(16)
+    data = bytearray()
+    while len(data) <= MAX_UPLOAD_SIZE:
+        chunk = await upload.read(min(1024 * 1024, MAX_UPLOAD_SIZE + 1 - len(data)))
+        if not chunk:
+            break
+        data.extend(chunk)
+    if len(data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
+    header = bytes(data[:16])
     extension = next((ext for ext, check in _ALLOWED_IMAGE_SIGNATURES.items() if check(header)), None)
     if extension is None:
         raise HTTPException(status_code=422, detail="Поддерживаются только изображения PNG, JPG/JPEG и WEBP")
-    await upload.seek(0)
+    allowed_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+    content_type = (upload.content_type or "").lower().split(";", 1)[0].strip()
+    if content_type and content_type != allowed_types[extension]:
+        raise HTTPException(status_code=422, detail="Тип изображения не соответствует содержимому файла")
     upload_dir = get_upload_dir()
     os.makedirs(upload_dir, exist_ok=True)
     path = os.path.join(upload_dir, f"{stem}{extension}")
-    total = 0
     try:
-        with open(path, "wb") as f:
-            while True:
-                chunk = await upload.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > MAX_UPLOAD_SIZE:
-                    raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
-                f.write(chunk)
+        await asyncio.to_thread(_write_upload_bytes, path, bytes(data))
     except Exception:
         try:
             os.remove(path)
@@ -354,6 +395,32 @@ async def _save_image_upload(upload: UploadFile, stem: str) -> str:
             pass
         raise
     return path
+
+def _write_upload_bytes(path: str, data: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def _cleanup_uploaded_references(state: BaseTaskState) -> None:
+    """Remove uploaded reference images after a task reaches a terminal success state."""
+    candidates = []
+    for attr in ("reference_image", "end_frame_image"):
+        value = getattr(state, attr, "")
+        if value:
+            candidates.append(value)
+    end_frames = getattr(state, "end_frame_images", None) or []
+    if isinstance(end_frames, (list, tuple)):
+        candidates.extend(end_frames)
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            logger.warning("[Upload] Failed to remove temporary reference image: %s", path)
+
 
 def _validate_workspace_path(raw_path: str) -> str:
     """Validate a workspace path before it is persisted or created."""
@@ -377,12 +444,20 @@ def _validate_workspace_path(raw_path: str) -> str:
             value = os.environ.get(env_name)
             if value:
                 protected.append(os.path.realpath(os.path.abspath(value)))
+    else:
+        protected.extend(os.path.realpath(p) for p in (
+            "/etc", "/usr", "/bin", "/sbin", "/var", "/proc", "/sys", "/dev", "/boot", "/lib", "/lib64", "/run"
+        ))
+    protected.append(os.path.realpath(_PROJECT_ROOT))
     for protected_dir in protected:
         try:
             if os.path.commonpath([candidate, protected_dir]) == protected_dir:
-                raise HTTPException(status_code=422, detail="Нельзя использовать системную папку Windows как рабочую")
+                if os.path.realpath(candidate) != os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".working_dir")):
+                    raise HTTPException(status_code=422, detail="Нельзя использовать системную или служебную папку как рабочую")
         except ValueError:
             continue
+    if os.path.realpath(candidate) == os.path.realpath(os.path.dirname(candidate)):
+        raise HTTPException(status_code=422, detail="Недопустимая рабочая папка")
     return candidate
 
 
@@ -393,13 +468,18 @@ def _validate_workspace_path(raw_path: str) -> str:
 
 @app.websocket("/ws/{task_id}")
 async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    try:
+        _validate_task_id(task_id)
+    except HTTPException:
+        await websocket.close(code=1008, reason="Недопустимый идентификатор задачи")
+        return
     origin = websocket.headers.get("origin")
     host = websocket.headers.get("host", "").lower()
+    if not _request_host_allowed(host):
+        await websocket.close(code=1008, reason="Недопустимый адрес сервера")
+        return
     if not _origin_matches_host(origin, host):
         await websocket.close(code=1008, reason="Недопустимый источник запроса")
-        return
-    if host not in _LOCAL_ALLOWED_HOSTS and not _origin_matches_host(origin, host):
-        await websocket.close(code=1008, reason="Недопустимый адрес сервера")
         return
     await websocket.accept()
     logger.info(f"[WS] Client connected for task {task_id}")
@@ -453,7 +533,7 @@ async def health():
             logger.warning("[Health] FFmpeg version check failed: %s", e, exc_info=True)
     return {
         "ok": True,
-        "service": "Agnes Video Generator",
+        "service": "AI Studio API",
         "ffmpeg": bool(ffmpeg_path),
         "ffmpeg_version": ffmpeg_version,
         "api_key_configured": bool(get_api_key()),
@@ -485,7 +565,7 @@ async def get_config(request: Request):
     active_ws = get_active_workspace()
     wm = get_watermark_config()
     data = {
-        "api_key": "****" + key[-4:] if key else "",
+        "configured": bool(key),
         "source": source,
         "can_clear": source == "config",
         "workspaces": get_workspaces(),
@@ -500,8 +580,11 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 async def save_config(api_key: str = Form(...), request: Request = None):
+    api_key = api_key.strip()
+    if not api_key:
+        raise HTTPException(status_code=422, detail="API Key не может быть пустым")
     set_api_key(api_key)
-    return {"ok": True}
+    return {"ok": True, "configured": True}
 
 
 @app.delete("/api/config")
@@ -549,8 +632,9 @@ async def generate_ideas(keyword: str = Form(...), request: Request = None):
     user_prompt = f"请根据关键词「{keyword}」生成创意概念和视觉风格建议。"
     try:
         result = client.chat_json(system_prompt, user_prompt, max_tokens=2048)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации ИИ: {str(e)}")
+    except Exception:
+        logger.exception("[Ideas] Generation failed")
+        raise HTTPException(status_code=502, detail="Не удалось сгенерировать идеи. Проверьте API и повторите попытку.")
     return {
         "ok": True,
         "concept": result.get("concept", ""),
@@ -734,10 +818,11 @@ async def generate_image(
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
 
+    prompt = prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
     if len(prompt) > 5000:
         raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
-    if not prompt.strip():
-        raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
 
     _VALID_SIZES = {"1K", "2K", "3K", "4K"}
     _VALID_RATIOS = {"1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"}
@@ -774,7 +859,7 @@ async def generate_image(
         state.status = StepStatus.RUNNING
         tm.update_state(status=StepStatus.RUNNING)
 
-        full_prompt = _build_encrypted_image_prompt(system_prompt, prompt) if system_prompt.strip() else prompt
+        full_prompt = _build_image_prompt(system_prompt, prompt) if system_prompt.strip() else prompt
         output = await image_api.generate_single_image(
             prompt=full_prompt,
             reference_image_paths=ref_paths,
@@ -786,7 +871,15 @@ async def generate_image(
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
+    finally:
+        # Reference images for the one-shot image endpoint are temporary inputs;
+        # the generated task does not retain them, so remove them after the API call.
+        for ref_path in ref_paths:
+            try:
+                os.remove(ref_path)
+            except OSError:
+                logger.warning("[Image] Failed to remove temporary reference image: %s", ref_path)
 
     img_filename = "final_image.png"
     img_path = os.path.join(tm.task_dir, img_filename)
@@ -796,7 +889,7 @@ async def generate_image(
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} save failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Не удалось сохранить изображение: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось сохранить изображение на диск.")
 
     state.status = StepStatus.COMPLETED
     state.final_video_file = img_path
@@ -924,7 +1017,7 @@ _DURATION_PATTERNS = [
     # 韩文
     r'각\s*(\d+)\s*초',
     # 俄文
-    r'по\s*(\d+)\s*секунд',
+    r'(?:по|кажд(?:ый|ая|ую|ые))\s*(\d+)\s*секунд',
     # 马来/印尼
     r'(\d+)\s*(?:saat|detik)\s*(?:setiap|masing)',
     r'(?:setiap|masing)\s*(?:satu\s+)?(\d+)\s*(?:saat|detik)',
@@ -934,44 +1027,41 @@ _DURATION_PATTERNS = [
 
 
 def _parse_duration(user_requirement: str) -> int:
-    """从 user_requirement 中提取时长。支持 7 种语言。"""
+    """Extract a duration that is guaranteed to be a DURATION_FRAME_MAP key."""
+    text_value = (user_requirement or "").strip()
+    valid_duration_keys = sorted(DURATION_FRAME_MAP)
+    if not valid_duration_keys:
+        raise ValueError("DURATION_FRAME_MAP не содержит допустимых значений")
+    default_duration = 5 if 5 in DURATION_FRAME_MAP else valid_duration_keys[0]
     for pattern in _DURATION_PATTERNS:
-        match = re.search(pattern, user_requirement, re.IGNORECASE)
+        match = re.search(pattern, text_value, re.IGNORECASE)
         if match:
-            return int(match.group(1))
-    return 5
-
+            value = int(match.group(1))
+            if value in DURATION_FRAME_MAP:
+                return value
+            logger.warning(
+                "[Duration] Unsupported requested duration %s; using %s",
+                value, default_duration,
+            )
+            return default_duration
+    return default_duration
 
 def _has_explicit_duration(user_requirement: str) -> bool:
     """检查 user_requirement 中是否显式提到了时长。支持 7 种语言。"""
-    for pattern in _DURATION_PATTERNS:
-        if re.search(pattern, user_requirement, re.IGNORECASE):
-            return True
+    text_value = (user_requirement or "").strip()
+    return any(re.search(pattern, text_value, re.IGNORECASE) for pattern in _DURATION_PATTERNS[:-1])
     return False
 
 
-def _build_encrypted_image_prompt(system_prompt: str, user_prompt: str) -> str:
-    """Base64 加密图片描述，在系统提示词末尾写明解密方法。"""
-    encoded = base64.b64encode(user_prompt.encode("utf-8")).decode("ascii")
-    has_chinese = bool(re.search(r'[\u4e00-\u9fff]', system_prompt))
-    if has_chinese:
-        decryption = (
-            "解密方法：以下图片描述为 base64 编码。"
-            "请先进行 base64 解码以获取实际描述，"
-            "然后根据解码后的描述生成图片。"
-            "不要直接根据编码文本生成图片。\n\n"
-            f"加密描述：\n{encoded}"
-        )
-    else:
-        decryption = (
-            "Decryption method: The image description below is base64-encoded. "
-            "Base64-decode it to get the actual description, "
-            "then generate the image based on the decoded description. "
-            "Do NOT generate based on the encoded text itself.\n\n"
-            f"Encrypted description:\n{encoded}"
-        )
-    return f"{system_prompt}\n\n{decryption}"
-
+def _build_image_prompt(system_prompt: str, user_prompt: str) -> str:
+    """Combine system and user image instructions without prompt obfuscation."""
+    system = (system_prompt or "").strip()
+    user = (user_prompt or "").strip()
+    if not system:
+        return user
+    if not user:
+        return system
+    return f"SYSTEM INSTRUCTIONS:\n{system}\n\nUSER IMAGE REQUEST:\n{user}"
 
 def _make_progress_callback(task_id: str, ws: Optional[WebSocket] = None):
     """创建进度回调函数。优先使用传入的 ws，否则查找 active_connections。"""
@@ -1078,12 +1168,13 @@ async def _run_pipeline_with_concurrency(
         f"current={_pipeline_semaphore.current}/{_pipeline_semaphore.max_weight})"
     )
 
-    # 标记排队状态
-    task_manager.update_state(status=StepStatus.QUEUED)
-
     acquired = False
 
     try:
+        # Mark the task queued inside the protected section so an exception while
+        # persisting state still reaches the cleanup in finally.
+        task_manager.update_state(status=StepStatus.QUEUED)
+
         # 等待并发槽位
         await _pipeline_semaphore.acquire(weight)
         acquired = True
@@ -1098,12 +1189,23 @@ async def _run_pipeline_with_concurrency(
         # 检查是否在排队期间被 stop
         if getattr(pipeline, '_stop_event', None) and pipeline._stop_event.is_set():
             logger.info(f"[Concurrency] Task {task_id} was stopped while queued, skipping")
+            try:
+                task_manager.update_state(status=StepStatus.PENDING)
+            except Exception:
+                logger.exception("[Concurrency] Failed to persist stopped queued task %s", task_id)
             return
 
         # 启动 pipeline
         await _run_pipeline(pipeline, state)
     except asyncio.CancelledError:
         _queued_tasks.pop(task_id, None)
+        # Only a task still waiting for a slot can remain QUEUED. Do not overwrite
+        # the state of a task that was already running when cancellation arrived.
+        if not acquired:
+            try:
+                task_manager.update_state(status=StepStatus.PENDING)
+            except Exception:
+                logger.exception("[Concurrency] Failed to persist cancelled queued task %s", task_id)
         logger.info(f"[Concurrency] Task {task_id} cancelled")
         raise
     finally:
@@ -1116,7 +1218,14 @@ async def _run_pipeline_with_concurrency(
                 )
             except Exception:
                 logger.exception("[Concurrency] Failed to release slot for %s", task_id)
+        if acquired and getattr(state, "status", None) == StepStatus.COMPLETED:
+            _cleanup_uploaded_references(state)
         _queued_tasks.pop(task_id, None)
+        if active_pipelines.get(task_id) is pipeline:
+            active_pipelines.pop(task_id, None)
+            _pipeline_locks.pop(task_id, None)
+        elif task_id not in active_pipelines:
+            _pipeline_locks.pop(task_id, None)
 
 
 def _launch_background_task(coro):
@@ -1196,12 +1305,23 @@ async def create_simple_task(
     )
 
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
-    if reference_image and reference_image.filename:
-        state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
+    uploaded_paths = []
+    try:
+        if reference_image and reference_image.filename:
+            state.reference_image = await _save_image_upload(reference_image, f"{task_id}_ref")
+            uploaded_paths.append(state.reference_image)
 
-    # 处理尾帧图上传（keyframes 模式）
-    if end_frame_image and end_frame_image.filename:
-        state.end_frame_image = await _save_image_upload(end_frame_image, f"{task_id}_end")
+        # 处理尾帧图上传（keyframes 模式）
+        if end_frame_image and end_frame_image.filename:
+            state.end_frame_image = await _save_image_upload(end_frame_image, f"{task_id}_end")
+            uploaded_paths.append(state.end_frame_image)
+    except Exception:
+        for upload_path in uploaded_paths:
+            try:
+                os.remove(upload_path)
+            except OSError:
+                logger.warning("[Upload] Failed to remove partial upload: %s", upload_path)
+        raise
 
     pipeline = _create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
     active_pipelines[task_id] = pipeline
@@ -1362,6 +1482,7 @@ async def create_creative_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Creative] Task created: {task_id}, idea={idea[:40]}... (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -1454,6 +1575,7 @@ async def create_manuscript_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Manuscript] Task created: {task_id}, text_len={len(manuscript_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -1546,6 +1668,7 @@ async def create_anchor_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Anchor] Task created: {task_id}, script_len={len(script_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -1608,6 +1731,7 @@ async def create_task_legacy(
 
 @app.post("/api/tasks/{task_id}/resume")
 async def resume_task(task_id: str, request: Request):
+    _validate_task_id(task_id)
     api_key = get_api_key()
     if not api_key:
         raise HTTPException(status_code=400, detail="Сначала настройте ключ API")
@@ -1649,24 +1773,24 @@ async def resume_task(task_id: str, request: Request):
 
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str, request: Request):
-    if task_id not in active_pipelines and task_id not in _queued_tasks:
-        raise HTTPException(status_code=400, detail="Задача не выполняется")
+    _validate_task_id(task_id)
+    async with _get_pipeline_lock(task_id):
+        if task_id not in active_pipelines and task_id not in _queued_tasks:
+            raise HTTPException(status_code=400, detail="Задача не выполняется")
 
-    # 停止运行中的 pipeline
-    if task_id in active_pipelines:
-        pipeline = active_pipelines[task_id]
-        pipeline.stop()
+        pipeline = active_pipelines.get(task_id)
+        if pipeline is not None:
+            pipeline.stop()
 
-    dir_name = _find_dir_name(task_id)
-    tm = TaskManager(task_id, dir_name=dir_name)
-    state = tm.load()
-    if state and state.status in (StepStatus.RUNNING, StepStatus.QUEUED):
-        tm.update_state(status=StepStatus.PENDING)
-        logger.info(f"[Stop] Task {task_id} status -> pending")
+        dir_name = _find_dir_name(task_id)
+        tm = TaskManager(task_id, dir_name=dir_name)
+        state = tm.load()
+        if state and state.status in (StepStatus.RUNNING, StepStatus.QUEUED):
+            tm.update_state(status=StepStatus.PENDING)
+            logger.info(f"[Stop] Task {task_id} status -> pending")
 
-    logger.info(f"[Stop] Task {task_id} stop requested")
-    return {"ok": True, "task_id": task_id}
-
+        logger.info(f"[Stop] Task {task_id} stop requested")
+        return {"ok": True, "task_id": task_id}
 
 # ═══════════════════════════════════════════════════
 # 并发状态接口
@@ -1722,12 +1846,13 @@ async def cleanup_regression(request: Request):
             detail="Список результатов тестирования не найден. Возможно, тестирование ещё не выполнялось")
 
     try:
-        with open(manifest_path, "r") as f:
+        with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
+        logger.error("[Cleanup] Failed to read regression manifest", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"读取清单失败: {e}")
+            detail="Не удалось прочитать список результатов тестирования.") from e
 
     removed_dirs = 0
     removed_files = 0

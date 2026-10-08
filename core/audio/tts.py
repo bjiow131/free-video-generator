@@ -72,6 +72,14 @@ class EdgeTTSEngine(TTSEngine):
                 os.replace(tmp_path, output_path)
                 logger.info(f"[TTS] Audio saved: {output_path}")
                 return output_path, sub_maker
+            except asyncio.CancelledError:
+                for p in (tmp_path, output_path):
+                    if os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except OSError:
+                            pass
+                raise
             except Exception as e:
                 # 清理半成品文件
                 for p in (tmp_path, output_path):
@@ -139,6 +147,11 @@ class SilentTTSEngine(TTSEngine):
         # P9: 检查 ffmpeg 返回码，失败时抛出异常而非静默返回
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")[:500] if stderr else ""
+            try:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+            except OSError:
+                logger.warning("[TTS] Failed to remove partial silent audio", exc_info=True)
             raise RuntimeError(
                 f"[TTS] ffmpeg silent generation failed (code {proc.returncode}): {err_msg}"
             )

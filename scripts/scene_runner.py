@@ -294,7 +294,7 @@ def _curl_has_valid_video_id(path: str) -> bool:
     """严格匹配：要求 agnesapi?..video_id= 或 mode=..&video_id= 模式。"""
     if not os.path.exists(path):
         return False
-    with open(path) as f:
+    with open(path, "r", encoding="utf-8") as f:
         return bool(_VIDEO_ID_RE.search(f.read()))
 
 
@@ -346,7 +346,7 @@ def validate_artifacts(dir_name: str, sc: ScenarioDef) -> dict:
     sd: dict = {}
     if os.path.exists(ts_path):
         try:
-            with open(ts_path) as f:
+            with open(ts_path, "r", encoding="utf-8") as f:
                 sd = json.load(f)
         except Exception:
             pass
@@ -473,7 +473,7 @@ def validate_artifacts(dir_name: str, sc: ScenarioDef) -> dict:
     if os.path.exists(tj_root):
         _task_json_found = True
         try:
-            with open(tj_root) as f:
+            with open(tj_root, "r", encoding="utf-8") as f:
                 tjd = json.load(f)
             _has_video_id = bool(tjd.get("video_id") or tjd.get("id"))
         except Exception:
@@ -495,7 +495,7 @@ def validate_artifacts(dir_name: str, sc: ScenarioDef) -> dict:
                         _task_json_found = True
                         if not _has_video_id:
                             try:
-                                with open(tj_sub) as f:
+                                with open(tj_sub, "r", encoding="utf-8") as f:
                                     tjd = json.load(f)
                                 _has_video_id = bool(tjd.get("video_id") or tjd.get("id"))
                             except Exception:
@@ -576,7 +576,7 @@ def validate_artifacts(dir_name: str, sc: ScenarioDef) -> dict:
         fn10 = os.path.join(task_dir, "full_subtitle.srt")
         checks["R10_full_subtitle"] = os.path.exists(fn10)
         if os.path.exists(fn10):
-            with open(fn10) as f:
+            with open(fn10, "r", encoding="utf-8") as f:
                 srt_content = f.read()
             checks["R10_srt_entries"] = (
                 srt_content.count("\n\n") + 1 if "\n\n" in srt_content else 1
