@@ -1,9 +1,9 @@
-from core.timing import timed_step
-
 """core.pipelines.manuscript_video -- 稿件长视频生成流水线（类型 3）
 
 用户粘贴长文本稿件 -> 按朗读时长拆段 -> 每段生成视频 prompt -> 视频生成 -> TTS+字幕 -> 拼接。
 """
+
+from core.timing import timed_step
 
 import asyncio
 import json
