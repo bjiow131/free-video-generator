@@ -532,7 +532,7 @@ $('#saveClose').onclick=closeSaveModal;
 $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
-function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,704]}
+function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,720]}
 async function syncVideoCharacterSelector(refs){
   const character=$('#videoCharacter'),select=$('#videoCharacterReference');
   if(!character||!select)return;
