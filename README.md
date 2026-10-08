@@ -1,7 +1,7 @@
 # AI Studio API — Free AI Video Generator
 
 
-> **Completely free AI video generator** — Built on Agnes AI's free models, no subscription, no high-end GPU, no usage limits. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
+> **Completely free AI video generator** — Built on Agnes AI APIs; the client has no subscription layer and requires no local GPU. Type in a text idea and automatically generate multi-scene AI videos with narration and subtitles. Supports text-to-video, image-to-video, keyframes animation, digital anchor, and more. All AI compute runs in the cloud — a regular laptop is all you need.
 
 > "The solution is not to suppress AI, but to make it a more equitable capability, so that everyone knows how to create more with AI. This is a very important vision for our company — to make world-class AI belong to everyone. What we can do may be insignificant, but this vision is very long-term and enduring."
 >
@@ -418,7 +418,7 @@ This project is built upon the following open-source projects:
 - [ViMax](https://github.com/HKUDS/ViMax) — AI video generation framework by HKU Data Science Lab
 - [vimax-agnes](https://github.com/easyeye163/vimax-agnes) — Agnes AI adaptation based on ViMax
 
-Special thanks to [Agnes AI](https://platform.agnes-ai.com) for providing **completely free**, high-quality AI model APIs (text, image, and video generation) — this project runs at absolute zero cost thanks to their generosity.
+Special thanks to [Agnes AI](https://platform.agnes-ai.com) for providing access to its AI model APIs (text, image, and video generation) — this project runs at absolute zero cost thanks to their generosity.
 
 ## Feedback & Contributing
 
@@ -440,7 +440,7 @@ MIT
 
 ### Is Free Video Generator really free? Are there any hidden costs?
 
-Yes, it is **completely free**. The application does not charge for its own software. Agnes AI availability, quotas, and pricing are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
+The application itself does not charge for software usage. Agnes AI availability, quotas, and pricing are controlled by Agnes AI and may change. The only TTS integration (Microsoft Edge TTS) is also free and requires no extra API key. You only need a free API key from [Agnes AI](https://platform.agnes-ai.com) to get started.
 
 ### Do I need a GPU to run this AI video generator?
 
