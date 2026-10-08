@@ -14,13 +14,13 @@ Making AI videos today has an absurdly high barrier. Overseas services like Runw
 
 We believe what Bruce Yang said — AI should be a more equitable capability. World-class AI should belong to everyone, not just those who can afford the bill.
 
-To be honest, Agnes's video model isn't perfect yet. The generated frames are sometimes unstable, and complex actions occasionally deform. But it is **completely free with no usage limits**, and it iterates fast. We choose to grow with it rather than wait for a "perfect" commercial solution. If you share this mindset, then this project is for you — all you need is a free [Agnes AI](https://platform.agnes-ai.com) API key and an ordinary computer that can run Python to start creating AI videos at zero cost.
+To be honest, Agnes's video model isn't perfect yet. The generated frames are sometimes unstable, and complex actions occasionally deform. The client has no subscription layer; actual Agnes AI quotas, rate limits, and availability are controlled by the provider. We choose to grow with it rather than wait for a "perfect" commercial solution. If you share this mindset, then this project is for you — all you need is a free [Agnes AI](https://platform.agnes-ai.com) API key and an ordinary computer that can run Python to start creating AI videos at zero cost.
 
 ### Comparison: Agnes Video Generator vs. Commercial AI Video Tools
 
 | Feature | Agnes Video Generator | Runway Gen-3 | Pika 2.0 | OpenAI Sora | Kling 1.6 |
 |---------|:---:|:---:|:---:|:---:|:---:|
-| **Price** | Free | $15–$95/month | $10–$28/month | $20+/month (limited) | Free quota, then pay-per-second |
+| **Price** | No client subscription | $15–$95/month | $10–$28/month | $20+/month (limited) | Free quota, then pay-per-second |
 | **Open Source** | Yes (MIT) | No | No | No | No |
 | **Self-Hosted** | Yes | No | No | No | No |
 | **Max Video Length** | 20s per clip, unlimited scenes | 10s per clip | 10s per clip | 20s per clip | 10s per clip |
@@ -468,7 +468,7 @@ The current Web UI is primarily Russian-language; CJK text is supported in gener
 
 ### Can I host this on my own server?
 
-Absolutely. The project is designed for self-hosting. Just clone the repo, run `./start.sh`, and the server starts on `http://localhost:8765`. No external dependencies, no cloud lock-in. See the [Quick Start](#quick-start) section above.
+Absolutely. The project is designed for self-hosting. Just clone the repo, run `./start.sh`, and the server starts on `http://localhost:8765`. No local GPU is required; Agnes AI is the external model provider. See the [Quick Start](#quick-start) section above.
 
 ### How do I get help or report issues?
 
