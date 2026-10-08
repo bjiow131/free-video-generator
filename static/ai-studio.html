@@ -276,13 +276,10 @@ function historyCard(x){
 }
 async function loadHistory(){
   try{
-    let r=await api('/api/tasks');let d=await r.json();let items=d.tasks||[];
+    let r=await api('/api/tasks');let d=await r.json();let items=(d.tasks||[]).filter(x=>x.task_type==='image');
     $('#historyList').innerHTML=items.length?items.map(historyCard).join(''):'<div class="card">Генераций пока нет.</div>';
     if(historyTimer)clearTimeout(historyTimer);
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
   }catch(e){$('#historyList').innerHTML='<div class="card">'+e.message+'</div>'}
 }
-async function pollTask(id,misses=0){try{let r=await api('/api/tasks/'+encodeURIComponent(id));let s=await r.json();if(s.status==='completed'){localStorage.removeItem('simple_task_id');toast('Видео готово');loadHistory();return}if(s.status==='failed'){localStorage.removeItem('simple_task_id');toast('Видео не удалось создать');loadHistory();return}}catch{if(misses>=3){localStorage.removeItem('simple_task_id');toast('Не удалось получить статус задачи');loadHistory();return}}setTimeout(()=>pollTask(id,misses+1),8000)}
-
-function restoreFilmAfterLoad(){const savedFilmTask=localStorage.getItem('film_task_id');if(savedFilmTask){localStorage.removeItem('film_task_id');show('history');loadHistory();return}const savedSimpleTask=localStorage.getItem('simple_task_id');if(savedSimpleTask){show('history');pollTask(savedSimpleTask)}}
 load().then(()=>{let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false);restoreFilmAfterLoad()});</script></body></html>
