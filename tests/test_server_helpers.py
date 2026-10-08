@@ -102,3 +102,30 @@ def test_cancel_after_acquire_releases_slot_without_resetting_running_state(monk
         assert pipeline.task_id not in server._pipeline_locks
 
     asyncio.run(scenario())
+
+
+def test_queue_state_write_failure_cleans_tracking(monkeypatch):
+    async def scenario():
+        semaphore = server.WeightedSemaphore(1)
+        pipeline = _Pipeline()
+        state = type("State", (), {"task_type": TaskType.SIMPLE})()
+
+        class FailingManager:
+            def update_state(self, **_kwargs):
+                raise RuntimeError("state write failed")
+
+        monkeypatch.setattr(server, "_pipeline_semaphore", semaphore)
+        monkeypatch.setitem(server.active_pipelines, pipeline.task_id, pipeline)
+        monkeypatch.setitem(server._pipeline_locks, pipeline.task_id, asyncio.Lock())
+
+        with pytest.raises(RuntimeError, match="state write failed"):
+            await server._run_pipeline_with_concurrency(
+                pipeline, state, FailingManager()
+            )
+
+        assert pipeline.task_id not in server._queued_tasks
+        assert pipeline.task_id not in server.active_pipelines
+        assert pipeline.task_id not in server._pipeline_locks
+        assert semaphore.current == 0
+
+    asyncio.run(scenario())
