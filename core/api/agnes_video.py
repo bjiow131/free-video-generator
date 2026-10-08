@@ -300,6 +300,13 @@ class AgnesVideoAPI:
                         queue_hint,
                         f": {response_hint}" if response_hint else "",
                     )
+                    # The modern 2.5 Flash free queue is best-effort and can remain
+                    # saturated for minutes. Let submit_video switch to v2.0 on the
+                    # first explicit queue-full response instead of sleeping/retrying.
+                    if queue_full and self.is_modern:
+                        raise RuntimeError(
+                            "[AgnesVideo] video queue is full; trigger provider fallback"
+                        )
                     if attempt + 1 < self.max_retries:
                         await asyncio.sleep(delay)
                         continue
