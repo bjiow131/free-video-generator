@@ -1098,6 +1098,10 @@ async def _run_pipeline_with_concurrency(
         # 检查是否在排队期间被 stop
         if getattr(pipeline, '_stop_event', None) and pipeline._stop_event.is_set():
             logger.info(f"[Concurrency] Task {task_id} was stopped while queued, skipping")
+            try:
+                task_manager.update_state(status=StepStatus.PENDING)
+            except Exception:
+                logger.exception("[Concurrency] Failed to persist stopped queued task %s", task_id)
             return
 
         # 启动 pipeline
@@ -1117,6 +1121,9 @@ async def _run_pipeline_with_concurrency(
             except Exception:
                 logger.exception("[Concurrency] Failed to release slot for %s", task_id)
         _queued_tasks.pop(task_id, None)
+        if active_pipelines.get(task_id) is pipeline:
+            active_pipelines.pop(task_id, None)
+        _pipeline_locks.pop(task_id, None)
 
 
 def _launch_background_task(coro):
