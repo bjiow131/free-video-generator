@@ -325,8 +325,13 @@ class AgnesVideoAPI:
                         error_text = resp.text[:1000]
                 except (ValueError, TypeError):
                     error_text = resp.text[:1000]
+                diagnostic = (
+                    f"endpoint={BASE_URL}/videos; model={self.model}; mode={mode_desc}; "
+                    f"prompt_present={'prompt' in payload}; prompt_len={len(str(payload.get('prompt') or ''))}; "
+                    f"payload_keys={','.join(sorted(payload.keys()))}"
+                )
                 raise RuntimeError(
-                    f"Agnes video submit failed (HTTP {resp.status_code}): {error_text}"
+                    f"Agnes video submit failed (HTTP {resp.status_code}): {error_text} [{diagnostic}]"
                 )
 
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, asyncio.TimeoutError) as exc:
@@ -396,6 +401,11 @@ class AgnesVideoAPI:
             for p in (reference_image_paths or ())
         ]
         requested_mode = str(mode or "").strip().lower()
+        # Fail locally with an explicit diagnostic instead of allowing the provider
+        # to report the opaque FastAPI "body.prompt: Field required" error.
+        prompt = str(prompt or "").strip()
+        if not prompt:
+            raise ValueError("Video prompt is empty before Agnes API request")
 
         if self.is_modern:
             seconds = self._modern_seconds(duration)
@@ -432,8 +442,9 @@ class AgnesVideoAPI:
 
             mode_desc = payload["mode"]
             logger.info(
-                "[AgnesVideo] %s (%ss, %s): %s",
-                mode_desc, seconds, payload["aspect_ratio"], prompt[:80],
+                "[AgnesVideo] POST %s payload_keys=%s prompt_present=%s prompt_len=%d mode=%s refs=%d",
+                f"{BASE_URL}/videos", sorted(payload.keys()), "prompt" in payload,
+                len(payload["prompt"]), mode_desc, len(resolved_refs),
             )
         else:
             num_frames, frame_rate = self._get_frame_config(duration, width, height)
