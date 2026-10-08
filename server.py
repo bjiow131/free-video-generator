@@ -126,24 +126,45 @@ _queued_tasks: Dict[str, int] = {}
 
 
 def _parse_bg_color(raw: str) -> tuple:
-    """将 bg_color 字符串解析为 moviepy 2.x 兼容的 RGBA 元组。"""
+    """Parse a subtitle background color as RGB/RGBA or named@alpha."""
+    if raw is None:
+        return (0, 0, 0, 128)
     if isinstance(raw, tuple):
-        return raw
-    if isinstance(raw, str):
-        if raw.startswith("(") and raw.endswith(")"):
-            return tuple(int(x.strip()) for x in raw[1:-1].split(","))
-        if "@" in raw:
-            parts = raw.split("@", 1)
-            color_name = parts[0].strip().lower()
-            alpha_pct = float(parts[1])
-            rgb = {"black": (0, 0, 0), "white": (255, 255, 255),
-                   "red": (255, 0, 0), "blue": (0, 0, 255),
-                   "yellow": (255, 255, 0)}.get(color_name, (0, 0, 0))
-            return (*rgb, int(alpha_pct * 255))
-        if raw.lower() in ("none", "transparent", ""):
-            return None
-    return (0, 0, 0, 128)
-
+        if len(raw) not in (3, 4):
+            raise ValueError("Цвет должен содержать 3 или 4 компонента")
+        return tuple(int(max(0, min(255, value))) for value in raw)
+    if not isinstance(raw, str):
+        raise ValueError("Цвет должен быть строкой")
+    raw = raw.strip()
+    if raw.lower() in ("none", "transparent", ""):
+        return None
+    if raw.startswith("(") and raw.endswith(")"):
+        try:
+            values = [int(x.strip()) for x in raw[1:-1].split(",")]
+        except ValueError as exc:
+            raise ValueError("Недопустимый цветовой формат") from exc
+        if len(values) not in (3, 4) or any(value < 0 or value > 255 for value in values):
+            raise ValueError("RGB/RGBA компоненты должны быть от 0 до 255")
+        return tuple(values)
+    if "@" in raw:
+        color_name, alpha_raw = raw.split("@", 1)
+        rgb = {"black": (0, 0, 0), "white": (255, 255, 255),
+               "red": (255, 0, 0), "blue": (0, 0, 255),
+               "yellow": (255, 255, 0)}.get(color_name.strip().lower())
+        if rgb is None:
+            raise ValueError("Неподдерживаемый цвет фона")
+        try:
+            alpha = float(alpha_raw.strip())
+        except ValueError as exc:
+            raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100") from exc
+        if 0 <= alpha <= 1:
+            alpha_value = round(alpha * 255)
+        elif 0 <= alpha <= 100:
+            alpha_value = round(alpha / 100 * 255)
+        else:
+            raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100")
+        return (*rgb, alpha_value)
+    raise ValueError("Недопустимый формат цвета фона")
 
 def _build_position(subtitle_position: str) -> tuple:
     """将 'bottom'/'top' 转为 moviepy 兼容的位置元组。"""
@@ -934,13 +955,17 @@ _DURATION_PATTERNS = [
 
 
 def _parse_duration(user_requirement: str) -> int:
-    """从 user_requirement 中提取时长。支持 7 种语言。"""
-    for pattern in _DURATION_PATTERNS:
-        match = re.search(pattern, user_requirement, re.IGNORECASE)
+    """Extract a supported scene duration from seven supported languages."""
+    text_value = (user_requirement or "").strip()
+    supported = sorted(SUPPORTED_AGNES_VIDEO_DURATIONS)
+    for pattern in _DURATION_PATTERNS[:-1]:
+        match = re.search(pattern, text_value, re.IGNORECASE)
         if match:
-            return int(match.group(1))
+            value = int(match.group(1))
+            if value in supported:
+                return value
+            return min(supported, key=lambda item: abs(item - value))
     return 5
-
 
 def _has_explicit_duration(user_requirement: str) -> bool:
     """检查 user_requirement 中是否显式提到了时长。支持 7 种语言。"""
