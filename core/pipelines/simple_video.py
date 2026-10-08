@@ -131,7 +131,7 @@ class SimpleVideoPipeline(BasePipeline):
                 logger.debug(f"[Simple] Failed to load cached task.json: {e}")
         return None
 
-    def _record_video_progress(self, status: str, progress: float) -> None:
+    def _record_video_progress(self, status: str, progress: float, message: Optional[str] = None) -> None:
         pct = max(0.0, min(100.0, float(progress or 0.0)))
         overall = min(99.0, 10.0 + pct * 0.9)
         eta = None
@@ -141,7 +141,7 @@ class SimpleVideoPipeline(BasePipeline):
             eta = max(1, round((time.time() - started) * (100.0 / overall - 1.0)))
         self.task_manager.update_state(
             progress=overall,
-            progress_message=f"Agnes: {status or 'обработка'} · {pct:.0f}%",
+            progress_message=message or f"Agnes: {status or 'обработка'} · {pct:.0f}%",
             eta_seconds=eta,
         )
 
