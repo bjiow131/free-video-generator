@@ -378,8 +378,10 @@ class AgnesVideoAPI:
                 "prompt": prompt,
                 "mode": (
                     "text" if not resolved_refs
-                    else "img2video" if len(resolved_refs) == 1
-                    else "keyframe" if len(resolved_refs) == 2
+                    # Current Agnes 2.5 validation accepts a single starting image
+                    # through the keyframe schema; this avoids the older img2video
+                    # validation path that can return "Field required".
+                    else "keyframe" if len(resolved_refs) in (1, 2)
                     else "reference"
                 ),
                 "seconds": str(seconds),
