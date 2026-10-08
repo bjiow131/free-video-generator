@@ -44,6 +44,15 @@ def test_production_workflows_persist_and_resume_after_reload():
     assert "restoreProductionAfterLoad()" in source
 
 
+def test_frontend_debounces_draft_persistence():
+    source = HTML.read_text(encoding="utf-8")
+    assert "const draftSaveTimers={}" in source
+    assert "function scheduleDraftSave(key,fn,delay=250)" in source
+    assert "scheduleDraftSave('simple',saveSimpleDraft)" in source
+    assert "scheduleDraftSave('film',saveFilmDraft)" in source
+    assert "scheduleDraftSave('production',()=>saveProductionDraft(productionMode))" in source
+
+
 def test_frontend_does_not_keep_superseded_legacy_history_renderer():
     source = HTML.read_text(encoding="utf-8")
     assert "async function legacyLoadHistory" not in source
