@@ -164,3 +164,14 @@ def test_workspace_path_is_normalized_and_protected(tmp_path):
         server._validate_workspace_path(str(tmp_path / "missing-parent" / "workspace"))
     with pytest.raises(server.HTTPException):
         server._validate_workspace_path(server._PROJECT_ROOT)
+
+
+def test_save_config_rejects_empty_key():
+    import asyncio
+
+    async def scenario():
+        with pytest.raises(server.HTTPException) as exc:
+            await server.save_config("   ", request=None)
+        assert exc.value.status_code == 422
+
+    asyncio.run(scenario())
