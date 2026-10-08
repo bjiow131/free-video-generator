@@ -395,7 +395,7 @@ async function generateImage(){
     const characterId=$('#imageCharacter').value;
     const ref=$('#imageReference').files[0];
     if(ref) f.append('reference_image',ref);
-    else if(String(characterId).trim().toLowerCase()==='miya'){
+    else if(String(characterId).trim()){
       const refs=await getMiaRefs();
       const select=$('#imageCharacterReference');
       const selectedIds=select?Array.from(select.options||[]).filter(o=>o.selected).map(o=>Number(o.value)).filter(Number.isFinite):[];
@@ -414,7 +414,7 @@ async function generateImage(){
     const sentRefs=[...f.entries()].filter(([key,value])=>(key==='reference_image'||key==='reference_images')&&value instanceof Blob);
     const refDiagnostics=sentRefs.map(([key,value])=>({field:key,type:value.type||'unknown',size:value.size,name:value.name||'blob'}));
     console.info('[Image request diagnostics]',{character:characterId||'none',manualReference:!!ref,referenceCount:sentRefs.length,references:refDiagnostics,size:$('#imageQuality').value,ratio:$('#imageAspect').value});
-    $('#imageStatus').textContent='Отправка запроса: референсов '+sentRefs.length+'; '+(sentRefs.map(([,v])=>(v.type||'unknown')+', '+Math.round(v.size/1024)+' КБ').join(' | ')||'без референса');
+    $('#imageStatus').textContent='Персонаж: '+(characterId||'нет')+' · Отправка запроса: референсов '+sentRefs.length+'; '+(sentRefs.map(([,v])=>(v.type||'unknown')+', '+Math.round(v.size/1024)+' КБ').join(' | ')||'без референса');
     const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
