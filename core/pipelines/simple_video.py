@@ -96,9 +96,16 @@ class SimpleVideoPipeline(BasePipeline):
         """
         task_file = os.path.join(self.working_dir, "task.json")
         tmp_file = task_file + ".tmp"
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump({"video_id": video_id}, f, indent=2)
-        os.replace(tmp_file, task_file)
+        try:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump({"video_id": video_id}, f, indent=2)
+            os.replace(tmp_file, task_file)
+        except Exception:
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+            raise
 
     def _load_task(self) -> Optional[str]:
         task_file = os.path.join(self.working_dir, "task.json")
