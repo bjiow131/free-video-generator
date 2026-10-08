@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.audio.subtitle — SRT 字幕生成 + moviepy 叠加
 
 将 edge_tts SubMaker cues 转换为 SRT 格式，并通过 moviepy SubtitlesClip 叠加到视频。
@@ -39,6 +40,7 @@ class SubtitleGenerator:
     """字幕生成器：cues → SRT + moviepy 叠加。"""
 
     @staticmethod
+    @timed_step
     def _split_long_text(txt: str, max_chars_per_line: int = 14) -> str:
         """将过长的字幕文本拆分为多行，避免单行溢出屏幕。
 
@@ -76,6 +78,7 @@ class SubtitleGenerator:
             return " ".join(words[:mid]) + "\n" + " ".join(words[mid:])
 
     @staticmethod
+    @timed_step
     def cue_to_srt_time(seconds: float) -> str:
         """将秒数转换为 SRT 时间格式 HH:MM:SS,mmm。"""
         h = int(seconds // 3600)
@@ -85,6 +88,7 @@ class SubtitleGenerator:
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     @staticmethod
+    @timed_step
     def _cue_total_seconds(td) -> float:
         """将 timedelta 转为秒数（兼容 srt.Subtitle 的 start/end 字段）。"""
         if isinstance(td, datetime.timedelta):
@@ -92,6 +96,7 @@ class SubtitleGenerator:
         return float(td)
 
     @staticmethod
+    @timed_step
     def _generate_fine_srt_from_word_cues(
         word_cues: list,
         max_duration: float = _MAX_SUB_DURATION,
@@ -225,6 +230,7 @@ class SubtitleGenerator:
         return "\n".join(entries)
 
     @staticmethod
+    @timed_step
     def _detect_prominence(text: str) -> float:
         """检测字幕文本是否"突出"，返回时长倍率（≥1.0）。
 
@@ -249,6 +255,7 @@ class SubtitleGenerator:
         return 1.0
 
     @staticmethod
+    @timed_step
     def _generate_scene_aware_srt(
         scene_texts: List[str],
         scene_durations: List[float],
@@ -372,6 +379,7 @@ class SubtitleGenerator:
         return "\n".join(entries)
 
     @staticmethod
+    @timed_step
     def cues_to_srt(cues, output_path: str) -> str:
         """将 edge_tts SubMaker cues 转换为 SRT 文件。
 
@@ -452,6 +460,7 @@ class SubtitleGenerator:
         return output_path
 
     @staticmethod
+    @timed_step
     def text_to_srt(text: str, output_path: str, duration_sec: float, chars_per_sec: float = 4.0) -> str:
         """从纯文本生成 SRT（不依赖 TTS SubMaker cues）。
 
@@ -515,6 +524,7 @@ class SubtitleGenerator:
         return output_path
 
     @staticmethod
+    @timed_step
     def _parse_vtt_to_srt(vtt_content: str) -> list:
         """解析 WebVTT 内容为 srt.Subtitle 列表。"""
         subtitles = []
@@ -559,6 +569,7 @@ class SubtitleGenerator:
         return subtitles
 
     @staticmethod
+    @timed_step
     def _parse_time(time_str: str) -> "datetime.timedelta":
         """解析 SRT/VTT 时间字符串为 timedelta。"""
         import datetime
@@ -580,6 +591,7 @@ class SubtitleGenerator:
         return datetime.timedelta(seconds=total_seconds)
 
     @staticmethod
+    @timed_step
     def resolve_position(
         pos,
         video_width: int,
@@ -633,6 +645,7 @@ class SubtitleGenerator:
         h_raw, v_raw = pos[0], pos[1]
 
         # 解析水平位置
+        @timed_step
         def resolve_h(h_val) -> str:
             if isinstance(h_val, (int, float)):
                 return h_val
@@ -651,6 +664,7 @@ class SubtitleGenerator:
                 return hs
             return "center"
 
+        @timed_step
         def resolve_v(v_val) -> str:
             if isinstance(v_val, (int, float)):
                 return v_val
@@ -682,6 +696,7 @@ class SubtitleGenerator:
         return (h_resolved, v_resolved)
 
     @staticmethod
+    @timed_step
     def overlay_subtitles_to_video(
         video_path: str,
         srt_path: str,
@@ -729,6 +744,7 @@ class SubtitleGenerator:
             cjk_max_chars = max(8, available_w // style.fontsize)
 
             # moviepy 的 SubtitlesClip 读取 SRT 文件
+            @timed_step
             def make_text_clip(txt):
                 from moviepy import TextClip
                 # 长文本自动拆为多行
