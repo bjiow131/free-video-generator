@@ -1,4 +1,5 @@
 from core.timing import timed_step
+
 """core.pipelines.creative_video -- Creative long-form video pipeline (Type 2).
 
 Ports the original ``core/pipeline.py`` VideoPipeline to the new pipeline
@@ -1985,6 +1986,7 @@ class CreativeVideoPipeline(BasePipeline):
     # Main Run
     # ==================================================================
 
+    @timed_step
     async def run(self, state: CreativeVideoTask) -> str:
         """Execute the full creative video generation pipeline.
 
