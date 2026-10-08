@@ -493,11 +493,15 @@ class AgnesVideoAPI:
                 payload["mode"] = "ti2vid"
                 mode_desc = "image-to-video"
             elif len(resolved_refs) > 1:
+                # Agnes v2.0 keyframes accepts at most 3 images. The UI may
+                # provide up to 5 references for newer models, so cap only
+                # the legacy payload rather than rejecting the whole request.
+                legacy_refs = resolved_refs[:3]
                 payload["extra_body"] = {
-                    "image": resolved_refs,
+                    "image": legacy_refs,
                     "mode": "keyframes",
                 }
-                mode_desc = f"keyframes ({len(resolved_refs)} frames)"
+                mode_desc = f"keyframes ({len(legacy_refs)} frames; {len(resolved_refs)} selected)"
             else:
                 mode_desc = "text-to-video"
 
