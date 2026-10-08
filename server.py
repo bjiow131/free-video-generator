@@ -285,7 +285,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
+app = FastAPI(title="AI Studio API", lifespan=lifespan)
 
 # Local-only browser UI: allow only the two loopback origins used by the
 # built-in server.  The UI itself is same-origin, but keeping explicit CORS
@@ -504,7 +504,7 @@ async def health():
             logger.warning("[Health] FFmpeg version check failed: %s", e, exc_info=True)
     return {
         "ok": True,
-        "service": "Agnes Video Generator",
+        "service": "AI Studio API",
         "ffmpeg": bool(ffmpeg_path),
         "ffmpeg_version": ffmpeg_version,
         "api_key_configured": bool(get_api_key()),
