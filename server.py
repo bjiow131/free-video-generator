@@ -406,12 +406,21 @@ def _validate_workspace_path(raw_path: str) -> str:
             value = os.environ.get(env_name)
             if value:
                 protected.append(os.path.realpath(os.path.abspath(value)))
+    else:
+        protected.extend(os.path.realpath(p) for p in (
+            "/etc", "/usr", "/bin", "/sbin", "/var", "/proc", "/sys", "/dev", "/boot", "/lib", "/lib64", "/run"
+        ))
+    protected.append(os.path.realpath(_PROJECT_ROOT))
     for protected_dir in protected:
         try:
             if os.path.commonpath([candidate, protected_dir]) == protected_dir:
-                raise HTTPException(status_code=422, detail="Нельзя использовать системную папку Windows как рабочую")
+                # The repository itself is reserved, but the default .working_dir remains allowed.
+                if os.path.realpath(candidate) != os.path.realpath(_PROJECT_ROOT):
+                    raise HTTPException(status_code=422, detail="Нельзя использовать системную или служебную папку как рабочую")
         except ValueError:
             continue
+    if os.path.realpath(candidate) == os.path.realpath(os.path.dirname(candidate)):
+        raise HTTPException(status_code=422, detail="Недопустимая рабочая папка")
     return candidate
 
 
