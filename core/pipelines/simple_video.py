@@ -152,6 +152,12 @@ class SimpleVideoPipeline(BasePipeline):
         _has_chinese = bool(re.search(r'[\u4e00-\u9fff]', self._state.prompt))
         _sep = "--- 请严格按照以下描述生成图像/视频 ---" if _has_chinese else "--- Generate image/video strictly based on the following description ---"
         full_prompt = f"{self._state.system_prompt.strip()}\n\n{_sep}\n{self._state.prompt}" if self._state.system_prompt.strip() else self._state.prompt
+        # Use the model persisted in the task state. Keep the API client in sync with the UI selection.
+        selected_model = getattr(self._state, "model", "") or self.video_api.model
+        if selected_model != self.video_api.model:
+            self.video_api = AgnesVideoAPI(api_key=self.api_key, model=selected_model)
+            self.video_api.shutdown_event = self.shutdown_event
+
         video_id = await self.video_api.submit_video(
             prompt=full_prompt,
             reference_image_paths=ref_images,
