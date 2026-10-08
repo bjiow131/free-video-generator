@@ -2,6 +2,7 @@ import asyncio
 from io import BytesIO
 
 import pytest
+import time
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 import server
@@ -200,3 +201,14 @@ def test_config_get_does_not_expose_api_key(monkeypatch):
     assert result["configured"] is True
     assert "api_key" not in result
     assert "key" not in result
+
+
+def test_rate_limiter_does_not_set_refill_clock_in_future():
+    from core.api.rate_limiter import AgnesRateLimiter
+
+    limiter = AgnesRateLimiter(rate_per_minute=60, max_burst=1)
+    limiter.tokens = 0.0
+    before = time.monotonic()
+    limiter.acquire()
+    assert limiter.last_refill <= time.monotonic()
+    assert limiter.last_refill >= before
