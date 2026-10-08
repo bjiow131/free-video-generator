@@ -24,3 +24,27 @@ def test_regression_runner_allows_environment_endpoints():
     source = (Path(__file__).resolve().parents[1] / "scripts" / "regression_runner.py").read_text(encoding="utf-8")
     assert 'os.environ.get("REGRESSION_SERVER_URL", "http://localhost:8765")' in source
     assert 'os.environ.get("AGNES_REGRESSION_WORKING_DIR"' in source
+
+
+def test_simple_generation_has_mode_specific_controls_and_dock_sync():
+    source = HTML.read_text(encoding="utf-8")
+    assert "function syncCreateDock()" in source
+    assert "durationChip.hidden=type!=='video'" in source
+    assert "if(type==='image')" in source
+    assert "id="videoDuration"" in source
+    assert 'data-create-type="image"' in source
+    assert 'data-create-type="video"' in source
+
+
+def test_production_workflows_persist_and_resume_after_reload():
+    source = HTML.read_text(encoding="utf-8")
+    assert "localStorage.setItem('production_task_id',d.task_id)" in source
+    assert "localStorage.setItem('production_task_kind',kind)" in source
+    assert "async function restoreProductionAfterLoad()" in source
+    assert "restoreProductionAfterLoad()" in source
+
+
+def test_frontend_does_not_keep_superseded_legacy_history_renderer():
+    source = HTML.read_text(encoding="utf-8")
+    assert "async function legacyLoadHistory" not in source
+    assert "async function openResult(id,type){try{let base=type==='image'" not in source
