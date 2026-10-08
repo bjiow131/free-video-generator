@@ -405,8 +405,10 @@ class AgnesVideoAPI:
                     # Agnes 2.5 explicitly supports single-image image-to-video
                     # with mode=img2video and first_frame. Keyframe is reserved
                     # for first/last-frame interpolation.
-                    else "img2video" if len(resolved_refs) == 1
-                    else "keyframe" if len(resolved_refs) == 2
+                    # Agnes 2.5 Flash deployments in the wild currently validate
+                    # image input through keyframe/reference modes. Use keyframe
+                    # for a single starting frame as the compatible contract.
+                    else "keyframe" if len(resolved_refs) in (1, 2)
                     else "reference"
                 ),
                 "seconds": str(seconds),
