@@ -513,7 +513,7 @@ class TestTaskIdSafety:
 class TestLocalEntrypoints:
     def test_local_server_module_is_importable(self):
         from server import app
-        assert app.title == "Agnes Video Generator"
+        assert app.title == "AI Studio API"
 
 
 class TestSimpleVideoPersistence:
@@ -558,8 +558,8 @@ class TestLocalWindowsContracts:
     def test_start_windows_launcher_points_to_local_server(self):
         from pathlib import Path
         bat = Path("start_windows.bat").read_text(encoding="utf-8")
-        assert 'set "HOST=127.0.0.1"' in bat
-        assert 'set "PORT=8765"' in bat
+        assert 'curl -s http://127.0.0.1:8765/health' in bat
+        assert 'http://127.0.0.1:8765' in bat
         assert '.venv\\Scripts\\python.exe' in bat
         assert '"%PYTHON%" server.py' in bat
 
