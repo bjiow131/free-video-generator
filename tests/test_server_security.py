@@ -86,7 +86,7 @@ def test_origin_and_host_validation():
 @pytest.mark.asyncio
 async def test_upload_magic_and_content_type_validation(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_upload_dir", lambda: str(tmp_path))
-    png = b"\\x89PNG\\r\\n\\x1a\\n" + b"payload"
+    png = b"\x89PNG\r\n\x1a\n" + b"payload"
     good = StarletteUploadFile(
         file=BytesIO(png),
         filename="evil.exe",
@@ -134,3 +134,23 @@ def test_duration_parsing_seven_languages(text, expected):
 
 def test_duration_parser_ignores_unrelated_numbers():
     assert server._parse_duration("camera 123, take 7") == 5
+
+
+@pytest.mark.asyncio
+async def test_upload_size_limit_and_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_upload_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(server, "MAX_UPLOAD_SIZE", 4)
+    oversized = StarletteUploadFile(
+        file=BytesIO(b"\x89PNG\r\n\x1a\n" + b"12345"),
+        filename="x.png",
+        headers={"content-type": "image/png"},
+    )
+    with pytest.raises(server.HTTPException) as exc:
+        await server._save_image_upload(oversized, "oversized")
+    assert exc.value.status_code == 413
+
+    ref = tmp_path / "ref.png"
+    ref.write_bytes(b"data")
+    state = type("State", (), {"reference_image": str(ref), "end_frame_image": "", "end_frame_images": []})()
+    server._cleanup_uploaded_references(state)
+    assert not ref.exists()
