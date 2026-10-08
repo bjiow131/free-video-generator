@@ -255,7 +255,7 @@ class AnchorPipeline(BasePipeline):
                     prompt=prompt,
                     size=size,
                 )
-            img_output.save(output_path)
+            await asyncio.to_thread(img_output.save, output_path)
         except Exception as e:
             logger.error(f"[Anchor] Anchor image generation failed: {e}")
             raise RuntimeError(f"主播形象生成失败: {e}")
@@ -353,7 +353,7 @@ class AnchorPipeline(BasePipeline):
                 saved_video_id[:16],
             )
             video_output = await self.video_generator.wait_for_video(saved_video_id)
-            video_output.save(clip_path)
+            await asyncio.to_thread(video_output.save, clip_path)
         else:
             for attempt in range(3):
                 try:
@@ -369,7 +369,7 @@ class AnchorPipeline(BasePipeline):
                     # lose the submitted Agnes job.
                     self._save_task(clip_dir, video_id)
                     video_output = await self.video_generator.wait_for_video(video_id)
-                    video_output.save(clip_path)
+                    await asyncio.to_thread(video_output.save, clip_path)
                     break
                 except Exception as e:
                     if attempt < 2:
