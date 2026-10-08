@@ -254,7 +254,9 @@ button{cursor:pointer}
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
       <div class="label">Промпт движения</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
-      <div class="actions"><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
+      <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
+      <div class="hint">Сначала создай кадр сцены. Он будет автоматически передан в Agnes 2.0 как исходное изображение для видео.</div>
+      <div id="startFrameStatus" class="status"></div><div id="startFrameResult" class="result hidden"></div>
       <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
     </div>
   </div>
@@ -611,6 +613,49 @@ async function getSelectedVideoReferences(){
   return chosen.slice(0,5).map(r=>r.blob).filter(b=>b instanceof Blob);
 }
 
+let generatedStartFrameBlob=null;
+let generatedStartFrameTaskId='';
+async function createStartFrame(){
+  const prompt=$('#videoPrompt').value.trim();
+  if(!prompt){toast('Сначала напиши описание сцены и движения');return}
+  const button=$('#createStartFrame');button.disabled=true;
+  $('#startFrameStatus').textContent='Создаю исходный кадр…';
+  $('#startFrameResult').classList.add('hidden');
+  try{
+    const aspect=$('#videoAspect').value;
+    const imagePrompt='Create a single polished cinematic FIRST FRAME for a vertical animated film scene. This is a still image, not a collage, not a storyboard, no text or lettering. Scene and character action: '+prompt+'. Show the character fully integrated into the environment, with the background filling the entire frame edge-to-edge. Natural coherent lighting, consistent perspective, detailed environment, no white or blank background, no cutout character, no transparency. Compose for '+aspect+' aspect ratio.';
+    const payload={prompt:imagePrompt,size:'1K',ratio:aspect,character_id:$('#videoCharacter').value||''};
+    let refs=[];
+    if($('#videoCharacter').value==='miya'){
+      const saved=await getMiaRefs();
+      const selectedIds=getSelectedVideoReferenceIds().map(Number).filter(Number.isFinite);
+      refs=saved.filter(x=>selectedIds.includes(x.id));
+      if(!refs.length)refs=[saved.find(x=>x.isPrimary)||saved[0]].filter(Boolean);
+      const first=refs.find(x=>x.blob instanceof Blob);
+      if(first){
+        const bytes=new Uint8Array(await first.blob.arrayBuffer());
+        let binary='';for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+        payload.reference_image_base64=btoa(binary);
+      }
+    }
+    const response=await api('/api/image/generate?prompt='+encodeURIComponent(imagePrompt)+'&size=1K&ratio='+encodeURIComponent(aspect),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.detail||data.error||'Не удалось создать стартовый кадр');
+    const imageResponse=await api('/api/image/'+encodeURIComponent(data.task_id));
+    if(!imageResponse.ok)throw new Error('Кадр создан, но не удалось загрузить изображение');
+    generatedStartFrameBlob=await imageResponse.blob();
+    generatedStartFrameTaskId=data.task_id;
+    if(!generatedStartFrameBlob.type||!generatedStartFrameBlob.type.startsWith('image/'))throw new Error('Сервер вернул файл неподдерживаемого формата');
+    $('#videoReference').value='';
+    $('#startFrameResult').innerHTML='<img alt="Стартовый кадр" style="width:100%;display:block" src="'+URL.createObjectURL(generatedStartFrameBlob)+'"><div style="padding:12px">Стартовый кадр готов. Нажми «Создать видео» — он будет передан в Agnes 2.0 автоматически.</div>';
+    $('#startFrameResult').classList.remove('hidden');
+    $('#startFrameStatus').textContent='Стартовый кадр готов · '+data.task_id+' · '+aspect;
+    toast('Стартовый кадр готов');
+  }catch(e){
+    generatedStartFrameBlob=null;generatedStartFrameTaskId='';
+    $('#startFrameStatus').textContent=e.message||'Ошибка создания стартового кадра';toast(e.message||'Ошибка создания стартового кадра');
+  }finally{button.disabled=false}
+}
 async function generateVideo(){
   const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;
   if(!p){toast('Напиши промпт движения');return}
@@ -621,7 +666,7 @@ async function generateVideo(){
       try{
         console.info('[Video] Preparing references…');
         $('#videoStatus').textContent='Подготовка референсов…';
-        refs=await Promise.race([
+        refs=generatedStartFrameBlob?[generatedStartFrameBlob]:await Promise.race([
           getSelectedVideoReferences(),
           new Promise((_,reject)=>setTimeout(()=>reject(new Error('Подготовка референсов заняла слишком много времени')),20000))
         ]);
@@ -701,7 +746,8 @@ $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
 $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderVideoReferencePicker(refs,refs.slice(0,5).map(r=>String(r.id)));saveFormState()};
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';saveFormState()};
+$('#createStartFrame').onclick=createStartFrame;
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';$('#videoReference').value='';saveFormState()};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
