@@ -98,7 +98,7 @@ Designed specifically for AI coding assistants (Claude, Cursor, etc.), with a co
 
 ### Multilingual Web UI
 
-One-click launch, operate entirely in the browser. Interface available in **7 languages**: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, Bahasa Indonesia.
+One-click launch, operate entirely in the browser. Interface available in **Russian UI**: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, Bahasa Indonesia.
 
 ## Quick Start
 
@@ -276,7 +276,7 @@ free-video-generator/
 ├── requirements.txt                  # Python dependencies
 ├── server.py                         # FastAPI server (REST + WebSocket)
 ├── static/
-│   └── index.html                    # Frontend SPA — 5 task tabs, 7 languages (Tailwind CSS)
+│   └── index.html                    # Frontend SPA — 5 task tabs, Russian UI (Tailwind CSS)
 ├── core/
 │   ├── config.py                     # API key, font resolution, default configs
 │   ├── screenwriter.py               # Screenwriter Agent (LLM-powered story/script/narration)
@@ -460,7 +460,7 @@ Yes. You can upload reference images for character or scene consistency across s
 
 ### What languages does the UI support?
 
-The Web UI supports 7 languages: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Subtitles are generated in the source text language with CJK font support built-in.
+The Web UI supports Russian UI: Chinese, English, Russian, Japanese, Korean, Bahasa Melayu, and Bahasa Indonesia. Subtitles are generated in the source text language with CJK font support built-in.
 
 ### Can I host this on my own server?
 
