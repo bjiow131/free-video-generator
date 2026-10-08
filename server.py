@@ -1132,12 +1132,13 @@ async def _run_pipeline_with_concurrency(
         f"current={_pipeline_semaphore.current}/{_pipeline_semaphore.max_weight})"
     )
 
-    # 标记排队状态
-    task_manager.update_state(status=StepStatus.QUEUED)
-
     acquired = False
 
     try:
+        # Mark the task queued inside the protected section so an exception while
+        # persisting state still reaches the cleanup in finally.
+        task_manager.update_state(status=StepStatus.QUEUED)
+
         # 等待并发槽位
         await _pipeline_semaphore.acquire(weight)
         acquired = True
