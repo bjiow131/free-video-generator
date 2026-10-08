@@ -127,3 +127,5 @@ button[disabled],button:disabled,input:disabled,select:disabled,textarea:disable
   .ds-toast{animation:none!important}
   .task-card:hover,.card:hover,.primary:hover{transform:none!important}
 }
+
+.field-error{margin-top:6px;color:var(--ds-error);font-size:11px;line-height:1.4}.field-error::before{content:"! ";font-weight:800}input[aria-invalid="true"],textarea[aria-invalid="true"],select[aria-invalid="true"]{border-color:var(--ds-error)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--ds-error) 16%,transparent)!important}
