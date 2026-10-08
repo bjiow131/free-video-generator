@@ -1017,7 +1017,7 @@ _DURATION_PATTERNS = [
     # 韩文
     r'각\s*(\d+)\s*초',
     # 俄文
-    r'по\s*(\d+)\s*секунд',
+    r'(?:по|кажд(?:ый|ая|ую|ые))\s*(\d+)\s*секунд',
     # 马来/印尼
     r'(\d+)\s*(?:saat|detik)\s*(?:setiap|masing)',
     r'(?:setiap|masing)\s*(?:satu\s+)?(\d+)\s*(?:saat|detik)',
@@ -1033,7 +1033,7 @@ def _parse_duration(user_requirement: str) -> int:
     if not valid_duration_keys:
         raise ValueError("DURATION_FRAME_MAP не содержит допустимых значений")
     default_duration = 5 if 5 in DURATION_FRAME_MAP else valid_duration_keys[0]
-    for pattern in _DURATION_PATTERNS[:-1]:
+    for pattern in _DURATION_PATTERNS:
         match = re.search(pattern, text_value, re.IGNORECASE)
         if match:
             value = int(match.group(1))
