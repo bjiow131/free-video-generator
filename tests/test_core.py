@@ -46,9 +46,8 @@ class TestSubtitleStyle:
 
     def test_bg_color_transparent(self):
         from models.task import SubtitleStyle
-        # SubtitleStyle.bg_color 类型为 tuple，transparent 解析为 None 会触发 Pydantic 类型错误
-        with pytest.raises(Exception):
-            SubtitleStyle(bg_color="transparent")
+        style = SubtitleStyle(bg_color="transparent")
+        assert style.bg_color == (0, 0, 0, 0)
 
     def test_bg_color_tuple_passthrough(self):
         from models.task import SubtitleStyle
