@@ -925,6 +925,7 @@ async def generate_image(request: Request):
             reference_images.insert(0, single_reference)
         character_id = str(form.get("character_id") or "").strip() or None
         reference_image_base64 = str(form.get("reference_image_base64") or "").strip()
+        reference_images_base64 = form.getlist("reference_images_base64") if hasattr(form, "getlist") else []
     # Base64 is the reliable transport for saved browser references.
     if reference_image_base64 and not reference_images:
         try:
@@ -1452,6 +1453,7 @@ async def create_simple_task(request: Request):
         reference_image = None
         end_frame_image = None
         reference_image_base64 = str(body.get("reference_image_base64") or "").strip()
+        reference_images_base64 = body.get("reference_images_base64") or []
     else:
         form = await request.form()
         reference_image = form.get("reference_image")
@@ -1475,7 +1477,13 @@ async def create_simple_task(request: Request):
         raise HTTPException(status_code=422, detail="Некорректный seed")
     negative_prompt = str(form.get("negative_prompt") or "")
     system_prompt = str(form.get("system_prompt") or "")
-    logger.info("[Simple] content_type=%s keys=%s prompt_present=%s prompt_len=%d reference_base64=%s", content_type.split(";", 1)[0], sorted(form.keys()), bool(prompt), len(prompt), bool(reference_image_base64))
+    if isinstance(reference_images_base64, str):
+        reference_images_base64 = [reference_images_base64] if reference_images_base64.strip() else []
+    reference_images_base64 = [str(x).strip() for x in reference_images_base64 if str(x).strip()]
+    if reference_image_base64 and not reference_images_base64:
+        reference_images_base64 = [reference_image_base64]
+    reference_images_base64 = reference_images_base64[:5]
+    logger.info("[Simple] content_type=%s keys=%s prompt_present=%s prompt_len=%d reference_base64=%s reference_count=%d", content_type.split(";", 1)[0], sorted(form.keys()), bool(prompt), len(prompt), bool(reference_image_base64), len(reference_images_base64))
 
 
 
@@ -1528,7 +1536,24 @@ async def create_simple_task(request: Request):
     # 处理参考图上传（L4: 用 UUID 替代客户端文件名，避免路径穿越）
     uploaded_paths = []
     try:
-        if reference_image_base64:
+        if reference_images_base64:
+            import base64
+            for idx, encoded in enumerate(reference_images_base64, 1):
+                if encoded.startswith("data:") and "," in encoded:
+                    encoded = encoded.split(",", 1)[1]
+                raw = base64.b64decode(encoded, validate=True)
+                if len(raw) > MAX_UPLOAD_SIZE:
+                    raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
+                header = raw[:16]
+                extension = next((ext for ext, check in _ALLOWED_IMAGE_SIGNATURES.items() if check(header)), None)
+                if extension is None:
+                    raise HTTPException(status_code=422, detail="Поддерживаются только изображения PNG, JPG/JPEG и WEBP")
+                path = os.path.join(get_upload_dir(), f"{task_id}_ref{idx}{extension}")
+                await asyncio.to_thread(_write_upload_bytes, path, raw)
+                uploaded_paths.append(path)
+            state.reference_image = uploaded_paths[0]
+            state.reference_images = uploaded_paths
+        elif reference_image_base64:
             import base64
             encoded = reference_image_base64
             if encoded.startswith("data:") and "," in encoded:
