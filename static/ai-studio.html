@@ -670,14 +670,64 @@ function historyCard(x){
 }
 async function loadHistory(){
   try{
-    let r=await api('/api/tasks');let d=await r.json();let items=(d.tasks||[]).filter(x=>x.task_type==='image');
+    let r=await api('/api/tasks');let d=await r.json();
+    let items=(d.tasks||[]).filter(x=>x.task_type==='image'||x.task_type==='video');
     $('#historyList').innerHTML=items.length?items.map(historyCard).join(''):'<div class="card">Генераций пока нет.</div>';
     if(historyTimer)clearTimeout(historyTimer);
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
-  }catch(e){$('#historyList').innerHTML='<div class="card">'+e.message+'</div>'}
+  }catch(e){$('#historyList').innerHTML='<div class="card">'+escapeHtml(e.message)+'</div>'}
 }
+
+/* Persist UI state across F5/reload. File inputs are intentionally excluded:
+   browsers do not allow restoring local file selections for security reasons. */
+const FORM_STATE_KEY='aistudio_form_state_v2';
+const FORM_STATE_IDS=[
+  'imageAspect','imageQuality','imageCharacter','imageCharacterReference',
+  'imagePrompt','videoMode','videoAspect','videoDuration','videoCharacter',
+  'videoCharacterReference','videoPrompt'
+];
+function saveFormState(){
+  try{
+    const state={};
+    FORM_STATE_IDS.forEach(id=>{
+      const el=$('#'+id); if(!el)return;
+      if(el.multiple) state[id]=Array.from(el.selectedOptions||[]).map(o=>o.value);
+      else state[id]=el.value;
+    });
+    localStorage.setItem(FORM_STATE_KEY,JSON.stringify(state));
+  }catch(e){console.debug('[State] save skipped',e)}
+}
+function restoreFormState(){
+  try{
+    const raw=localStorage.getItem(FORM_STATE_KEY); if(!raw)return;
+    const state=JSON.parse(raw);
+    FORM_STATE_IDS.forEach(id=>{
+      const el=$('#'+id), value=state?.[id];
+      if(!el||value==null)return;
+      if(el.multiple&&Array.isArray(value)){
+        Array.from(el.options).forEach(o=>{o.selected=value.includes(o.value)});
+      }else{
+        const hasOption=el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===String(value));
+        if(hasOption)el.value=String(value);
+      }
+    });
+  }catch(e){console.debug('[State] restore skipped',e)}
+}
+function bindFormState(){
+  FORM_STATE_IDS.forEach(id=>{
+    const el=$('#'+id); if(el)el.addEventListener('change',saveFormState);
+  });
+  ['imagePrompt','videoPrompt'].forEach(id=>{
+    const el=$('#'+id); if(el)el.addEventListener('input',saveFormState);
+  });
+}
+
 load().then(async()=>{
   await loadCharacters();
+  restoreFormState();
+  await syncCharacterReferenceSelector(await getMiaRefs());
+  await syncVideoCharacterSelector(await getMiaRefs());
+  bindFormState();
   let savedPage='image';
   try{
     savedPage=localStorage.getItem('aistudio_page')||'image';
