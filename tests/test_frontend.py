@@ -44,6 +44,14 @@ def test_production_workflows_persist_and_resume_after_reload():
     assert "restoreProductionAfterLoad()" in source
 
 
+def test_frontend_handles_generation_api_failures_and_broken_image_results():
+    source = HTML.read_text(encoding="utf-8")
+    assert "if(!r.ok||!d.task_id)throw Error(d.detail||d.error||'Не удалось запустить генерацию изображения')" in source
+    assert "if(!r.ok||!d.task_id)throw Error(d.detail||d.error||'Не удалось запустить генерацию видео')" in source
+    assert "data-retry-generation" in source
+    assert "imageResult.addEventListener('error'" in source
+
+
 def test_frontend_debounces_draft_persistence():
     source = HTML.read_text(encoding="utf-8")
     assert "const draftSaveTimers={}" in source
