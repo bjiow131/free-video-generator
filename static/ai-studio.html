@@ -256,7 +256,8 @@ button{cursor:pointer}
       <textarea id="videoPrompt" class="textarea" placeholder="Что делает Мия? Как движется камера? Что происходит в сцене?"></textarea>
       <div class="label">Промпт стартового кадра <span style="color:#777">(создаётся автоматически, можно редактировать)</span></div>
       <textarea id="startFramePrompt" class="textarea" placeholder="Сначала опиши сцену выше — здесь появится промпт для изображения." rows="5"></textarea>
-      <div class="hint">Видео-промпт отвечает за движение. Промпт кадра — за то, как выглядит первый момент: персонаж, фон, композиция и свет. Автопромпт не отправляет дополнительный запрос и его можно исправить вручную.</div>
+      <div class="hint">Видео-промпт отвечает за движение. Промпт кадра — за первый момент: персонаж, фон, композиция и свет. Автопромпт не отправляет дополнительный запрос и его можно исправить вручную.</div>
+      <div class="actions"><button type="button" id="refreshStartFramePrompt" class="ghost">Обновить промпт кадра из видео</button></div>
       <div class="actions"><button type="button" id="createStartFrame" class="ghost">Создать стартовый кадр</button><button type="button" id="videoGenerate" class="primary">Создать видео</button><button type="button" class="ghost" id="videoClear">Очистить</button></div>
       <div class="hint">Готовый кадр автоматически станет исходным изображением для Agnes 2.0.</div>
       <div id="startFrameStatus" class="status"></div><div id="startFrameResult" class="result hidden"></div>
@@ -621,7 +622,7 @@ let generatedStartFrameTaskId='';
 function buildStartFramePrompt(videoPrompt){
   const source=String(videoPrompt||'').trim();
   if(!source)return '';
-  return 'Create one polished cinematic opening still for an animated film. Depict the scene at the instant just BEFORE the main movement described in the video prompt begins.\n\nSCENE AND STORY CONTEXT (derived from the video prompt): '+source+'\n\nCOMPOSITION: show a clear, readable first-frame composition with the main character fully integrated into the environment. The background must fill the entire image edge-to-edge and continue naturally behind and around the character. Establish the location, foreground, midground and background. Use coherent perspective, natural contact shadows, consistent lighting and believable environmental details. Keep the character's full silhouette cleanly separated from the background without looking cut out.\n\nCONTINUITY: if a character reference is supplied, preserve that character's identity, face, hair, clothing, body proportions and visual style. No white studio background, blank backdrop, transparency, collage, storyboard panels, borders, text, lettering, logos or watermarks. This is a single still image, not an action sequence. Compose for '+$('#videoAspect').value+' aspect ratio.';
+  return 'Create one polished cinematic opening still for an animated film. Depict the scene at the instant just BEFORE the main movement described in the video prompt begins.\n\nSCENE AND STORY CONTEXT (derived from the video prompt): '+source+'\n\nCOMPOSITION: show a clear, readable first-frame composition with the main character fully integrated into the environment. The background must fill the entire image edge-to-edge and continue naturally behind and around the character. Establish the location, foreground, midground and background. Use coherent perspective, natural contact shadows, consistent lighting and believable environmental details. Keep the full silhouette of the character cleanly separated from the background without looking cut out.\n\nCONTINUITY: if a character reference is supplied, preserve that character's identity, face, hair, clothing, body proportions and visual style. No white studio background, blank backdrop, transparency, collage, storyboard panels, borders, text, lettering, logos or watermarks. This is a single still image, not an action sequence. Compose for '+$('#videoAspect').value+' aspect ratio.';
 }
 function syncStartFramePrompt(force=false){
   const videoPrompt=$('#videoPrompt'), framePrompt=$('#startFramePrompt');
@@ -631,6 +632,7 @@ function syncStartFramePrompt(force=false){
   }
 }
 $('#startFramePrompt').addEventListener('input',()=>{$('#startFramePrompt').dataset.userEdited='true'});
+$('#refreshStartFramePrompt').onclick=()=>{delete $('#startFramePrompt').dataset.userEdited;syncStartFramePrompt(true);saveFormState();toast('Промпт стартового кадра обновлён')};
 $('#videoPrompt').addEventListener('input',()=>syncStartFramePrompt());
 $('#videoAspect').addEventListener('change',()=>syncStartFramePrompt());
 async function createStartFrame(){
@@ -852,6 +854,7 @@ function bindFormState(){
 load().then(async()=>{
   await loadCharacters();
   restoreFormState();
+  syncStartFramePrompt(true);
   await syncCharacterReferenceSelector(await getMiaRefs());
   await syncVideoCharacterSelector(await getMiaRefs());
   // Restore dependent character/reference state after the selectors exist.
