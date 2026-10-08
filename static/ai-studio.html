@@ -395,11 +395,20 @@ async function generateImage(){
     const characterId=$('#imageCharacter').value;
     const ref=$('#imageReference').files[0];
     if(ref) f.append('reference_image',ref);
-    else if(characterId==='miya'){
+    else if(String(characterId).trim().toLowerCase()==='miya'){
       const refs=await getMiaRefs();
-      const selectedIds=[...$('#imageCharacterReference').selectedOptions].map(o=>Number(o.value)).filter(Number.isFinite);
-      const chosen=selectedIds.length?refs.filter(item=>selectedIds.includes(item.id)):[refs.find(item=>item.isPrimary)||refs[0]].filter(Boolean);
-      chosen.forEach((item,index)=>{const mime=String(item.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';const field=index===0?'reference_image':'reference_images';f.append(field,item.blob,'miya_ref_'+(index+1)+'.'+ext);});
+      const select=$('#imageCharacterReference');
+      const selectedIds=select?Array.from(select.options||[]).filter(o=>o.selected).map(o=>Number(o.value)).filter(Number.isFinite):[];
+      let chosen=selectedIds.length?refs.filter(item=>selectedIds.includes(item.id)):[];
+      if(!chosen.length) chosen=[refs.find(item=>item.isPrimary)||refs[0]].filter(item=>item&&item.blob instanceof Blob);
+      if(!chosen.length) throw new Error('У Мии не найден сохранённый референс. Открой раздел «Персонажи» и проверь, что референс сохранён.');
+      chosen.slice(0,6).forEach((item,index)=>{
+        const blob=item.blob;
+        const mime=String(blob.type||'image/png').toLowerCase();
+        const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';
+        const field=index===0?'reference_image':'reference_images';
+        f.append(field,blob,'miya_ref_'+(index+1)+'.'+ext);
+      });
     }
     const endpoint='/api/image/generate?prompt='+encodeURIComponent(p)+'&size='+encodeURIComponent($('#imageQuality').value)+'&ratio='+encodeURIComponent($('#imageAspect').value);
     const sentRefs=[...f.entries()].filter(([key,value])=>(key==='reference_image'||key==='reference_images')&&value instanceof Blob);
