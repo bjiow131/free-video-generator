@@ -292,7 +292,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI Studio API", lifespan=lifespan)
+app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
 
 # Local-only browser UI: allow only the two loopback origins used by the
 # built-in server.  The UI itself is same-origin, but keeping explicit CORS
