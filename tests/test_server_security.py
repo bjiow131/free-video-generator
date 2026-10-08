@@ -335,3 +335,38 @@ def test_history_ui_does_not_embed_task_id_in_inline_javascript():
     source = html.read_text(encoding="utf-8")
     assert "onclick="openResult" not in source
     assert "escapeHtml(x.status)" in source
+
+
+def test_concat_audio_overlay_closes_source_clips(monkeypatch, tmp_path):
+    from core.compositor import concatenator
+
+    class DummyClip:
+        duration = 1.0
+        w = 640
+        h = 360
+        def __init__(self):
+            self.closed = False
+        def subclipped(self, start, end):
+            return DummyClip()
+        def with_audio(self, audio):
+            return self
+        def write_videofile(self, *args, **kwargs):
+            pass
+        def close(self):
+            self.closed = True
+
+    video_source = DummyClip()
+    audio_source = DummyClip()
+    monkeypatch.setattr(concatenator, "VideoFileClip", lambda path: video_source)
+    monkeypatch.setattr(concatenator, "AudioFileClip", lambda path: audio_source)
+    monkeypatch.setattr(concatenator.VideoConcatenator, "_get_duration", lambda path: 1.0)
+    monkeypatch.setattr(concatenator.VideoConcatenator, "concat_videos", lambda paths, out: None)
+
+    concatenator.VideoConcatenator.concat_videos_with_audio_overlay(
+        [str(tmp_path / "v.mp4")],
+        str(tmp_path / "a.mp3"),
+        None,
+        str(tmp_path / "out.mp4"),
+    )
+    assert video_source.closed is True
+    assert audio_source.closed is True
