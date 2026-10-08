@@ -282,10 +282,10 @@ free-video-generator/
 │   ├── screenwriter.py               # Screenwriter Agent (LLM-powered story/script/narration)
 │   ├── task_manager.py               # Task state persistence & checkpoint resume
 │   ├── api/
-│   │   ├── agnes_chat.py             # LLM Chat API (agnes-2.0-flash)
-│   │   ├── agnes_image.py            # Image generation API (agnes-image-2.1-flash / 2.0-flash)
-│   │   ├── agnes_video.py            # Video generation API (agnes-video-v2.0)
-│   │   └── rate_limiter.py           # Global token bucket rate limiter (16 requests/min)
+│   │   ├── agnes_chat.py             # LLM Chat API (agnes-3.0-flash)
+│   │   ├── agnes_image.py            # Image generation API (agnes-image-2.5-flash)
+│   │   ├── agnes_video.py             # Video generation API (agnes-video-2.5-flash / 2.5)
+│   │   └── rate_limiter.py            # Global token bucket limiter (20 configured / 10 effective requests/min)
 │   ├── audio/
 │   │   ├── tts.py                    # Edge TTS engine + silent fallback engine
 │   │   └── subtitle.py               # SRT generation (fine-grained word-level) + overlay
@@ -363,6 +363,9 @@ free-video-generator/
 | POST | `/api/config/watermark` | Configure optional watermark |
 | GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |
 | POST | `/api/workspaces/pick-directory` | Pick a local directory |
+| GET | `/api/concurrency` | Concurrency and rate status |
+| POST | `/api/cleanup-regression` | Clean regression artifacts |
+| GET/POST | `/api/comfyui/status`, `/api/comfyui/generate`, `/api/comfyui/preview` | Optional ComfyUI integration |
 
 ## Important Notes
 
