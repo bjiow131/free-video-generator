@@ -322,7 +322,7 @@ def test_history_ui_does_not_embed_task_id_in_inline_javascript():
 
     html = Path(__file__).resolve().parents[1] / "static" / "ai-studio.html"
     source = html.read_text(encoding="utf-8")
-    assert "onclick="openResult" not in source
+    assert 'onclick="openResult' not in source
     assert "escapeHtml(x.status)" in source
 
 
