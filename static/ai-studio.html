@@ -189,7 +189,7 @@ button{cursor:pointer}
 </style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
-<button class="active" data-page="image">Изображения</button><button data-page="characters">Персонажи</button><button data-page="history">История</button>
+<button class="active" data-page="image">Изображения</button><button data-page="video">Видео</button><button data-page="characters">Персонажи</button><button data-page="history">История</button>
 </nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
 <main class="main"><header class="top"><div>Локальный сервер</div><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></header>
 
@@ -210,6 +210,37 @@ button{cursor:pointer}
       <div class="label">Референс <span style="color:#777">(необязательно)</span></div><input id="imageReference" type="file" accept="image/*">
       <div class="actions"><button id="imageGenerate" class="primary">Создать изображение</button><button class="ghost" id="imageClear">Очистить</button></div>
       <div id="imageStatus" class="status"></div><div id="imageResult" class="result hidden"></div>
+    </div>
+  </div>
+</section>
+
+<section id="video" class="section">
+  <div class="hero"><div class="eyebrow">Video Studio</div><h1 style="font-size:52px">Видео</h1><p>Создавай видео из текста или оживляй готовое изображение.</p></div>
+  <div class="workspace">
+    <div class="panel">
+      <h2>Генерация видео</h2>
+      <div class="label">Режим</div>
+      <select id="videoMode" class="select">
+        <option value="i2v">Image → Video</option>
+        <option value="t2v">Text → Video</option>
+        <option value="ti2vid">Text + Image → Video</option>
+      </select>
+      <div class="label">Формат</div>
+      <select id="videoAspect" class="select">
+        <option value="9:16">9:16 — вертикальный</option>
+        <option value="16:9">16:9 — горизонтальный</option>
+        <option value="1:1">1:1 — квадрат</option>
+      </select>
+      <div class="label">Длительность</div>
+      <select id="videoDuration" class="select">
+        <option value="4">4 сек</option><option value="5" selected>5 сек</option><option value="6">6 сек</option><option value="8">8 сек</option><option value="10">10 сек</option><option value="12">12 сек</option><option value="15">15 сек</option><option value="18">18 сек</option><option value="20">20 сек</option>
+      </select>
+      <div class="label">Исходное изображение</div>
+      <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
+      <div class="label">Промпт движения</div>
+      <textarea id="videoPrompt" class="textarea" placeholder="Опиши движение и работу камеры…"></textarea>
+      <div class="actions"><button id="videoGenerate" class="primary">Создать видео</button><button class="ghost" id="videoClear">Очистить</button></div>
+      <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
     </div>
   </div>
 </section>
@@ -493,6 +524,33 @@ $('#saveClose').onclick=closeSaveModal;
 $('#saveCancel').onclick=closeSaveModal;
 $('#saveContinue').onclick=saveImageWithName;
 $('#saveFilename').addEventListener('keydown',e=>{if(e.key==='Enter')saveImageWithName()});
+function videoDimensions(aspect){if(aspect==='9:16')return [720,1280];if(aspect==='1:1')return [720,720];return [1280,704]}
+async function generateVideo(){
+  const p=$('#videoPrompt').value.trim();const mode=$('#videoMode').value;const ref=$('#videoReference').files[0];
+  if(!p){toast('Напиши промпт движения');return}
+  if((mode==='i2v'||mode==='ti2vid')&&!ref){toast('Для этого режима выбери исходное изображение');return}
+  setGenerateBusy('video',true);$('#videoStatus').textContent='Запуск генерации видео…';$('#videoResult').classList.add('hidden');
+  try{
+    const [video_width,video_height]=videoDimensions($('#videoAspect').value);
+    const f=new FormData();f.append('prompt',p);f.append('model','agnes-video-2.5-flash');f.append('mode',mode);f.append('duration',$('#videoDuration').value);f.append('video_width',String(video_width));f.append('video_height',String(video_height));
+    if(ref)f.append('reference_image',ref);
+    const r=await api('/api/tasks/simple',{method:'POST',body:f});const d=await r.json();const taskId=d.task_id;
+    $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
+    const poll=async()=>{try{const rr=await api('/api/tasks');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){setTimeout(poll,2500);return}
+      if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
+      if(task.status==='completed'){
+        const url='/api/video/'+encodeURIComponent(taskId);
+        $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px"><button class="ghost" id="saveVideoButton">Открыть видео</button></div>';
+        $('#saveVideoButton').onclick=()=>openResult(taskId,'video');
+        $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;setGenerateBusy('video',false);return}
+      const pct=Math.max(0,Math.min(100,Number(task.progress||0)));$('#videoStatus').textContent='Генерация видео · '+pct.toFixed(0)+'%'+(task.progress_message?' · '+task.progress_message:'');setTimeout(poll,3000);
+    }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}};
+    poll();
+  }catch(e){$('#videoStatus').textContent=e.message;toast(e.message);setGenerateBusy('video',false)}
+}
+$('#videoGenerate').onclick=generateVideo;
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
+
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
 $('#characterSave').onclick=saveCharacterPack;
