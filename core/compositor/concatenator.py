@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.compositor.concatenator — 视频拼接器
 
 支持纯视频拼接和带音频字幕的拼接。
@@ -30,6 +31,7 @@ class VideoConcatenator:
     """视频拼接器：纯拼接 + 带音频合成拼接。"""
 
     @staticmethod
+    @timed_step
     def concat_videos(video_paths: List[str], output_path: str) -> str:
         """纯视频拼接（无音频处理）。
 
@@ -118,6 +120,7 @@ class VideoConcatenator:
         )
 
     @staticmethod
+    @timed_step
     def _parse_srt_to_clips(
         srt_path: str,
         subtitle_style: SubtitleStyle,
@@ -265,6 +268,7 @@ class VideoConcatenator:
         return subs_clips
 
     @staticmethod
+    @timed_step
     def _get_duration(path: str) -> float:
         """用 ffprobe 获取媒体文件时长（秒）。"""
         try:
@@ -279,6 +283,7 @@ class VideoConcatenator:
             return 0.0
 
     @staticmethod
+    @timed_step
     def _run_ffmpeg(cmd: list, desc: str = "") -> None:
         """执行 ffmpeg 命令，失败时抛 RuntimeError。"""
         logger.info(f"[Compositor] ffmpeg: {desc}")
@@ -296,6 +301,7 @@ class VideoConcatenator:
             raise RuntimeError(f"ffmpeg {desc} timed out")
 
     @staticmethod
+    @timed_step
     def concat_videos_with_audio_overlay(
         video_paths: List[str],
         audio_path: str,
@@ -505,6 +511,7 @@ class VideoConcatenator:
         return output_path
 
     @staticmethod
+    @timed_step
     def composite_anchor_video(
         clip_path: str,
         audio_path: str,
