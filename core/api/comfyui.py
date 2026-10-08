@@ -72,6 +72,7 @@ class ComfyUIClient:
         self.base_url = (base_url or get_comfyui_base_url()).rstrip("/")
         self.client_id = client_id or os.environ.get("COMFYUI_CLIENT_ID", "free-video-generator")
 
+    @timed_step
     async def health(self) -> dict[str, Any]:
         def _request() -> requests.Response:
             return requests.get(f"{self.base_url}/system_stats", timeout=(3, 5))
@@ -82,6 +83,7 @@ class ComfyUIClient:
         except (requests.RequestException, ValueError) as exc:
             return {"available": False, "base_url": self.base_url, "error": str(exc)}
 
+    @timed_step
     async def queue_prompt(self, workflow: dict[str, Any]) -> str:
         payload = {"prompt": workflow, "client_id": self.client_id}
         def _request() -> requests.Response:
@@ -99,6 +101,7 @@ class ComfyUIClient:
             raise ComfyUIError("ComfyUI did not return prompt_id")
         return str(prompt_id)
 
+    @timed_step
     async def wait_for_history(self, prompt_id: str, timeout: float = 1800.0,
                                poll_interval: float = 1.0) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
@@ -153,6 +156,7 @@ class ComfyUIClient:
                     outputs.append(descriptor)
         return outputs
 
+    @timed_step
     async def download_output(self, output: dict[str, str], destination: Path) -> Path:
         """Download a ComfyUI /view output atomically."""
         params = {
@@ -179,6 +183,7 @@ class ComfyUIClient:
                 pass
             raise ComfyUIError(f"ComfyUI output download failed: {exc}") from exc
 
+    @timed_step
     async def generate(self, *, prompt: Optional[str] = None, seed: Optional[int] = None,
                        width: Optional[int] = None, height: Optional[int] = None,
                        workflow_path: Optional[Path] = None, timeout: float = 1800.0) -> dict[str, Any]:
