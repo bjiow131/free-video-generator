@@ -229,7 +229,9 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
       </div>
     </div>
   </div>
-</section><section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
+<div id="legacyFilmHooks" class="hidden" aria-hidden="true">
+<input id="filmName"><textarea id="filmIdea"></textarea><input id="filmStyle"><select id="filmScenes"><option>3</option></select><select id="filmDuration"><option value="5">5</option></select><select id="filmFormat"><option value="portrait">portrait</option></select><input id="filmReference" type="file"><select id="filmAudio"><option value="true">true</option></select><select id="filmVoice"><option value="ru-RU-SvetlanaNeural">voice</option></select><select id="filmSubs"><option value="true">true</option></select><button id="filmGenerate" type="button"></button><button id="filmClear" type="button"></button><div id="filmStatus"></div><div id="filmProgress"></div>
+</div></section><section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
 <section id="credits" class="section"><div class="hero"><div class="eyebrow">Credits</div><h1 style="font-size:60px">Кредиты</h1><p>AISTUDIO не списывает внутренние кредиты. Генерация выполняется через Agnes AI; фактические лимиты определяются твоим API-ключом.</p><div class="grid" style="padding:20px 0"><div class="card"><h3>Agnes AI</h3><p>Прямое подключение к Agnes API</p><h2>∞</h2></div></div></div></section>
 </main></div>
 <div id="toast" class="toast hidden"></div>
