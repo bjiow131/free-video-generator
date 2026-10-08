@@ -248,7 +248,7 @@ function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
-async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
+async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>x?.msg||x?.detail||JSON.stringify(x)).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
 const CHARACTER_DB='aistudio-characters-v1';
 function characterDb(){
   return new Promise((resolve,reject)=>{
@@ -399,7 +399,7 @@ async function generateImage(){
       const refs=await getMiaRefs();
       const selectedId=Number($('#imageCharacterReference').value);
       const chosen=refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0];
-      if(chosen) f.append('reference_image',chosen.blob,'miya_ref.'+(chosen.name.split('.').pop()||'png'));
+      if(chosen){const mime=String(chosen.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';f.append('reference_image',chosen.blob,'miya_ref.'+ext);}
     }
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
