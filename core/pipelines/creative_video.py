@@ -87,9 +87,10 @@ async def _run_ffmpeg_async(cmd: List[str], timeout: float = 30.0) -> None:
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
         raise
     if proc.returncode != 0:
         err = stderr.decode(errors="replace")[:500] if stderr else ""
