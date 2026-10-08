@@ -130,6 +130,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 .onboarding{position:relative;overflow:hidden;background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--ds-accent) 14%,transparent),transparent 45%),var(--ds-surface-1)}.onboarding:after{content:"";position:absolute;width:180px;height:180px;right:-80px;bottom:-100px;border-radius:50%;background:color-mix(in srgb,var(--ds-accent) 9%,transparent);filter:blur(18px)}
 .onboarding .actions{position:relative;z-index:1}.setting-status{font-size:11px;color:var(--ds-text-2)}.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--ds-success)}
 @media(max-width:760px){.settings-grid{grid-template-columns:1fr}.settings-card.full{grid-column:auto}.settings-shell{padding:18px}.api-key-row{grid-template-columns:1fr}}
+.save-name-modal{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.6)}.save-name-card{width:min(420px,100%);padding:20px;border-radius:18px;background:#171917;box-shadow:0 20px 60px rgba(0,0,0,.4)}.save-name-title{font-size:20px;font-weight:700}.save-name-subtitle{margin-top:6px;opacity:.7}.save-name-input{width:100%;box-sizing:border-box;margin:16px 0;padding:13px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#0e100e;color:#fff;font-size:16px}.save-name-actions{display:flex;gap:10px;justify-content:flex-end}.save-name-actions button{min-height:42px;padding:0 16px}
 </style><style>/* TASK 3A.1 — unified interaction layer */
 :where(button,a,input,select,textarea){transition:background-color var(--ds-duration-fast) var(--ds-ease),border-color var(--ds-duration-fast) var(--ds-ease),color var(--ds-duration-fast) var(--ds-ease),box-shadow var(--ds-duration-fast) var(--ds-ease),opacity var(--ds-duration-fast) var(--ds-ease),transform var(--ds-duration-fast) var(--ds-ease)}
 :where(button,a):active:not(:disabled){transform:translateY(1px)}
@@ -586,15 +587,18 @@ function renderTasks(){
 }
 async function loadHistory(){try{$('#historyList').setAttribute('aria-busy','true');$('#historyList').innerHTML='<div class="ds-skeleton" style="height:220px;grid-column:1/-1"></div><div class="ds-skeleton" style="height:220px"></div><div class="ds-skeleton" style="height:220px"></div>';const r=await api('/api/tasks');const d=await r.json();taskCache=d.tasks||[];lastTaskRenderKey='';renderTasks()}catch(e){$('#historyList').innerHTML='<div class="ds-empty" style="grid-column:1/-1">'+escapeHtml(e.message||'Ошибка загрузки истории')+'</div>'}}
 async function openResult(id,type){const x=taskCache.find(t=>t.task_id===id)||{};let d=x;try{const r=await api('/api/tasks/'+encodeURIComponent(id));d=await r.json()}catch{}const frame=$('#playerFrame');frame.innerHTML=type==='image'?'<img src="/api/image/'+encodeURIComponent(id)+'" alt="Generated image">':'<video controls playsinline src="/api/video/'+encodeURIComponent(id)+'"></video>';$('#playerTitle').textContent=d.creative_name||id;$('#playerType').textContent=type;$('#playerDuration').textContent=d.video_duration||d.duration||'—';$('#playerResolution').textContent=(d.video_width&&d.video_height)?d.video_width+'×'+d.video_height:d.size||'—';$('#playerPrompt').textContent=d.prompt||d.idea||d.manuscript_text||d.script_text||'—';$('#playerDownload').onclick=()=>downloadTask(id,type,d.creative_name||'');$('#taskPlayer').classList.add('active');$('#taskPlayer').scrollIntoView({behavior:'smooth',block:'start'})}
-async function downloadTask(id,type,defaultName){
-  const fallbackName=defaultName||(type==='image'?'Мия.png':'video.mp4');
-  const safeDefault=fallbackName.replace(/[\\/:*?"<>|]/g,'').trim()||(type==='image'?'Мия.png':'video.mp4');
-  let name=window.prompt(type==='image'?'Имя файла изображения':'Имя файла видео',safeDefault);
-  if(name===null)return;
-  name=name.trim().replace(/[\\/:*?"<>|]/g,'');
-  if(!name){toast('Введите имя файла');return}
+function askFileName(type,defaultName){return new Promise(resolve=>{
   const ext=type==='image'?'.png':'.mp4';
-  if(!name.toLowerCase().endsWith(ext))name+=ext;
+  const fallback=(defaultName|| (type==='image'?'Мия':'video')).replace(/\\.[^.]+$/,'').replace(/[\\/:*?"<>|]/g,'').trim()||'Мия';
+  const wrap=document.createElement('div');wrap.className='save-name-modal';wrap.innerHTML='<div class="save-name-card"><div class="save-name-title">Сохранить файл</div><div class="save-name-subtitle">Введите имя файла</div><input class="save-name-input" type="text" value="'+fallback.replace(/"/g,'&quot;')+'"><div class="save-name-actions"><button type="button" class="ghost save-name-cancel">Отмена</button><button type="button" class="primary save-name-ok">Продолжить</button></div></div>';
+  document.body.appendChild(wrap);const input=wrap.querySelector('.save-name-input');input.focus();input.select();
+  const close=v=>{wrap.remove();resolve(v)};
+  wrap.querySelector('.save-name-cancel').onclick=()=>close(null);
+  wrap.querySelector('.save-name-ok').onclick=()=>{let n=input.value.trim().replace(/[\\/:*?"<>|]/g,'');if(!n){input.focus();return}if(!n.toLowerCase().endsWith(ext))n+=ext;close(n)};
+  input.onkeydown=e=>{if(e.key==='Enter')wrap.querySelector('.save-name-ok').click();if(e.key==='Escape')close(null)};
+});}
+async function downloadTask(id,type,defaultName){
+  const name=await askFileName(type,defaultName); if(!name)return;
   try{
     const url=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';
     const r=await fetch(url); if(!r.ok)throw Error('Не удалось получить файл');
@@ -605,11 +609,7 @@ async function downloadTask(id,type,defaultName){
       return;
     }
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    toast('Файл подготовлен к сохранению');
-  }catch(e){
-    if(e?.name==='AbortError')return;
-    const a=document.createElement('a');a.href=type==='image'?'/api/image/'+encodeURIComponent(id)+'/download':'/api/video/'+encodeURIComponent(id)+'/download';a.download=name;a.click();
-  }
+  }catch(e){if(e?.name==='AbortError')return;toast('Не удалось сохранить файл')}
 }
 async function taskAction(action,id){try{if(action==='stop'&&!(await confirmAction('Stop task','The running task will be cancelled and may not be resumable.','Stop task')))return;if(action==='open'){const x=taskCache.find(t=>t.task_id===id);openResult(id,x?.task_type==='image'?'image':'video');return}if(action==='download'){const x=taskCache.find(t=>t.task_id===id);downloadTask(id,x?.task_type==='image'?'image':'video',x?.creative_name||'');return}const r=await api('/api/tasks/'+encodeURIComponent(id)+'/'+action,{method:'POST'});toast(action==='stop'?'Task stopped':'Task resumed');await loadHistory();if(action==='resume')pollTask(id)}catch(e){toast(e.message)}}
 document.addEventListener('click',e=>{const b=e.target.closest('.result-download-btn');if(b)downloadTask(b.dataset.downloadId,b.dataset.downloadType,'Мия.png')});
