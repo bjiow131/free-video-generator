@@ -44,6 +44,14 @@ def test_production_workflows_persist_and_resume_after_reload():
     assert "restoreProductionAfterLoad()" in source
 
 
+def test_frontend_persists_and_restores_latest_image_result():
+    source = HTML.read_text(encoding="utf-8")
+    assert "localStorage.setItem('simple_image_task_id',d.task_id)" in source
+    assert "function restoreSimpleImageResult()" in source
+    assert "restoreSimpleImageResult()" in source
+    assert "localStorage.removeItem('simple_image_task_id')" in source
+
+
 def test_frontend_handles_generation_api_failures_and_broken_image_results():
     source = HTML.read_text(encoding="utf-8")
     assert "if(!r.ok||!d.task_id)throw Error(d.detail||d.error||'Не удалось запустить генерацию изображения')" in source
