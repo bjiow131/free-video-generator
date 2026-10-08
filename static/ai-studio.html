@@ -421,4 +421,12 @@ async function loadHistory(){
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
   }catch(e){$('#historyList').innerHTML='<div class="card">'+e.message+'</div>'}
 }
-load().then(()=>{loadCharacters();let savedPage='image';try{savedPage=localStorage.getItem('aistudio_page')||'image';if(!['image','history'].includes(savedPage))savedPage='image'}catch{};show(savedPage,false)});</script></body></html>
+load().then(async()=>{
+  await loadCharacters();
+  let savedPage='image';
+  try{
+    savedPage=localStorage.getItem('aistudio_page')||'image';
+    if(!['image','characters','history'].includes(savedPage))savedPage='image';
+  }catch{}
+  show(savedPage,false);
+});</script></body></html>
