@@ -4,7 +4,7 @@ import socket
 from urllib.parse import urljoin, urlsplit
 
 import requests
-from tenacity import retry, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def _validate_download_url(url: str) -> None:
             raise ValueError("Video URL resolves to a non-public address")
 
 
-@retry(stop=stop_after_attempt(3))
+@retry(stop=stop_after_attempt(3), retry=retry_if_exception_type((requests.RequestException, OSError)), reraise=True)
 def download_video(url: str, save_path: str, max_size: int = _MAX_VIDEO_SIZE) -> None:
     _validate_download_url(url)
     logger.info("Downloading video to %s", save_path)
