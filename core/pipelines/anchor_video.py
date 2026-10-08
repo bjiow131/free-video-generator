@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.pipelines.anchor_video -- 数字人口播流水线（类型 4）
 
 支持两种音频模式：
@@ -113,6 +114,7 @@ class AnchorPipeline(BasePipeline):
     # 模式 A: 后拼接音频 — 单段视频 + 循环 + TTS + 字幕
     # ==================================================================
 
+    @timed_step
     async def _run_post_stitch(self, anchor_image_path: str) -> str:
         """后拼接音频模式：一段短 i2v 循环播放 + TTS + 字幕叠加。"""
         # Step 2: TTS 读稿音频（先行，获取时长和 sub_maker）
@@ -166,6 +168,7 @@ class AnchorPipeline(BasePipeline):
     # 模式 B: 模型音频 — 视频由模型自带音频，不做后处理
     # ==================================================================
 
+    @timed_step
     async def _run_model_audio(self, anchor_image_path: str) -> str:
         """模型音频模式：一段视频由模型自带音频，不做后处理。"""
         # Step 2: 为全文生成单段 i2v prompt（含口播文本提示）
@@ -214,6 +217,7 @@ class AnchorPipeline(BasePipeline):
             return _DEFAULT_ANCHOR_PROMPT_ZH
         return _DEFAULT_ANCHOR_PROMPT_EN
 
+    @timed_step
     async def _step_generate_anchor(self) -> str:
         """Step 1: 生成主播形象图（t2i / i2i）。"""
         if self._state.step_generate_anchor == StepStatus.COMPLETED:
@@ -269,6 +273,7 @@ class AnchorPipeline(BasePipeline):
         await self._emit("generate_anchor", "completed", "主播形象生成完成", 0.08)
         return output_path
 
+    @timed_step
     async def _step_generate_smooth_prompt(self) -> str:
         """为后拼接音频模式生成循环优化的单段 prompt。"""
         await self._emit(
@@ -295,6 +300,7 @@ class AnchorPipeline(BasePipeline):
         )
         return prompt
 
+    @timed_step
     async def _step_generate_audio_prompt(self) -> str:
         """为模型音频模式生成含口播文本的视频 prompt。"""
         await self._emit(
@@ -324,6 +330,7 @@ class AnchorPipeline(BasePipeline):
         )
         return prompt
 
+    @timed_step
     async def _step_generate_single_clip(
         self, anchor_image_path: str, prompt: str,
     ) -> str:
@@ -386,6 +393,7 @@ class AnchorPipeline(BasePipeline):
         await self._emit("clip_gen", "completed", "单段循环视频生成完成", 0.55)
         return clip_path
 
+    @timed_step
     async def _step_audio(self) -> object:
         """生成整段 TTS 音频，返回 sub_maker 供字幕步骤。"""
         if self._state.step_audio == StepStatus.COMPLETED:
@@ -448,6 +456,7 @@ class AnchorPipeline(BasePipeline):
         await self._emit("audio", "completed", "读稿音频生成完成", 0.28)
         return sub_maker
 
+    @timed_step
     async def _step_subtitle(self, sub_maker: object = None) -> None:
         """生成整段 SRT 字幕。"""
         if self._state.step_subtitle == StepStatus.COMPLETED:
@@ -495,6 +504,7 @@ class AnchorPipeline(BasePipeline):
         self.task_manager.update_step("step_subtitle", StepStatus.COMPLETED)
         await self._emit("subtitle", "completed", "字幕生成完成", 0.75)
 
+    @timed_step
     async def _step_composite_anchor(self, clip_path: str) -> str:
         """循环单段视频 + 叠加音频 + 字幕（使用 composite_anchor_video）。"""
         output_path = os.path.join(self.working_dir, "final_video.mp4")
