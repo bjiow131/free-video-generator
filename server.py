@@ -784,7 +784,7 @@ async def generate_image(
     if not prompt:
         raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
     if len(prompt) > 5000:
-        raise HTTPException(status_code=422, detail="Промпт не может быть пустым")
+        raise HTTPException(status_code=422, detail="Промпт может содержать не более 5000 символов")
 
     _VALID_SIZES = {"1K", "2K", "3K", "4K"}
     _VALID_RATIOS = {"1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"}
