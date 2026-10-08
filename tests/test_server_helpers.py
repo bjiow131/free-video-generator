@@ -129,3 +129,9 @@ def test_queue_state_write_failure_cleans_tracking(monkeypatch):
         assert semaphore.current == 0
 
     asyncio.run(scenario())
+
+def test_workspace_path_is_normalized_and_rejects_parent_traversal(tmp_path):
+    candidate = tmp_path / "workspace"
+    assert server._validate_workspace_path(str(candidate)) == str(candidate.resolve())
+    with pytest.raises(Exception):
+        server._validate_workspace_path(str(tmp_path / ".." / "escape"))
