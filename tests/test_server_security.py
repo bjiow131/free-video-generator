@@ -191,3 +191,12 @@ def test_duration_parser_never_returns_unsupported_key(monkeypatch):
     monkeypatch.setattr(server, "DURATION_FRAME_MAP", {4: 1, 6: 1})
     assert server._parse_duration("5 seconds") == 4
     assert server._parse_duration("6 seconds") == 6
+
+
+def test_config_get_does_not_expose_api_key(monkeypatch):
+    monkeypatch.setattr(server, "get_api_key", lambda: "secret-key")
+    monkeypatch.setattr(server, "get_api_key_source", lambda: "config")
+    result = asyncio.run(server.get_config(None))
+    assert result["configured"] is True
+    assert "api_key" not in result
+    assert "key" not in result
