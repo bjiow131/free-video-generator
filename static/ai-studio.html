@@ -779,6 +779,19 @@ load().then(async()=>{
   restoreFormState();
   await syncCharacterReferenceSelector(await getMiaRefs());
   await syncVideoCharacterSelector(await getMiaRefs());
+  // Restore dependent character/reference state after the selectors exist.
+  try{
+    const saved=JSON.parse(localStorage.getItem(FORM_STATE_KEY)||'{}');
+    if(saved.videoCharacter==='miya'){
+      $('#videoCharacter').value='miya';
+      await handleVideoCharacterChange();
+      renderVideoReferencePicker(await getMiaRefs(),Array.isArray(saved.videoCharacterReference)?saved.videoCharacterReference:[]);
+    }
+    if(saved.imageCharacter==='miya'){
+      $('#imageCharacter').value='miya';
+      await syncCharacterReferenceSelector(await getMiaRefs());
+    }
+  }catch(e){console.debug('[State] dependent restore skipped',e)}
   bindFormState();
   let savedPage='image';
   try{
