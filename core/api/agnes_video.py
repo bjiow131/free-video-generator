@@ -1,9 +1,10 @@
-from core.timing import timed_step
 """Agnes Video API client.
 
 Supports the current Agnes Video 2.5 protocol and the legacy v2.0 protocol.
 The public API remains compatible with the existing pipelines.
 """
+from core.timing import timed_step
+
 
 import asyncio
 import base64
