@@ -162,7 +162,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
   <div class="top-project"><span class="project-dot"></span><div><strong id="topProjectName">Untitled project</strong><small id="topTaskName">Agnes Video Generator</small></div></div>
   <div class="top-actions">
     <span class="api-status"><i></i><span>API connected</span></span>
-    <select id="languageSwitch" class="shell-select" aria-label="Language"><option value="ru">RU</option><option value="en">EN</option><option value="id">ID</option><option value="es">ES</option><option value="de">DE</option><option value="fr">FR</option><option value="zh">中文</option></select>
+    <select id="languageSwitch" class="shell-select" aria-label="Language"><option value="zh">中文</option><option value="en">EN</option><option value="ru">RU</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="ms">MS</option><option value="id">ID</option></select>
     <button id="themeToggle" class="ds-btn ds-btn-ghost ds-btn-icon" type="button" aria-label="Toggle theme" title="Toggle theme">◐</button>
     <div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div>
   </div>
@@ -282,7 +282,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
     </div>
     <div class="settings-grid">
       <section class="settings-card"><h2>API key</h2><p>Ключ хранится в конфигурации сервера. В интерфейсе он никогда не показывается полностью.</p><div class="api-key-row"><input id="settingsApiKey" class="masked-key" type="password" autocomplete="off" placeholder="Enter API key"><button id="settingsApiSave" class="primary" type="button">Save</button></div><div id="settingsApiStatus" class="setting-status" style="margin-top:10px"><span class="status-dot"></span>Checking status…</div></section>
-      <section class="settings-card"><h2>Appearance</h2><div class="setting-row"><div><strong>Theme</strong><p style="margin:3px 0 0">Follow system or choose manually.</p></div><button id="settingsTheme" class="ds-btn ds-btn-secondary" type="button">Toggle theme</button></div><div class="setting-row"><div><strong>Language</strong><p style="margin:3px 0 0">Interface language.</p></div><select id="settingsLanguage" class="select shell-select"><option value="ru">Русский</option><option value="en">English</option><option value="id">Bahasa Indonesia</option><option value="es">Español</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="zh">中文</option></select></div></section>
+      <section class="settings-card"><h2>Appearance</h2><div class="setting-row"><div><strong>Theme</strong><p style="margin:3px 0 0">Follow system or choose manually.</p></div><button id="settingsTheme" class="ds-btn ds-btn-secondary" type="button">Toggle theme</button></div><div class="setting-row"><div><strong>Language</strong><p style="margin:3px 0 0">Interface language.</p></div><select id="settingsLanguage" class="select shell-select"><option value="zh">中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="ms">Bahasa Melayu</option><option value="id">Bahasa Indonesia</option></select></div></section>
       <section class="settings-card"><h2>Workspace</h2><p>Активная рабочая папка определяет место хранения задач и результатов.</p><div id="workspaceList" class="workspace-list"><div class="ds-skeleton" style="height:44px"></div></div></section>
       <section class="settings-card"><h2>Watermark</h2><div class="setting-row"><div><strong>Video watermark</strong><p style="margin:3px 0 0">Управление водяным знаком в настройках сервера.</p></div><button id="watermarkToggle" class="ds-switch" type="button" role="switch" aria-checked="false"></button></div><div id="watermarkStatus" class="setting-status"></div></section>
     </div>
@@ -304,7 +304,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 const sidebar=document.getElementById('appSidebar'),sidebarToggle=document.getElementById('sidebarToggle');
 if(sidebarToggle){sidebarToggle.onclick=()=>{sidebar.classList.toggle('is-collapsed');sidebarToggle.innerHTML=sidebar.classList.contains('is-collapsed')?'› <span class="nav-label">Expand</span>':'‹ <span class="nav-label">Collapse</span>'}}
 const languageSwitch=document.getElementById('languageSwitch');
-if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru';languageSwitch.onchange=()=>{localStorage.setItem('agnes_lang',languageSwitch.value);document.documentElement.lang=languageSwitch.value;const s=document.getElementById('settingsLanguage');if(s)s.value=languageSwitch.value;toast('Language preference saved')}}
+if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru';languageSwitch.onchange=()=>{applyUiLanguage(languageSwitch.value);const s=document.getElementById('settingsLanguage');if(s)s.value=languageSwitch.value;toast('Language preference saved')}}
 
 // Interaction layer: confirm dialogs, inline errors and explanatory disabled states.
 let confirmResolve=null;
@@ -314,7 +314,72 @@ $('#confirmOk').onclick=()=>closeConfirm(true);$('#confirmCancel').onclick=()=>c
 function explainDisabled(el,reason){if(!el)return;el.setAttribute('aria-disabled','true');el.dataset.tooltip=reason;el.title=reason;el.setAttribute('aria-label',(el.getAttribute('aria-label')||el.textContent.trim())+' — '+reason)}
 function fieldError(el,message){if(!el)return;el.setAttribute('aria-invalid','true');let e=el.parentElement?.querySelector('.field-error');if(!e){e=document.createElement('div');e.className='inline-error field-error';el.insertAdjacentElement('afterend',e)}e.textContent=message;e.hidden=false}
 function clearFieldError(el){if(!el)return;el.removeAttribute('aria-invalid');const e=el.parentElement?.querySelector('.field-error');if(e)e.hidden=true}
-const $=s=>document.querySelector(s), qsa=s=>document.querySelectorAll(s);let models=[],selected=null;
+const $=s=>document.querySelector(s), qsa=s=>document.querySelectorAll(s);
+// TASK 3B — seven-language UI stress layer. Existing API/task payloads remain unchanged.
+const UI_LANGS=['zh','en','ru','ja','ko','ms','id'];
+const UI_TRANSLATIONS={
+  navSimple:{zh:'简易',en:'Simple',ru:'Просто',ja:'シンプル',ko:'간편',ms:'Ringkas',id:'Sederhana'},
+  navCreative:{zh:'创意',en:'Creative',ru:'Креатив',ja:'クリエイティブ',ko:'크리에이티브',ms:'Kreatif',id:'Kreatif'},
+  navManuscript:{zh:'文稿',en:'Manuscript',ru:'Сценарий',ja:'原稿',ko:'원고',ms:'Manuskrip',id:'Manuskrip'},
+  navAnchor:{zh:'主播',en:'Anchor',ru:'Ведущий',ja:'アンカー',ko:'앵커',ms:'Anchor',id:'Anchor'},
+  navImages:{zh:'图像',en:'Images',ru:'Изображения',ja:'画像',ko:'이미지',ms:'Imej',id:'Gambar'},
+  navTasks:{zh:'任务',en:'Tasks',ru:'Задачи',ja:'タスク',ko:'작업',ms:'Tugas',id:'Tugas'},
+  navSettings:{zh:'设置',en:'Settings',ru:'Настройки',ja:'設定',ko:'설정',ms:'Tetapan',id:'Pengaturan'},
+  simpleTitle:{zh:'画布已准备好',en:'Your canvas is ready',ru:'Холст готов',ja:'キャンバスの準備ができました',ko:'캔버스가 준비되었습니다',ms:'Kanvas anda sudah sedia',id:'Kanvas siap digunakan'},
+  createHint:{zh:'选择模型，输入想法，然后创建图像或视频。',en:'Choose a model, describe an idea, and create an image or video.',ru:'Выбери модель, задай идею и создай изображение или видео.',ja:'モデルを選び、アイデアを入力して画像または動画を作成します。',ko:'모델을 선택하고 아이디어를 입력해 이미지 또는 영상을 만드세요.',ms:'Pilih model, masukkan idea dan hasilkan imej atau video.',id:'Pilih model, masukkan idea, lalu buat gambar atau video.'},
+  workspace:{zh:'工作区',en:'Workspace',ru:'Рабочая область',ja:'ワークスペース',ko:'워크스페이스',ms:'Ruang kerja',id:'Ruang kerja'},
+  generation:{zh:'生成',en:'Generation',ru:'Генерация',ja:'生成',ko:'생성',ms:'Penjanaan',id:'Generasi'},
+  type:{zh:'类型',en:'Type',ru:'Тип',ja:'種類',ko:'유형',ms:'Jenis',id:'Jenis'},
+  model:{zh:'模型',en:'Model',ru:'Модель',ja:'モデル',ko:'모델',ms:'Model',id:'Model'},
+  advanced:{zh:'高级选项',en:'Advanced options',ru:'Расширенные параметры',ja:'詳細設定',ko:'고급 옵션',ms:'Pilihan lanjutan',id:'Opsi lanjutan'},
+  prompt:{zh:'提示词',en:'Prompt',ru:'Промпт',ja:'プロンプト',ko:'프롬프트',ms:'Prompt',id:'Prompt'},
+  reference:{zh:'＋ 参考图',en:'＋ Reference',ru:'＋ Референс',ja:'＋ 参照画像',ko:'＋ 참조',ms:'＋ Rujukan',id:'＋ Referensi'},
+  generate:{zh:'生成',en:'Generate',ru:'Создать',ja:'生成',ko:'생성',ms:'Jana',id:'Buat'},
+  clear:{zh:'清除',en:'Clear',ru:'Очистить',ja:'クリア',ko:'지우기',ms:'Kosongkan',id:'Bersihkan'},
+  production:{zh:'制作工作室',en:'Production Studio',ru:'Студия производства',ja:'制作スタジオ',ko:'제작 스튜디오',ms:'Studio Produksi',id:'Studio Produksi'},
+  creativeWorkspace:{zh:'创意工作区',en:'Creative workspace',ru:'Креативная студия',ja:'クリエイティブワークスペース',ko:'크리에이티브 작업공간',ms:'Ruang kerja kreatif',id:'Ruang kerja kreatif'},
+  pending:{zh:'待处理',en:'Pending',ru:'Ожидает',ja:'保留中',ko:'대기',ms:'Menunggu',id:'Menunggu'},
+  input:{zh:'输入',en:'Input',ru:'Ввод',ja:'入力',ko:'입력',ms:'Input',id:'Input'},
+  plan:{zh:'计划',en:'Plan',ru:'План',ja:'計画',ko:'계획',ms:'Pelan',id:'Rencana'},
+  scenes:{zh:'场景',en:'Scenes',ru:'Сцены',ja:'シーン',ko:'장면',ms:'Adegan',id:'Adegan'},
+  audio:{zh:'音频',en:'Audio',ru:'Аудио',ja:'音声',ko:'오디오',ms:'Audio',id:'Audio'},
+  final:{zh:'最终',en:'Final',ru:'Финал',ja:'最終',ko:'최종',ms:'Akhir',id:'Final'},
+  tasks:{zh:'任务',en:'Tasks',ru:'Задачи',ja:'タスク',ko:'작業',ms:'Tugas',id:'Tugas'},
+  settings:{zh:'设置',en:'Settings',ru:'Настройки',ja:'設定',ko:'설정',ms:'Tetapan',id:'Pengaturan'},
+  result:{zh:'结果',en:'Result',ru:'Результат',ja:'結果',ko:'결과',ms:'Hasil',id:'Hasil'},
+  duration:{zh:'时长',en:'Duration',ru:'Длительность',ja:'長さ',ko:'길이',ms:'Tempoh',id:'Durasi'},
+  resolution:{zh:'分辨率',en:'Resolution',ru:'Разрешение',ja:'解像度',ko:'해상도',ms:'Resolusi',id:'Resolusi'},
+  download:{zh:'下载',en:'Download',ru:'Скачать',ja:'ダウンロード',ko:'다운로드',ms:'Muat turun',id:'Unduh'},
+  close:{zh:'关闭',en:'Close',ru:'Закрыть',ja:'閉じる',ko:'닫기',ms:'Tutup',id:'Tutup'},
+  apiKey:{zh:'API 密钥',en:'API key',ru:'API-ключ',ja:'APIキー',ko:'API 키',ms:'Kunci API',id:'Kunci API'},
+  appearance:{zh:'外观',en:'Appearance',ru:'Внешний вид',ja:'外観',ko:'화면',ms:'Penampilan',id:'Tampilan'},
+  theme:{zh:'主题',en:'Theme',ru:'Тема',ja:'テーマ',ko:'테마',ms:'Tema',id:'Tema'},
+  language:{zh:'语言',en:'Language',ru:'Язык',ja:'言語',ko:'언어',ms:'Bahasa',id:'Bahasa'},
+  watermark:{zh:'水印',en:'Watermark',ru:'Водяной знак',ja:'透かし',ko:'워터마크',ms:'Tera air',id:'Tanda air'},
+  startAgnes:{zh:'开始使用 Agnes AI',en:'Start with Agnes AI',ru:'Начать с Agnes AI',ja:'Agnes AI を始める',ko:'Agnes AI 시작하기',ms:'Mulakan dengan Agnes AI',id:'Mulai dengan Agnes AI'},
+  getApi:{zh:'获取 API 密钥',en:'Get API key',ru:'Получить API-ключ',ja:'APIキーを取得',ko:'API 키 받기',ms:'Dapatkan kunci API',id:'Dapatkan kunci API'},
+  hide:{zh:'隐藏',en:'Hide',ru:'Скрыть',ja:'非表示',ko:'숨기기',ms:'Sembunyikan',id:'Sembunyikan'},
+  save:{zh:'保存',en:'Save',ru:'Сохранить',ja:'保存',ko:'저장',ms:'Simpan',id:'Simpan'},
+  workspaceActive:{zh:'活动工作区',en:'Active workspace',ru:'Активная рабочая папка',ja:'アクティブなワークスペース',ko:'활성 작업공간',ms:'Ruang kerja aktif',id:'Ruang kerja aktif'},
+  search:{zh:'搜索任务…',en:'Search tasks…',ru:'Поиск задач…',ja:'タスクを検索…',ko:'작업 검색…',ms:'Cari tugas…',id:'Cari tugas…'}
+};
+function applyUiLanguage(lang){
+  if(!UI_LANGS.includes(lang))lang='ru';
+  document.documentElement.lang=lang;
+  const tr=k=>UI_TRANSLATIONS[k]?.[lang]||UI_TRANSLATIONS[k]?.en||k;
+  const textMap={
+    '.nav button[data-create-type="video"] .nav-label':'navSimple','.nav button[data-production-mode="creative"] .nav-label':'navCreative','.nav button[data-production-mode="manuscript"] .nav-label':'navManuscript','.nav button[data-production-mode="anchor"] .nav-label':'navAnchor','.nav button[data-create-type="image"] .nav-label':'navImages','.nav button[data-page="history"] .nav-label':'navTasks','.nav button[data-page="credits"] .nav-label':'navSettings',
+    '#createTitle':'simpleTitle','#createEmpty span':'createHint','.advanced-panel .eyebrow':'workspace','.advanced-panel h2':'generation','.advanced-panel .label':'type','#prompt':'prompt','#generate':'generate','#clear':'clear','.production-head .eyebrow':'production','.production-head h1':'creativeWorkspace','.tasks-head h1':'tasks','.settings-head h1':'settings','#playerTitle':'result','#playerDownload':'download','#playerClose':'close'
+  };
+  Object.entries(textMap).forEach(([sel,key])=>{qsa(sel).forEach(el=>{if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){if(el.placeholder)el.placeholder=tr(key)}else el.textContent=tr(key)})});
+  qsa('.step strong').forEach((el,i)=>{const k=['input','plan','scenes','audio','final'][i];el.textContent=String(i+1).padStart(2,'0')+' · '+tr(k)});
+  qsa('.step span').forEach(el=>{if(!/\d+%/.test(el.textContent))el.textContent=tr('pending')});
+  const setSel=(sel,key)=>{const el=$(sel);if(el)el.setAttribute('aria-label',tr(key))};
+  setSel('#prompt','prompt');setSel('#taskSearch','search');
+  localStorage.setItem('agnes_lang',lang);
+}
+applyUiLanguage(localStorage.getItem('agnes_lang')||'ru');
+let models=[],selected=null;
 let productionMode='creative',productionSockets={};
 function setProductionMode(mode){productionMode=mode;$('.mode-tab').forEach(b=>b.classList.toggle('active',b.dataset.productionMode===mode));$('.mode-panel').forEach(p=>p.classList.toggle('active',p.dataset.modePanel===mode));resetProductionStepper()}
 function resetProductionStepper(){$('#productionStepper .step').forEach((s,i)=>{s.classList.remove('running','done','failed');s.querySelector('span').textContent=i===0?'Ready':'Pending'})}
@@ -330,7 +395,7 @@ async function loadSettings(){try{$('#workspaceList').innerHTML='<div class="ds-
 $('#settingsApiSave').onclick=async()=>{const key=$('#settingsApiKey').value.trim();if(!key){toast('Enter an API key');return}try{const f=new FormData();f.append('api_key',key);await api('/api/config',{method:'POST',body:f});$('#settingsApiKey').value='';toast('API key saved');loadSettings()}catch(e){toast(e.message)}};
 $('#watermarkToggle').onclick=async()=>{const enabled=$('#watermarkToggle').getAttribute('aria-checked')!=='true';try{const f=new FormData();f.append('enabled',String(enabled));await api('/api/config/watermark',{method:'POST',body:f});$('#watermarkToggle').setAttribute('aria-checked',String(enabled));$('#watermarkStatus').textContent=enabled?'Watermark enabled':'Watermark disabled'}catch(e){toast(e.message)}};
 $('#workspaceList').addEventListener('click',async e=>{const b=e.target.closest('[data-workspace]');if(!b)return;try{const f=new FormData();f.append('path',b.dataset.workspace);await api('/api/workspaces/active',{method:'POST',body:f});toast('Workspace activated');loadSettings()}catch(e){toast(e.message)}});
-$('#settingsTheme').onclick=()=>$('#themeToggle').click();$('#settingsLanguage').value=localStorage.getItem('agnes_lang')||'ru';$('#settingsLanguage').onchange=()=>{localStorage.setItem('agnes_lang',$('#settingsLanguage').value);$('#languageSwitch').value=$('#settingsLanguage').value;document.documentElement.lang=$('#settingsLanguage').value;toast('Language preference saved')};$('#onboardingDismiss').onclick=()=>$('#onboardingCard').classList.add('hidden');
+$('#settingsTheme').onclick=()=>$('#themeToggle').click();$('#settingsLanguage').value=localStorage.getItem('agnes_lang')||'ru';$('#settingsLanguage').onchange=()=>{applyUiLanguage($('#settingsLanguage').value);$('#languageSwitch').value=$('#settingsLanguage').value;toast('Language preference saved')};$('#onboardingDismiss').onclick=()=>$('#onboardingCard').classList.add('hidden');
 
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
