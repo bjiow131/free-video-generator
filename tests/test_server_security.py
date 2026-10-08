@@ -307,3 +307,10 @@ def test_concat_audio_overlay_tracks_original_source_clips():
     assert "source_video_clip = VideoFileClip(video_input)" in source
     assert "source_audio_clip = AudioFileClip(audio_input)" in source
     assert "for source_clip in (source_video_clip, source_audio_clip):" in source
+
+
+def test_history_script_has_no_stray_javascript_marker():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "static" / "ai-studio.html").read_text(encoding="utf-8")
+    assert "\n>\nasync function pollTask" not in source
