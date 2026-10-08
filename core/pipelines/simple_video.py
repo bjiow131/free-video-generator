@@ -82,9 +82,17 @@ class SimpleVideoPipeline(BasePipeline):
             await self._emit("error", "failed", "任务已被中断，可从任务列表续传", 0.0)
             raise
         except Exception as e:
+            # Persist the exact provider/runtime error so the task list and UI
+            # can expose the real failure instead of only a generic status.
+            error_text = str(e) or e.__class__.__name__
             self._state.status = StepStatus.FAILED
-            self.task_manager.update_state(status=StepStatus.FAILED)
-            await self._emit("error", "failed", str(e), 0.0)
+            self._state.error_message = error_text
+            self.task_manager.update_state(
+                status=StepStatus.FAILED,
+                error_message=error_text,
+                progress_message=error_text,
+            )
+            await self._emit("error", "failed", error_text, 0.0)
             raise
 
     # ------------------------------------------------------------------
