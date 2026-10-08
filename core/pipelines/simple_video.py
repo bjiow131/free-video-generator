@@ -168,7 +168,7 @@ class SimpleVideoPipeline(BasePipeline):
             self._state.video_id = saved_video_id
             self.task_manager.update_state(video_id=saved_video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {saved_video_id[:16]}...", 0.3)
-            video_output = await self.video_api.wait_for_video(saved_video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
+            video_output = await self.video_api.wait_for_video(saved_video_id, progress_callback=lambda status, progress, message: self._record_video_progress(status, progress, message))
             await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
@@ -177,7 +177,7 @@ class SimpleVideoPipeline(BasePipeline):
             logger.info(f"[Simple] Resuming from state video_id: {self._state.video_id}")
             self._save_task(self._state.video_id)
             await self._emit("video_gen", "running", f"恢复轮询视频任务 {self._state.video_id[:16]}...", 0.3)
-            video_output = await self.video_api.wait_for_video(self._state.video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
+            video_output = await self.video_api.wait_for_video(self._state.video_id, progress_callback=lambda status, progress, message: self._record_video_progress(status, progress, message))
             await asyncio.to_thread(video_output.save, video_path)
             return video_path
 
@@ -209,6 +209,7 @@ class SimpleVideoPipeline(BasePipeline):
             seed=self._state.seed,
             negative_prompt=self._state.negative_prompt,
             mode=getattr(self._state.mode, "value", self._state.mode),
+            progress_callback=lambda status, progress, message: self._record_video_progress(status, progress, message),
         )
 
         # 持久化 video_id + curl 命令
@@ -218,7 +219,7 @@ class SimpleVideoPipeline(BasePipeline):
 
         await self._emit("video_gen", "running", f"等待视频生成 {video_id[:16]}...", 0.3)
 
-        video_output = await self.video_api.wait_for_video(video_id, progress_callback=lambda status, progress, _data: self._record_video_progress(status, progress))
+        video_output = await self.video_api.wait_for_video(video_id, progress_callback=lambda status, progress, message: self._record_video_progress(status, progress, message))
         await asyncio.to_thread(video_output.save, video_path)
 
         await self._emit("video_gen", "completed", "视频生成完成", 0.9)
