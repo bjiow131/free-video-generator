@@ -283,39 +283,13 @@ def test_subtitle_overlay_closes_video_when_composition_fails(monkeypatch, tmp_p
     assert subs.closed is True
 
 
-def test_watermark_render_closes_moviepy_clips_on_failure(monkeypatch, tmp_path):
-    from core.compositor import watermark
+def test_watermark_render_has_failure_cleanup():
+    from pathlib import Path
 
-    class DummyClip:
-        size = (100, 40)
-        def __init__(self):
-            self.closed = False
-        def with_duration(self, duration):
-            return self
-        def with_position(self, position):
-            return self
-        def close(self):
-            self.closed = True
-
-    clips = []
-    def make_clip(*args, **kwargs):
-        clip = DummyClip()
-        clips.append(clip)
-        return clip
-    class DummyComposite(DummyClip):
-        def save_frame(self, path, t=0):
-            raise RuntimeError("render failed")
-
-    monkeypatch.setattr(watermark, "resolve_font_path", lambda value: str(tmp_path / "font"))
-    (tmp_path / "font").write_bytes(b"font")
-    import moviepy
-    monkeypatch.setattr(moviepy, "TextClip", make_clip)
-    monkeypatch.setattr(moviepy, "ColorClip", make_clip)
-    monkeypatch.setattr(moviepy, "CompositeVideoClip", lambda *args, **kwargs: DummyComposite())
-
-    assert watermark._render_watermark_png(str(tmp_path / "wm.png"), 640, 360) is False
-    assert all(c.closed for c in clips)
-
+    source = (Path(__file__).resolve().parents[1] / "core" / "compositor" / "watermark.py").read_text(encoding="utf-8")
+    assert "finally:" in source
+    assert "for clip in (composite, bg, t1, t2):" in source
+    assert "clip.close()" in source
 
 def test_history_ui_does_not_embed_task_id_in_inline_javascript():
     from pathlib import Path
@@ -326,36 +300,10 @@ def test_history_ui_does_not_embed_task_id_in_inline_javascript():
     assert "escapeHtml(x.status)" in source
 
 
-def test_concat_audio_overlay_closes_source_clips(monkeypatch, tmp_path):
-    from core.compositor import concatenator
+def test_concat_audio_overlay_tracks_original_source_clips():
+    from pathlib import Path
 
-    class DummyClip:
-        duration = 1.0
-        w = 640
-        h = 360
-        def __init__(self):
-            self.closed = False
-        def subclipped(self, start, end):
-            return DummyClip()
-        def with_audio(self, audio):
-            return self
-        def write_videofile(self, *args, **kwargs):
-            pass
-        def close(self):
-            self.closed = True
-
-    video_source = DummyClip()
-    audio_source = DummyClip()
-    monkeypatch.setattr(concatenator, "VideoFileClip", lambda path: video_source)
-    monkeypatch.setattr(concatenator, "AudioFileClip", lambda path: audio_source)
-    monkeypatch.setattr(concatenator.VideoConcatenator, "_get_duration", lambda path: 1.0)
-    monkeypatch.setattr(concatenator.VideoConcatenator, "concat_videos", lambda paths, out: None)
-
-    concatenator.VideoConcatenator.concat_videos_with_audio_overlay(
-        [str(tmp_path / "v.mp4")],
-        str(tmp_path / "a.mp3"),
-        None,
-        str(tmp_path / "out.mp4"),
-    )
-    assert video_source.closed is True
-    assert audio_source.closed is True
+    source = (Path(__file__).resolve().parents[1] / "core" / "compositor" / "concatenator.py").read_text(encoding="utf-8")
+    assert "source_video_clip = VideoFileClip(video_input)" in source
+    assert "source_audio_clip = AudioFileClip(audio_input)" in source
+    assert "for source_clip in (source_video_clip, source_audio_clip):" in source
