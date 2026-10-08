@@ -388,12 +388,14 @@ class AgnesVideoAPI:
         height: int = 648,
         seed: Optional[int] = None,
         negative_prompt: Optional[str] = None,
+        mode: Optional[str] = None,
         **kwargs,
     ) -> str:
         resolved_refs = [
             await self._resolve_image_ref(p)
             for p in (reference_image_paths or ())
         ]
+        requested_mode = str(mode or "").strip().lower()
 
         if self.is_modern:
             seconds = self._modern_seconds(duration)
@@ -402,14 +404,8 @@ class AgnesVideoAPI:
                 "prompt": prompt,
                 "mode": (
                     "text" if not resolved_refs
-                    # Agnes 2.5 explicitly supports single-image image-to-video
-                    # with mode=img2video and first_frame. Keyframe is reserved
-                    # for first/last-frame interpolation.
-                    # Current Agnes 2.5 Flash schema exposes keyframe/reference.
-                    # For one saved character image, reference mode avoids the
-                    # first_frame validation path and explicitly supplies images.
-                    else "reference" if len(resolved_refs) == 1
-                    else "keyframe" if len(resolved_refs) == 2
+                    else "img2video" if requested_mode in {"i2v", "ti2vid", "img2video"} and len(resolved_refs) == 1
+                    else "keyframe" if requested_mode in {"keyframes", "keyframe"} and len(resolved_refs) in {1, 2}
                     else "reference"
                 ),
                 "seconds": str(seconds),
@@ -420,9 +416,12 @@ class AgnesVideoAPI:
             if seed is not None:
                 payload["seed"] = seed
             if len(resolved_refs) == 1:
-                payload["images"] = [resolved_refs[0]]
-                if "<Picture 1>" not in payload["prompt"]:
-                    payload["prompt"] = "<Picture 1> " + payload["prompt"]
+                if payload["mode"] == "img2video":
+                    payload["first_frame"] = resolved_refs[0]
+                else:
+                    payload["images"] = [resolved_refs[0]]
+                    if "<Picture 1>" not in payload["prompt"]:
+                        payload["prompt"] = "<Picture 1> " + payload["prompt"]
             elif len(resolved_refs) == 2:
                 payload["first_frame"] = resolved_refs[0]
                 payload["last_frame"] = resolved_refs[1]
