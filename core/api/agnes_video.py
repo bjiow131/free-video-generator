@@ -90,9 +90,11 @@ class AgnesVideoAPI:
     def is_modern(self) -> bool:
         return self.model in MODERN_MODELS
 
-    def _path_to_b64(self, path: str) -> str:
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
+    async def _path_to_b64(self, path: str) -> str:
+        def _read() -> str:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        b64 = await asyncio.to_thread(_read)
         mime = mimetypes.guess_type(path)[0] or "image/png"
         return f"data:{mime};base64,{b64}"
 
@@ -101,7 +103,7 @@ class AgnesVideoAPI:
         if ref.startswith(("http://", "https://", "data:")):
             return ref
         if os.path.exists(ref):
-            return self._path_to_b64(ref)
+            return await self._path_to_b64(ref)
         return ref
 
     def _aspect_ratio(self, width: int, height: int) -> str:
