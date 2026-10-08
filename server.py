@@ -357,25 +357,31 @@ async def _save_image_upload(upload: UploadFile, stem: str) -> str:
     if not upload or not upload.filename:
         return ""
     await upload.seek(0)
-    header = await upload.read(16)
+    data = bytearray()
+    while len(data) <= MAX_UPLOAD_SIZE:
+        chunk = await upload.read(min(1024 * 1024, MAX_UPLOAD_SIZE + 1 - len(data)))
+        if not chunk:
+            break
+        data.extend(chunk)
+    if len(data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
+    header = bytes(data[:16])
     extension = next((ext for ext, check in _ALLOWED_IMAGE_SIGNATURES.items() if check(header)), None)
     if extension is None:
         raise HTTPException(status_code=422, detail="Поддерживаются только изображения PNG, JPG/JPEG и WEBP")
-    await upload.seek(0)
+    allowed_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+    content_type = (upload.content_type or "").lower().split(";", 1)[0].strip()
+    if content_type and content_type != allowed_types[extension]:
+        raise HTTPException(status_code=422, detail="Тип изображения не соответствует содержимому файла")
     upload_dir = get_upload_dir()
     os.makedirs(upload_dir, exist_ok=True)
     path = os.path.join(upload_dir, f"{stem}{extension}")
-    total = 0
     try:
-        with open(path, "wb") as f:
-            while True:
-                chunk = await upload.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > MAX_UPLOAD_SIZE:
-                    raise HTTPException(status_code=413, detail="Размер изображения не должен превышать 10 МБ")
-                f.write(chunk)
+        await asyncio.to_thread(_write_upload_bytes, path, bytes(data))
     except Exception:
         try:
             os.remove(path)
@@ -383,6 +389,10 @@ async def _save_image_upload(upload: UploadFile, stem: str) -> str:
             pass
         raise
     return path
+
+def _write_upload_bytes(path: str, data: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(data)
 
 def _validate_workspace_path(raw_path: str) -> str:
     """Validate a workspace path before it is persisted or created."""
