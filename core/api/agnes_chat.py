@@ -1,3 +1,4 @@
+from core.timing import timed_step
 """core.api.agnes_chat — Agnes Chat API 封装（从 core/screenwriter.py 提取）
 
 P5: 健壮 JSON 解析（strip_code_fence + 正则提取 + 降级重试）
@@ -79,6 +80,7 @@ class AgnesChatAPI:
         """
         return resp.status_code >= 500 or resp.status_code in (429, 404)
 
+    @timed_step
     def _request_with_retry(self, payload: dict, timeout: int = 120) -> dict:
         """带重试的 API 请求。
 
