@@ -1778,7 +1778,7 @@ async def cleanup_regression(request: Request):
             detail="Список результатов тестирования не найден. Возможно, тестирование ещё не выполнялось")
 
     try:
-        with open(manifest_path, "r") as f:
+        with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         raise HTTPException(
