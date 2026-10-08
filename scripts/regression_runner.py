@@ -45,7 +45,7 @@ import requests
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 回归测试专用工作目录：固定独立空间，与用户日常任务隔离
-REGRESSION_WORKING_DIR = os.path.join(PROJECT_ROOT, ".regression_workspace")
+REGRESSION_WORKING_DIR = os.path.abspath(os.environ.get("AGNES_REGRESSION_WORKING_DIR", os.path.join(PROJECT_ROOT, ".regression_workspace")))
 # 环境变量名，服务端 get_working_dir() 据此切换到回归专用空间
 REGRESSION_WORKING_DIR_ENV = "AGNES_REGRESSION_WORKING_DIR"
 WORKING_DIR = REGRESSION_WORKING_DIR
@@ -53,7 +53,7 @@ UPLOAD_DIR = os.path.join(WORKING_DIR, "uploads")
 REPORT_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_report.json")
 REPORT_MD_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_report.md")
 ISSUES_MD_PATH = os.path.join(PROJECT_ROOT, "docs", "regression_issues.md")
-SERVER_URL = "http://localhost:8765"
+SERVER_URL = os.environ.get("REGRESSION_SERVER_URL", "http://localhost:8765").rstrip("/")
 SERVER_LOG = os.path.join(PROJECT_ROOT, ".regression_server.log")
 MANIFEST_PATH = os.path.join(WORKING_DIR, ".regression_manifest.json")
 TEST_REF_IMAGE = os.path.join(PROJECT_ROOT, "test_ref.png")
