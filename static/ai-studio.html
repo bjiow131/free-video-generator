@@ -441,9 +441,12 @@ async function openSaveModal(taskId){
   input.disabled=true; $('#saveContinue').disabled=true;
   $('#saveContinue').textContent='Загрузка…';
   try{
-    const response=await fetch('/api/image/'+encodeURIComponent(taskId)+'/download');
+    // Получаем уже отображаемый результат через обычный image endpoint.
+    // Это надёжнее, чем отдельный download-route на мобильных браузерах/Render.
+    const response=await fetch('/api/image/'+encodeURIComponent(taskId),{cache:'no-store'});
     if(!response.ok)throw Error('Не удалось получить изображение');
     saveImageBlob=await response.blob();
+    if(!saveImageBlob.size)throw Error('Получен пустой файл изображения');
     input.disabled=false; $('#saveContinue').disabled=false; $('#saveContinue').textContent='Продолжить';
     setTimeout(()=>{input.focus();input.select()},50);
   }catch(e){
