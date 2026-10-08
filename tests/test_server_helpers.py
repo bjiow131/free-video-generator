@@ -41,27 +41,29 @@ class _Pipeline:
     _stop_event = asyncio.Event()
 
 
-@pytest.mark.asyncio
-async def test_cancel_while_queued_does_not_release_semaphore(monkeypatch):
-    semaphore = server.WeightedSemaphore(1)
+def test_cancel_while_queued_does_not_release_semaphore(monkeypatch):
+    async def scenario():
+        semaphore = server.WeightedSemaphore(1)
     semaphore.current = 1
-    manager = _TaskManager()
-    pipeline = _Pipeline()
-    state = type("State", (), {"task_type": TaskType.SIMPLE})()
+        manager = _TaskManager()
+        pipeline = _Pipeline()
+        state = type("State", (), {"task_type": TaskType.SIMPLE})()
 
-    monkeypatch.setattr(server, "_pipeline_semaphore", semaphore)
-    monkeypatch.setitem(server._queued_tasks, pipeline.task_id, 1)
+        monkeypatch.setattr(server, "_pipeline_semaphore", semaphore)
+        monkeypatch.setitem(server._queued_tasks, pipeline.task_id, 1)
 
-    task = asyncio.create_task(
-        server._run_pipeline_with_concurrency(pipeline, state, manager)
-    )
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-    task.cancel()
+        task = asyncio.create_task(
+            server._run_pipeline_with_concurrency(pipeline, state, manager)
+        )
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        task.cancel()
 
-    with pytest.raises(asyncio.CancelledError):
-        await task
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
-    assert semaphore.current == 1
-    assert manager.statuses[-1] == StepStatus.PENDING
-    assert pipeline.task_id not in server._queued_tasks
+        assert semaphore.current == 1
+        assert manager.statuses[-1] == StepStatus.PENDING
+        assert pipeline.task_id not in server._queued_tasks
+
+    asyncio.run(scenario())
