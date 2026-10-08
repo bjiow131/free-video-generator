@@ -3,8 +3,138 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#09090b"><title>AI Studio — AI models in one workspace</title>
 <style>
-:root{--bg:#09090b;--panel:#111114;--panel2:#17171c;--line:#27272f;--text:#f7f7f8;--muted:#9b9ba5;--accent:#fff;--soft:#202027}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 70% -10%,#27272f 0%,transparent 60%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,textarea{font:inherit}button{cursor:pointer}.app{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.side{border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}.brand{font-size:21px;font-weight:800;letter-spacing:-.04em;padding:8px}.brand span{color:#888}.nav{display:grid;gap:6px}.nav button{background:none;border:0;color:var(--muted);padding:11px 12px;border-radius:10px;text-align:left}.nav button.active,.nav button:hover{background:var(--soft);color:var(--text)}.bottom{margin-top:auto;color:var(--muted);font-size:12px;padding:8px}.main{min-width:0}.top{height:70px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 34px}.credits{border:1px solid var(--line);background:var(--panel);padding:8px 13px;border-radius:999px}.credits b{color:#fff}.hero{max-width:1120px;margin:0 auto;padding:64px 34px 40px}.eyebrow{color:#aaa;font-size:13px;text-transform:uppercase;letter-spacing:.16em}.hero h1{font-size:clamp(42px,7vw,78px);line-height:.98;letter-spacing:-.065em;margin:14px 0}.hero p{color:var(--muted);max-width:620px;font-size:18px}.grid{max-width:1120px;margin:0 auto;padding:10px 34px 70px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{background:linear-gradient(145deg,#151519,#101014);border:1px solid var(--line);border-radius:18px;padding:20px;min-height:180px;transition:.2s}.card:hover{transform:translateY(-2px);border-color:#3b3b45}.card .icon{font-size:28px}.card h3{margin:18px 0 5px}.card p{margin:0;color:var(--muted);font-size:13px}.tag{display:inline-block;margin-top:15px;padding:5px 8px;border-radius:999px;background:#22222a;color:#bbb;font-size:11px}.workspace{max-width:1120px;margin:0 auto;padding:0 34px 70px;display:grid;grid-template-columns:1.4fr .8fr;gap:16px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px}.panel h2{margin:0 0 5px;letter-spacing:-.03em}.label{display:block;color:#aaa;font-size:12px;margin:20px 0 8px}.select,input,textarea{width:100%;background:#0d0d10;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;outline:none}.select:focus,textarea:focus,input:focus{border-color:#555}.textarea{min-height:190px;resize:vertical}.actions{display:flex;gap:10px;margin-top:14px}.primary{background:#fff;color:#09090b;border:0;padding:12px 18px;border-radius:11px;font-weight:700}.ghost{background:var(--soft);color:#ddd;border:1px solid var(--line);padding:12px 18px;border-radius:11px}.model{padding:14px;border:1px solid var(--line);border-radius:14px;margin-top:10px}.model b{display:block}.model small{color:var(--muted)}.model.active{border-color:#666;background:#1a1a20}.result{margin-top:16px;border-radius:16px;overflow:hidden;background:#0d0d10;border:1px solid var(--line)}.result img{width:100%;display:block}.hidden{display:none!important}.modal{position:fixed;inset:0;background:#000b;display:grid;place-items:center;padding:20px}.modalbox{width:min(430px,100%);background:#141418;border:1px solid var(--line);border-radius:20px;padding:24px}.modalbox h2{margin-top:0}.close{float:right;background:none;border:0;color:#999;font-size:22px}.status{color:var(--muted);font-size:13px;margin-top:10px}.toast{position:fixed;bottom:22px;right:22px;background:#fff;color:#09090b;padding:11px 15px;border-radius:10px;font-weight:600}.section{display:none}.section.active{display:block}@media(max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:12px;flex-direction:row;align-items:center}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap}.bottom{display:none}.grid{grid-template-columns:repeat(2,1fr)}.workspace{grid-template-columns:1fr}.top{padding:0 18px}.hero,.grid,.workspace{padding-left:18px;padding-right:18px}}@media(max-width:560px){.grid{grid-template-columns:1fr}.hero{padding-top:42px}.hero h1{font-size:48px}}
+:root{
+  --bg:#080808;--panel:#111111;--panel2:#171717;--line:#282828;
+  --text:#f5f5f5;--muted:#9a9a9a;--accent:#f2f2f2;--soft:#1b1b1b;
+  --hover:#202020;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  letter-spacing:-.005em;
+}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer}
+.app{min-height:100vh;display:grid;grid-template-columns:208px minmax(0,1fr);background:#080808}
+.side{
+  border-right:1px solid #202020;padding:18px 12px 14px;display:flex;flex-direction:column;
+  gap:18px;position:sticky;top:0;height:100vh;background:#090909
+}
+.brand{font-size:18px;font-weight:700;letter-spacing:-.04em;padding:8px 10px;color:#f3f3f3}
+.brand span{color:#777}
+.nav{display:grid;gap:2px}
+.nav button{
+  background:transparent;border:0;color:#8d8d8d;padding:9px 11px;border-radius:9px;
+  text-align:left;font-size:13px;transition:background .16s,color .16s
+}
+.nav button.active,.nav button:hover{background:#1a1a1a;color:#f2f2f2}
+.bottom{margin-top:auto;color:#666;font-size:11px;padding:8px 10px;line-height:1.55}
+.main{min-width:0;background:#080808}
+.top{
+  height:58px;border-bottom:1px solid #202020;display:flex;align-items:center;
+  justify-content:space-between;padding:0 22px;color:#777;font-size:12px;background:#090909
+}
+.credits{
+  border:1px solid #292929;background:#151515;padding:6px 10px;border-radius:999px;color:#aaa
+}
+.credits b{color:#f5f5f5}
+.hero{
+  max-width:1240px;margin:0 auto;padding:34px 28px 24px
+}
+.eyebrow{
+  color:#777;font-size:10px;text-transform:uppercase;letter-spacing:.14em;font-weight:600
+}
+.hero h1{
+  font-size:clamp(34px,5vw,58px);line-height:1;letter-spacing:-.065em;
+  margin:10px 0 12px;font-weight:650
+}
+.hero p{color:#888;max-width:650px;font-size:14px;margin:0;line-height:1.6}
+.grid{
+  max-width:1240px;margin:0 auto;padding:6px 28px 54px;
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px
+}
+.card{
+  background:#111;border:1px solid #242424;border-radius:14px;padding:18px;
+  min-height:164px;transition:border-color .16s,background .16s,transform .16s
+}
+.card:hover{transform:none;border-color:#3a3a3a;background:#141414}
+.card .icon{font-size:20px;color:#aaa}
+.card h3{margin:16px 0 5px;font-size:15px;font-weight:600}
+.card p{margin:0;color:#858585;font-size:12px;line-height:1.55}
+.tag{
+  display:inline-block;margin-top:14px;padding:4px 7px;border-radius:999px;
+  background:#1c1c1c;color:#9d9d9d;font-size:10px;border:1px solid #292929
+}
+.workspace{
+  max-width:1240px;margin:0 auto;padding:0 28px 54px;
+  display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,.65fr);gap:10px
+}
+.panel{
+  background:#101010;border:1px solid #242424;border-radius:14px;padding:18px
+}
+.panel h2{margin:0 0 4px;letter-spacing:-.035em;font-size:16px;font-weight:600}
+.label{display:block;color:#858585;font-size:11px;margin:18px 0 7px}
+.select,input,textarea{
+  width:100%;background:#0b0b0b;color:#eee;border:1px solid #292929;border-radius:10px;
+  padding:10px 11px;outline:none;transition:border-color .15s,background .15s
+}
+.select:hover,input:hover,textarea:hover{border-color:#353535}
+.select:focus,textarea:focus,input:focus{border-color:#555;background:#0e0e0e}
+.textarea{min-height:190px;resize:vertical}
+.actions{display:flex;gap:8px;margin-top:12px}
+.primary{
+  background:#f1f1f1;color:#080808;border:0;padding:10px 15px;border-radius:9px;
+  font-weight:650
+}
+.primary:hover{background:#fff}
+.primary:disabled{opacity:.45;cursor:default}
+.ghost{
+  background:#191919;color:#d0d0d0;border:1px solid #2a2a2a;padding:10px 15px;border-radius:9px
+}
+.ghost:hover{background:#202020;border-color:#383838}
+.model{
+  padding:12px;border:1px solid #292929;border-radius:10px;margin-top:8px;background:#0d0d0d
+}
+.model b{display:block;font-size:13px;font-weight:600}
+.model small{color:#777;font-size:11px}
+.model.active{border-color:#484848;background:#181818}
+.result{margin-top:14px;border-radius:12px;overflow:hidden;background:#0b0b0b;border:1px solid #292929}
+.result img{width:100%;display:block}
+.hidden{display:none!important}
+.modal{position:fixed;inset:0;background:#000c;display:grid;place-items:center;padding:20px}
+.modalbox{width:min(430px,100%);background:#141414;border:1px solid #2b2b2b;border-radius:14px;padding:22px}
+.modalbox h2{margin-top:0}
+.close{float:right;background:none;border:0;color:#888;font-size:22px}
+.status{color:#777;font-size:12px;margin-top:9px}
+.toast{
+  position:fixed;bottom:18px;right:18px;background:#f2f2f2;color:#080808;
+  padding:9px 12px;border-radius:9px;font-weight:600;font-size:12px
+}
+.section{display:none}
+.section.active{display:block}
+@media(max-width:900px){
+  .app{grid-template-columns:1fr}
+  .side{
+    position:static;height:auto;border-right:0;border-bottom:1px solid #202020;
+    padding:10px;flex-direction:row;align-items:center;gap:8px
+  }
+  .brand{padding:7px 8px}
+  .nav{display:flex;overflow:auto;gap:2px;flex:1}
+  .nav button{white-space:nowrap}
+  .bottom{display:none}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .workspace{grid-template-columns:1fr}
+  .top{padding:0 14px}
+  .hero,.grid,.workspace{padding-left:16px;padding-right:16px}
+}
+@media(max-width:560px){
+  .grid{grid-template-columns:1fr}
+  .hero{padding-top:28px}
+  .hero h1{font-size:40px}
+  .workspace{padding-bottom:32px}
+}
 </style></head><body>
 <div class="app">
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
