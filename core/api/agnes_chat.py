@@ -133,8 +133,10 @@ class AgnesChatAPI:
                 except Exception:
                     resp.close()
                     raise
-                result = resp.json()
-                resp.close()
+                try:
+                    result = resp.json()
+                finally:
+                    resp.close()
                 return result
             except (requests.ConnectionError, requests.Timeout) as e:
                 last_exc = e
