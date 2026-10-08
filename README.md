@@ -342,7 +342,8 @@ free-video-generator/
 | GET | `/health` | Service and FFmpeg health |
 | GET | `/api/config` | Configuration status, workspaces and watermark settings |
 | POST | `/api/config` | Save API key |
-| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |\n| POST | `/api/workspaces/pick-directory` | Pick a local directory |
+| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |
+| POST | `/api/workspaces/pick-directory` | Pick a local directory |
 | POST | `/api/config/watermark` | Configure optional watermark |
 | DELETE | `/api/config` | Delete configured API key |
 | GET | `/api/voices` | List available TTS voices |
@@ -362,10 +363,6 @@ free-video-generator/
 | GET | `/api/image/{id}/download` | Download final image |
 | GET | `/api/video/{id}/download` | Download final video |
 | WS | `/ws/{id}` | WebSocket real-time progress |
-| GET | `/health` | Service and FFmpeg health |
-| POST | `/api/ideas/generate` | Generate creative ideas |
-| POST | `/api/config/watermark` | Configure optional watermark |
-| GET/POST/DELETE | `/api/workspaces*` | Manage workspaces |
 | POST | `/api/workspaces/pick-directory` | Pick a local directory |
 | GET | `/api/concurrency` | Concurrency and rate status |
 | POST | `/api/cleanup-regression` | Clean regression artifacts |
