@@ -1,9 +1,11 @@
-from core.timing import timed_step
-
 """core.pipelines.simple_video — 简单视频生成流水线（类型 1）
 
 用户输入 prompt → 选择模式（t2v/i2v/keyframes）→ 调用 Agnes Video API → 返回视频。
 """
+
+from core.timing import timed_step
+
+
 
 import asyncio
 import json
