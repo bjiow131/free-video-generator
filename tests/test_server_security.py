@@ -292,3 +292,37 @@ def test_subtitle_overlay_closes_video_when_composition_fails(monkeypatch, tmp_p
         )
     assert video.closed is True
     assert subs.closed is True
+
+
+def test_watermark_render_closes_moviepy_clips_on_failure(monkeypatch, tmp_path):
+    from core.compositor import watermark
+
+    class DummyClip:
+        size = (100, 40)
+        def __init__(self):
+            self.closed = False
+        def with_duration(self, duration):
+            return self
+        def with_position(self, position):
+            return self
+        def close(self):
+            self.closed = True
+
+    clips = []
+    def make_clip(*args, **kwargs):
+        clip = DummyClip()
+        clips.append(clip)
+        return clip
+    class DummyComposite(DummyClip):
+        def save_frame(self, path, t=0):
+            raise RuntimeError("render failed")
+
+    monkeypatch.setattr(watermark, "resolve_font_path", lambda value: str(tmp_path / "font"))
+    (tmp_path / "font").write_bytes(b"font")
+    import moviepy
+    monkeypatch.setattr(moviepy, "TextClip", make_clip)
+    monkeypatch.setattr(moviepy, "ColorClip", make_clip)
+    monkeypatch.setattr(moviepy, "CompositeVideoClip", lambda *args, **kwargs: DummyComposite())
+
+    assert watermark._render_watermark_png(str(tmp_path / "wm.png"), 640, 360) is False
+    assert all(c.closed for c in clips)
