@@ -566,8 +566,8 @@ class AnchorPipeline(BasePipeline):
 
     def _save_task(self, clip_dir: str, video_id: str) -> None:
         task_file = os.path.join(clip_dir, "task.json")
-        with open(task_file, "w") as f:
+        with open(task_file, "w", encoding="utf-8") as f:
             json.dump({"video_id": video_id}, f, indent=2)
         curl_file = os.path.join(clip_dir, "curl.sh")
-        with open(curl_file, "w") as f:
+        with open(curl_file, "w", encoding="utf-8") as f:
             f.write(self._make_curl(video_id) + "\n")
