@@ -271,6 +271,27 @@ async function replaceMiaRefs(files){
     tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
   });
 }
+async function renameMiaRef(id,name){
+  const clean=String(name||'').trim().replace(/\\/g,'').replace(/[/:*?"<>|]/g,'').slice(0,80);
+  if(!clean){toast('Введите название референса');return}
+  try{
+    const db=await characterDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('refs','readwrite'),store=tx.objectStore('refs'),q=store.get(id);
+      q.onsuccess=()=>{
+        if(!q.result){reject(new Error('Референс не найден'));return}
+        q.result.name=clean;store.put(q.result);
+      };
+      q.onerror=()=>reject(q.error||new Error('Не удалось найти референс'));
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error('Не удалось переименовать референс'));
+      tx.onabort=()=>reject(tx.error||new Error('Операция отменена'));
+    });
+    const refs=await getMiaRefs();
+    renderCharacters(refs);
+    toast('Название сохранено');
+  }catch(e){toast(e.message||'Не удалось переименовать референс')}
+}
 async function setPrimaryMiaRef(id){
   try{
     const db=await characterDb();
@@ -308,7 +329,8 @@ function renderCharacters(refs){
   box.innerHTML=refs.map((r,i)=>{
     const url=URL.createObjectURL(r.blob);characterObjectUrls.push(url);
     const primary=!!r.isPrimary;
-    return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(primary?' · основной':'')+'</div><button class="'+(primary?'primary':'ghost')+'" style="width:100%;margin-top:8px;padding:8px 10px" onclick="setPrimaryMiaRef('+r.id+')">'+(primary?'Основной референс':'Сделать основным')+'</button></div>';
+    const displayName=escapeHtml(r.name||('Референс '+(i+1)));
+    return '<div class="card" style="padding:10px;min-height:0"><img src="'+url+'" alt="'+displayName+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">'+displayName+(primary?' · основной':'')+'</div><input id="refName_'+r.id+'" type="text" value="'+displayName+'" maxlength="80" style="margin-top:8px;padding:8px 10px;font-size:12px" aria-label="Название референса"><button class="ghost" style="width:100%;margin-top:7px;padding:8px 10px" onclick="renameMiaRef('+r.id+',document.getElementById(\'refName_'+r.id+'\').value)">Сохранить название</button><button class="'+(primary?'primary':'ghost')+'" style="width:100%;margin-top:7px;padding:8px 10px" onclick="setPrimaryMiaRef('+r.id+')">'+(primary?'Основной референс':'Сделать основным')+'</button></div>';
   }).join('');
 }
 async function saveCharacterPack(){
