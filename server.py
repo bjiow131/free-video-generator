@@ -877,9 +877,10 @@ async def generate_image(request: Request):
     ratio = str(form.get("ratio") or request.query_params.get("ratio") or "1:1")
     negative_prompt = str(form.get("negative_prompt") or "")
     system_prompt = str(form.get("system_prompt") or "")
-    reference_image = form.get("reference_image")
-    if not isinstance(reference_image, UploadFile):
-        reference_image = None
+    reference_images = [item for item in form.getlist("reference_images") if isinstance(item, UploadFile) and item.filename]
+    single_reference = form.get("reference_image")
+    if not reference_images and isinstance(single_reference, UploadFile) and single_reference.filename:
+        reference_images = [single_reference]
     character_id = str(form.get("character_id") or "").strip() or None
 
     api_key = get_api_key()
@@ -920,9 +921,9 @@ async def generate_image(request: Request):
     image_api = AgnesImageAPI(api_key=api_key)
 
     ref_paths = []
-    if reference_image and reference_image.filename:
-        ref_paths.append(await _save_image_upload(reference_image, f"img_ref_{uuid.uuid4().hex[:8]}"))
-    elif character_id:
+    for index, uploaded_reference in enumerate(reference_images[:6]):
+        ref_paths.append(await _save_image_upload(uploaded_reference, f"img_ref_{uuid.uuid4().hex[:8]}_{index+1}"))
+    if not ref_paths and character_id:
         clean_id = re.sub(r"[^a-zA-Z0-9_-]", "", character_id)
         meta_path = os.path.join(get_working_dir(), "characters", clean_id, "character.json")
         try:
@@ -954,7 +955,7 @@ async def generate_image(request: Request):
         raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
     finally:
         # Only remove temporary uploads; persistent character references stay in the character pack.
-        if reference_image and reference_image.filename:
+        if reference_images:
             for ref_path in ref_paths:
                 try:
                     os.remove(ref_path)
