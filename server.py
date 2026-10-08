@@ -1431,6 +1431,7 @@ async def create_creative_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Creative] Task created: {task_id}, idea={idea[:40]}... (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -1523,6 +1524,7 @@ async def create_manuscript_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Manuscript] Task created: {task_id}, text_len={len(manuscript_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -1615,6 +1617,7 @@ async def create_anchor_task(
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
+    _cache_task_dir(task_id, dir_name)
     _launch_background_task(_run_pipeline_with_concurrency(pipeline, state, tm))
     logger.info(f"[Anchor] Task created: {task_id}, script_len={len(script_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
