@@ -208,7 +208,7 @@ class BasePipeline(ABC):
             return "", ""
 
         # ── 1. 获取实际音频时长 ──
-        actual_audio_dur = self.get_audio_duration(audio_path)
+        actual_audio_dur = await asyncio.to_thread(self.get_audio_duration, audio_path)
 
         # ── 2. 生成 SRT ──
         num_segments = len(segment_texts)
