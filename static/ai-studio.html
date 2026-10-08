@@ -593,9 +593,7 @@ async function getSelectedVideoReferences(){
   if(characterId!=='miya')return [];
   const refs=await getMiaRefs();
   const selectedIds=getSelectedVideoReferenceIds().map(Number).filter(Number.isFinite);
-  const chosen=selectedIds.length
-    ? refs.filter(r=>selectedIds.includes(r.id))
-    : [refs.find(r=>r.isPrimary)||refs[0]].filter(Boolean);
+  const chosen=refs.filter(r=>selectedIds.includes(r.id));
   return chosen.slice(0,5).map(r=>r.blob).filter(b=>b instanceof Blob);
 }
 
@@ -677,7 +675,7 @@ $('#videoCharacter').addEventListener('change',handleVideoCharacterChange);
 $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderVideoReferencePicker(refs,refs.slice(0,5).map(r=>String(r.id)));saveFormState()};
 $('#videoClearAllRefs').onclick=()=>{renderVideoReferencePicker([],[]);saveFormState();};
 
-$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent=''};
+$('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#videoReference').value='';$('#videoCharacter').value='';syncVideoCharacterSelector();$('#videoResult').classList.add('hidden');$('#videoStatus').textContent='';saveFormState()};
 
 $('#imageGenerate').onclick=generateImage;
 $('#imageCharacter').addEventListener('change',syncCharacterReferenceSelector);
@@ -725,7 +723,8 @@ function saveFormState(){
     const state={};
     FORM_STATE_IDS.forEach(id=>{
       const el=$('#'+id); if(!el)return;
-      if(el.multiple) state[id]=Array.from(el.selectedOptions||[]).map(o=>o.value);
+      if(id==='videoCharacterReference') state[id]=getSelectedVideoReferenceIds();
+      else if(el.multiple) state[id]=Array.from(el.selectedOptions||[]).map(o=>o.value);
       else state[id]=el.value;
     });
     localStorage.setItem(FORM_STATE_KEY,JSON.stringify(state));
@@ -738,7 +737,10 @@ function restoreFormState(){
     FORM_STATE_IDS.forEach(id=>{
       const el=$('#'+id), value=state?.[id];
       if(!el||value==null)return;
-      if(el.multiple&&Array.isArray(value)){
+      if(id==='videoCharacterReference'&&Array.isArray(value)){
+        const refs=getMiaRefs();
+        refs.then(items=>renderVideoReferencePicker(items,value));
+      }else if(el.multiple&&Array.isArray(value)){
         Array.from(el.options).forEach(o=>{o.selected=value.includes(o.value)});
       }else{
         const hasOption=el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===String(value));
