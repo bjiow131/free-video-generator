@@ -154,3 +154,13 @@ async def test_upload_size_limit_and_cleanup(tmp_path, monkeypatch):
     state = type("State", (), {"reference_image": str(ref), "end_frame_image": "", "end_frame_images": []})()
     server._cleanup_uploaded_references(state)
     assert not ref.exists()
+
+
+def test_workspace_path_is_normalized_and_protected(tmp_path):
+    assert server._validate_workspace_path(str(tmp_path)) == str(tmp_path.resolve())
+    with pytest.raises(server.HTTPException):
+        server._validate_workspace_path(str(tmp_path / ".." / "etc"))
+    with pytest.raises(server.HTTPException):
+        server._validate_workspace_path(str(tmp_path / "missing-parent" / "workspace"))
+    with pytest.raises(server.HTTPException):
+        server._validate_workspace_path(server._PROJECT_ROOT)
