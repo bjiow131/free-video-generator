@@ -248,27 +248,55 @@ function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
+const CHARACTER_DB='aistudio-characters-v1';
+function characterDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(CHARACTER_DB,1);
+    req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('refs'))req.result.createObjectStore('refs',{keyPath:'id',autoIncrement:true})};
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+  });
+}
+async function getMiaRefs(){
+  const db=await characterDb();
+  return new Promise((resolve,reject)=>{
+    const q=db.transaction('refs','readonly').objectStore('refs').getAll();
+    q.onsuccess=()=>resolve(q.result||[]);q.onerror=()=>reject(q.error);
+  });
+}
+async function replaceMiaRefs(files){
+  const db=await characterDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('refs','readwrite'), store=tx.objectStore('refs'); store.clear();
+    [...files].forEach((file,index)=>store.add({name:file.name||('ref_'+(index+1)),blob:file,order:index+1}));
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+}
 async function loadCharacters(){
   try{
-    const r=await api('/api/characters'); const d=await r.json(); const chars=d.characters||[];
-    const select=$('#imageCharacter'); if(select) select.innerHTML='<option value="">Без персонажа</option>'+chars.map(c=>'<option value="'+escapeHtml(c.id)+'">'+escapeHtml(c.name)+'</option>').join('');
-    renderCharacters(chars);
-  }catch(e){$('#characterStatus').textContent=e.message}
+    const refs=await getMiaRefs();
+    const select=$('#imageCharacter');
+    if(select)select.innerHTML='<option value="">Без персонажа</option>'+(refs.length?'<option value="miya">Мия</option>':'');
+    renderCharacters(refs);
+  }catch(e){$('#characterStatus').textContent='Не удалось открыть локальное хранилище: '+e.message}
 }
-function renderCharacters(chars){
-  const box=$('#characterRefs'), status=$('#characterStatus'); if(!box||!status)return;
-  const mia=chars.find(c=>c.id==='miya'||c.name==='Мия');
-  if(!mia){status.textContent='Загрузите референсы Мии (до 12 изображений).';box.innerHTML='';return}
-  status.textContent='Сохранено референсов: '+mia.references.length+' · основной: '+(mia.primary||'');
-  box.innerHTML=mia.references.map((r,i)=>'<div class="card" style="padding:10px;min-height:0"><img src="'+r.url+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(r.name===mia.primary?' · основной':'')+'</div></div>').join('');
+function renderCharacters(refs){
+  const box=$('#characterRefs'),status=$('#characterStatus');if(!box||!status)return;
+  if(!refs.length){status.textContent='Загрузите референсы Мии (до 12 изображений).';box.innerHTML='';return}
+  status.textContent='Сохранено референсов: '+refs.length+' · хранится на этом устройстве';
+  box.innerHTML=refs.map((r,i)=>'<div class="card" style="padding:10px;min-height:0"><img src="'+URL.createObjectURL(r.blob)+'" alt="Референс '+(i+1)+'" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px"><div style="margin-top:8px;font-size:11px;color:#777">Референс '+(i+1)+(i===0?' · основной':'')+'</div></div>').join('');
 }
 async function saveCharacterPack(){
-  const files=$('#characterFiles').files;if(!files.length){toast('Выбери хотя бы один референс');return}
+  const files=$('#characterFiles').files;
+  if(!files.length){toast('Выбери хотя бы один референс');return}
+  if(files.length>12){toast('Можно сохранить не более 12 референсов');return}
   const b=$('#characterSave');b.disabled=true;b.textContent='Сохранение…';
   try{
-    const f=new FormData();f.append('name','Мия');for(const file of files)f.append('reference_images',file);
-    const r=await api('/api/characters',{method:'POST',body:f});await r.json();toast('Референсы Мии сохранены');$('#characterFiles').value='';await loadCharacters();
-  }catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Сохранить референсы'}
+    await replaceMiaRefs(files);
+    $('#characterFiles').value='';
+    await loadCharacters();
+    toast('Референсы Мии сохранены на устройстве');
+  }catch(e){toast(e.message||'Не удалось сохранить референсы')}
+  finally{b.disabled=false;b.textContent='Сохранить референсы'}
 }
 async function load(){}
 function renderDedicatedModels(type){
@@ -286,8 +314,13 @@ async function generateImage(){
   setGenerateBusy('image',true);$('#imageStatus').textContent='Запуск генерации…';
   try{
     const f=new FormData();f.append('prompt',p);f.append('size',$('#imageQuality').value);f.append('ratio',$('#imageAspect').value);
-    const characterId=$('#imageCharacter').value;if(characterId)f.append('character_id',characterId);
-    const ref=$('#imageReference').files[0];if(ref)f.append('reference_image',ref);
+    const characterId=$('#imageCharacter').value;
+    const ref=$('#imageReference').files[0];
+    if(ref) f.append('reference_image',ref);
+    else if(characterId==='miya'){
+      const refs=await getMiaRefs();
+      if(refs.length) f.append('reference_image',refs[0].blob,'miya_primary.'+(refs[0].name.split('.').pop()||'png'));
+    }
     const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
