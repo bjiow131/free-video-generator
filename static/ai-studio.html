@@ -399,7 +399,7 @@ async function generateImage(){
       const refs=await getMiaRefs();
       const selectedIds=[...$('#imageCharacterReference').selectedOptions].map(o=>Number(o.value)).filter(Number.isFinite);
       const chosen=selectedIds.length?refs.filter(item=>selectedIds.includes(item.id)):[refs.find(item=>item.isPrimary)||refs[0]].filter(Boolean);
-      chosen.forEach((item,index)=>{const mime=String(item.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';f.append('reference_images',item.blob,'miya_ref_'+(index+1)+'.'+ext);});
+      chosen.forEach((item,index)=>{const mime=String(item.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';const field=index===0?'reference_image':'reference_images';f.append(field,item.blob,'miya_ref_'+(index+1)+'.'+ext);});
     }
     const endpoint='/api/image/generate?prompt='+encodeURIComponent(p)+'&size='+encodeURIComponent($('#imageQuality').value)+'&ratio='+encodeURIComponent($('#imageAspect').value);
     const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
