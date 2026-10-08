@@ -1423,8 +1423,10 @@ async def create_simple_task(
     seed: Optional[int] = Form(None),
     negative_prompt: Optional[str] = Form(None),
     system_prompt: str = Form(""),
-    reference_image: UploadFile = File(None),
-    end_frame_image: UploadFile = File(None),
+    # Explicit Optional annotations are important here: on newer FastAPI/Pydantic
+    # versions, UploadFile = File(None) can still be validated as required.
+    reference_image: Optional[UploadFile] = File(None),
+    end_frame_image: Optional[UploadFile] = File(None),
 ):
     """创建简单视频任务（类型 1）。"""
 
