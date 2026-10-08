@@ -1112,6 +1112,10 @@ async def list_tasks():
             "task_type": state.task_type,
             "creative_name": state.creative_name,
             "status": state.status,
+            "progress": getattr(state, "progress", 0.0),
+            "progress_message": getattr(state, "progress_message", ""),
+            "error_message": getattr(state, "error_message", ""),
+            "eta_seconds": getattr(state, "eta_seconds", None),
             "chaining_mode": getattr(state, "chaining_mode", "none"),
             "final_video_file": state.final_video_file,
         }
