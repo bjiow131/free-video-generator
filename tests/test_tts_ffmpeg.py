@@ -30,3 +30,18 @@ def test_silent_tts_kills_ffmpeg_on_cancellation(monkeypatch, tmp_path):
 
     asyncio.run(scenario())
     assert proc.killed is True
+
+
+def test_silent_tts_removes_partial_output_on_ffmpeg_failure(monkeypatch, tmp_path):
+    class Proc:
+        returncode = 1
+        async def communicate(self):
+            return b"", b"ffmpeg failed"
+    async def create(*args, **kwargs):
+        (tmp_path / "out.mp3").write_bytes(b"partial")
+        return Proc()
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+
+    with pytest.raises(RuntimeError, match="ffmpeg silent generation failed"):
+        asyncio.run(SilentTTSEngine().generate("text", str(tmp_path / "out.mp3")))
+    assert not (tmp_path / "out.mp3").exists()
