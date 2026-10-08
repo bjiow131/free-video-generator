@@ -430,18 +430,18 @@ def _write_upload_bytes(path: str, data: bytes) -> None:
 
 
 def _cleanup_uploaded_references(state: BaseTaskState) -> None:
-    """Remove uploaded reference images after a task reaches a terminal success state."""
+    """Remove all uploaded reference images after a task reaches terminal success."""
     candidates = []
-    for attr in ("reference_image", "end_frame_image"):
-        value = getattr(state, attr, "")
-        if value:
+    for attr in ("reference_image", "reference_images", "end_frame_image", "end_frame_images"):
+        value = getattr(state, attr, None)
+        if isinstance(value, (list, tuple)):
+            candidates.extend(value)
+        elif value:
             candidates.append(value)
-    end_frames = getattr(state, "end_frame_images", None) or []
-    if isinstance(end_frames, (list, tuple)):
-        candidates.extend(end_frames)
-    for path in candidates:
-        if not path:
-            continue
+
+    # A single image can appear in both reference_image and reference_images[0].
+    # Deduplicate paths so cleanup remains quiet and deterministic.
+    for path in dict.fromkeys(p for p in candidates if isinstance(p, str) and p):
         try:
             os.remove(path)
         except FileNotFoundError:
