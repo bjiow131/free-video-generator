@@ -607,7 +607,7 @@ def resolve_font_path(font: str) -> str:
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | Web UI 页面 |
-| GET | `/api/config` | 获取 API Key（脱敏） |
+| GET | `/api/config` | 获取配置状态（不返回 API Key） |
 | POST | `/api/config` | 保存 API Key |
 | GET | `/api/voices` | 列出可用 TTS 语音角色（4 个） |
 | POST | `/api/tasks/simple` | 创建简单视频任务 |
