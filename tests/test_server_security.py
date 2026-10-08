@@ -178,3 +178,10 @@ def test_save_config_rejects_empty_key():
         assert exc.value.status_code == 422
 
     asyncio.run(scenario())
+
+
+def test_state_change_origin_policy_accepts_same_origin_and_rejects_cross_origin():
+    assert server._request_host_allowed("localhost:8765")
+    assert server._origin_matches_host("http://localhost:8765", "localhost:8765")
+    assert not server._origin_matches_host("http://127.0.0.1:8765", "localhost:8765")
+    assert not server._origin_matches_host("http://evil.example", "localhost:8765")
