@@ -80,6 +80,33 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
 .create-settings{display:none}
 @media(max-width:900px){.create-stage{grid-template-columns:1fr;grid-template-rows:auto auto;min-height:auto;padding:18px}.create-canvas{min-height:440px}.advanced-panel{grid-row:2}.prompt-dock{grid-row:3;grid-column:1;position:sticky;bottom:8px}.prompt-row{grid-template-columns:1fr}.prompt-actions{justify-content:flex-end}}
 @media(max-width:600px){.create-canvas{min-height:52vh}.create-canvas:before{inset:12px}.prompt-dock{border-radius:18px}.option-row{margin:0 -2px}.generate-main{width:100%}}
+/* TASK 2.3 — Creative / Manuscript / Anchor production studio */
+.production-shell{max-width:1320px;margin:0 auto;padding:28px 28px 64px}
+.production-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:20px}
+.production-head h1{margin:8px 0 0;font-size:clamp(32px,5vw,54px);letter-spacing:-.06em;line-height:1}
+.mode-tabs{display:flex;gap:4px;padding:4px;background:var(--ds-surface-1);border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);overflow:auto}
+.mode-tab{min-height:38px;padding:0 14px;border:0;border-radius:var(--ds-radius-md);background:transparent;color:var(--ds-text-2);font-size:12px;font-weight:750;white-space:nowrap}
+.mode-tab.active{background:var(--ds-surface-3);color:var(--ds-text-1);box-shadow:var(--ds-shadow-sm)}
+.stepper{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:18px}
+.step{position:relative;min-height:70px;padding:12px 14px;border:1px solid var(--ds-border);background:var(--ds-surface-1);color:var(--ds-text-2)}
+.step:first-child{border-radius:var(--ds-radius-md) 0 0 var(--ds-radius-md)}.step:last-child{border-radius:0 var(--ds-radius-md) var(--ds-radius-md) 0}
+.step strong{display:block;color:var(--ds-text-1);font-size:12px}.step span{display:block;margin-top:4px;font-size:10px}
+.step.running{border-color:color-mix(in srgb,var(--ds-accent) 50%,var(--ds-border));background:color-mix(in srgb,var(--ds-accent) 8%,var(--ds-surface-1))}
+.step.done{border-color:color-mix(in srgb,var(--ds-success) 40%,var(--ds-border))}
+.step.failed{border-color:color-mix(in srgb,var(--ds-error) 45%,var(--ds-border))}
+.production-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
+.production-form,.production-status{padding:20px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-xl);background:var(--ds-surface-1);box-shadow:var(--ds-shadow-sm)}
+.production-form textarea{min-height:190px}.production-form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.storyboard{display:flex;gap:10px;overflow:auto;padding:4px 2px 10px;margin-top:18px;scroll-snap-type:x mandatory}
+.story-card{flex:0 0 210px;scroll-snap-align:start;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);overflow:hidden;background:var(--ds-surface-2)}
+.story-thumb{height:118px;display:grid;place-items:center;background:linear-gradient(135deg,var(--ds-surface-3),var(--ds-bg));color:var(--ds-text-3);font-size:11px}
+.story-thumb img,.story-thumb video{width:100%;height:100%;object-fit:cover}
+.story-body{padding:10px}.story-body strong{display:block;font-size:11px}.story-body p{margin:5px 0 0;color:var(--ds-text-2);font-size:10px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.production-progress{min-height:180px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-lg);background:var(--ds-surface-2);padding:14px}
+.production-actions{display:flex;gap:8px;margin-top:14px}.production-status h3{margin:0 0 12px;font-size:14px}
+.mode-panel{display:none}.mode-panel.active{display:block}
+@media(max-width:900px){.production-head{align-items:flex-start;flex-direction:column}.production-grid{grid-template-columns:1fr}.stepper{grid-template-columns:1fr 1fr}.step:first-child,.step:last-child{border-radius:var(--ds-radius-md)}.production-form .row{grid-template-columns:1fr}}
+@media(max-width:600px){.production-shell{padding:18px}.stepper{grid-template-columns:1fr}.story-card{flex-basis:190px}}
 </style></head><body>
 <div class="app">
 <aside class="side" id="appSidebar">
@@ -145,7 +172,64 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{min-height:
     </div>
   </div>
 </section>
-<section id="film" class="section"><div class="hero" style="padding-bottom:22px"><div class="eyebrow">Animation Studio</div><h1 style="font-size:52px">Создать мультфильм</h1><p>Одна идея превращается в последовательный фильм: история → персонажи → сцены → видео → озвучка → субтитры → готовый MP4.</p></div><div class="workspace"><div class="panel"><h2>Сценарий фильма</h2><div class="label">Название</div><input id="filmName" placeholder="Например: Приключения Миши в горах"><div class="label">Идея</div><textarea id="filmIdea" class="textarea" style="min-height:150px" placeholder="Опиши сюжет, героев, мир и что должно произойти…"></textarea><div class="label">Визуальный стиль</div><input id="filmStyle" value="яркий качественный 3D мультфильм, кинематографичный свет, выразительные персонажи"><div class="label">Количество сцен</div><select id="filmScenes" class="select"><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option><option>10</option></select><div class="label">Длительность каждой сцены</div><select id="filmDuration" class="select"><option value="4">4 секунды</option><option value="5">5 секунд</option><option value="6">6 секунд</option><option value="8">8 секунд</option><option value="10">10 секунд</option><option value="12">12 секунд</option></select><div class="label">Формат</div><select id="filmFormat" class="select"><option value="portrait">9:16 — Reels / Shorts</option><option value="landscape">16:9 — YouTube / экран</option></select><div class="label">Референс персонажа <span style="color:#777">(необязательно)</span></div><input id="filmReference" type="file" accept="image/*"><div class="label">Озвучка</div><select id="filmAudio" class="select"><option value="true">Включить</option><option value="false">Без озвучки</option></select><div class="label">Голос</div><select id="filmVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана — женский голос</option><option value="ru-RU-DmitryNeural">Дмитрий — мужской голос</option></select><div class="label">Субтитры</div><select id="filmSubs" class="select"><option value="true">Включить</option><option value="false">Без субтитров</option></select><div class="actions"><button id="filmGenerate" class="primary">Создать мультфильм</button><button id="filmClear" class="ghost">Очистить</button></div><div id="filmStatus" class="status"></div><div id="filmProgress" class="result hidden"></div></div><div class="panel"><h2>Как это работает</h2><div class="model active"><b>1. История</b><small>AI превращает идею в структуру фильма.</small></div><div class="model"><b>2. Персонажи</b><small>Создаётся визуальная основа для последовательности сцен.</small></div><div class="model"><b>3. Сцены</b><small>Agnes Video генерирует сцены с учётом связности.</small></div><div class="model"><b>4. Озвучка + субтитры</b><small>Добавляются автоматически, если включены.</small></div><div class="model"><b>5. Финальный MP4</b><small>Все клипы собираются в один фильм.</small></div><p style="color:#888;font-size:13px;margin-top:18px">Генерация выполняется на этом локальном сервере через Agnes AI. Фильм продолжает обрабатываться в фоне, а статус можно обновлять из раздела «История».</p></div></div></section><section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
+<section id="film" class="section">
+  <div class="production-shell">
+    <div class="production-head">
+      <div><div class="eyebrow">Production Studio</div><h1>Creative workspace</h1></div>
+      <div class="mode-tabs" role="tablist">
+        <button class="mode-tab active" data-production-mode="creative" type="button">Creative</button>
+        <button class="mode-tab" data-production-mode="manuscript" type="button">Manuscript</button>
+        <button class="mode-tab" data-production-mode="anchor" type="button">Anchor</button>
+      </div>
+    </div>
+    <div class="stepper" id="productionStepper">
+      <div class="step" data-step="idea"><strong>01 · Input</strong><span>Pending</span></div>
+      <div class="step" data-step="plan"><strong>02 · Plan</strong><span>Pending</span></div>
+      <div class="step" data-step="scenes"><strong>03 · Scenes</strong><span>Pending</span></div>
+      <div class="step" data-step="audio"><strong>04 · Audio</strong><span>Pending</span></div>
+      <div class="step" data-step="final"><strong>05 · Final</strong><span>Pending</span></div>
+    </div>
+    <div class="mode-panel active" data-mode-panel="creative">
+      <div class="production-grid">
+        <form id="creativeForm" class="production-form">
+          <h2>Creative</h2>
+          <div class="label">Project name</div><input id="creativeName" placeholder="Например: Горы на рассвете">
+          <div class="label">Idea</div><textarea id="creativeIdea" placeholder="Опиши идею, сюжет, визуальный мир и действие…"></textarea>
+          <div class="row"><div><div class="label">Visual style</div><input id="creativeStyle" value="Кинематографичный, детализированный, выразительный"></div><div><div class="label">Chaining</div><select id="creativeChaining" class="select"><option value="keyframes">Keyframes</option><option value="ti2vid">TI2VID</option><option value="independent">Independent</option></select></div></div>
+          <div class="row"><div><div class="label">Scenes</div><select id="creativeScenes" class="select"><option>3</option><option>5</option><option>8</option><option>10</option></select></div><div><div class="label">Duration</div><select id="creativeDuration" class="select"><option value="5">5 sec</option><option value="6">6 sec</option><option value="8">8 sec</option><option value="10">10 sec</option><option value="12">12 sec</option></select></div></div>
+          <div class="row"><div><div class="label">Format</div><select id="creativeFormat" class="select"><option value="portrait">9:16</option><option value="landscape">16:9</option></select></div><div><div class="label">Voice</div><select id="creativeVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана</option><option value="ru-RU-DmitryNeural">Дмитрий</option></select></div></div>
+          <div class="label">Reference</div><input id="creativeReference" type="file" accept="image/*">
+          <div class="production-actions"><button id="creativeGenerate" class="primary" type="button">Generate</button><button id="creativeClear" class="ghost" type="button">Clear</button></div><div id="creativeStatus" class="status"></div>
+        </form>
+        <aside class="production-status"><h3>Live production</h3><div id="creativeProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="creativeStoryboard" class="storyboard"></div></aside>
+      </div>
+    </div>
+    <div class="mode-panel" data-mode-panel="manuscript">
+      <div class="production-grid">
+        <form id="manuscriptForm" class="production-form">
+          <h2>Manuscript</h2><div class="label">Project name</div><input id="manuscriptName" placeholder="Название проекта">
+          <div class="label">Manuscript</div><textarea id="manuscriptText" placeholder="Вставь готовый сценарий или текст…"></textarea>
+          <div class="row"><div><div class="label">Video style</div><input id="manuscriptStyle" placeholder="Кинематографичный стиль"></div><div><div class="label">Duration</div><select id="manuscriptDuration" class="select"><option value="5">5 sec</option><option value="8">8 sec</option><option value="10">10 sec</option><option value="12">12 sec</option></select></div></div>
+          <div class="row"><div><div class="label">Format</div><select id="manuscriptFormat" class="select"><option value="portrait">9:16</option><option value="landscape">16:9</option></select></div><div><div class="label">Voice</div><select id="manuscriptVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана</option><option value="ru-RU-DmitryNeural">Дмитрий</option></select></div></div>
+          <div class="production-actions"><button id="manuscriptGenerate" class="primary" type="button">Generate</button></div><div id="manuscriptStatus" class="status"></div>
+        </form>
+        <aside class="production-status"><h3>Live production</h3><div id="manuscriptProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="manuscriptStoryboard" class="storyboard"></div></aside>
+      </div>
+    </div>
+    <div class="mode-panel" data-mode-panel="anchor">
+      <div class="production-grid">
+        <form id="anchorForm" class="production-form">
+          <h2>Anchor</h2><div class="label">Anchor prompt</div><input id="anchorPrompt" placeholder="Описание ведущего и визуального образа">
+          <div class="label">Script</div><textarea id="anchorScript" placeholder="Текст для озвучки…"></textarea>
+          <div class="row"><div><div class="label">Format</div><select id="anchorFormat" class="select"><option value="portrait">9:16</option><option value="landscape">16:9</option></select></div><div><div class="label">Voice</div><select id="anchorVoice" class="select"><option value="ru-RU-SvetlanaNeural">Светлана</option><option value="ru-RU-DmitryNeural">Дмитрий</option></select></div></div>
+          <div class="label">Reference</div><input id="anchorReference" type="file" accept="image/*">
+          <div class="production-actions"><button id="anchorGenerate" class="primary" type="button">Generate</button></div><div id="anchorStatus" class="status"></div>
+        </form>
+        <aside class="production-status"><h3>Live production</h3><div id="anchorProgress" class="production-progress"><span class="field-hint">Статус появится после запуска.</span></div><div id="anchorStoryboard" class="storyboard"></div></aside>
+      </div>
+    </div>
+  </div>
+</section><section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
 <section id="credits" class="section"><div class="hero"><div class="eyebrow">Credits</div><h1 style="font-size:60px">Кредиты</h1><p>AISTUDIO не списывает внутренние кредиты. Генерация выполняется через Agnes AI; фактические лимиты определяются твоим API-ключом.</p><div class="grid" style="padding:20px 0"><div class="card"><h3>Agnes AI</h3><p>Прямое подключение к Agnes API</p><h2>∞</h2></div></div></div></section>
 </main></div>
 <div id="toast" class="toast hidden"></div>
@@ -167,7 +251,7 @@ if(languageSwitch){languageSwitch.value=localStorage.getItem('agnes_lang')||'ru'
 const $=s=>document.querySelector(s), $=s=>document.querySelectorAll(s);let models=[],selected=null;
 function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))}
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
-function show(page){$$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory()}
+function show(page){$('.section').forEach(x=>x.classList.remove('active'));$('#'+page).classList.add('active');$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(page==='history')loadHistory()}
 $$('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.page));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));throw Error(d.detail||'Ошибка сервера');}return r}
 async function load(){models=[{id:'agnes-image-2.5-flash',name:'Agnes Image 2.5 Flash',provider:'Agnes AI',type:'image',credits:0,status:'ready',description:'Генерация и редактирование изображений'},{id:'agnes-video-2.5-flash',name:'Agnes Video 2.5 Flash',provider:'Agnes AI',type:'video',credits:0,status:'ready',description:'Text-to-video и image-to-video'},{id:'agnes-video-2.5',name:'Agnes Video 2.5',provider:'Agnes AI',type:'video',credits:0,status:'ready',description:'Text-to-video, image-to-video и keyframes'}];renderModels()}
