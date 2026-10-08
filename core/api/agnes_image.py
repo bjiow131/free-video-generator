@@ -157,6 +157,7 @@ class AgnesImageAPI:
                             f"[AgnesImage] 429 rate limit, "
                             f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
                         )
+                        resp.close()
                         await asyncio.sleep(delay)
                         continue
     
@@ -167,6 +168,7 @@ class AgnesImageAPI:
                             f"[AgnesImage] {resp.status_code} server error, "
                             f"retry {attempt + 1}/{max_retries} in {delay:.0f}s..."
                         )
+                        resp.close()
                         await asyncio.sleep(delay)
                         continue
     
