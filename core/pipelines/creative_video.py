@@ -1368,67 +1368,49 @@ class CreativeVideoPipeline(BasePipeline):
             current_first_frame = end_frame_path
 
         new_submissions = [i for i in pending if not i.get("already_submitted")]
-        if new_submissions:
-            await self._emit(
-                "video_gen", "running",
-                f"提交 {len(new_submissions)} 个视频任务 (keyframes)...",
-                0.35,
-            )
-        else:
-            logger.info(
-                f"[Pipeline] All {len(pending)} scene(s) already submitted, "
-                f"waiting for completion..."
-            )
+        limit = max(1, int(os.getenv("MAX_PARALLEL_SCENES", "3")))
+        semaphore = asyncio.Semaphore(limit)
 
-        for info in new_submissions:
+        async def submit_one(info: dict):
             scene_idx = info["scene_idx"]
-            await self._emit(
-                "video_gen", "running",
-                f"场景 {scene_idx+1}/{total}: 提交任务...",
-                0.35 + 0.05 * scene_idx / total,
-            )
-            video_id = await self.video_generator.submit_video(
-                prompt=self._scene_video_prompt(info["scene_text"]),
-                reference_image_paths=[info["first_frame_url"], info["end_frame_url"]],
-                duration=self._scene_duration(scene_idx),
-                width=vw,
-                height=vh,
-                negative_prompt=self._state.negative_prompt or None,
-            )
-            info["video_id"] = video_id
-            info["already_submitted"] = True
-            self._save_scene_task(info["scene_dir"], video_id)
-            self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
+            async with semaphore:
+                await self._emit("video_gen", "running",
+                    f"场景 {scene_idx+1}/{total}: 提交任务...", 0.35)
+                video_id = await self.video_generator.submit_video(
+                    prompt=self._scene_video_prompt(info["scene_text"]),
+                    reference_image_paths=[info["first_frame_url"], info["end_frame_url"]],
+                    duration=self._scene_duration(scene_idx),
+                    width=vw, height=vh,
+                    negative_prompt=self._state.negative_prompt or None,
+                )
+                info["video_id"] = video_id
+                info["already_submitted"] = True
+                self._save_scene_task(info["scene_dir"], video_id)
+                self._set_scene_video_status(scene_idx, StepStatus.RUNNING)
+                return info
+
+        if new_submissions:
+            await asyncio.gather(*(submit_one(info) for info in new_submissions))
 
         if pending:
-            await self._emit(
-                "video_gen", "running",
-                f"等待 {len(pending)} 个视频生成完成...",
-                0.4,
-            )
+            await self._emit("video_gen", "running",
+                f"等待 {len(pending)} 个视频生成完成...", 0.4)
 
-        for info in pending:
+        async def wait_one(info: dict):
             scene_idx = info["scene_idx"]
-            await self._emit(
-                "video_gen", "running",
-                f"场景 {scene_idx+1}/{total}: 等待生成中...",
-                0.4 + 0.4 * pending.index(info) / len(pending),
-            )
-            try:
-                video_output = await self.video_generator.wait_for_video(info["video_id"])
-                await asyncio.to_thread(video_output.save, info["video_path"])
-                await self._emit(
-                    "video_gen", "running",
-                    f"场景 {scene_idx+1}/{total}: 完成",
-                    0.4 + 0.4 * (pending.index(info) + 1) / len(pending),
-                )
-            except Exception as e:
-                self._set_scene_video_status(scene_idx, StepStatus.FAILED)
-                logger.error(f"Scene {scene_idx} video failed: {e}")
-                task_file = os.path.join(info["scene_dir"], "task.json")
-                if os.path.exists(task_file):
-                    os.remove(task_file)
-                raise
+            async with semaphore:
+                try:
+                    video_output = await self.video_generator.wait_for_video(info["video_id"])
+                    await asyncio.to_thread(video_output.save, info["video_path"])
+                    self._set_scene_video_status(scene_idx, StepStatus.COMPLETED)
+                    await self._emit("video_gen", "running",
+                        f"场景 {scene_idx+1}/{total}: 完成", 0.8)
+                except Exception:
+                    self._set_scene_video_status(scene_idx, StepStatus.FAILED)
+                    raise
+
+        if pending:
+            await asyncio.gather(*(wait_one(info) for info in pending))
 
         all_video_paths: List[str] = []
         for scene_idx in range(len(scenes)):
