@@ -1,8 +1,9 @@
-from core.timing import timed_step
 """core.compositor.concatenator — 视频拼接器
 
 支持纯视频拼接和带音频字幕的拼接。
 """
+from core.timing import timed_step
+
 
 import json
 import logging
