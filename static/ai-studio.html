@@ -401,7 +401,8 @@ async function generateImage(){
       const chosen=refs.find(r=>r.id===selectedId)||refs.find(r=>r.isPrimary)||refs[0];
       if(chosen){const mime=String(chosen.blob?.type||'image/png').toLowerCase();const ext=mime.includes('jpeg')||mime.includes('jpg')?'jpg':mime.includes('webp')?'webp':'png';f.append('reference_image',chosen.blob,'miya_ref.'+ext);}
     }
-    const r=await api('/api/image/generate',{method:'POST',body:f});const d=await r.json();
+    const endpoint='/api/image/generate?prompt='+encodeURIComponent(p)+'&size='+encodeURIComponent($('#imageQuality').value)+'&ratio='+encodeURIComponent($('#imageAspect').value);
+    const r=await api(endpoint,{method:'POST',body:f});const d=await r.json();
     const url='/api/image/'+encodeURIComponent(d.task_id);
     $('#imageResult').innerHTML='<img src="'+url+'"><div style="padding:12px"><button class="ghost" id="saveImageButton">Сохранить изображение</button></div>';
     $('#saveImageButton').onclick=()=>openSaveModal(d.task_id);
