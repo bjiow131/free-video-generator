@@ -600,7 +600,7 @@ async function generateVideo(){
     if($('#videoCharacter').value){
       f.append('system_prompt','Character identity lock: preserve the exact identity, natural hair color, hairstyle, facial features, skin tone, age, body proportions, clothing, and overall appearance of the selected character. Do not redesign, age, resize, recolor, morph, or change the character.');
     }
-    const r=await api('/api/tasks/simple',{method:'POST',body:f});const d=await r.json();const taskId=d.task_id;
+    const q=new URLSearchParams({prompt:p,model:'agnes-video-2.5-flash',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',body:f});const d=await r.json();const taskId=d.task_id;
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
     const poll=async()=>{try{const rr=await api('/api/tasks');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){setTimeout(poll,2500);return}
       if(task.status==='failed'){throw Error(task.progress_message||'Генерация видео не удалась')}
