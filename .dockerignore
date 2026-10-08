@@ -15,3 +15,6 @@
 
 /generated
 /test_*.png
+
+/test_end.png
+/test_ref.png
