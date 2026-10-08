@@ -1,9 +1,10 @@
-from core.timing import timed_step
 """core.api.agnes_chat — Agnes Chat API 封装（从 core/screenwriter.py 提取）
 
 P5: 健壮 JSON 解析（strip_code_fence + 正则提取 + 降级重试）
 P11: chat/chat_multimodal 统一重试（5xx/超时/连接错 3 次指数退避，4xx 不重试）
 """
+from core.timing import timed_step
+
 
 import base64
 import json
