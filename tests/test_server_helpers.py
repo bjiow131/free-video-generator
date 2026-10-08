@@ -67,3 +67,38 @@ def test_cancel_while_queued_does_not_release_semaphore(monkeypatch):
         assert pipeline.task_id not in server._queued_tasks
 
     asyncio.run(scenario())
+
+
+def test_cancel_after_acquire_releases_slot_without_resetting_running_state(monkeypatch):
+    async def scenario():
+        semaphore = server.WeightedSemaphore(1)
+        manager = _TaskManager()
+        pipeline = _Pipeline()
+        state = type("State", (), {"task_type": TaskType.SIMPLE})()
+        started = asyncio.Event()
+
+        async def fake_run(_pipeline, _state):
+            started.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(server, "_pipeline_semaphore", semaphore)
+        monkeypatch.setattr(server, "_run_pipeline", fake_run)
+        monkeypatch.setitem(server.active_pipelines, pipeline.task_id, pipeline)
+        monkeypatch.setitem(server._pipeline_locks, pipeline.task_id, asyncio.Lock())
+
+        task = asyncio.create_task(
+            server._run_pipeline_with_concurrency(pipeline, state, manager)
+        )
+        await started.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert semaphore.current == 0
+        assert manager.statuses == [StepStatus.QUEUED]
+        assert pipeline.task_id not in server._queued_tasks
+        assert pipeline.task_id not in server.active_pipelines
+        assert pipeline.task_id not in server._pipeline_locks
+
+    asyncio.run(scenario())
