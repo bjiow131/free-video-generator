@@ -626,6 +626,43 @@ async function getSelectedVideoReferences(){
 
 let generatedStartFrameBlob=null;
 let generatedStartFrameTaskId='';
+async function renderStartFramePreview(blob,alt,caption){
+  if(!(blob instanceof Blob)||!blob.type||!blob.type.startsWith('image/'))throw new Error('Предпросмотр: сервер вернул файл неподдерживаемого формата');
+  if(blob.size<1024)throw new Error('Предпросмотр: изображение пустое или повреждённое');
+  const url=URL.createObjectURL(blob);
+  const img=new Image();img.alt=alt;img.style.cssText='width:100%;display:block;object-fit:contain;background:#f3f0e9';img.src=url;
+  try{
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Предпросмотр: браузер не смог декодировать изображение'))});
+    if(img.naturalWidth<2||img.naturalHeight<2)throw new Error('Предпросмотр: изображение не содержит корректного кадра');
+    const canvas=document.createElement('canvas');canvas.width=24;canvas.height=24;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    if(ctx){
+      ctx.drawImage(img,0,0,24,24);
+      const pixels=ctx.getImageData(0,0,24,24).data;
+      let nearWhite=0, first=null, varied=false;
+      for(let i=0;i<pixels.length;i+=4){
+        const rgb=[pixels[i],pixels[i+1],pixels[i+2]];
+        if(rgb.every(v=>v>=250))nearWhite++;
+        if(first===null)first=rgb;
+        else if(rgb.some((v,j)=>Math.abs(v-first[j])>3))varied=true;
+      }
+      if(nearWhite>=24*24*0.995&&!varied)throw new Error('Предпросмотр: получен полностью белый кадр, а не изображение. Проверь результат генерации.');
+    }
+    const container=$('#startFrameResult');container.replaceChildren();
+    container.appendChild(img);
+    const note=document.createElement('div');note.style.padding='12px';note.textContent=caption;container.appendChild(note);
+    img.onerror=()=>{
+      container.replaceChildren();
+      const fallback=document.createElement('div');fallback.style.cssText='padding:18px;color:#8a342b;background:#fff1ee;border-radius:10px';fallback.textContent='Изображение больше недоступно для предпросмотра. Создай кадр заново; повреждённый кадр не следует использовать для следующей сцены.';
+      container.appendChild(fallback);
+      $('#startFrameStatus').textContent='Ошибка предпросмотра: изображение перестало загружаться';
+      generatedStartFrameBlob=null;generatedStartFrameTaskId='';
+      URL.revokeObjectURL(url);
+    };
+    container.classList.remove('hidden');
+    return url;
+  }catch(e){URL.revokeObjectURL(url);throw e}
+}
 async function useLastVideoFrame(taskId,button){
   const originalLabel=button?.textContent||'Использовать последний кадр для следующей сцены';
   if(button){button.disabled=true;button.textContent='Извлекаю последний кадр…'}
@@ -653,15 +690,10 @@ async function useLastVideoFrame(taskId,button){
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
     const frame=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось сохранить извлечённый кадр')),'image/png'));
     if(frame.size<1024)throw new Error('Извлечённый кадр пустой или повреждённый. Попробуй ещё раз.');
-    const previewUrl=URL.createObjectURL(frame);
-    const preview=new Image();
-    preview.src=previewUrl;
-    await new Promise((resolve,reject)=>{preview.onload=resolve;preview.onerror=()=>reject(new Error('Не удалось проверить изображение финального кадра'))});
+    await renderStartFramePreview(frame,'Финальный кадр предыдущей сцены','Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.');
     generatedStartFrameBlob=frame;
     generatedStartFrameTaskId='continuity:'+taskId;
     $('#videoReference').value='';
-    $('#startFrameResult').innerHTML='<img alt="Финальный кадр предыдущей сцены" style="width:100%;display:block" src="'+previewUrl+'"><div style="padding:12px">Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.</div>';
-    $('#startFrameResult').classList.remove('hidden');
     $('#startFrameStatus').textContent='Кадр для продолжения выбран · '+taskId;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
     toast('Финальный кадр выбран для следующей сцены');
@@ -721,8 +753,7 @@ async function createStartFrame(){
     generatedStartFrameTaskId=data.task_id;
     if(!generatedStartFrameBlob.type||!generatedStartFrameBlob.type.startsWith('image/'))throw new Error('Сервер вернул файл неподдерживаемого формата');
     $('#videoReference').value='';
-    $('#startFrameResult').innerHTML='<img alt="Стартовый кадр" style="width:100%;display:block" src="'+URL.createObjectURL(generatedStartFrameBlob)+'"><div style="padding:12px">Стартовый кадр готов. Нажми «Создать видео» — он будет передан в Agnes 2.0 автоматически.</div>';
-    $('#startFrameResult').classList.remove('hidden');
+    await renderStartFramePreview(generatedStartFrameBlob,'Стартовый кадр','Стартовый кадр готов. Нажми «Создать видео» — он будет передан в Agnes 2.0 автоматически.');
     $('#startFrameStatus').textContent='Стартовый кадр готов · '+data.task_id+' · '+aspect;
     toast('Стартовый кадр готов');
   }catch(e){
