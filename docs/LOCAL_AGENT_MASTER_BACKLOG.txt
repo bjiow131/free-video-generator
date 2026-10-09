@@ -210,3 +210,7 @@ EXECUTION LOG — 2026-10-09 (local-first migration pass)
 
 - Follow-up 2026-10-09: added setup_windows.bat; updated README Windows first-run instructions; expanded the workflow's static contract check for setup script and added setup_windows.bat to both PR and feature-branch push path filters.
 - Runtime status remains NOT RUN. No Windows environment was available, and no CI result is asserted.
+
+[FOUND] M17. Inspected common deployment paths on this branch: render.yaml, render.yml, Procfile, .github/workflows/deploy.yml, .github/workflows/render-deploy.yml, fly.toml, and railway.json are absent. This does not rule out settings in an external Render dashboard or other uninspected paths.
+
+- Follow-up 2026-10-09: recorded deployment-manifest inventory in docs/LOCAL_MIGRATION_AUDIT.md; kept RENDER_EXTERNAL_HOSTNAME compatibility in place pending host/origin security regression tests.
