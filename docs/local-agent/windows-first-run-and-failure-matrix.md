@@ -9,7 +9,7 @@ This is an implementation checklist, not a claim that a real Windows smoke test 
 3. Give a fine-grained GitHub token access to that private mailbox repository only, with Contents read/write. Store it in Windows Credential Manager using `python -m local_agent.credentials_cli set`; never put it in task JSON, source code, chat, or a committed .env file.
 4. Run `powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup_local_agent.ps1` from the checked-out source repository.
 5. Review the diagnostic output and focused tests. Do not start polling if tests fail, the mailbox is public, the token is unconfigured, or the manifest format is invalid.
-6. Configure `queue/desired_task.json` in the private mailbox with a valid, short-lived task ID that has never been used before. Use the exact sample and timestamp rules in [the private mailbox task template](private-mailbox-task-template.md). First task should be the non-destructive `preflight` check. The agent asks for local approval before running a task.
+6. Configure `queue/desired_task.json` in the private mailbox with a valid, short-lived task ID that has never been used before. Use the exact sample and timestamp rules in [the private mailbox task template](private-mailbox-task-template.md). First task should be the non-destructive `preflight` check and should require local approval. The setup script asks separately whether to enable phone-driven remote approval for a strict allowlist of typed operations; default is No.
 
 The setup script stores only non-secret configuration as Windows user environment variables. It creates an isolated `.venv` and a workspace outside the source checkout. It does not install Blender, open firewall ports, enable remote desktop, create a service, or start at Windows login.
 
@@ -44,9 +44,9 @@ The setup script stores only non-secret configuration as Windows user environmen
 - Outbound HTTPS from the PC to the GitHub API only; no inbound listener or port forwarding.
 - The private mailbox stores a single desired-task manifest and bounded result JSON.
 - A task is typed data, not a shell command, Python source, arbitrary URL, or executable path.
-- The PC is the execution boundary: every operation requires a local `YES` approval.
+- The PC is the execution boundary. Local approval is the default. If the owner explicitly enables `LOCAL_AGENT_ALLOW_REMOTE_APPROVAL=1`, only typed low-risk operations in the protocol allowlist may omit local approval. Patch application and generic test execution remain local-approval-only. Remote tasks are revalidated against the latest manifest before execution.
 - Windows Credential Manager stores the token; source code and task payloads must never contain secrets.
-- The source checkout, private mailbox, and local project workspace are three separate things.
+- The source checkout, private mailbox, and local project workspace are three separate things. The source repository is public, so it must never be used as the control mailbox.
 
 ## Current protections and remaining work
 
