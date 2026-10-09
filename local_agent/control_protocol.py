@@ -13,6 +13,13 @@ import re
 
 PROTOCOL_VERSION = 1
 ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets"})
+# These typed operations may be remotely authorized only when the local owner
+# explicitly enables remote approval in the Windows environment. Code changes
+# and generic test execution remain local-approval-only.
+REMOTE_APPROVABLE_OPERATIONS = frozenset({
+    "status", "doctor", "preflight", "logs", "blender_forest_preview",
+    "save_story_plan", "compile_story_plan", "scan_project_assets",
+})
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
@@ -68,8 +75,10 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("Task expiry must be later than task creation.")
     if (expires_at - created_at).total_seconds() > 86_400:
         raise ProtocolError("Task lifetime may not exceed 24 hours.")
-    if value["requires_local_approval"] is not True:
-        raise ProtocolError("All remote tasks must require local approval in the initial protocol.")
+    if not isinstance(value["requires_local_approval"], bool):
+        raise ProtocolError("requires_local_approval must be a boolean.")
+    if value["requires_local_approval"] is False and value["operation"] not in REMOTE_APPROVABLE_OPERATIONS:
+        raise ProtocolError("This operation cannot use remote approval; local approval is mandatory.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
     if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
