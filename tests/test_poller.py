@@ -148,3 +148,20 @@ def test_classify_manifest_rejects_reused_task_id_with_changed_content():
     from local_agent.poller import classify_manifest
     state = {"last_task_id": "task-1", "manifest_sha": "sha-1"}
     assert classify_manifest(state, "task-1", "sha-2") == "reused_id"
+
+
+def test_task_history_prevents_replay_after_a_newer_task(tmp_path):
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = {}
+    state = _remember_manifest(state, "task-old", "sha-old")
+    state = _remember_manifest(state, "task-new", "sha-new")
+    assert classify_manifest(state, "task-old", "sha-old") == "same"
+
+
+def test_rejected_changed_manifest_is_not_rejected_repeatedly():
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = _remember_manifest({}, "task-1", "sha-original")
+    assert classify_manifest(state, "task-1", "sha-changed") == "reused_id"
+    state = _remember_manifest(state, "task-1", "sha-changed", rejected=True)
+    assert classify_manifest(state, "task-1", "sha-changed") == "same"
+    assert classify_manifest(state, "task-1", "sha-another") == "reused_id"
