@@ -225,3 +225,38 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
             "resolution": dimensions, "object_count": data.get("object_count"),
             "engine": data.get("engine"), "manual_review_required": True,
             "note": "Starter blockout only; not a finished or rigged production character."}
+
+
+def open_mia_project(project_name: str) -> dict[str, Any]:
+    """Open an existing generated Mia project in Blender's GUI without UI clicks."""
+    import re
+    if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
+        raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
+    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not executable or not workspace_value:
+        return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
+    blender = Path(executable).expanduser().resolve()
+    workspace = Path(workspace_value).expanduser().resolve()
+    project_dir = (workspace / project_name).resolve()
+    if not project_dir.is_relative_to(workspace) or project_dir == workspace:
+        raise BlenderWorkflowError("Project path must stay inside workspace.")
+    blend = project_dir / "mia_blockout.blend"
+    if not blender.is_file():
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
+    if project_dir.is_symlink() or getattr(project_dir, "is_junction", lambda: False)():
+        raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
+    if blend.is_symlink() or not blend.is_file() or blend.stat().st_size == 0:
+        return {"status": "blocked", "reason": "valid_mia_blockout_project_not_found", "project_dir": str(project_dir)}
+    try:
+        kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                                  "stderr": subprocess.DEVNULL, "close_fds": True}
+        if os.name == "nt" and hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        process = subprocess.Popen([str(blender), str(blend)], cwd=str(project_dir),
+                                   shell=False, **kwargs)
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+    return {"status": "started", "project_path": str(blend),
+            "process_id": getattr(process, "pid", None),
+            "note": "Blender GUI launch requested; visual inspection is still required."}
