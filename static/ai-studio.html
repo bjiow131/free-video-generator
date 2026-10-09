@@ -822,6 +822,9 @@ async function extractRecoveryVideoFrame(){
   }finally{
     if(video){video.pause();video.removeAttribute('src');try{video.load()}catch{}}
     if(objectUrl)URL.revokeObjectURL(objectUrl);
+    // Force the next extraction to use a freshly selected video. Otherwise iOS Safari
+    // can silently reuse the previous file after another generation.
+    if(input)input.value='';
     button.disabled=false;button.textContent=original;
   }
 }
