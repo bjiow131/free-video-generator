@@ -74,6 +74,7 @@ class GitHubQueueClient:
     def __init__(self, config: QueueConfig, *, session: requests.Session | None = None):
         self.config = config
         self.session = session or requests.Session()
+        self._private_verified = False
         self.session.headers.update({
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {config.token}",
@@ -99,8 +100,22 @@ class GitHubQueueClient:
             raise QueueTransportError(f"GitHub API returned HTTP {response.status_code}.")
         return response
 
+    def _require_private_repo(self) -> None:
+        """Fail closed unless GitHub confirms this mailbox repository is private."""
+        if self._private_verified:
+            return
+        response = self._request("GET", "")
+        try:
+            info = response.json()
+        except ValueError as exc:
+            raise QueueTransportError("Could not verify mailbox repository visibility.") from exc
+        if info.get("private") is not True:
+            raise QueueTransportError("Refusing mailbox access: repository is not confirmed private.")
+        self._private_verified = True
+
     def fetch_desired_task(self) -> tuple[TaskEnvelope, str] | None:
         """Fetch and validate the single latest desired task; return its file SHA."""
+        self._require_private_repo()
         path = quote(self.config.manifest_path, safe="/")
         response = self._request("GET", f"contents/{path}", params={"ref": self.config.ref})
         try:
@@ -133,6 +148,7 @@ class GitHubQueueClient:
             "content": base64.b64encode(encoded_bytes).decode("ascii"),
             "branch": self.config.ref,
         }
+        self._require_private_repo()
         try:
             existing = self.session.get(
                 f"{API_ROOT}/repos/{self.config.repository}/{api_path}",
