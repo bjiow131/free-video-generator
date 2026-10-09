@@ -21,9 +21,10 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 - A pause requested during generation takes effect when the active backend call returns, before validation proceeds. Cooperative cancellation requests are checked at generation, frame-extraction and assembly boundaries; they do not forcibly terminate a backend's native operation mid-call.
 - Permanent media-validation and input errors do not consume the retry loop. Scene attempt budgets are total per scene across resumes, not reset on each invocation.
 - A scene exhausted by retries is now marked `failed` rather than `paused`, and the runner never advances beyond it.
-- Added an ownership-token runner lock file with PID checks to reject concurrent execution of the same project across processes; the lock is released only when its token matches. Stale dead-PID locks are reclaimed, while malformed/unverifiable locks fail closed.
+- Replaced the PID-file stale-lock cleanup race with a kernel-managed non-blocking lock (`fcntl.flock` on POSIX, `msvcrt.locking` on Windows). The OS releases ownership when the process exits; the lock file is persistent and must not be manually deleted while a runner may be active.
 - Added two-, ten- and one-hundred-scene fictional manifests under `examples/local_video_agent/` and tests that validate their scene counts.
-- Added duplicate-run regression coverage, checkpoint corruption-preservation coverage, permanent-validation-error coverage, cancellation-state coverage, setup-exception coverage and a test for retry-budget enforcement across resume.
+- Added duplicate-run and OS-lock exclusivity regression coverage, checkpoint corruption-preservation coverage, permanent-validation-error coverage, cancellation-state coverage, setup-exception coverage and a test for retry-budget enforcement across resume.
+- Added input-frame lineage hashes to each completed scene. On resume, a clip is reused only if its stored input-frame hash matches the current preceding frame; if an upstream scene is regenerated, dependent downstream clips are invalidated and regenerated rather than silently splicing two different continuity chains.
 - Checkpoint writes now use unique temporary files in the same directory and atomically replace the last known-good checkpoint only after flush/fsync; orphaned temporary files are never treated as valid checkpoints.
 - Added workspace containment validation so a project output directory redirected by a symlink/junction is rejected.
 - Added manifest validation tests for traversal-like identifiers, invalid duration types/ranges, unsafe output names and schema-version rejection.
@@ -41,7 +42,7 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 
 ### Not executed
 - All newly authored and existing pytest tests, including mocks. New regression coverage includes changed-manifest rejection, regeneration after saved-output revalidation failure, duplicate-run rejection/release, corrupted-checkpoint preservation and example-manifest parsing.
-- GitHub Actions CI status: the workflow-run query returned an empty list for the inspected latest commit; no run result is available, so CI is unconfirmed.
+- GitHub Actions CI status: the workflow was updated to run on pull requests as well as pushes, but the latest query still returned no workflow runs; CI remains unconfirmed.
 - Real FFmpeg/ffprobe media validation and assembly.
 - Windows-specific filesystem/subprocess behavior.
 - Wan2GP API inspection against the user's installed version.
@@ -49,13 +50,13 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 
 ## Concurrency and local service decision
 
-- Runner ownership is guarded within the process and with a per-project exclusive lock file for cross-process exclusion. A lock with an unverifiable owner fails closed; manual inspection may be required after an abnormal shutdown if PID information is malformed. This mechanism has not yet been exercised on Windows.
+- Runner ownership is guarded within the process and with a kernel-managed per-project advisory lock for cross-process exclusion. This mechanism has not yet been exercised on Windows.
 - No local HTTP service was added in this pass. The runner state machine, cancellation of an in-flight backend job, and Windows lock behavior need executed tests before exposing lifecycle controls over HTTP. The first MVP remains a local CLI/process, not a Render-connected service.
 - FFmpeg assembly remains stream-copy concat only; incompatible clips fail explicitly. Crossfades and normalization are not implemented.
 
 ## Known next engineering items
 
 - Add direct checkpoint version/recovery tests and execute pause/cancel/restart regression tests under CI or a local Python runtime.
-- Test cross-process locking on Windows, including PID reuse and stale lock recovery; current lock strategy has not been executed on Windows.
+- Execute the OS-lock exclusivity test on CI and verify Windows-specific `msvcrt.locking` behavior; the current development environment has not executed the tests.
 - Decide whether to use Wan2GP's documented in-process Python API or its inspected local Gradio API only after comparing against the installed version.
 - Implement and test the Windows-local service only after the runner state machine and backend contract are reliable.
