@@ -61,6 +61,31 @@ def _apply_patch(patch: str) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Run the single allowlisted Blender task using local-only configuration."""
+    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not executable or not workspace:
+        return {
+            "status": "blocked",
+            "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally",
+            "remote_paths_or_commands_accepted": False,
+        }
+    from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
+    try:
+        bridge = BlenderBridge(executable, workspace)
+        result = bridge.run_task(
+            "forest_preview",
+            project_name=arguments["project_name"],
+            render=arguments.get("render", True),
+            preview=arguments.get("preview", True),
+            cycles=arguments.get("cycles", False),
+        )
+        return {"status": "completed", "task": "blender_forest_preview", "result": result}
+    except BlenderBridgeError as exc:
+        return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
+
+
 def _load_state() -> dict[str, Any]:
     try:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -97,7 +122,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation != "apply_patch":
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -107,7 +132,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics and a bounded git patch (patch requires review).")
+    print("Supported operations: diagnostics, bounded reviewed patches, and the allowlisted local Blender forest preview.")
     answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
