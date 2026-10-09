@@ -19,6 +19,8 @@ from typing import Any
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
 from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
+from local_agent.reporting import write_report
+from local_agent.notifications import notify_user
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -292,8 +294,44 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             result = {"task_id": task.task_id, "status": result_status, "details": details}
         except Exception as exc:  # Keep error details bounded and avoid leaking tracebacks.
             result = {"task_id": task.task_id, "status": "error", "error_type": type(exc).__name__}
-    commit_sha = client.publish_result(task.task_id, result)
-    print(f"Result published. GitHub commit: {commit_sha}")
+    # Save a durable local report before attempting network publication. If GitHub
+    # is unavailable, the report still exists for diagnosis on this computer.
+    try:
+        report_path = write_report(
+            ROOT / ".local_agent" / "reports",
+            kind="task",
+            status=str(result.get("status", "unknown")),
+            details={
+                "task_id": task.task_id,
+                "operation": task.operation,
+                "result": result,
+                "reporting_stage": "before_github_publication",
+            },
+        )
+        result["local_report_path"] = str(report_path)
+    except OSError as exc:
+        report_path = None
+        print(f"Could not write local task report: {type(exc).__name__}")
+
+    outcome = str(result.get("status", "unknown")).lower()
+    failed_outcomes = {
+        "error", "failed", "failed_rolled_back", "failed_needs_user",
+        "blocked", "rejected", "unsupported", "timeout", "interrupted",
+        "superseded",
+    }
+    if outcome in failed_outcomes:
+        report_location = str(report_path) if report_path else "local report could not be written"
+        notify_user(
+            title=f"Local agent: task {task.task_id} needs attention",
+            message=f"Outcome: {outcome}. Report: {report_location}",
+        )
+
+    try:
+        commit_sha = client.publish_result(task.task_id, result)
+        print(f"Result published. GitHub commit: {commit_sha}")
+    except QueueTransportError as exc:
+        # Do not discard local evidence when the mailbox is temporarily offline.
+        print(f"Result publication failed; local report retained: {type(exc).__name__}")
 
 
 
