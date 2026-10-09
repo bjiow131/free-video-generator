@@ -1,41 +1,56 @@
 # Wan2GP adapter discovery
 
-## Why this step exists
+## Public integration surface verified
 
-The local scene runner currently defines the correct orchestration contract, but it does not yet have a real Wan2GP backend. Wan2GP builds and Gradio API names/input ordering can vary by version and selected mode. Hard-coding a guessed endpoint would risk sending the initial image into the wrong control or silently using the wrong generation mode.
+The current upstream repository documents a Python integration API in [docs/API.md](https://github.com/deepbeepmeep/Wan2GP/blob/main/docs/API.md), including:
 
-The helper `scripts/inspect_wan2gp_api.py` is a read-only first step. It queries Gradio metadata; it does not queue a generation, upload a file, or print component default values.
+- `init(...)` to create a reusable `WanGPSession`;
+- `WanGPSession.submit_task(settings, callbacks=None)` for a single task;
+- `submit_manifest(...)` for batch tasks;
+- a returned `SessionJob` whose result can be awaited/read through its documented job interface;
+- settings dictionaries, including fields such as `model_type`, `prompt`, `resolution`, `video_length`, and mode-specific media fields.
 
-## When the Windows computer is available
+This is a stronger candidate than guessed Gradio REST input ordering. Prefer the documented in-process Python API if the installed copy exposes the same API and its Python environment can import Wan2GP without conflicting dependencies. Do not import or initialize its GPU runtime from the Render service.
 
-1. Start the installed Wan2GP normally and select the image-to-video workflow that is available in that installation.
-2. Find the local web address printed by Wan2GP in its console. The common Gradio default is `http://127.0.0.1:7860`, but use the actual address/port printed by the application.
-3. From the repository root, run:
+Upstream docs also describe a Gradio launch via `python wgp.py`, with `--server-port` and `--server-name` options; `--listen` is for network exposure and must not be enabled for this local-only MVP. The CLI reference states that generation can continue with browser windows closed.
 
+Sources:
+- [Wan2GP API documentation](https://github.com/deepbeepmeep/Wan2GP/blob/main/docs/API.md)
+- [Wan2GP CLI documentation](https://github.com/deepbeepmeep/Wan2GP/blob/main/docs/CLI.md)
+- [Wan2GP settings reference](https://github.com/deepbeepmeep/Wan2GP/blob/main/docs/SETTINGS.md)
+
+## What remains unverified
+
+Public upstream documentation is not proof that the user's installed version matches the current `main` branch. We have not verified the installed commit, package imports, available model IDs, I2V field names, supported durations, frame-rate behavior, or returned output artifact paths on the target Windows computer. The docs' examples are model-specific; do not assume one `model_type` or parameter set works with every model.
+
+The real adapter must not be written against a guessed configuration. When the computer is available:
+
+1. Start the installed Wan2GP normally, without `--listen` or `--share`.
+2. Record the version/commit printed by its repository and the Python executable/environment used to launch it.
+3. Run the read-only inspector against the actual local URL:
    ```powershell
    python scripts/inspect_wan2gp_api.py --url http://127.0.0.1:7860
    ```
+4. Confirm one manual image-to-video generation and inspect the resulting local output location.
+5. Check whether the installed source includes the documented Python API. If yes, prefer a thin adapter that calls `submit_task` and reads the returned job/artifact fields; if not, map the local Gradio metadata and use only the verified endpoint contract.
 
-4. Save the JSON output locally for adapter mapping. The report should show the available API names and each endpoint's input/output component labels/types.
-5. Do not publish a live public tunnel for Wan2GP. Keep the UI/API bound to localhost; this inspector is intended for the same computer.
+Do not upload the inspector output publicly if it contains private local directory names. The inspector is read-only and must never submit generation requests.
 
-If `/config` returns 404 or the connection fails, use the exact local URL shown in Wan2GP's console. Do not infer that a particular API endpoint is supported from a successful page load alone.
+## Adapter acceptance gate
 
-## Adapter implementation gate
-
-Implement the actual backend only after inspecting the installed version's metadata and confirming a single manual I2V generation. The adapter must then:
-
-- choose the exact I2V API endpoint and bind prompt, initial image, duration, aspect ratio and any required model controls by verified component IDs/order;
-- wait for the actual job completion and surface the full actionable error on failure;
-- locate and copy the produced MP4 into the scene output path;
-- avoid launching another job while the previous job is still running;
-- preserve the runner's checkpoint/retry rules;
-- be tested with a two-scene run, proving scene 2 receives the extracted last frame from scene 1.
+- Confirm model and input-image fields against installed source/docs.
+- Confirm prompt, duration/frame count, resolution and aspect-ratio representation.
+- Wait for job completion and preserve actionable failure details.
+- Discover the produced MP4 through the documented result/artifact contract, not by guessing a newest file in a directory.
+- Ensure no duplicate job is submitted while a previous scene is active.
+- Prove a two-scene chain: scene 2 must receive the validated extracted final frame of scene 1.
+- Keep Wan2GP bound to loopback; no public tunnel.
 
 ## Current status
 
-- Scene orchestration/checkpoint core: scaffolded on `feature/local-video-agent`.
-- Read-only Wan2GP API inspector: added; not yet run against the user's installed application.
-- Real Wan2GP generation adapter: **not implemented yet**, pending the installed app's actual API metadata.
-- FFmpeg media adapter and real end-to-end validation: **not verified yet**.
-- Nothing has been merged into `main` or deployed to Render.
+- Orchestration core: scaffolded; real inference remains unverified.
+- Read-only Gradio inspector: present; not yet run against the user's installed version.
+- Public upstream Python API: documented and researched; compatibility with installed version is unknown.
+- FFmpeg adapter: added on `feature/local-video-agent`; subprocess behavior has mock-based tests authored, but tests have not been executed in this environment.
+- Real FFmpeg media validation and end-to-end generation: not executed.
+- No changes merged to `main`; no Render deployment.
