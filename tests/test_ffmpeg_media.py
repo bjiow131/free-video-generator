@@ -133,6 +133,27 @@ def test_extract_frame_uses_safe_args_and_unicode_paths(tmp_path, monkeypatch):
     assert ffmpeg_args[ffmpeg_args.index("-vf") + 1] == "reverse"
 
 
+@pytest.mark.parametrize("streams", [[None], ["not-a-stream"], [1]])
+def test_concat_rejects_malformed_probe_stream_entries(tmp_path, monkeypatch, streams):
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    responses = [
+        probe_result(),
+        {"format": {"duration": "5.0"}, "streams": streams},
+    ]
+
+    def fake_run(args, **kwargs):
+        if args[0] == "ffprobe":
+            return completed(json.dumps(responses.pop(0)))
+        raise AssertionError("FFmpeg must not run for malformed stream metadata")
+
+    monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
+    with pytest.raises(MediaError, match="malformed stream metadata"):
+        FFmpegMediaTools().concatenate([str(first), str(second)], str(tmp_path / "out.mp4"))
+
+
 def test_concat_rejects_incompatible_clips_before_encoding(tmp_path, monkeypatch):
     paths = []
     for name in ("a.mp4", "b.mp4"):
