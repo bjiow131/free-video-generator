@@ -116,3 +116,11 @@ def test_checkpoint_survives_reload(tmp_path):
     store.initialize(manifest)
     loaded = CheckpointStore(tmp_path, "persist-test").load()
     assert loaded["scenes"]["s1"]["status"] == "pending"
+
+def test_manifest_rejects_path_like_output_name():
+    with pytest.raises(ValueError, match="filename"):
+        ProjectManifest.from_dict({
+            "project_id": "x",
+            "output_name": "..",
+            "scenes": [{"prompt": "one"}],
+        })
