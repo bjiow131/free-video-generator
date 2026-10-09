@@ -191,7 +191,7 @@ button{cursor:pointer}
 <aside class="side"><div class="brand">AI<span>STUDIO</span></div><nav class="nav">
 <button class="active" data-page="image">Изображения</button><button data-page="video">Видео</button><button data-page="characters">Персонажи</button><button data-page="history">История</button>
 </nav><div class="bottom">Топовые AI-модели<br>в одном рабочем пространстве</div></aside>
-<main class="main"><header class="top"><div>Локальный сервер</div><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></header>
+<main class="main"><header class="top"><div>Локальный сервер</div><div style="display:flex;align-items:center;gap:8px"><button type="button" class="ghost" id="openSettings" style="padding:7px 10px;font-size:11px">Настройки API</button><div class="credits">⚡ <b id="creditCount">∞</b> Agnes AI</div></div></header>
 
 <section id="image" class="section active">
   <div class="hero"><div class="eyebrow">Image Studio</div><h1 style="font-size:52px">Изображения</h1><p>Создавай изображения через Agnes AI. Здесь только параметры изображения — без переключения типа генерации.</p></div>
@@ -298,7 +298,24 @@ button{cursor:pointer}
 
 <section id="history" class="section"><div class="hero"><div class="eyebrow">History</div><h1 style="font-size:60px">История</h1><p>Последние локальные генерации.</p><div id="historyList" class="grid" style="grid-template-columns:1fr;padding:20px 0"></div></div></section>
 </main></div>
-<div id="toast" class="toast hidden"></div><div id="saveModal" class="modal hidden">
+<div id="toast" class="toast hidden"></div>
+<div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modalbox">
+    <button class="close" id="settingsClose" aria-label="Закрыть">×</button>
+    <h2 id="settingsTitle">Настройки Agnes API</h2>
+    <p class="status" style="margin:0 0 14px">Ключ скрыт и никогда не отображается целиком.</p>
+    <div id="settingsSource" class="status" role="status">Проверяем источник ключа…</div>
+    <label class="label" for="settingsApiKey">Новый API-ключ</label>
+    <input id="settingsApiKey" type="password" autocomplete="new-password" placeholder="Вставь новый ключ Agnes">
+    <div class="actions">
+      <button type="button" class="ghost" id="settingsRefresh">Обновить статус</button>
+      <button type="button" class="primary" id="settingsSave">Сохранить ключ</button>
+    </div>
+    <p id="settingsHelp" class="status">Если ключ задан через переменные Render, изменить его нужно в Render.</p>
+    <p id="settingsResult" class="status" role="status"></p>
+  </div>
+</div>
+<div id="saveModal" class="modal hidden">
   <div class="modalbox">
     <button class="close" id="saveClose" aria-label="Закрыть">×</button>
     <h2>Сохранить файл</h2>
@@ -317,6 +334,40 @@ function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
 async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>{if(!x)return '';const loc=Array.isArray(x.loc)?x.loc.join('.'):x.loc;const msg=x.msg||x.detail||JSON.stringify(x);return loc?loc+': '+msg:msg}).filter(Boolean).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
+async function refreshSettings(){
+  const source=$('#settingsSource'),input=$('#settingsApiKey'),save=$('#settingsSave'),help=$('#settingsHelp'),result=$('#settingsResult');
+  source.textContent='Проверяем настройки…';result.textContent='';
+  try{
+    const response=await api('/api/config',{cache:'no-store'}),cfg=await response.json();
+    if(cfg.source==='env'){
+      source.textContent='Источник активного ключа: переменная окружения Render.';
+      input.disabled=true;save.disabled=true;
+      help.textContent='Сейчас сайт использует ключ из Render. Поле на сайте не может заменить переменную окружения. Открой Render, измени значение AGNES_API_KEY и сохрани изменения.';
+    }else{
+      source.textContent=cfg.source==='config'?'Источник активного ключа: настройки приложения. Ключ задан.':'Активный API-ключ не настроен.';
+      input.disabled=false;save.disabled=false;
+      help.textContent='Новый ключ будет сохранён в конфигурации приложения. На Render без постоянного диска файл настроек может сброситься после пересоздания экземпляра.';
+    }
+  }catch(e){source.textContent='Не удалось прочитать настройки: '+(e.message||'ошибка');input.disabled=true;save.disabled=true}
+}
+$('#openSettings').addEventListener('click',()=>{$('#settingsModal').classList.remove('hidden');refreshSettings()});
+$('#settingsClose').addEventListener('click',()=>$('#settingsModal').classList.add('hidden'));
+$('#settingsRefresh').addEventListener('click',refreshSettings);
+$('#settingsModal').addEventListener('click',e=>{if(e.target===$('#settingsModal'))$('#settingsModal').classList.add('hidden')});
+$('#settingsSave').addEventListener('click',async()=>{
+  const input=$('#settingsApiKey'),result=$('#settingsResult'),key=input.value.trim();
+  if(!key){result.textContent='Введи новый ключ.';return}
+  const button=$('#settingsSave');button.disabled=true;result.textContent='Сохраняем…';
+  try{
+    const form=new FormData();form.append('api_key',key);
+    await api('/api/config',{method:'POST',body:form});
+    input.value='';result.textContent='Ключ сохранён в настройках приложения. Обновляем статус…';
+    await refreshSettings();
+    result.textContent+=' Если источник указан как «настройки приложения», сервер будет использовать сохранённый ключ, если переменная Render не задана.';
+  }catch(e){result.textContent='Не удалось сохранить: '+(e.message||'ошибка')}
+  finally{if(!input.disabled)button.disabled=false}
+});
+
 const CHARACTER_DB='aistudio-characters-v1';
 function characterDb(){
   return new Promise((resolve,reject)=>{
