@@ -500,3 +500,15 @@ The redesign was structurally verified on the branch, including responsive break
 - Simple, Creative, Tasks, and Settings states.
 
 The implementation is designed so these captures can be added without changing the application code.
+
+
+## Local Windows Agent (starter scaffold)
+
+The first local diagnostic-agent scaffold and control-channel security plan are in [`docs/LOCAL_CONTROL_CHANNEL_DESIGN.md`](docs/LOCAL_CONTROL_CHANNEL_DESIGN.md). The current CLI is intentionally local-only and does not connect to ChatGPT or upload reports. After installing the project dependencies, the initial commands are:
+
+- `python -m local_agent.cli doctor`
+- `python -m local_agent.cli status`
+- `python -m local_agent.cli logs`
+- `python -m local_agent.cli test`
+
+Reports are written under `.local_agent/reports/`, which is excluded from Git. These commands have not been run on the user's computer; Windows behavior remains unverified. A real communication channel and locally approved task execution are future work, not active features.
