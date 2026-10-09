@@ -18,7 +18,7 @@ For the example “add a button” followed 20 seconds later by “rename that b
 
 ## Current implementation boundary
 
-The GitHub transport module is an initial implementation step: it fetches and validates a manifest and can publish a sanitized result. It is not yet a running poll loop or task executor. Current agent handlers cover only diagnostics (`doctor`, `status`, `logs`, `test`); UI/code-edit tasks require a separate constrained coding adapter and still need implementation and tests.
+The initial GitHub transport and interactive poll loop are implemented in source. The poller checks the single manifest every 10 seconds by default (configurable 5–30 seconds), validates the task, asks for local approval, runs fixed diagnostic handlers, and publishes a bounded sanitized result. A bounded apply_patch operation is also implemented: it validates relative repository paths, runs git apply --check, then git apply only after the user types YES. It does not run tests automatically after patching. These paths are not runtime-tested yet.
 
 ## Private mailbox required
 
