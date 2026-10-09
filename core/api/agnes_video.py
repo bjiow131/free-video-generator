@@ -17,7 +17,7 @@ from typing import List, Optional, Sequence
 
 import requests
 
-from core.api.rate_limiter import get_rate_limiter
+from core.api.rate_limiter import get_rate_limiter, get_video_submit_limiter
 from utils.video import download_video
 
 logger = logging.getLogger(__name__)
@@ -275,7 +275,9 @@ class AgnesVideoAPI:
                     "[AgnesVideo] Submit attempt %d/%d for %s (model=%s)",
                     attempt + 1, self.max_retries, mode_desc, self.model,
                 )
-                await asyncio.to_thread(get_rate_limiter().acquire)
+                # Free Agnes video accounts effectively execute at about one
+                # generation submission per minute. Keep this separate from polling.
+                await asyncio.to_thread(get_video_submit_limiter().acquire)
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
                         requests.post,
