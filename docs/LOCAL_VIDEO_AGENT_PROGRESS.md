@@ -17,9 +17,13 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 - Hardened `local_agent/manifest.py`: schema version is checked; project/scene IDs are restricted to safe path components; durations must be integers; ratios and MP4 output filenames are validated; project name is preserved.
 - Hardened `local_agent/checkpoint.py`: unsupported/corrupt checkpoint shapes and changed manifests are rejected rather than silently resumed; checkpoint locks are shared across store instances in one process.
 - Fixed runner recovery so a completed scene whose stored media fails revalidation is invalidated and regenerated instead of aborting before the retry path.
+- Runner exceptions during setup now persist a terminal `failed` state when possible; explicit asyncio task cancellation persists `cancelled` and is re-raised to the caller.
+- Permanent media-validation and input errors do not consume the retry loop. Scene attempt budgets are total per scene across resumes, not reset on each invocation.
+- A scene exhausted by retries is now marked `failed` rather than `paused`, and the runner never advances beyond it.
 - Added an ownership-token runner lock file with PID checks to reject concurrent execution of the same project across processes; the lock is released only when its token matches. Stale dead-PID locks are reclaimed, while malformed/unverifiable locks fail closed.
 - Added two-, ten- and one-hundred-scene fictional manifests under `examples/local_video_agent/` and tests that validate their scene counts.
-- Added duplicate-run regression coverage and checkpoint corruption-preservation coverage.
+- Added duplicate-run regression coverage, checkpoint corruption-preservation coverage, permanent-validation-error coverage, cancellation-state coverage, setup-exception coverage and a test for retry-budget enforcement across resume.
+- Checkpoint writes now use unique temporary files in the same directory and atomically replace the last known-good checkpoint only after flush/fsync; orphaned temporary files are never treated as valid checkpoints.
 - Added workspace containment validation so a project output directory redirected by a symlink/junction is rejected.
 - Added manifest validation tests for traversal-like identifiers, invalid duration types/ranges, unsafe output names and schema-version rejection.
 - Hardened `scripts/inspect_wan2gp_api.py`: loopback-only URLs, positive timeout, bounded response reads, malformed/unexpected JSON reporting, and reduced risk of printing URL credentials/query data.
@@ -50,7 +54,7 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 
 ## Known next engineering items
 
-- Audit and fix runner recovery around corrupted completed-scene outputs, manifest/checkpoint mismatch, and duplicate concurrent project execution.
-- Add direct checkpoint corruption/version tests and test runner pause/cancel/restart semantics.
+- Add direct checkpoint version/recovery tests and exercise pause/cancel/restart semantics under a real Python runtime.
+- Test cross-process locking on Windows, including PID reuse and stale lock recovery; current lock strategy has not been executed on Windows.
 - Decide whether to use Wan2GP's documented in-process Python API or its inspected local Gradio API only after comparing against the installed version.
 - Implement and test the Windows-local service only after the runner state machine and backend contract are reliable.
