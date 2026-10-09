@@ -4,6 +4,7 @@ import json, os, re
 from pathlib import Path
 from typing import Any
 from local_agent.story_plan import StoryPlanError, validate_story_plan
+from local_agent.asset_registry import read_asset_registry
 
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 _ACTION_CAPABILITIES = {
@@ -17,7 +18,7 @@ _ACTION_CAPABILITIES = {
     "turn_toward": "character_rig_required",
     "camera_push_in": "camera_animation_adapter_required",
     "camera_pan": "camera_animation_adapter_required",
-    "show_asset": "asset_registry_required",
+    "show_asset": "blender_asset_importer_required",
 }
 class StoryCompileError(ValueError):
     """A story plan cannot be safely compiled or stored."""
@@ -95,6 +96,35 @@ def compile_project_story(workspace: str | Path, project_name: str) -> dict[str,
         raise StoryCompileError(f"Story plan could not be validated: {type(exc).__name__}") from exc
     if compiled["project_name"] != project_name:
         raise StoryCompileError("Story plan project_name does not match the requested project.")
+    registry = read_asset_registry(project, project_name)
+    unresolved = False
+    if registry:
+        compiled["requirements_not_implemented"] = [
+            item for item in compiled["requirements_not_implemented"] if item != "asset_registry_required"
+        ]
+    for scene in compiled["scenes"]:
+        for asset in scene["assets"]:
+            match = registry.get(asset["name"])
+            if match:
+                asset["resolution_status"] = "resolved_local_file"
+                asset["path"] = match["path"]
+                if "blender_asset_importer_required" not in compiled["requirements_not_implemented"]:
+                    compiled["requirements_not_implemented"].append("blender_asset_importer_required")
+            else:
+                unresolved = True
+        for step in scene["action_steps"]:
+            if step["action"] == "show_asset":
+                match = registry.get(step["target"])
+                if match:
+                    step["target_resolution"] = {"status": "resolved_local_file", "path": match["path"]}
+                    if "blender_asset_importer_required" not in compiled["requirements_not_implemented"]:
+                        compiled["requirements_not_implemented"].append("blender_asset_importer_required")
+                else:
+                    step["target_resolution"] = {"status": "unresolved_asset_reference"}
+                    unresolved = True
+    if unresolved and "asset_registry_required" not in compiled["requirements_not_implemented"]:
+        compiled["requirements_not_implemented"].append("asset_registry_required")
+    compiled["requirements_not_implemented"] = sorted(set(compiled["requirements_not_implemented"]))
     destination = project / "storyboard_compile.json"
     if destination.is_symlink():
         raise StoryCompileError("Compiled output must not be a symlink.")
