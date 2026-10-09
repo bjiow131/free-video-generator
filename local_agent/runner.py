@@ -276,8 +276,14 @@ class LocalProjectRunner:
                 await self._pause.wait()
                 scene_dir = project_dir / scene.scene_id
                 scene_dir.mkdir(parents=True, exist_ok=True)
-                video_path = str(scene_dir / f"attempt_{attempt:02d}.mp4")
-                frame_path = str(scene_dir / f"attempt_{attempt:02d}_last.png")
+                video_path = project_output_path(
+                    str(scene_dir / f"attempt_{attempt:02d}.mp4"),
+                    label="Backend output target",
+                )
+                frame_path = project_output_path(
+                    str(scene_dir / f"attempt_{attempt:02d}_last.png"),
+                    label="Extracted frame target",
+                )
                 prompt = self._compose_prompt(manifest.global_prompt, scene)
                 self.store.update_scene(
                     state, scene.scene_id, status="running", attempts=attempt, error=None
@@ -381,7 +387,11 @@ class LocalProjectRunner:
             self.store.save(state)
             self.store.event("project_cancelled", {"phase": "before_assembly"})
             return state
-        final_path = str(project_dir / manifest.output_name)
+        # Resolve the destination before FFmpeg opens it: an existing symlink
+        # must not redirect writes outside this project's output directory.
+        final_path = project_output_path(
+            str(project_dir / manifest.output_name), label="Final video target"
+        )
         try:
             assembled = self.media.concatenate(video_paths, final_path)
             assembled = project_output_path(assembled, label="Assembled video path")
