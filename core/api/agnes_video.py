@@ -305,8 +305,32 @@ class AgnesVideoAPI:
                         response_data = resp.json()
                     except ValueError:
                         response_data = {}
-                    last_error_code = str(response_data.get("code") or "").strip().lower()
+                    provider_error = response_data.get("error") if isinstance(response_data, dict) else {}
+                    if not isinstance(provider_error, dict):
+                        provider_error = {}
+                    last_error_code = str(
+                        response_data.get("code") or provider_error.get("code") or ""
+                    ).strip().lower()
                     queue_full = last_error_code == "video_queue_full"
+
+                    # A missing model/channel is a configuration or account-access
+                    # problem, not a transient overload. Do not waste four more retries.
+                    if (
+                        last_error_code in {"model_not_found", "channel_not_found"}
+                        or "no available channel for model" in response_text.lower()
+                    ):
+                        provider_message = (
+                            provider_error.get("message")
+                            or response_data.get("message")
+                            or response_text[:500]
+                        )
+                        raise RuntimeError(
+                            f"[AgnesVideo] Model '{self.model}' is not available for "
+                            f"the current Agnes API key/group. Provider response: "
+                            f"{provider_message}. Verify the exact model ID and that "
+                            "the API account's distributor group has an active channel "
+                            "for this model; retries cannot resolve this error."
+                        )
                     retry_after = resp.headers.get("Retry-After")
                     # For HTTP 429, honor Retry-After to avoid making an account-level
                     # rate limit worse. For temporary provider-busy/server errors, retry
