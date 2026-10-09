@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -123,6 +123,10 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
     if value["operation"] == "blender_preflight":
         if value["arguments"]:
             raise ProtocolError("blender_preflight does not accept arguments.")
+    if value["operation"] == "blender_open_mia_project":
+        args = value["arguments"]
+        if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("blender_open_mia_project requires only a safe project_name.")
     if value["operation"] == "blender_mia_blockout":
         args = value["arguments"]
         if set(args) - {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
