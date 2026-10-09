@@ -132,7 +132,7 @@ jobs:
               raise SystemExit(f"Windows setup script missing: {missing}")
           PY
 
-      - name: 11. Write verification summary
+      - name: 12. Write verification summary
         if: always()
         env:
           CHECKOUT: ${{ steps.checkout.outcome }}
