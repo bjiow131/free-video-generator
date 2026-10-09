@@ -112,7 +112,19 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
+        # Re-read the desired manifest after local approval. If a newer task
+        # replaced this one while the prompt was open, do not apply stale work.
         try:
+            latest = client.fetch_desired_task()
+            if latest is not None and latest[0].task_id != task.task_id:
+                result = {
+                    "task_id": task.task_id,
+                    "status": "superseded",
+                    "superseded_by": latest[0].task_id,
+                }
+                commit_sha = client.publish_result(task.task_id, result)
+                print(f"Task superseded before execution. Result commit: {commit_sha}")
+                return
             if task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"])
             else:
