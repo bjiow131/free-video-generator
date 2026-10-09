@@ -81,6 +81,18 @@ if (-not $CurrentPoll) {
     $env:LOCAL_AGENT_POLL_SECONDS = "10"
 }
 
+Write-Step "Choose remote approval policy"
+$RemoteApproval = Read-Host "Allow remote execution of typed low-risk tasks from the private mailbox without a local console prompt? (y/N)"
+if ($RemoteApproval -match "^(y|yes)$") {
+    [Environment]::SetEnvironmentVariable("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", "1", "User")
+    $env:LOCAL_AGENT_ALLOW_REMOTE_APPROVAL = "1"
+    Write-Warn "Remote approval enabled only for the protocol allowlist. Patch application and generic test execution still require local approval."
+} else {
+    [Environment]::SetEnvironmentVariable("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", $null, "User")
+    Remove-Item Env:LOCAL_AGENT_ALLOW_REMOTE_APPROVAL -ErrorAction SilentlyContinue
+    Write-Host "Remote approval remains disabled; local console approval is required."
+}
+
 Write-Step "Detect optional tools"
 $Git = Get-Command git -ErrorAction SilentlyContinue
 if ($Git) { & git --version } else { Write-Warn "Git is not installed or not on PATH. Diagnostics still work; reviewed git patches will be blocked." }
