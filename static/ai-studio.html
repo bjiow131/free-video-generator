@@ -749,6 +749,7 @@ async function useLastVideoFrame(taskId,button){
     generatedStartFrameBlob=frame;
     generatedStartFrameTaskId='continuity:'+taskId;
     await persistStartFrame(frame,generatedStartFrameTaskId);
+    try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
     $('#videoReference').value='';
     $('#startFrameStatus').textContent='Кадр для продолжения выбран · '+taskId;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
