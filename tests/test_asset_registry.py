@@ -27,5 +27,8 @@ def test_registry_ignores_missing_files_after_scan(tmp_path:Path):
     assert read_asset_registry(tmp_path/"mia","mia")=={}
 def test_rejects_project_symlink(tmp_path:Path):
     outside=tmp_path.parent/(tmp_path.name+"_outside"); outside.mkdir()
-    (tmp_path/"mia").symlink_to(outside,target_is_directory=True)
+    try:
+        (tmp_path/"mia").symlink_to(outside,target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation is unavailable on this platform")
     with pytest.raises(AssetRegistryError,match="symlink"): scan_project_assets(tmp_path,"mia")
