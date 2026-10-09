@@ -158,6 +158,7 @@ class AgnesImageAPI:
         )
 
         session = _make_session()
+        resp = None  # Preserve a defined value if connection setup fails before the first response.
         try:
             for attempt in range(max_retries):
                 try:
