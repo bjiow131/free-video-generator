@@ -63,7 +63,7 @@ class ProjectManifest:
         if not isinstance(data, dict):
             raise ValueError("Project manifest must be an object")
         version = data.get("schema_version", MANIFEST_SCHEMA_VERSION)
-        if isinstance(version, bool) or version != MANIFEST_SCHEMA_VERSION:
+        if isinstance(version, bool) or not isinstance(version, int) or version != MANIFEST_SCHEMA_VERSION:
             raise ValueError(f"Unsupported manifest schema_version: {version!r}")
         raw_project_id = data.get("project_id")
         if not isinstance(raw_project_id, str) or not _SAFE_ID.fullmatch(raw_project_id.strip()):
@@ -72,7 +72,7 @@ class ProjectManifest:
         raw_scenes = data.get("scenes")
         if not isinstance(raw_scenes, list) or not raw_scenes:
             raise ValueError("scenes must be a non-empty list")
-        if not isinstance(max_scenes, int) or max_scenes < 1:
+        if isinstance(max_scenes, bool) or not isinstance(max_scenes, int) or max_scenes < 1:
             raise ValueError("max_scenes must be a positive integer")
         if len(raw_scenes) > max_scenes:
             raise ValueError(f"Project has {len(raw_scenes)} scenes; limit is {max_scenes}")

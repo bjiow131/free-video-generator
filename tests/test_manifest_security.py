@@ -44,6 +44,18 @@ def test_rejects_unknown_schema_version():
         ProjectManifest.from_dict(manifest(schema_version=2))
 
 
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])
+def test_rejects_non_integer_schema_version(schema_version):
+    with pytest.raises(ValueError, match="schema_version"):
+        ProjectManifest.from_dict(manifest(schema_version=schema_version))
+
+
+@pytest.mark.parametrize("max_scenes", [True, 0, -1, 1.0, "10"])
+def test_rejects_invalid_scene_limit(max_scenes):
+    with pytest.raises(ValueError, match="max_scenes"):
+        ProjectManifest.from_dict(manifest(), max_scenes=max_scenes)
+
+
 def test_schema_version_and_project_name_round_trip():
     parsed = ProjectManifest.from_dict(manifest())
     restored = ProjectManifest.from_dict(parsed.to_dict())
