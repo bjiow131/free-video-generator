@@ -251,6 +251,10 @@ button{cursor:pointer}
       <div class="hint">Нажимай на карточки на iPhone. Выбранные изображения передаются модели вместе для сохранения внешности.</div>
       <div class="label">Исходное изображение <span style="color:#777">(необязательно, если выбран персонаж)</span></div>
       <input id="videoReference" type="file" accept="image/png,image/jpeg,image/webp">
+      <div class="label" style="margin-top:12px">Стартовый кадр сцены <span style="color:#777">(можно загрузить PNG, JPG или WebP)</span></div>
+      <input id="startFrameUpload" type="file" accept="image/png,image/jpeg,image/webp">
+      <div class="hint">Выбери кадр из «Фото» или «Файлов». Он заменит ранее сохранённый кадр и станет первым кадром нового видео, в том числе после F5.</div>
+      <div class="actions"><button type="button" id="clearStartFrameUpload" class="ghost">Убрать выбранный стартовый кадр</button></div>
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
       <div class="label">Промпт движения для видео</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Что делает Мия? Как движется камера? Что происходит в сцене?"></textarea>
@@ -678,6 +682,30 @@ async function restoreStartFramePreview(){
     console.warn('[Start frame recovery]',e);
   }
 }
+async function handleStartFrameUpload(){
+  const input=$('#startFrameUpload');const file=input?.files?.[0];if(!file)return;
+  try{
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('Выбери изображение PNG, JPG или WebP');
+    if(file.size<1024)throw new Error('Файл слишком маленький или повреждён');
+    await renderStartFramePreview(file,'Загруженный стартовый кадр','Этот загруженный кадр будет использован как исходное изображение следующего видео.');
+    generatedStartFrameBlob=file;generatedStartFrameTaskId='uploaded:'+Date.now();
+    try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
+    await persistStartFrame(file,generatedStartFrameTaskId);
+    $('#startFrameStatus').textContent='Загруженный стартовый кадр выбран · '+file.name;
+    const mode=$('#videoMode');if(mode){mode.value='i2v';saveFormState();}
+    $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
+    toast('Новый стартовый кадр сохранён и выбран');
+  }catch(e){
+    $('#startFrameStatus').textContent=e.message||'Не удалось загрузить кадр';toast(e.message||'Не удалось загрузить кадр');
+  }
+}
+async function clearStartFrameUpload(){
+  $('#startFrameUpload').value='';generatedStartFrameBlob=null;generatedStartFrameTaskId='';
+  try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
+  try{const db=await startFrameDb();await new Promise((resolve,reject)=>{const tx=db.transaction('frames','readwrite');tx.objectStore('frames').delete('latest');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}catch(e){console.warn('[Start frame clear]',e)}
+  $('#startFrameResult').replaceChildren();$('#startFrameResult').classList.add('hidden');$('#startFrameStatus').textContent='Стартовый кадр убран. При необходимости выбери другой файл.';
+  toast('Стартовый кадр убран');
+}
 async function renderStartFramePreview(blob,alt,caption){
   if(!(blob instanceof Blob)||!blob.type||!blob.type.startsWith('image/'))throw new Error('Предпросмотр: сервер вернул файл неподдерживаемого формата');
   if(blob.size<1024)throw new Error('Предпросмотр: изображение пустое или повреждённое');
@@ -920,9 +948,10 @@ async function cancelVideoGeneration(){
 $('#videoCancelButton')?.addEventListener('click',cancelVideoGeneration);
 async function generateVideo(){
   let p=$('#videoPrompt').value.trim();let mode=$('#videoMode').value;
+  const hasExplicitStartFrame=Boolean(generatedStartFrameBlob);
   const continuingPreviousScene=Boolean(generatedStartFrameBlob&&generatedStartFrameTaskId.startsWith('continuity:'));
+  if(hasExplicitStartFrame){mode='i2v';$('#videoMode').value='i2v';}
   if(continuingPreviousScene){
-    mode='i2v';$('#videoMode').value='i2v';
     p='CONTINUOUS SCENE CONTINUATION: Begin from the supplied final-frame image as the exact visual starting reference. Preserve the same forest layout, path, trees, foliage, lighting direction, color palette, camera position, character pose, screen position, scale, and orientation visible in that image. Do not establish a new location or redesign the environment. Continue the action naturally from that moment with no time jump, no camera reset, no cut, and no sudden change in character appearance.\n\nNEXT ACTION: '+p;
   }
   if(!p){toast('Напиши промпт движения');return}
@@ -1016,6 +1045,8 @@ $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderV
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#createStartFrame').onclick=createStartFrame;
+$('#startFrameUpload').addEventListener('change',handleStartFrameUpload);
+$('#clearStartFrameUpload').onclick=clearStartFrameUpload;
 $('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;syncStartFramePrompt(true);saveFormState();toast(generatedStartFrameBlob?'Промпты очищены. Финальный кадр сохранён.':'Промпты очищены')};
 
 $('#imageGenerate').onclick=generateImage;
