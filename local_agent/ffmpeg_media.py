@@ -26,8 +26,10 @@ class FFmpegMediaTools:
         timeout: float = 120.0,
         max_probe_bytes: int = 4_000_000,
     ) -> None:
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("timeout must be a positive number")
+        if isinstance(max_probe_bytes, bool) or not isinstance(max_probe_bytes, int) or max_probe_bytes < 1:
+            raise ValueError("max_probe_bytes must be a positive integer")
         self.ffmpeg = ffmpeg
         self.ffprobe = ffprobe
         self.timeout = timeout
@@ -69,8 +71,8 @@ class FFmpegMediaTools:
         return data
 
     def validate_video(self, path: str, expected_duration: int) -> None:
-        if expected_duration < 1:
-            raise ValueError("expected_duration must be positive")
+        if isinstance(expected_duration, bool) or not isinstance(expected_duration, int) or expected_duration < 1:
+            raise ValueError("expected_duration must be a positive integer")
         data = self._probe(path)
         videos = [s for s in data["streams"] if isinstance(s, dict) and s.get("codec_type") == "video"]
         if not videos:

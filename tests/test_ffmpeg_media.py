@@ -26,6 +26,26 @@ def completed(stdout="", returncode=0, stderr=""):
     return subprocess.CompletedProcess(args=["fake"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
+@pytest.mark.parametrize("timeout", [0, -1, True, "2"])
+def test_constructor_rejects_invalid_timeout(timeout):
+    with pytest.raises(ValueError, match="timeout must be a positive number"):
+        FFmpegMediaTools(timeout=timeout)
+
+
+@pytest.mark.parametrize("max_probe_bytes", [0, -1, True, 1.5, "100"])
+def test_constructor_rejects_invalid_probe_size_limit(max_probe_bytes):
+    with pytest.raises(ValueError, match="max_probe_bytes must be a positive integer"):
+        FFmpegMediaTools(max_probe_bytes=max_probe_bytes)
+
+
+@pytest.mark.parametrize("expected_duration", [0, -1, True, 5.0, "5"])
+def test_validate_video_rejects_invalid_expected_duration(tmp_path, expected_duration):
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"x")
+    with pytest.raises(ValueError, match="expected_duration must be a positive integer"):
+        FFmpegMediaTools().validate_video(str(path), expected_duration)
+
+
 def test_probe_uses_argument_list_and_shell_false(tmp_path, monkeypatch):
     path = tmp_path / "видео файл.mp4"
     path.write_bytes(b"x")
