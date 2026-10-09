@@ -1,0 +1,78 @@
+name: Render Video Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/diagnostics/run-video-test.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-video-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  one-video-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Submit one short vertical test video to Render
+        id: submit
+        env:
+          RENDER_BASE_URL: https://ai-studio-api-gc4g.onrender.com
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            --max-time 45 \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            --data '{"prompt":"A simple cinematic test: a red paper boat floating slowly on a calm lake at sunrise, steady camera, natural light, no text.","mode":"t2v","duration":5,"video_width":648,"video_height":1152}' \
+            "$RENDER_BASE_URL/api/tasks/simple")"
+          echo "Create-task response: $response"
+          task_id="$(python -c 'import json,sys; print(json.load(sys.stdin)["task_id"])' <<< "$response")"
+          if [[ ! "$task_id" =~ ^[a-zA-Z0-9_-]{1,80}$ ]]; then
+            echo "Invalid task_id returned by server" >&2
+            exit 1
+          fi
+          echo "task_id=$task_id" >> "$GITHUB_OUTPUT"
+          echo "Submitted task: $task_id"
+
+      - name: Poll task status and verify MP4 result
+        env:
+          RENDER_BASE_URL: https://ai-studio-api-gc4g.onrender.com
+          TASK_ID: ${{ steps.submit.outputs.task_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            response="$(curl --fail-with-body --silent --show-error --max-time 30 \
+              "$RENDER_BASE_URL/api/tasks/$TASK_ID")"
+            status="$(python -c 'import json,sys; d=json.load(sys.stdin); print(str(d.get("status","")).split(".")[-1].lower())' <<< "$response")"
+            progress="$(python -c 'import json,sys; d=json.load(sys.stdin); print(d.get("progress",0))' <<< "$response")"
+            message="$(python -c 'import json,sys; d=json.load(sys.stdin); print(str(d.get("progress_message",""))[:200])' <<< "$response")"
+            echo "Poll $attempt/120: status=$status progress=$progress message=$message"
+
+            if [[ "$status" == "completed" || "$status" == "complete" || "$status" == "succeeded" ]]; then
+              video_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 60 "$RENDER_BASE_URL/api/video/$TASK_ID")"
+              echo "Video endpoint HTTP status: $video_code"
+              if [[ "$video_code" == "200" ]]; then
+                echo "SUCCESS: task completed and MP4 endpoint returned HTTP 200."
+                exit 0
+              fi
+              echo "Task reports completion, but MP4 endpoint did not return HTTP 200." >&2
+              exit 1
+            fi
+
+            if [[ "$status" == "failed" || "$status" == "error" || "$status" == "cancelled" ]]; then
+              python - <<'PY' <<< "$response"
+          import json, sys
+          d = json.load(sys.stdin)
+          print("Task error:", d.get("error_message") or d.get("error") or "No error details returned")
+          PY
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for task completion after 30 minutes." >&2
+          exit 1
