@@ -115,7 +115,9 @@ class LocalProjectRunner:
 
             final_error: str | None = None
             succeeded = False
-            for attempt in range(1, self.max_attempts + 1):
+            attempt_base = int(scene_state.get("attempts", 0) or 0)
+            for retry_index in range(1, self.max_attempts + 1):
+                attempt = attempt_base + retry_index
                 if self._cancel.is_set():
                     state["status"] = "cancelled"
                     self.store.save(state)
@@ -158,16 +160,16 @@ class LocalProjectRunner:
                 except Exception as exc:  # Keep failure local to this scene and retry boundedly.
                     final_error = f"{type(exc).__name__}: {exc}"[:2000]
                     self.store.update_scene(
-                        state, scene.scene_id, status="retry_wait" if attempt < self.max_attempts else "failed",
+                        state, scene.scene_id, status="retry_wait" if retry_index < self.max_attempts else "failed",
                         error=final_error,
                     )
                     self.store.event("scene_attempt_failed", {"scene_id": scene.scene_id, "index": index, "attempt": attempt, "error": final_error})
-                    if attempt < self.max_attempts:
-                        await asyncio.sleep(min(2 ** (attempt - 1), 10))
+                    if retry_index < self.max_attempts:
+                        await asyncio.sleep(min(2 ** (retry_index - 1), 10))
 
             if not succeeded:
                 state["status"] = "paused"
-                state["error"] = f"Scene {index} failed after {self.max_attempts} attempts: {final_error}"
+                state["error"] = f"Scene {index} failed after {self.max_attempts} new attempts: {final_error}"
                 self.store.save(state)
                 self.store.event("project_paused_after_scene_failure", {"scene_id": scene.scene_id, "index": index})
                 return state
