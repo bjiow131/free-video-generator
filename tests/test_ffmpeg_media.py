@@ -227,3 +227,16 @@ def test_frame_extraction_refuses_to_overwrite_source(tmp_path, monkeypatch):
     source.write_bytes(b"x")
     with pytest.raises(MediaError, match="must not overwrite"):
         FFmpegMediaTools().extract_last_frame(str(source), str(source))
+
+@pytest.mark.parametrize("format_data", [None, [], "not-an-object", 5])
+def test_malformed_format_metadata_raises_media_error(tmp_path, monkeypatch, format_data):
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"video")
+    response = {"format": format_data, "streams": probe_result()["streams"]}
+    monkeypatch.setattr(
+        "local_agent.ffmpeg_media.subprocess.run",
+        Mock(return_value=completed(json.dumps(response))),
+    )
+
+    with pytest.raises(MediaError, match="valid format metadata"):
+        FFmpegMediaTools().validate_video(str(path), 5)

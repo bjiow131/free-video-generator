@@ -77,7 +77,10 @@ class FFmpegMediaTools:
         videos = [s for s in data["streams"] if isinstance(s, dict) and s.get("codec_type") == "video"]
         if not videos:
             raise MediaError("File contains no video stream")
-        duration = (data.get("format") or {}).get("duration")
+        format_data = data.get("format")
+        if not isinstance(format_data, dict):
+            raise MediaError("ffprobe response has no valid format metadata")
+        duration = format_data.get("duration")
         try:
             seconds = float(duration)
         except (TypeError, ValueError) as exc:
