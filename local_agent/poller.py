@@ -168,7 +168,8 @@ def classify_manifest(state: dict[str, Any], task_id: str, manifest_sha: str) ->
 
 
 def _remember_manifest(
-    state: dict[str, Any], task_id: str, manifest_sha: str, *, rejected: bool = False
+    state: dict[str, Any], task_id: str, manifest_sha: str, *,
+    rejected: bool = False, status: str | None = None,
 ) -> dict[str, Any]:
     """Persist bounded task identity history; task IDs are immutable."""
     processed = state.get("processed_tasks", {})
@@ -179,6 +180,8 @@ def _remember_manifest(
         record = {"manifest_sha": manifest_sha}
     elif rejected:
         record = {**record, "rejected_sha": manifest_sha}
+    if status:
+        record = {**record, "status": status}
     processed[task_id] = record
     # Keep newest 200 IDs so state cannot grow without bound.
     processed = dict(list(processed.items())[-200:])
@@ -300,10 +303,32 @@ def main() -> int:
                 task, manifest_sha = fetched
                 decision = classify_manifest(state, task.task_id, manifest_sha)
                 if decision == "new":
+                    # Persist a claim before doing any local work. If the process
+                    # dies or result publication fails, never blindly replay it.
+                    state = _remember_manifest(
+                        state, task.task_id, manifest_sha, status="in_progress"
+                    )
+                    _save_state(state)
                     _run_one(client, task)
                     last_seen, last_sha = task.task_id, manifest_sha
-                    state = _remember_manifest(state, last_seen, last_sha)
+                    state = _remember_manifest(
+                        state, last_seen, last_sha, status="processed"
+                    )
                     _save_state(state)
+                elif decision == "same":
+                    record = state.get("processed_tasks", {}).get(task.task_id, {})
+                    if isinstance(record, dict) and record.get("status") == "in_progress":
+                        # Execution may have finished while result publication failed,
+                        # or the process may have crashed mid-operation. Do not rerun.
+                        client.publish_result(task.task_id, {
+                            "task_id": task.task_id,
+                            "status": "interrupted",
+                            "reason": "outcome_uncertain_requires_local_inspection_before_retry",
+                        })
+                        state = _remember_manifest(
+                            state, task.task_id, manifest_sha, status="interrupted"
+                        )
+                        _save_state(state)
                 elif decision == "reused_id":
                     # Task IDs are immutable. A changed manifest with the same ID
                     # is rejected, never silently re-executed.
