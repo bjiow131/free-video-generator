@@ -23,7 +23,7 @@ However, this is not yet proof that the complete product works reliably on Windo
 - `server.py`: FastAPI application defaults to `HOST=127.0.0.1` and `PORT=8765`; local origin/host checks include a compatibility path for `RENDER_EXTERNAL_HOSTNAME`. App lifecycle indexes local task files and handles interrupted task state.
 - `local_agent/runner.py`, `manifest.py`, `checkpoint.py`, `ffmpeg_media.py`: local orchestration, manifest validation, atomic checkpoint approach, and FFmpeg tooling exist, but the technical backlog already records security/resource-limit gaps and missing real backend/CLI.
 - `requirements.txt`: Python dependencies are declared; Python version and dependency resolution still need a clean Windows install test.
-- `.github/workflows/server-test.yml`: Linux CI compiles/imports/tests, builds Docker, checks JS syntax and checks launcher text. Its own summary states it does not replace Windows or real-media checks.
+- `.github/workflows/server-test.yml`: Linux CI compiles/imports/tests, builds Docker, checks JS syntax and checks launcher text. On this branch, feature-branch pushes are included and the static launcher contract now requires bounded-wait markers. Its own summary states it does not replace Windows or real-media checks.
 
 ## Findings
 
@@ -32,8 +32,8 @@ However, this is not yet proof that the complete product works reliably on Windo
 The main server and launch scripts are designed for local use. First migration task is to verify and harden the existing local path, not to invent a new hosting stack.
 
 ### F2 — Windows launcher can wait indefinitely after a failed startup
-**Status:** FOUND (static review; runtime impact unverified)
-The launcher polls `http://127.0.0.1:8765/health` in a loop without an apparent timeout and without checking whether the Python process exited. A startup/import error can therefore leave the launcher waiting indefinitely. Fix with a bounded wait, process-exit detection, actionable logs, and a reliable stop path.
+**Status:** FIXED IN SOURCE; runtime behavior NOT RUN
+The original launcher polled `http://127.0.0.1:8765/health` without a timeout. On this branch, `start_windows.bat` now stops waiting after 30 two-second attempts and displays an actionable startup error. This prevents an infinite readiness loop, but it does not yet monitor the child process directly or guarantee child cleanup. Windows execution and stop behavior remain unverified; a later pass should improve process lifecycle handling if tests show it is needed.
 
 ### F3 — Listener defaults are local-only, but Docker differs internally
 **Status:** FOUND (static)
@@ -90,3 +90,10 @@ Current CI's launcher check is textual. Existing local-agent tests use fake medi
 ## Limitations of this audit
 
 This was a static repository review performed through GitHub file access. No code was executed, no Windows machine was accessed, no API request was sent to a generator, and no actual media was produced. Findings labeled FOUND are source-level observations, not claims of runtime reproduction.
+
+
+## Work completed after initial static review
+
+- `start_windows.bat` now has a bounded readiness loop (up to 60 seconds) and an explicit failure message rather than waiting indefinitely.
+- `.github/workflows/server-test.yml` now runs for `feature/**` pushes and checks that the launcher includes the bounded readiness logic.
+- Source changes are committed on `feature/local-first-migration`; no Windows runtime test or CI result has yet been observed for these commits.
