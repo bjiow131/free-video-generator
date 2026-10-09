@@ -100,6 +100,20 @@ def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_scan_project_assets(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Index local asset filenames only; never load or upload asset content."""
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        return {"status": "blocked", "reason": "set_LOCAL_AGENT_WORKSPACE_locally"}
+    from local_agent.asset_registry import AssetRegistryError, scan_project_assets
+    try:
+        return scan_project_assets(workspace, arguments["project_name"])
+    except AssetRegistryError as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _run_compile_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
     """Compile an existing local story plan into an inert storyboard manifest."""
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
@@ -150,7 +164,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -160,7 +174,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, and the allowlisted local Blender forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, and local asset indexing, and the allowlisted local Blender forest preview.")
     answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
@@ -210,6 +224,8 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
                 details = _run_save_story_plan(task.arguments)
             elif task.operation == "compile_story_plan":
                 details = _run_compile_story_plan(task.arguments)
+            elif task.operation == "scan_project_assets":
+                details = _run_scan_project_assets(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
