@@ -19,7 +19,7 @@ ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs",
 REMOTE_APPROVABLE_OPERATIONS = frozenset({
     "status", "doctor", "preflight", "logs", "blender_forest_preview",
     "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search",
-    "blender_preflight", "blender_mia_blockout",
+    "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project",
 })
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
