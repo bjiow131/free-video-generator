@@ -134,3 +134,17 @@ def test_run_one_rejects_task_that_expires_during_approval(monkeypatch):
     assert ran == []
     assert client.published[1]["status"] == "rejected"
     assert client.published[1]["reason"] == "expired_while_waiting_for_local_approval"
+
+
+def test_classify_manifest_detects_new_and_same_tasks():
+    from local_agent.poller import classify_manifest
+    assert classify_manifest({}, "task-1", "sha-1") == "new"
+    state = {"last_task_id": "task-1", "manifest_sha": "sha-1"}
+    assert classify_manifest(state, "task-1", "sha-1") == "same"
+    assert classify_manifest(state, "task-2", "sha-2") == "new"
+
+
+def test_classify_manifest_rejects_reused_task_id_with_changed_content():
+    from local_agent.poller import classify_manifest
+    state = {"last_task_id": "task-1", "manifest_sha": "sha-1"}
+    assert classify_manifest(state, "task-1", "sha-2") == "reused_id"
