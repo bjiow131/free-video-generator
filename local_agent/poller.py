@@ -97,7 +97,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None:
+    if handler is None and task.operation != "apply_patch":
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -149,7 +149,7 @@ def main() -> int:
     backoff = interval
     last_seen = _load_state().get("last_task_id")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports diagnostics only; code changes are not implemented.")
+    print("This poller supports diagnostics and locally approved bounded patches; runtime tests remain outstanding.")
 
     while True:
         try:
