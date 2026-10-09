@@ -231,3 +231,55 @@ def test_run_one_rejects_same_envelope_when_manifest_revision_changes(monkeypatc
     assert ran == []
     assert client.published[1]["status"] == "superseded"
     assert client.published[1]["reason"] == "desired_task_changed_after_approval"
+
+
+def test_remote_approved_allowlisted_task_runs_without_console_prompt(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="remote-forest-006",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=False,
+        arguments={"project_name": "mia_remote"},
+    )
+    class FakeClient:
+        published = None
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", "1")
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args) or {"status": "completed"})
+    poller._run_one(client, task, expected_manifest_sha="manifest-sha")
+    assert ran == [{"project_name": "mia_remote"}]
+    assert client.published[1]["status"] == "completed"
+
+
+def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="remote-forest-007",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=False,
+        arguments={"project_name": "mia_remote"},
+    )
+    class FakeClient:
+        published = None
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.delenv("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", raising=False)
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task)
+    assert ran == []
+    assert client.published[1]["status"] == "blocked"
+    assert client.published[1]["reason"] == "remote_approval_not_enabled_or_operation_not_allowlisted"
