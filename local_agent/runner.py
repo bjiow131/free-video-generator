@@ -195,10 +195,26 @@ class LocalProjectRunner:
             scene_state = state["scenes"][scene.scene_id]
             saved_video = scene_state.get("video_path")
             saved_frame = scene_state.get("final_frame_path")
-            if saved_video:
-                saved_video = project_output_path(saved_video, label="Checkpoint video path")
-            if saved_frame:
-                saved_frame = project_output_path(saved_frame, label="Checkpoint frame path")
+            checkpoint_path_error = None
+            try:
+                if saved_video:
+                    saved_video = project_output_path(saved_video, label="Checkpoint video path")
+                if saved_frame:
+                    saved_frame = project_output_path(saved_frame, label="Checkpoint frame path")
+            except ValueError as exc:
+                # Treat untrusted checkpoint paths as invalid cached outputs; never
+                # open them, and regenerate the scene from the verified input frame.
+                checkpoint_path_error = str(exc)
+                saved_video = None
+                saved_frame = None
+                self.store.update_scene(
+                    state, scene.scene_id, status="pending", error=checkpoint_path_error,
+                    video_path=None, final_frame_path=None,
+                    video_sha256=None, frame_sha256=None, input_frame_sha256=None,
+                )
+                self.store.event("scene_checkpoint_path_rejected", {
+                    "scene_id": scene.scene_id, "index": index, "error": checkpoint_path_error,
+                })
             current_input_hash = (
                 self._sha256_file(previous_frame)
                 if previous_frame and os.path.isfile(previous_frame) else None
