@@ -13,8 +13,9 @@ However, this is not yet proof that the complete product works reliably on Windo
 
 ## Evidence inspected
 
-- `README.md`: documents Windows launch via `start_windows.bat`, server URL `http://127.0.0.1:8765`, FFmpeg requirement, and Agnes API-key configuration. README also states provider availability/limits are controlled by Agnes.
-- `start_windows.bat`: requires an existing `.venv`, checks `ffmpeg`, starts `server.py`, then polls `/health` in a loop and opens the UI. It does not visibly enforce a finite health-check timeout or report the server process exit in that loop.
+- `README.md`: now documents the Windows first-run sequence (`setup_windows.bat` then `start_windows.bat`), loopback URL `http://127.0.0.1:8765`, FFmpeg/ffprobe requirements, and that the Agnes key is needed for generation but not for opening the UI. Provider availability/limits remain controlled by Agnes.
+- `start_windows.bat`: checks for an existing `.venv` and `ffmpeg`, starts `server.py`, and opens the UI after readiness. The original unbounded readiness loop has now been changed to a maximum of 30 two-second attempts; Windows runtime behavior is still unverified.
+- `setup_windows.bat` (added on this branch): checks Python 3.10+, `ffmpeg`, and `ffprobe`; creates `.venv` if missing; installs `requirements.txt`. It does not install FFmpeg itself and has not been run on Windows.
 - `start.sh`: validates Python and FFmpeg, creates a venv, installs requirements, checks port 8765 when `lsof` exists, and runs `server.py`.
 - `Dockerfile`: installs FFmpeg and runs `server.py`; container environment sets `HOST=0.0.0.0`. This is safe only when its port is published as intended.
 - `docker-compose.yml`: maps host port 8765 to container port 8765 on `127.0.0.1`; persists `.working_dir` and `.agnes_config`.
@@ -95,5 +96,7 @@ This was a static repository review performed through GitHub file access. No cod
 ## Work completed after initial static review
 
 - `start_windows.bat` now has a bounded readiness loop (up to 60 seconds) and an explicit failure message rather than waiting indefinitely.
+- Added `setup_windows.bat` for a repeatable first-run Python environment/dependency setup; FFmpeg remains a separately installed prerequisite.
+- Corrected the Windows README instructions so they no longer falsely say an API key is required just to start the server.
 - `.github/workflows/server-test.yml` now runs for `feature/**` pushes and checks that the launcher includes the bounded readiness logic.
 - Source changes are committed on `feature/local-first-migration`; no Windows runtime test or CI result has yet been observed for these commits.
