@@ -6,6 +6,7 @@ validates task envelopes only; it intentionally does not execute tasks.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 import json
 import re
@@ -48,7 +49,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
     }
     if set(value) != required:
         raise ProtocolError("Task envelope fields do not match protocol version 1.")
-    if value["protocol_version"] != PROTOCOL_VERSION:
+    if isinstance(value["protocol_version"], bool) or not isinstance(value["protocol_version"], int) or value["protocol_version"] != PROTOCOL_VERSION:
         raise ProtocolError("Unsupported protocol version.")
     if not isinstance(value["task_id"], str) or not TASK_ID_RE.fullmatch(value["task_id"]):
         raise ProtocolError("Invalid task_id.")
@@ -56,6 +57,17 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("Operation is not allowlisted.")
     if not isinstance(value["created_at"], str) or not isinstance(value["expires_at"], str):
         raise ProtocolError("Task timestamps must be strings.")
+    try:
+        created_at = datetime.fromisoformat(value["created_at"].replace("Z", "+00:00"))
+        expires_at = datetime.fromisoformat(value["expires_at"].replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ProtocolError("Task timestamps must use ISO 8601 format.") from exc
+    if created_at.tzinfo is None or expires_at.tzinfo is None:
+        raise ProtocolError("Task timestamps must include a timezone.")
+    if expires_at <= created_at:
+        raise ProtocolError("Task expiry must be later than task creation.")
+    if (expires_at - created_at).total_seconds() > 86_400:
+        raise ProtocolError("Task lifetime may not exceed 24 hours.")
     if value["requires_local_approval"] is not True:
         raise ProtocolError("All remote tasks must require local approval in the initial protocol.")
     if not isinstance(value["arguments"], dict):
