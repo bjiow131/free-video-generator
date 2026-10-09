@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "project_id": "mira-ten-scene-demo",
+  "project_name": "Fictional Mira 10-scene continuity demo",
+  "initial_image": "assets/mira_reference.png",
+  "global_prompt": "Maintain the same fictional character Mira, teal raincoat, orange backpack, face, proportions and storybook-cinematic 3D style. Natural motion, soft daylight, consistent forest geography, no text or logos.",
+  "output_name": "mira_10_scenes.mp4",
+  "metadata": {
+    "example": true,
+    "scene_count": 10
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_001",
+      "prompt": "Mira, a fictional young explorer with a teal raincoat and orange backpack, walks along a forest path in gentle morning light.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_002",
+      "prompt": "Mira pauses beside a small wooden bridge and looks at the stream flowing below.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_003",
+      "prompt": "Mira carefully crosses the bridge while leaves drift across the path.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_004",
+      "prompt": "Mira notices a tiny red bird on a mossy branch and watches quietly.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_005",
+      "prompt": "Mira follows the path toward a sunlit clearing with ferns and wildflowers.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_006",
+      "prompt": "Mira, a fictional young explorer with a teal raincoat and orange backpack, walks along a forest path in gentle morning light.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_007",
+      "prompt": "Mira pauses beside a small wooden bridge and looks at the stream flowing below.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_008",
+      "prompt": "Mira carefully crosses the bridge while leaves drift across the path.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_009",
+      "prompt": "Mira notices a tiny red bird on a mossy branch and watches quietly.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    },
+    {
+      "scene_id": "scene_010",
+      "prompt": "Mira follows the path toward a sunlit clearing with ferns and wildflowers.",
+      "duration_seconds": 5,
+      "aspect_ratio": "9:16"
+    }
+  ]
+}
