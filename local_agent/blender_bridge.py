@@ -34,6 +34,21 @@ def _inside(root: Path, candidate: Path) -> Path:
     return resolved
 
 
+def _write_bounded_log(path: Path, value: Any, max_bytes: int = 262_144) -> bool:
+    """Keep a bounded local diagnostic tail without failing the render solely on logging."""
+    try:
+        if isinstance(value, bytes):
+            raw = value
+        else:
+            raw = str(value or "").encode("utf-8", errors="replace")
+        if len(raw) > max_bytes:
+            raw = raw[-max_bytes:]
+        path.write_text(raw.decode("utf-8", errors="replace"), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
 def _png_dimensions(path: Path) -> tuple[int, int]:
     """Read only the PNG signature and IHDR dimensions; reject empty/fake output."""
     try:
@@ -223,6 +238,8 @@ class BlenderBridge:
             project_dir / "forest_starter.blend",
             project_dir / "forest_preview.png",
             project_dir / "blender_result.json",
+            project_dir / "blender_stdout.log",
+            project_dir / "blender_stderr.log",
         ]
         if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)() for path in known_outputs):
             raise BlenderBridgeError("Known output paths must not be symlinks or junctions.")
@@ -260,12 +277,19 @@ class BlenderBridge:
                     timeout=self.timeout_seconds, check=False,
                 )
             except subprocess.TimeoutExpired as exc:
-                raise BlenderBridgeError("Blender task timed out; inspect the local log and retry.") from exc
+                _write_bounded_log(project_dir / "blender_stdout.log", exc.stdout)
+                _write_bounded_log(project_dir / "blender_stderr.log", exc.stderr)
+                raise BlenderBridgeError("Blender task timed out; bounded local logs were saved when possible.") from exc
             except OSError as exc:
                 raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
+            stdout_logged = _write_bounded_log(project_dir / "blender_stdout.log", result.stdout)
+            stderr_logged = _write_bounded_log(project_dir / "blender_stderr.log", result.stderr)
             if result.returncode != 0:
                 stderr = (result.stderr or "")[-3000:]
-                raise BlenderBridgeError(f"Blender exited with code {result.returncode}: {stderr}")
+                raise BlenderBridgeError(
+                    f"Blender exited with code {result.returncode}; "
+                    f"local_logs_written={stdout_logged and stderr_logged}: {stderr}"
+                )
         result_path = project_dir / "blender_result.json"
         if result_path.is_symlink() or getattr(result_path, "is_junction", lambda: False)():
             raise BlenderBridgeError("Blender result manifest must not be a symlink or junction.")
