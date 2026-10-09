@@ -907,7 +907,7 @@ async function useLastVideoFrame(taskId,button){
     await new Promise((resolve,reject)=>{
       video.onseeked=()=>video.readyState>=2?resolve():reject(new Error('Видео не успело декодировать финальный кадр'));
       video.onerror=()=>reject(new Error('Не удалось перейти к финальному кадру видео'));
-      video.currentTime=Math.max(0,video.duration-0.2);
+      video.currentTime=Math.max(0,video.duration-0.01);
     });
     if(video.readyState<2)throw new Error('Финальный кадр видео ещё не декодирован. Попробуй ещё раз.');
     const canvas=document.createElement('canvas');
