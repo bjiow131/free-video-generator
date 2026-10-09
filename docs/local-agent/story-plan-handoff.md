@@ -6,7 +6,7 @@ Do not install a second language model on the PC just to write stories. ChatGPT 
 
 ## First implementation milestone
 
-The local_agent/story_plan.py module validates title, logline, character continuity notes, scene duration, location, action, camera, dialogue, assets, sound and transition. It rejects unknown fields, unsafe identifiers, invalid durations, duplicate scene IDs and oversized plans. It stores story_plan.json atomically inside the configured workspace, refuses symlink/junction project folders and refuses to overwrite an existing plan. Text is inert data; no scripts are executed.
+The local_agent/story_plan.py module validates title, logline, character continuity notes, scene duration, location, action, camera, dialogue, assets, sound, transition and a finite allowlist of typed action steps (such as look_at, walk_to, wave and camera_pan). It rejects unknown fields, unsafe identifiers, invalid durations, duplicate scene IDs and oversized plans. It stores story_plan.json atomically inside the configured workspace, refuses symlink/junction project folders and refuses to overwrite an existing plan. Text is inert data; no scripts are executed.
 
 A successful save_story_plan result means the plan was stored only. It does not claim that a scene has been built or rendered.
 
@@ -28,7 +28,7 @@ A successful save_story_plan result means the plan was stored only. It does not 
     "location": "Солнечная лесная тропинка",
     "action": "Мия слышит шорох, останавливается и замечает улитку.",
     "camera": "Общий план, затем крупный план на уровне улитки",
-    "dialogue": [{"speaker": "Мия", "text": "Ты потерялась?", "delivery": "любопытно и доброжелательно"}],
+    "dialogue": [{"speaker": "Мия", "text": "Ты потерялась?", "delivery": "любопытно и доброжелательно"}],\n    "action_steps": [{"action": "look_at", "actor": "Mia", "target": "snail", "duration_seconds": 1.5}],
     "assets": ["Mia_reference_model", "snail", "forest_path"],
     "sound": "Пение птиц и шелест листьев",
     "transition": "cut",
