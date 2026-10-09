@@ -329,12 +329,22 @@ class AgnesVideoAPI:
                         queue_hint,
                         f": {response_hint}" if response_hint else "",
                     )
-                    # The modern 2.5 Flash free queue is best-effort and can remain
-                    # saturated for minutes. Let submit_video switch to v2.0 on the
-                    # first explicit queue-full response instead of sleeping/retrying.
-                    if queue_full and self.is_modern:
+                    # Modern free queues can reject submissions with several transient
+                    # HTTP codes, not only the documented video_queue_full code. Switch
+                    # to the legacy model immediately for transient provider availability
+                    # failures instead of keeping the user waiting through long retries.
+                    transient_unavailable = resp.status_code in {
+                        429, 500, 502, 503, 504, 520, 522, 524
+                    }
+                    busy_hint = any(
+                        marker in response_text.lower()
+                        for marker in ("busy", "overload", "queue full", "temporarily unavailable")
+                    )
+                    if self.is_modern and (queue_full or resp.status_code in {429, 503} or
+                                           (transient_unavailable and busy_hint)):
                         raise RuntimeError(
-                            "[AgnesVideo] video queue is full; trigger provider fallback"
+                            f"[AgnesVideo] transient HTTP {resp.status_code}; "
+                            "trigger provider fallback"
                         )
                     if attempt + 1 < self.max_retries:
                         await asyncio.sleep(delay)
@@ -564,7 +574,10 @@ class AgnesVideoAPI:
             # The free 2.5 Flash queue is frequently saturated. Do not make the
             # user wait through all retries when the legacy free video model is
             # available as a compatible fallback.
-            if self.is_modern and "video queue is full" in str(exc).lower():
+            if self.is_modern and (
+                "video queue is full" in str(exc).lower()
+                or "trigger provider fallback" in str(exc).lower()
+            ):
                 logger.warning(
                     "[AgnesVideo] 2.5 queue is full; falling back immediately to %s",
                     LEGACY_MODEL,
