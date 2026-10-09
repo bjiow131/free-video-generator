@@ -20,6 +20,7 @@ from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
 from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
 from local_agent.reporting import write_report
+from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -393,6 +394,27 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             result = {"task_id": task.task_id, "status": result_status, "details": details}
         except Exception as exc:  # Keep error details bounded and avoid leaking tracebacks.
             result = {"task_id": task.task_id, "status": "error", "error_type": type(exc).__name__}
+    # Attach a deterministic diagnosis to failed outcomes. This suggests next
+    # steps only; it never edits files or runs commands by itself.
+    outcome = str(result.get("status", "unknown")).lower()
+    failed_outcomes = {
+        "error", "failed", "failed_rolled_back", "failed_needs_user",
+        "blocked", "rejected", "unsupported", "timeout", "interrupted",
+        "superseded",
+    }
+    if outcome in failed_outcomes:
+        try:
+            diagnostic_input = json.dumps(result, ensure_ascii=False, default=str)
+            result["diagnosis"] = diagnose_error(diagnostic_input)
+        except Exception:
+            # Diagnostics must never prevent durable reporting of the original failure.
+            result["diagnosis"] = {
+                "rule_id": "diagnostic-engine-error",
+                "escalate": True,
+                "auto_fix_allowed": False,
+                "note": "Error knowledge base failed; preserve original task result and escalate.",
+            }
+
     # Save a durable local report before attempting network publication. If GitHub
     # is unavailable, the report still exists for diagnosis on this computer.
     try:
