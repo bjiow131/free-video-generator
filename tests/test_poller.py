@@ -283,3 +283,29 @@ def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
     assert ran == []
     assert client.published[1]["status"] == "blocked"
     assert client.published[1]["reason"] == "remote_approval_not_enabled_or_operation_not_allowlisted"
+
+
+def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="console-required-008",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=True,
+        arguments={"project_name": "mia_console"},
+    )
+    class FakeClient:
+        published = None
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.setattr(poller.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task)
+    assert ran == []
+    assert client.published[1]["status"] == "blocked"
+    assert client.published[1]["reason"] == "local_console_approval_required_but_no_interactive_console"
