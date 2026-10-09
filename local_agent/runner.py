@@ -185,6 +185,10 @@ class LocalProjectRunner:
             scene_state = state["scenes"][scene.scene_id]
             saved_video = scene_state.get("video_path")
             saved_frame = scene_state.get("final_frame_path")
+            current_input_hash = (
+                self._sha256_file(previous_frame)
+                if previous_frame and os.path.isfile(previous_frame) else None
+            )
             if scene_state.get("status") == "completed" and saved_video and saved_frame and os.path.isfile(saved_video) and os.path.isfile(saved_frame):
                 reuse_error = None
                 try:
@@ -192,7 +196,13 @@ class LocalProjectRunner:
                     self.media.validate_image(saved_frame)
                     video_hash = self._sha256_file(saved_video)
                     frame_hash = self._sha256_file(saved_frame)
-                    if ((scene_state.get("video_sha256") and scene_state["video_sha256"] != video_hash) or
+                    if not current_input_hash:
+                        reuse_error = "Current input frame is missing; saved scene cannot be safely reused"
+                    elif scene_state.get("input_frame_sha256") != current_input_hash:
+                        # A prior scene may have been regenerated after a crash or
+                        # invalid output. Never reuse downstream clips from an old chain.
+                        reuse_error = "Saved scene was generated from a different input frame"
+                    elif ((scene_state.get("video_sha256") and scene_state["video_sha256"] != video_hash) or
                             (scene_state.get("frame_sha256") and scene_state["frame_sha256"] != frame_hash)):
                         reuse_error = "Saved output checksum mismatch"
                 except Exception as exc:
@@ -201,7 +211,7 @@ class LocalProjectRunner:
                     self.store.update_scene(
                         state, scene.scene_id, status="pending", error=reuse_error,
                         video_path=None, final_frame_path=None,
-                        video_sha256=None, frame_sha256=None,
+                        video_sha256=None, frame_sha256=None, input_frame_sha256=None,
                     )
                     self.store.event("scene_checkpoint_output_invalid", {
                         "scene_id": scene.scene_id, "index": index, "error": reuse_error,
@@ -284,7 +294,8 @@ class LocalProjectRunner:
                         state, scene.scene_id, status="completed",
                         video_path=returned_path, final_frame_path=extracted,
                         video_sha256=self._sha256_file(returned_path),
-                        frame_sha256=self._sha256_file(extracted), error=None,
+                        frame_sha256=self._sha256_file(extracted),
+                        input_frame_sha256=current_input_hash, error=None,
                     )
                     self.store.event("scene_completed", {"scene_id": scene.scene_id, "index": index, "attempt": attempt})
                     video_paths.append(returned_path)
