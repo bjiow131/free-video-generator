@@ -323,7 +323,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         report_location = str(report_path) if report_path else "local report could not be written"
         notify_user(
             title=f"Local agent: task {task.task_id} needs attention",
-            message=f"Outcome: {outcome}. Report: {report_location}",
+            message=f"Outcome: {outcome}. Open .local_agent/reports for details.",
         )
 
     try:
