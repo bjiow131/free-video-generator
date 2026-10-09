@@ -154,16 +154,31 @@ class GitHubAttachmentExchange:
             "content": base64.b64encode(raw).decode("ascii"),
             "branch": branch,
         }
-        if not overwrite:
+        try:
+            existing = self.session.get(
+                api_url, params={"ref": branch}, timeout=self.timeout_seconds
+            )
+        except requests.RequestException as exc:
+            raise AttachmentExchangeError(
+                f"GitHub network request failed ({type(exc).__name__})."
+            ) from exc
+        if existing.status_code == 200:
+            if not overwrite:
+                raise AttachmentExchangeError(
+                    "Attachment already exists; use overwrite=True only intentionally."
+                )
             try:
-                self.session.get(api_url, params={"ref": branch}, timeout=self.timeout_seconds)
-                existing = self.session.get(api_url, params={"ref": branch}, timeout=self.timeout_seconds)
-            except requests.RequestException as exc:
-                raise AttachmentExchangeError(f"GitHub network request failed ({type(exc).__name__}).") from exc
-            if existing.status_code == 200:
-                raise AttachmentExchangeError("Attachment already exists; use overwrite=True only intentionally.")
-            if existing.status_code != 404:
-                raise AttachmentExchangeError(f"GitHub returned HTTP {existing.status_code} while checking the destination.")
+                body["sha"] = str(existing.json()["sha"])
+            except (ValueError, KeyError, TypeError) as exc:
+                raise AttachmentExchangeError(
+                    "Could not read the existing attachment SHA for replacement."
+                ) from exc
+        elif existing.status_code != 404:
+            if existing.status_code in (401, 403):
+                raise AttachmentExchangeError("GitHub access denied while checking the destination.")
+            raise AttachmentExchangeError(
+                f"GitHub returned HTTP {existing.status_code} while checking the destination."
+            )
         response = self._request("PUT", api_url, json=body)
         try:
             commit = str(response.json()["commit"]["sha"])
