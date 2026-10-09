@@ -72,6 +72,11 @@ class LocalProjectRunner:
             if key in _ACTIVE_PROJECTS:
                 raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
             _ACTIVE_PROJECTS.add(key)
+        expected_store_root = (self.workspace / manifest.project_id).resolve()
+        if self.store.root.resolve() != expected_store_root:
+            with _ACTIVE_PROJECTS_LOCK:
+                _ACTIVE_PROJECTS.discard(key)
+            raise ValueError("CheckpointStore root must match this runner workspace and manifest project")
         lock_path = self.store.root / ".runner.lock"
         lock_handle = None
         try:
@@ -155,6 +160,13 @@ class LocalProjectRunner:
         if not resolved_project_dir.is_relative_to(self.workspace):
             raise ValueError("Project output directory resolves outside the configured workspace")
         project_dir = resolved_project_dir
+
+        def project_output_path(value: str, *, label: str) -> str:
+            candidate = Path(value).resolve()
+            if not candidate.is_relative_to(project_dir):
+                raise ValueError(f"{label} resolves outside the project output directory")
+            return str(candidate)
+
         previous_frame = manifest.initial_image
 
         if previous_frame:
@@ -183,6 +195,10 @@ class LocalProjectRunner:
             scene_state = state["scenes"][scene.scene_id]
             saved_video = scene_state.get("video_path")
             saved_frame = scene_state.get("final_frame_path")
+            if saved_video:
+                saved_video = project_output_path(saved_video, label="Checkpoint video path")
+            if saved_frame:
+                saved_frame = project_output_path(saved_frame, label="Checkpoint frame path")
             current_input_hash = (
                 self._sha256_file(previous_frame)
                 if previous_frame and os.path.isfile(previous_frame) else None
@@ -267,11 +283,15 @@ class LocalProjectRunner:
                         self.store.save(state)
                         self.store.event("project_cancelled", {"scene_id": scene.scene_id, "phase": "post_generation"})
                         return state
-                    if not returned_path or not os.path.isfile(returned_path):
+                    if not returned_path:
+                        raise RuntimeError("Backend returned no video path")
+                    returned_path = project_output_path(returned_path, label="Backend video path")
+                    if not os.path.isfile(returned_path):
                         raise RuntimeError("Backend returned no readable video file")
                     self.store.update_scene(state, scene.scene_id, status="validating")
                     self.media.validate_video(returned_path, scene.duration_seconds)
                     extracted = self.media.extract_last_frame(returned_path, frame_path)
+                    extracted = project_output_path(extracted, label="Extracted frame path")
                     if self._cancel.is_set():
                         self.store.update_scene(state, scene.scene_id, status="cancelled", error="Cancelled during frame extraction")
                         state["status"] = "cancelled"
@@ -348,6 +368,7 @@ class LocalProjectRunner:
         final_path = str(project_dir / manifest.output_name)
         try:
             assembled = self.media.concatenate(video_paths, final_path)
+            assembled = project_output_path(assembled, label="Assembled video path")
             if self._cancel.is_set():
                 state["status"] = "cancelled"
                 state["error"] = "Cancelled during final assembly"
