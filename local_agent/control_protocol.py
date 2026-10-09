@@ -12,7 +12,8 @@ import re
 
 PROTOCOL_VERSION = 1
 ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview"})
-TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")\nBLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
 
 class ProtocolError(ValueError):
