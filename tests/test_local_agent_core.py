@@ -235,3 +235,73 @@ def test_checkpoint_rejects_project_directory_symlink_escape(tmp_path):
         pytest.skip("Directory symlinks are not available in this environment")
     with pytest.raises(ValueError, match="outside the configured workspace"):
         CheckpointStore(workspace, "symlink-test")
+
+
+@pytest.mark.asyncio
+async def test_permanent_media_validation_error_is_not_retried(tmp_path):
+    from local_agent.ffmpeg_media import MediaError
+
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+
+    class PermanentlyInvalidMedia(FakeMedia):
+        def validate_video(self, path, expected_duration):
+            raise MediaError("invalid video stream")
+
+    backend = FakeBackend()
+    runner = LocalProjectRunner(
+        workspace, CheckpointStore(workspace, manifest.project_id),
+        backend, PermanentlyInvalidMedia(), max_attempts=4,
+    )
+    result = await runner.run(manifest)
+    assert result["status"] == "failed"
+    assert result["scenes"]["s1"]["status"] == "failed"
+    assert len(backend.calls) == 1
+    assert "invalid video stream" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_setup_error_does_not_leave_running_checkpoint(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+
+    class BrokenMedia(FakeMedia):
+        def validate_image(self, path):
+            raise RuntimeError("reference image decoder failed")
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, FakeBackend(), BrokenMedia())
+    with pytest.raises(RuntimeError, match="reference image decoder failed"):
+        await runner.run(manifest)
+    state = store.load()
+    assert state["status"] == "failed"
+    assert "reference image decoder failed" in state["error"]
+
+
+@pytest.mark.asyncio
+async def test_task_cancellation_persists_cancelled_state(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    entered = asyncio.Event()
+
+    class BlockingBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, BlockingBackend(), FakeMedia())
+    task = asyncio.create_task(runner.run(manifest))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    state = store.load()
+    assert state["status"] == "cancelled"
+    assert state["scenes"]["s1"]["status"] == "cancelled"
