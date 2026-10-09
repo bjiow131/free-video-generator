@@ -234,6 +234,23 @@ def _run_compile_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_blender_preflight(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Discover Blender locally and query its version without creating a scene."""
+    from local_agent.blender_workflow import discover_blender
+    return discover_blender()
+
+
+def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Create and validate the fixed Mia starter blockout using local Blender."""
+    from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
+    try:
+        return create_mia_blockout(arguments["project_name"])
+    except BlenderWorkflowError as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     """Search the bundled read-only Blender knowledge base; never executes code."""
     from local_agent.blender_knowledge import search_knowledge
@@ -327,7 +344,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -337,7 +354,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, and the allowlisted local Blender forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, Blender discovery, Mia blockout creation, and the allowlisted forest preview.")
     if getattr(task, "requires_local_approval", True) is False:
         if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
             result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
