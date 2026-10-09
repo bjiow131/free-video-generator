@@ -11,8 +11,8 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch"})
-TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview"})
+TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")\nBLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
 
 class ProtocolError(ValueError):
@@ -81,6 +81,17 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
                         raise ProtocolError("Patch contains an unsafe path.")
                     if normalized == ".git" or normalized.startswith(".git/"):
                         raise ProtocolError("Patch may not modify Git metadata.")
+
+    if value["operation"] == "blender_forest_preview":
+        args = value["arguments"]
+        allowed_args = {"project_name", "render", "preview", "cycles"}
+        if set(args) - allowed_args or "project_name" not in args:
+            raise ProtocolError("blender_forest_preview accepts project_name and optional render/preview/cycles booleans only.")
+        if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("Blender project_name must use 1-49 letters, digits, underscores, or hyphens.")
+        for flag in ("render", "preview", "cycles"):
+            if flag in args and not isinstance(args[flag], bool):
+                raise ProtocolError(f"Blender argument {flag} must be a boolean.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
