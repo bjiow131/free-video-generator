@@ -141,14 +141,38 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         # replaced this one while the prompt was open, do not apply stale work.
         try:
             latest = client.fetch_desired_task()
-            if latest is not None and latest[0].task_id != task.task_id:
+            if latest is None:
                 result = {
                     "task_id": task.task_id,
                     "status": "superseded",
-                    "superseded_by": latest[0].task_id,
+                    "reason": "desired_task_removed_before_execution",
                 }
                 commit_sha = client.publish_result(task.task_id, result)
-                print(f"Task superseded before execution. Result commit: {commit_sha}")
+                print(f"Task removed before execution. Result commit: {commit_sha}")
+                return
+            latest_task = latest[0]
+            # Compare the complete validated envelope, not just task_id. If a
+            # mailbox writer accidentally reuses an ID with changed arguments,
+            # the approved object must not be silently replaced underneath us.
+            if latest_task != task:
+                result = {
+                    "task_id": task.task_id,
+                    "status": "superseded",
+                    "superseded_by": latest_task.task_id,
+                    "reason": "desired_task_changed_after_approval",
+                }
+                commit_sha = client.publish_result(task.task_id, result)
+                print(f"Task changed before execution. Result commit: {commit_sha}")
+                return
+            # A task can expire while the local approval prompt is open.
+            if not _not_expired(latest_task):
+                result = {
+                    "task_id": task.task_id,
+                    "status": "rejected",
+                    "reason": "expired_while_waiting_for_local_approval",
+                }
+                commit_sha = client.publish_result(task.task_id, result)
+                print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
             if task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"])
