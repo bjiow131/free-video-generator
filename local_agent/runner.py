@@ -12,6 +12,7 @@ from typing import Protocol
 
 from local_agent.checkpoint import CheckpointStore
 from local_agent.manifest import ProjectManifest, SceneSpec
+from local_agent.ffmpeg_media import MediaError
 
 
 class VideoBackend(Protocol):
@@ -77,11 +78,34 @@ class LocalProjectRunner:
         lock_token = uuid.uuid4().hex
         try:
             self._acquire_process_lock(lock_path, lock_token)
-            return await self._run_project(manifest)
+            try:
+                return await self._run_project(manifest)
+            except asyncio.CancelledError:
+                self._persist_terminal_state("cancelled", "Runner task was cancelled by its owner")
+                raise
+            except Exception as exc:
+                # Do not strand a checkpoint in "running" if setup, input validation,
+                # a checkpoint write, or an unexpected adapter operation fails.
+                self._persist_terminal_state("failed", f"{type(exc).__name__}: {exc}"[:2000])
+                raise
         finally:
             self._release_process_lock(lock_path, lock_token)
             with _ACTIVE_PROJECTS_LOCK:
                 _ACTIVE_PROJECTS.discard(key)
+
+    def _persist_terminal_state(self, status: str, error: str) -> None:
+        try:
+            state = self.store.load()
+            if state is None or state.get("status") in {"completed", "failed", "cancelled"}:
+                return
+            state["status"] = status
+            state["error"] = error
+            self.store.save(state)
+            self.store.event(f"project_{status}", {"error": error})
+        except Exception:
+            # Preserve the original exception/cancellation; recovery can inspect
+            # the last durable checkpoint if the storage layer itself has failed.
+            pass
 
     @staticmethod
     def _acquire_process_lock(lock_path: Path, token: str) -> None:
@@ -240,21 +264,33 @@ class LocalProjectRunner:
                     previous_frame = extracted
                     succeeded = True
                     break
-                except Exception as exc:  # Keep failure local to this scene and retry boundedly.
+                except asyncio.CancelledError:
+                    # Cancellation is not a generation failure and must never trigger a retry.
+                    self.store.update_scene(state, scene.scene_id, status="cancelled", error="Runner task cancelled")
+                    self.store.save(state)
+                    raise
+                except Exception as exc:  # Validation failures are permanent; backend failures may be transient.
                     final_error = f"{type(exc).__name__}: {exc}"[:2000]
+                    permanent = isinstance(exc, (MediaError, ValueError, FileNotFoundError))
+                    will_retry = retry_index < self.max_attempts and not permanent
                     self.store.update_scene(
-                        state, scene.scene_id, status="retry_wait" if retry_index < self.max_attempts else "failed",
+                        state, scene.scene_id, status="retry_wait" if will_retry else "failed",
                         error=final_error,
                     )
-                    self.store.event("scene_attempt_failed", {"scene_id": scene.scene_id, "index": index, "attempt": attempt, "error": final_error})
-                    if retry_index < self.max_attempts:
+                    self.store.event("scene_attempt_failed", {
+                        "scene_id": scene.scene_id, "index": index, "attempt": attempt,
+                        "permanent": permanent, "will_retry": will_retry, "error": final_error,
+                    })
+                    if will_retry:
                         await asyncio.sleep(min(2 ** (retry_index - 1), 10))
+                    else:
+                        break
 
             if not succeeded:
-                state["status"] = "paused"
-                state["error"] = f"Scene {index} failed after {self.max_attempts} new attempts: {final_error}"
+                state["status"] = "failed"
+                state["error"] = f"Scene {index} failed after bounded attempts: {final_error}"
                 self.store.save(state)
-                self.store.event("project_paused_after_scene_failure", {"scene_id": scene.scene_id, "index": index})
+                self.store.event("project_failed_after_scene_failure", {"scene_id": scene.scene_id, "index": index, "error": final_error})
                 return state
 
             state["current_scene_index"] = index
