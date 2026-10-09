@@ -328,3 +328,64 @@ async def test_total_attempt_budget_is_not_reset_by_resume(tmp_path):
     second = await runner.run(manifest)
     assert second["status"] == "failed"
     assert len(backend.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_cancel_request_during_generation_prevents_scene_completion(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            entered.set()
+            await release.wait()
+            return await super().generate_i2v(**kwargs)
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, SlowBackend(), FakeMedia())
+    task = asyncio.create_task(runner.run(manifest))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    runner.cancel()
+    release.set()
+    result = await task
+    assert result["status"] == "cancelled"
+    assert result["scenes"]["s1"]["status"] == "cancelled"
+    assert result["scenes"]["s1"]["video_path"] is None
+
+
+@pytest.mark.asyncio
+async def test_pause_during_generation_waits_before_validation(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    validated = asyncio.Event()
+
+    class SlowBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            entered.set()
+            await release.wait()
+            return await super().generate_i2v(**kwargs)
+
+    class ObserveMedia(FakeMedia):
+        def validate_video(self, path, expected_duration):
+            validated.set()
+            super().validate_video(path, expected_duration)
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, SlowBackend(), ObserveMedia())
+    task = asyncio.create_task(runner.run(manifest))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    runner.pause()
+    release.set()
+    await asyncio.sleep(0.05)
+    assert not validated.is_set()
+    runner.resume()
+    result = await task
+    assert result["status"] == "completed"
