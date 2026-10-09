@@ -205,3 +205,29 @@ def test_poller_single_instance_lock_rejects_second_owner(tmp_path):
         first.close()
     second = _acquire_instance_lock(lock_path)
     second.close()
+
+
+def test_run_one_rejects_same_envelope_when_manifest_revision_changes(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="forest-005",
+        operation="blender_forest_preview",
+        expires_at=future,
+        arguments={"project_name": "mia_forest"},
+    )
+    class FakeClient:
+        published = None
+        def fetch_desired_task(self):
+            return task, "new-manifest-sha"
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    ran = []
+    monkeypatch.setattr("builtins.input", lambda _prompt: "YES")
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task, expected_manifest_sha="original-manifest-sha")
+    assert ran == []
+    assert client.published[1]["status"] == "superseded"
+    assert client.published[1]["reason"] == "desired_task_changed_after_approval"
