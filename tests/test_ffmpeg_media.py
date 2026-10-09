@@ -106,6 +106,7 @@ def test_extract_frame_uses_safe_args_and_unicode_paths(tmp_path, monkeypatch):
     ffmpeg_args = next(args for args in calls if args[0] == "ffmpeg")
     assert str(source) in ffmpeg_args and str(target) in ffmpeg_args
     assert "-frames:v" in ffmpeg_args
+    assert ffmpeg_args[ffmpeg_args.index("-vf") + 1] == "reverse"
 
 
 def test_concat_rejects_incompatible_clips_before_encoding(tmp_path, monkeypatch):
