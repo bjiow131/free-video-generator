@@ -20,7 +20,7 @@ from local_agent.reporting import _redact_value
 
 API_ROOT = "https://api.github.com"
 DEFAULT_TIMEOUT_SECONDS = 10
-MAX_MANIFEST_BYTES = 16_384
+MAX_MANIFEST_BYTES = 65_536  # Supports bounded story-plan JSON while retaining a strict upper limit.
 MAX_RESULT_BYTES = 64_000
 
 
