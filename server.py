@@ -43,6 +43,7 @@ from core.pipelines import (
 )
 from core.api.agnes_image import AgnesImageAPI
 from core.api.agnes_chat import AgnesChatAPI
+from core.provider_image_store import resolve_provider_image, provider_image_media_type
 from core.api.comfyui import ComfyUIClient, ComfyUIError, build_workflow
 from core.task_manager import TaskManager
 
@@ -385,6 +386,19 @@ async def local_origin_guard(request: Request, call_next):
 def get_upload_dir() -> str:
     """返回当前激活工作目录下的 uploads 子目录。"""
     return os.path.join(get_working_dir(), "uploads")
+
+
+@app.get("/api/provider-image/{token}")
+async def get_provider_image(token: str):
+    """Serve only an explicitly registered, short-lived image URL to external providers."""
+    path = resolve_provider_image(token)
+    if not path:
+        raise HTTPException(status_code=404, detail="Временный референс не найден или срок ссылки истёк")
+    return FileResponse(
+        path,
+        media_type=provider_image_media_type(path),
+        headers={"Cache-Control": "no-store, max-age=0", "X-Content-Type-Options": "nosniff"},
+    )
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 _ALLOWED_IMAGE_SIGNATURES = {
