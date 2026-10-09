@@ -518,6 +518,9 @@ async def test_runner_discards_checkpoint_media_paths_outside_project_and_regene
     (lambda state: state.update(status="mystery"), "invalid project status"),
     (lambda state: state["scenes"]["s1"].update(attempts=-1), "invalid attempts"),
     (lambda state: state["scenes"]["s1"].update(status="mystery"), "invalid status"),
+    (lambda state: state.update(status=[]), "invalid project status"),
+    (lambda state: state["scenes"]["s1"].update(status=[]), "invalid status"),
+    (lambda state: state["scenes"].update({"../escape": state["scenes"].pop("s1")}), "malformed scene entry"),
 ])
 def test_checkpoint_rejects_invalid_persisted_state(tmp_path, mutation, match):
     import json
