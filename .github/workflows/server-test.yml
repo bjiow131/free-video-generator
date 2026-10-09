@@ -1,5 +1,9 @@
 name: Server Test
 
+concurrency:
+  group: server-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
@@ -15,6 +19,7 @@ on:
       - "README.md"
       - ".github/workflows/server-test.yml"
   push:
+    branches: [main]
     paths:
       - "server.py"
       - "requirements.txt"
