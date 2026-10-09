@@ -32,6 +32,7 @@ on:
       - "static/**"
       - "tests/**"
       - "start_windows.bat"
+      - "setup_windows.bat"
       - "Dockerfile"
       - "README.md"
       - ".github/workflows/server-test.yml"
