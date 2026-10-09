@@ -4,11 +4,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-import json
 from pathlib import Path
 from threading import Lock
-from typing import Any
-from typing import Protocol
+from typing import Any, Protocol
 
 from local_agent.checkpoint import CheckpointStore
 from local_agent.manifest import ProjectManifest, SceneSpec
