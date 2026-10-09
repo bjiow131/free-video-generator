@@ -7,6 +7,8 @@ on:
     paths:
       - "local_agent/**"
       - "tests/test_blender_bridge.py"
+      - "tests/test_control_protocol.py"
+      - "tests/test_poller.py"
       - "tests/test_local_agent_attachments.py"
       - ".github/workflows/local-agent-tests.yml"
   push:
@@ -15,6 +17,8 @@ on:
     paths:
       - "local_agent/**"
       - "tests/test_blender_bridge.py"
+      - "tests/test_control_protocol.py"
+      - "tests/test_poller.py"
       - "tests/test_local_agent_attachments.py"
       - ".github/workflows/local-agent-tests.yml"
 
