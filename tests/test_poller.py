@@ -383,3 +383,86 @@ def test_report_survives_github_publication_failure(monkeypatch, tmp_path):
 
     # The local report was generated before the network publication attempt.
     assert report.parent == tmp_path
+
+
+def test_apply_patch_uses_isolated_worktree_and_never_changes_active_checkout(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0] == "git":
+            if args[1:3] == ["rev-parse", "--verify"]:
+                return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+            if args[1:4] == ["show-ref", "--verify", "--quiet"]:
+                return SimpleNamespace(returncode=1, stdout="", stderr="")
+            if args[1:3] == ["worktree", "add"]:
+                from pathlib import Path
+                Path(args[5]).mkdir(parents=True)
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] in (["apply", "--check"], ["apply"]):
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert args[:3] == [sys.executable, "-m", "pytest"]
+        return SimpleNamespace(returncode=0, stdout="2 passed", stderr="")
+
+    monkeypatch.setattr(poller.subprocess, "run", fake_run)
+    result = poller._apply_patch("diff --git a/a b/a\n", "task-104")
+
+    assert result["status"] == "completed"
+    assert result["active_checkout_modified"] is False
+    assert result["requires_review_before_merge"] is True
+    assert result["base_commit"] == "base-sha"
+    assert any(call[0][1:3] == ["worktree", "add"] for call in calls)
+    assert any(call[0][:3] == [sys.executable, "-m", "pytest"] for call in calls)
+
+
+def test_apply_patch_removes_temporary_worktree_when_post_patch_tests_fail(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    calls = []
+    created_worktree = None
+
+    def fake_run(args, **kwargs):
+        nonlocal created_worktree
+        calls.append(args)
+        if args[0] == "git":
+            if args[1:3] == ["rev-parse", "--verify"]:
+                return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+            if args[1:4] == ["show-ref", "--verify", "--quiet"]:
+                return SimpleNamespace(returncode=1, stdout="", stderr="")
+            if args[1:3] == ["worktree", "add"]:
+                from pathlib import Path
+                created_worktree = Path(args[5])
+                created_worktree.mkdir(parents=True)
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] == ["worktree", "remove"]:
+                created_worktree.rmdir()
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] == ["branch", "-D"]:
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert args[:3] == [sys.executable, "-m", "pytest"]
+        return SimpleNamespace(returncode=1, stdout="1 failed", stderr="failure details")
+
+    monkeypatch.setattr(poller.subprocess, "run", fake_run)
+    result = poller._apply_patch("diff --git a/a b/a\n", "task-105")
+
+    assert result["status"] == "failed_rolled_back"
+    assert result["rollback_verified"] is True
+    assert result["temporary_worktree_removed"] is True
+    assert result["temporary_branch_removed"] is True
+    assert created_worktree is not None and not created_worktree.exists()
