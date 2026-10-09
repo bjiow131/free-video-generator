@@ -298,10 +298,7 @@ def main() -> int:
             fetched = client.fetch_desired_task()
             if fetched is not None:
                 task, manifest_sha = fetched
-                decision = classify_manifest(
-                    {"last_task_id": last_seen, "manifest_sha": last_sha},
-                    task.task_id, manifest_sha,
-                )
+                decision = classify_manifest(state, task.task_id, manifest_sha)
                 if decision == "new":
                     _run_one(client, task)
                     last_seen, last_sha = task.task_id, manifest_sha
