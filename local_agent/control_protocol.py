@@ -11,7 +11,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan"})
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
@@ -94,6 +94,18 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             if flag in args and not isinstance(args[flag], bool):
                 raise ProtocolError(f"Blender argument {flag} must be a boolean.")
 
+    if value["operation"] == "save_story_plan":
+        args = value["arguments"]
+        if set(args) != {"story_plan"} or not isinstance(args["story_plan"], dict):
+            raise ProtocolError("save_story_plan requires exactly one object field named story_plan.")
+        if len(json.dumps(args["story_plan"], ensure_ascii=False).encode("utf-8")) > 48_000:
+            raise ProtocolError("Story plan exceeds the 48 KB limit.")
+        plan = args["story_plan"]
+        if plan.get("schema_version") != 1:
+            raise ProtocolError("Unsupported story plan schema_version.")
+        project_name = plan.get("project_name")
+        if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
+            raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
     if any(str(key).lower() in forbidden_keys for key in value["arguments"]):
