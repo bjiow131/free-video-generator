@@ -59,6 +59,73 @@ def doctor() -> dict[str, Any]:
     }
 
 
+
+def preflight() -> dict[str, Any]:
+    """Check local readiness without contacting GitHub or starting a render."""
+    import tempfile
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    workspace_check: dict[str, Any] = {"configured": bool(workspace_value), "exists": False, "writable": False}
+    disk_free_bytes = None
+    if workspace_value:
+        try:
+            workspace = Path(workspace_value).expanduser().resolve()
+            workspace_check["path"] = str(workspace)
+            workspace_check["exists"] = workspace.is_dir()
+            if workspace.is_dir():
+                disk_free_bytes = shutil.disk_usage(workspace).free
+                try:
+                    with tempfile.NamedTemporaryFile(prefix=".agent-preflight-", dir=workspace, delete=True):
+                        workspace_check["writable"] = True
+                except OSError:
+                    workspace_check["writable"] = False
+        except OSError as exc:
+            workspace_check["error_type"] = type(exc).__name__
+    blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender_path = Path(blender_value).expanduser() if blender_value else None
+    if blender_path is None:
+        found = shutil.which("blender")
+        blender_path = Path(found) if found else None
+    blender_check: dict[str, Any] = {"configured": blender_path is not None, "available": False}
+    if blender_path is not None:
+        blender_check["path"] = str(blender_path)
+        if blender_path.is_file():
+            try:
+                proc = subprocess.run([str(blender_path), "--version"], capture_output=True, text=True,
+                                      timeout=10, check=False, shell=False)
+                lines = (proc.stdout or proc.stderr).strip().splitlines()
+                blender_check.update({"available": proc.returncode == 0, "return_code": proc.returncode,
+                                      "version": redact_text(lines[0][:240]) if lines else "version output unavailable"})
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                blender_check["error_type"] = type(exc).__name__
+        else:
+            blender_check["error"] = "configured_executable_not_found"
+    try:
+        from local_agent.github_queue import QueueConfig
+        config = QueueConfig.from_environment()
+        mailbox = {"configured": True, "repository": config.repository, "ref": config.ref,
+                   "manifest_path": config.manifest_path, "token_value_reported": False}
+    except Exception as exc:
+        mailbox = {"configured": False, "configuration_error_type": type(exc).__name__}
+    checks = {
+        "python_311_plus": sys.version_info >= (3, 11),
+        "workspace_ready": workspace_check.get("exists") is True and workspace_check.get("writable") is True,
+        "mailbox_configured": mailbox.get("configured") is True,
+        "blender_available": blender_check.get("available") is True,
+    }
+    return {
+        "status": "ready" if all(checks.values()) else "needs_setup",
+        "checks": checks, "python": {"version": sys.version.split()[0]},
+        "workspace": workspace_check, "disk_free_bytes": disk_free_bytes,
+        "mailbox": mailbox, "blender": blender_check,
+        "git": _tool_version(["git", "--version"]),
+        "ffmpeg": _tool_version(["ffmpeg", "-version"]),
+        "ffprobe": _tool_version(["ffprobe", "-version"]),
+        "nvidia_smi": _tool_version(["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]),
+        "network_request_performed": False, "blender_scene_created": False,
+        "render_started": False, "secret_values_returned": False,
+    }
+
+
 def status() -> dict[str, Any]:
     """Check only the documented loopback app port; do not scan the network."""
     host, port = "127.0.0.1", 8765
@@ -124,13 +191,15 @@ def run_tests() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local-first AI Studio diagnostic agent")
-    parser.add_argument("operation", choices=("doctor", "status", "logs", "test"))
+    parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test"))
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--log-lines", type=int, default=200)
     args = parser.parse_args()
 
     if args.operation == "doctor":
         details = doctor()
+    elif args.operation == "preflight":
+        details = preflight()
     elif args.operation == "status":
         details = status()
     elif args.operation == "logs":
@@ -151,7 +220,7 @@ def main() -> int:
         "report_path": str(report_path) if report_path else None,
         "note": "Report remains local. No upload or remote control is enabled.",
     }, ensure_ascii=False, indent=2))
-    return 0 if status_value not in {"failed", "error", "timeout"} else 1
+    return 0 if status_value not in {"failed", "error", "timeout", "blocked"} else 1
 
 
 if __name__ == "__main__":
