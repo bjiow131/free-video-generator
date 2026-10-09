@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import subprocess
 import tempfile
 from typing import Any, Callable
@@ -31,6 +32,21 @@ def _inside(root: Path, candidate: Path) -> Path:
     if not resolved.is_relative_to(root):
         raise BlenderBridgeError("Output path must stay inside the configured workspace.")
     return resolved
+
+
+def _png_dimensions(path: Path) -> tuple[int, int]:
+    """Read only the PNG signature and IHDR dimensions; reject empty/fake output."""
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(24)
+    except OSError as exc:
+        raise BlenderBridgeError("Preview PNG could not be read.") from exc
+    if len(header) < 24 or header[:8] != b"\\x89PNG\\r\\n\\x1a\\n" or header[12:16] != b"IHDR":
+        raise BlenderBridgeError("Preview output is not a valid PNG header.")
+    width, height = struct.unpack(">II", header[16:24])
+    if width <= 0 or height <= 0:
+        raise BlenderBridgeError("Preview PNG has invalid dimensions.")
+    return width, height
 
 
 def _scene_script() -> str:
@@ -208,10 +224,18 @@ class BlenderBridge:
             project_dir / "forest_preview.png",
             project_dir / "blender_result.json",
         ]
+        if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)() for path in known_outputs):
+            raise BlenderBridgeError("Known output paths must not be symlinks or junctions.")
         if not overwrite and any(path.exists() for path in known_outputs):
             raise BlenderBridgeError(
                 "This project already has generated outputs; use overwrite=True only when intentional."
             )
+        if overwrite:
+            for path in known_outputs:
+                if path.exists():
+                    if not path.is_file():
+                        raise BlenderBridgeError("Known output path exists but is not a regular file.")
+                    path.unlink()
         config = {
             "output_dir": str(project_dir),
             "render": bool(render),
@@ -243,17 +267,34 @@ class BlenderBridge:
                 stderr = (result.stderr or "")[-3000:]
                 raise BlenderBridgeError(f"Blender exited with code {result.returncode}: {stderr}")
         result_path = project_dir / "blender_result.json"
-        if not result_path.is_file():
+        if result_path.is_symlink() or getattr(result_path, "is_junction", lambda: False)():
+            raise BlenderBridgeError("Blender result manifest must not be a symlink or junction.")
+        if not result_path.is_file() or result_path.stat().st_size == 0:
             raise BlenderBridgeError("Blender exited without writing its result manifest.")
         try:
             payload = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise BlenderBridgeError("Blender result manifest is unreadable.") from exc
         expected_blend = _inside(project_dir, project_dir / "forest_starter.blend")
-        if payload.get("status") != "completed" or not expected_blend.is_file():
+        if (payload.get("status") != "completed" or not expected_blend.is_file()
+                or expected_blend.is_symlink() or expected_blend.stat().st_size == 0):
             raise BlenderBridgeError("Blender result manifest failed validation.")
+        if payload.get("blend_path") != str(expected_blend):
+            raise BlenderBridgeError("Blender result manifest points to an unexpected project file.")
+        if payload.get("resolution") != [720, 1280]:
+            raise BlenderBridgeError("Blender result manifest has unexpected base resolution.")
+        if payload.get("engine") not in {"BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "CYCLES"}:
+            raise BlenderBridgeError("Blender result manifest has an unsupported render engine.")
         if render:
             expected_preview = _inside(project_dir, project_dir / "forest_preview.png")
-            if not expected_preview.is_file() or expected_preview.stat().st_size == 0:
+            if (not expected_preview.is_file() or expected_preview.is_symlink()
+                    or expected_preview.stat().st_size == 0):
                 raise BlenderBridgeError("Expected preview render is missing or empty.")
+            if payload.get("preview_path") != str(expected_preview):
+                raise BlenderBridgeError("Blender result manifest points to an unexpected preview file.")
+            expected_size = (720 if not preview else 360, 1280 if not preview else 640)
+            if _png_dimensions(expected_preview) != expected_size:
+                raise BlenderBridgeError("Preview render dimensions do not match the requested resolution.")
+        elif payload.get("preview_path") is not None:
+            raise BlenderBridgeError("Blender reported a preview path even though rendering was disabled.")
         return payload
