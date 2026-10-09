@@ -31,7 +31,7 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
     raw_scenes=data.get("scenes")
     if not isinstance(raw_scenes,list) or not raw_scenes or len(raw_scenes)>MAX_SCENES: raise StoryPlanError(f"scenes must contain 1-{MAX_SCENES} scenes.")
     scenes=[]; seen=set(); total=0
-    allowed_scene={"scene_id","title","duration_seconds","location","action","camera","dialogue","assets","sound","transition","visual_prompt"}
+    allowed_scene={"scene_id","title","duration_seconds","location","action","camera","dialogue","assets","sound","transition","visual_prompt","action_steps"}
     for index,scene in enumerate(raw_scenes,1):
         if not isinstance(scene,dict) or set(scene)-allowed_scene: raise StoryPlanError(f"Scene {index} contains unsupported fields.")
         scene_id=scene.get("scene_id",f"scene_{index:03d}")
@@ -44,12 +44,25 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
         for line_no,line in enumerate(dialogue,1):
             if not isinstance(line,dict) or set(line)-{"speaker","text","delivery"}: raise StoryPlanError(f"Scene {index} dialogue line {line_no} is malformed.")
             clean_dialogue.append({"speaker":_text(line.get("speaker"),f"Scene {index} speaker",limit=80),"text":_text(line.get("text"),f"Scene {index} dialogue text",limit=700),"delivery":_text(line.get("delivery","natural"),f"Scene {index} delivery",limit=100)})
+        steps=scene.get("action_steps",[])
+        allowed_actions={"idle","look_at","walk_to","point_at","wave","pick_up","put_down","turn_toward","camera_push_in","camera_pan","show_asset"}
+        if not isinstance(steps,list) or len(steps)>40: raise StoryPlanError(f"Scene {index} action_steps must be a list of at most 40 steps.")
+        clean_steps=[]
+        for step_no,step in enumerate(steps,1):
+            if not isinstance(step,dict) or set(step)-{"action","actor","target","duration_seconds","notes"}: raise StoryPlanError(f"Scene {index} action step {step_no} is malformed.")
+            action=step.get("action")
+            if not isinstance(action,str) or action not in allowed_actions: raise StoryPlanError(f"Scene {index} action step {step_no} uses an unsupported action.")
+            step_duration=step.get("duration_seconds",2)
+            if isinstance(step_duration,bool) or not isinstance(step_duration,(int,float)) or not 0.1<=step_duration<=60: raise StoryPlanError(f"Scene {index} action step {step_no} duration must be between 0.1 and 60 seconds.")
+            clean_steps.append({"action":action,"actor":_text(step.get("actor","Mia"),f"Scene {index} action actor",limit=80),
+                "target":_text(step.get("target",""),f"Scene {index} action target",limit=120,required=False),
+                "duration_seconds":float(step_duration),"notes":_text(step.get("notes",""),f"Scene {index} action notes",limit=500,required=False)})
         assets=scene.get("assets",[])
         if not isinstance(assets,list) or len(assets)>40: raise StoryPlanError(f"Scene {index} assets must be a list of at most 40 names.")
         clean_assets=[_text(x,f"Scene {index} asset",limit=120) for x in assets]
         scenes.append({"scene_id":scene_id,"title":_text(scene.get("title",f"Scene {index}"),f"Scene {index} title",limit=180),"duration_seconds":seconds,
           "location":_text(scene.get("location"),f"Scene {index} location",limit=600),"action":_text(scene.get("action"),f"Scene {index} action",limit=3000),
-          "camera":_text(scene.get("camera","medium shot"),f"Scene {index} camera",limit=600),"dialogue":clean_dialogue,"assets":clean_assets,
+          "camera":_text(scene.get("camera","medium shot"),f"Scene {index} camera",limit=600),"dialogue":clean_dialogue,"action_steps":clean_steps,"assets":clean_assets,
           "sound":_text(scene.get("sound",""),f"Scene {index} sound",limit=600,required=False),"transition":_text(scene.get("transition","cut"),f"Scene {index} transition",limit=100),
           "visual_prompt":_text(scene.get("visual_prompt",""),f"Scene {index} visual_prompt",limit=2000,required=False)})
     if total>duration*2: raise StoryPlanError("Total scene duration is implausibly long compared with target_duration_seconds.")
