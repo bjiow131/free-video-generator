@@ -73,6 +73,10 @@ class LocalProjectRunner:
                 raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
             _ACTIVE_PROJECTS.add(key)
         expected_store_root = (self.workspace / manifest.project_id).resolve()
+        if not expected_store_root.is_relative_to(self.workspace):
+            with _ACTIVE_PROJECTS_LOCK:
+                _ACTIVE_PROJECTS.discard(key)
+            raise ValueError("Project checkpoint directory resolves outside the configured workspace")
         if self.store.root.resolve() != expected_store_root:
             with _ACTIVE_PROJECTS_LOCK:
                 _ACTIVE_PROJECTS.discard(key)
@@ -115,6 +119,8 @@ class LocalProjectRunner:
     @staticmethod
     def _acquire_process_lock(lock_path: Path) -> Any:
         """Acquire a kernel-managed, non-blocking lock released automatically on process exit."""
+        if lock_path.is_symlink():
+            raise RuntimeError("Project lock file must not be a symlink")
         stream = lock_path.open("a+b")
         try:
             # Windows byte-range locks require at least one byte. Concurrent writes

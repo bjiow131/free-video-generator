@@ -593,3 +593,38 @@ async def test_runner_rejects_final_output_symlink_before_assembly(tmp_path):
 
     assert outside.read_bytes() == b"preserve-me"
 
+def test_os_project_lock_rejects_symlink(tmp_path):
+    outside = tmp_path / "outside-lock-target"
+    outside.write_bytes(b"keep unchanged")
+    lock_path = tmp_path / ".runner.lock"
+    try:
+        lock_path.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("File symlinks are not available in this environment")
+
+    with pytest.raises(RuntimeError, match="lock file must not be a symlink"):
+        LocalProjectRunner._acquire_process_lock(lock_path)
+    assert outside.read_bytes() == b"keep unchanged"
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_project_directory_symlink_created_after_store_init(tmp_path):
+    workspace = tmp_path / "workspace"
+    project_id = "test-project"
+    store = CheckpointStore(workspace, project_id)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    store.root.rmdir()
+    try:
+        store.root.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are not available in this environment")
+
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    runner = LocalProjectRunner(workspace, store, FakeBackend(), FakeMedia())
+
+    with pytest.raises(ValueError, match="outside the configured workspace"):
+        await runner.run(manifest)
+    assert list(outside.iterdir()) == []
