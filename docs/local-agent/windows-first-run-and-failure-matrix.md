@@ -36,7 +36,7 @@ The setup script stores only non-secret configuration as Windows user environmen
 | Render hangs or Blender crashes | Apply a timeout, preserve logs/checkpoints, and report the last completed stage. Automatic timeout/recovery for every Blender skill remains to be implemented. |
 | Disk is low or output file is empty | Stop before final export; keep source assets and report the failed postcondition. Disk-space preflight is a remaining implementation item. |
 | Private references or generated videos are involved | Keep them in the local workspace; never commit them to the public source repository or upload them to the mailbox by default. |
-| A patch is requested remotely | Show it locally, require approval, run `git apply --check`, and test after application. A rollback/checkpoint workflow is still required before treating this as production-safe. |
+| A patch is requested remotely | Require local approval, create an isolated `agent/task-<id>` worktree from the recorded base commit, run `git apply --check`, apply the patch only in that worktree, and run pytest there. On failure, remove the temporary worktree and branch; if cleanup cannot be verified, report `FAILED_NEEDS_USER`. A successful branch is retained for review and is not auto-merged. |
 | Local test suite fails | Do not start the mailbox poller or promote the branch. Preserve the failure output for diagnosis. |
 
 ## Connection architecture
@@ -50,6 +50,9 @@ The setup script stores only non-secret configuration as Windows user environmen
 
 ## Current protections and remaining work
 
+- The poller now writes a redacted local JSON report before attempting to publish the result. Failed/blocked outcomes trigger a best-effort native Windows notification; the notification contains no credential and does not replace the report. Notification and report-publication behavior has automated test coverage authored, but the GitHub Actions run is currently queued, not passing/verified.
+- Reviewed patch tasks now use an isolated worktree and run pytest there. Failed tests trigger cleanup of the task worktree and branch; cleanup failure is surfaced as `failed_needs_user`. Successful work remains on its named task branch for review and is not automatically merged into the active checkout.
+
 - The local-only `preflight` command checks Python, workspace writability/free space, local mailbox configuration, Blender availability/version and optional tools without starting a render or making a network request. It does **not** prove that GitHub confirms the mailbox is private or that the token can read/write it; the first real mailbox connection must verify those conditions.
 - An OS-level singleton lock prevents two poller instances on the same PC from processing tasks concurrently.
 
@@ -58,7 +61,7 @@ The setup script stores only non-secret configuration as Windows user environmen
 - Real Windows first-run and repeated Blender smoke tests.
 - Robust status recovery for a process killed during an operation.
 - Disk-space checks and timeouts for every long-running operation.
-- Transactional patch backup/rollback and post-patch tests.
+- Confirm transactional patch rollback tests pass in CI; perform Windows runtime verification of notifications, report paths, and worktree cleanup.
 - A first-run preflight that confirms mailbox privacy, token read/write access, valid workspace and Blender version without printing secrets.
 - A clear pause/resume/cancel protocol, task progress reporting, and per-operation time limits.
 - Blender output validation for actual scene contents, image dimensions, non-empty renders, and final MP4 metadata.
