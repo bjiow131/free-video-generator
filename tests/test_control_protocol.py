@@ -152,3 +152,17 @@ def test_remote_approval_rejected_for_patch_operation():
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="local approval is mandatory"):
         parse_task(json.dumps(value))
+
+
+def test_rejects_non_string_operation_without_uncaught_type_error():
+    value = json.loads(_task("doctor", {}))
+    value["operation"] = ["doctor"]
+    with pytest.raises(ProtocolError, match="not allowlisted"):
+        parse_task(json.dumps(value))
+
+
+def test_rejects_unexpected_arguments_for_diagnostic_task():
+    value = json.loads(_task("doctor", {}))
+    value["arguments"] = {"project_name": "ignored"}
+    with pytest.raises(ProtocolError, match="does not accept arguments"):
+        parse_task(json.dumps(value))
