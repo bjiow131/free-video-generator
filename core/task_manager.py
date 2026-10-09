@@ -176,9 +176,10 @@ class TaskManager:
             self._state = parse_task_state(
                 data
             )
-            if self._normalize_recovered_state():
-                self._save()
-                self._log_event("task_recovery_normalized")
+            # Do not normalize RUNNING/QUEUED state during ordinary reads.
+            # API polling loads tasks repeatedly; treating every read as a process
+            # restart can rewrite a live task to PENDING and leave the UI stale.
+            # Stale in-flight tasks are normalized once in server.lifespan at startup.
 
 
             if isinstance(
