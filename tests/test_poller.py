@@ -182,3 +182,12 @@ def test_rejected_changed_manifest_is_not_rejected_repeatedly():
     state = _remember_manifest(state, "task-1", "sha-changed", rejected=True)
     assert classify_manifest(state, "task-1", "sha-changed") == "same"
     assert classify_manifest(state, "task-1", "sha-another") == "reused_id"
+
+
+def test_in_progress_manifest_is_not_new_after_restart():
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = _remember_manifest({}, "claimed-1", "sha-1", status="in_progress")
+    assert state["processed_tasks"]["claimed-1"]["status"] == "in_progress"
+    assert classify_manifest(state, "claimed-1", "sha-1") == "same"
+    state = _remember_manifest(state, "claimed-1", "sha-1", status="interrupted")
+    assert state["processed_tasks"]["claimed-1"]["status"] == "interrupted"
