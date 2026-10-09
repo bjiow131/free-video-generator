@@ -98,3 +98,24 @@ def test_existing_outputs_are_not_overwritten_without_explicit_opt_in(tmp_path: 
         bridge.run_task("forest_preview", project_name="mia")
     assert original.read_bytes() == b"important existing project"
     assert calls == []
+
+
+def test_rejects_preview_with_wrong_dimensions(tmp_path: Path) -> None:
+    def fake_run(command, **kwargs):
+        project_dir = Path(kwargs["cwd"])
+        (project_dir / "forest_starter.blend").write_bytes(b"blend placeholder")
+        _write_png(project_dir / "forest_preview.png", 100, 100)
+        (project_dir / "blender_result.json").write_text(json.dumps({
+            "status": "completed",
+            "blend_path": str(project_dir / "forest_starter.blend"),
+            "preview_path": str(project_dir / "forest_preview.png"),
+            "engine": "BLENDER_EEVEE_NEXT",
+            "resolution": [720, 1280],
+        }), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="stdout sample", stderr="stderr sample")
+
+    bridge, workspace = _bridge(tmp_path, fake_run)
+    with pytest.raises(BlenderBridgeError, match="dimensions"):
+        bridge.run_task("forest_preview", project_name="wrong_size")
+    assert (workspace / "wrong_size" / "blender_stdout.log").read_text(encoding="utf-8") == "stdout sample"
+    assert (workspace / "wrong_size" / "blender_stderr.log").read_text(encoding="utf-8") == "stderr sample"
