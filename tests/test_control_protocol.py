@@ -116,3 +116,25 @@ def test_accepts_argument_free_preflight_task():
 def test_rejects_preflight_arguments():
     with pytest.raises(ProtocolError, match="does not accept arguments"):
         parse_task(_task("preflight", {"executable": "blender.exe"}))
+
+
+def test_rejects_boolean_protocol_version():
+    raw = _task("doctor", {})
+    value = json.loads(raw)
+    value["protocol_version"] = True
+    with pytest.raises(ProtocolError, match="protocol version"):
+        parse_task(json.dumps(value))
+
+
+@pytest.mark.parametrize("created_at,expires_at", [
+    ("2026-10-09T10:00:00", "2026-10-09T10:05:00Z"),
+    ("not-a-time", "2026-10-09T10:05:00Z"),
+    ("2026-10-09T10:05:00Z", "2026-10-09T10:00:00Z"),
+    ("2026-10-09T10:00:00Z", "2026-10-10T11:00:00Z"),
+])
+def test_rejects_invalid_task_timestamp_windows(created_at, expires_at):
+    value = json.loads(_task("doctor", {}))
+    value["created_at"] = created_at
+    value["expires_at"] = expires_at
+    with pytest.raises(ProtocolError):
+        parse_task(json.dumps(value))
