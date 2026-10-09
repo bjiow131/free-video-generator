@@ -184,3 +184,32 @@ async def test_runner_regenerates_completed_scene_when_revalidation_fails(tmp_pa
     assert result["status"] == "completed"
     assert len(backend.calls) == 2
     assert result["scenes"]["s1"]["video_path"] != str(old_video)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_project_run_is_rejected_and_registry_released(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            entered.set()
+            await release.wait()
+            return await super().generate_i2v(**kwargs)
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, BlockingBackend(), FakeMedia())
+    first = asyncio.create_task(runner.run(manifest))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    with pytest.raises(RuntimeError, match="already running"):
+        await runner.run(manifest)
+    release.set()
+    result = await first
+    assert result["status"] == "completed"
+    # Ownership is released after completion, so a subsequent resume is permitted.
+    again = await runner.run(manifest)
+    assert again["status"] == "completed"
