@@ -281,12 +281,51 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
     print(f"Result published. GitHub commit: {commit_sha}")
 
 
+
+def _acquire_instance_lock(path: Path):
+    """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\\0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                raise RuntimeError("another local agent poller is already running") from exc
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise RuntimeError("another local agent poller is already running") from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()).encode("ascii"))
+        handle.flush()
+        return handle
+    except Exception:
+        handle.close()
+        raise
+
+
 def main() -> int:
     try:
         config = QueueConfig.from_environment()
         client = GitHubQueueClient(config)
     except Exception as exc:
         print(f"Cannot start mailbox poller: {type(exc).__name__}: {exc}")
+        return 2
+
+    try:
+        lock_handle = _acquire_instance_lock(STATE_PATH.with_name("poller.lock"))
+    except RuntimeError as exc:
+        print(f"Cannot start poller: {exc}")
         return 2
 
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
@@ -297,64 +336,67 @@ def main() -> int:
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
     print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and locally approved Blender forest previews; runtime tests remain outstanding.")
 
-    while True:
-        try:
-            fetched = client.fetch_desired_task()
-            if fetched is not None:
-                task, manifest_sha = fetched
-                decision = classify_manifest(state, task.task_id, manifest_sha)
-                if decision == "new":
-                    # Persist a claim before doing any local work. If the process
-                    # dies or result publication fails, never blindly replay it.
-                    state = _remember_manifest(
-                        state, task.task_id, manifest_sha, status="in_progress"
-                    )
-                    _save_state(state)
-                    _run_one(client, task)
-                    last_seen, last_sha = task.task_id, manifest_sha
-                    state = _remember_manifest(
-                        state, last_seen, last_sha, status="processed"
-                    )
-                    _save_state(state)
-                elif decision == "same":
-                    record = state.get("processed_tasks", {}).get(task.task_id, {})
-                    if isinstance(record, dict) and record.get("status") == "in_progress":
-                        # Execution may have finished while result publication failed,
-                        # or the process may have crashed mid-operation. Do not rerun.
-                        client.publish_result(task.task_id, {
-                            "task_id": task.task_id,
-                            "status": "interrupted",
-                            "reason": "outcome_uncertain_requires_local_inspection_before_retry",
-                        })
+    try:
+        while True:
+            try:
+                fetched = client.fetch_desired_task()
+                if fetched is not None:
+                    task, manifest_sha = fetched
+                    decision = classify_manifest(state, task.task_id, manifest_sha)
+                    if decision == "new":
+                        # Persist a claim before doing any local work. If the process
+                        # dies or result publication fails, never blindly replay it.
                         state = _remember_manifest(
-                            state, task.task_id, manifest_sha, status="interrupted"
+                            state, task.task_id, manifest_sha, status="in_progress"
                         )
                         _save_state(state)
-                elif decision == "reused_id":
-                    # Task IDs are immutable. A changed manifest with the same ID
-                    # is rejected, never silently re-executed.
-                    client.publish_result(task.task_id, {
-                        "task_id": task.task_id,
-                        "status": "rejected",
-                        "reason": "task_id_reused_with_different_manifest",
-                    })
-                    last_sha = manifest_sha
-                    state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
-                    _save_state(state)
-            backoff = interval
-            time.sleep(interval)
-        except KeyboardInterrupt:
-            print("\nPoller stopped.")
-            return 0
-        except QueueTransportError as exc:
-            print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
-            time.sleep(backoff)
-            backoff = min(max(interval, backoff * 2), 300)
-        except (OSError, ValueError) as exc:
-            print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
-            time.sleep(backoff)
-            backoff = min(max(interval, backoff * 2), 300)
-
+                        _run_one(client, task)
+                        last_seen, last_sha = task.task_id, manifest_sha
+                        state = _remember_manifest(
+                            state, last_seen, last_sha, status="processed"
+                        )
+                        _save_state(state)
+                    elif decision == "same":
+                        record = state.get("processed_tasks", {}).get(task.task_id, {})
+                        if isinstance(record, dict) and record.get("status") == "in_progress":
+                            # Execution may have finished while result publication failed,
+                            # or the process may have crashed mid-operation. Do not rerun.
+                            client.publish_result(task.task_id, {
+                                "task_id": task.task_id,
+                                "status": "interrupted",
+                                "reason": "outcome_uncertain_requires_local_inspection_before_retry",
+                            })
+                            state = _remember_manifest(
+                                state, task.task_id, manifest_sha, status="interrupted"
+                            )
+                            _save_state(state)
+                    elif decision == "reused_id":
+                        # Task IDs are immutable. A changed manifest with the same ID
+                        # is rejected, never silently re-executed.
+                        client.publish_result(task.task_id, {
+                            "task_id": task.task_id,
+                            "status": "rejected",
+                            "reason": "task_id_reused_with_different_manifest",
+                        })
+                        last_sha = manifest_sha
+                        state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
+                        _save_state(state)
+                backoff = interval
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                print("\nPoller stopped.")
+                return 0
+            except QueueTransportError as exc:
+                print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
+                time.sleep(backoff)
+                backoff = min(max(interval, backoff * 2), 300)
+            except (OSError, ValueError) as exc:
+                print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
+                time.sleep(backoff)
+                backoff = min(max(interval, backoff * 2), 300)
+    
+    finally:
+        lock_handle.close()
 
 if __name__ == "__main__":
     raise SystemExit(main())
