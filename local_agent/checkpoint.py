@@ -33,8 +33,15 @@ class CheckpointStore:
         with self._lock:
             if not self.path.exists():
                 return None
-            with self.path.open("r", encoding="utf-8") as stream:
-                data = json.load(stream)
+            try:
+                with self.path.open("r", encoding="utf-8") as stream:
+                    data = json.load(stream)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                # Leave the damaged checkpoint untouched for manual recovery.
+                raise ValueError(
+                    f"Checkpoint is unreadable or truncated at {self.path.name}; "
+                    "the original file was preserved. Restore a known-good copy or inspect it before retrying."
+                ) from exc
             if (not isinstance(data, dict)
                     or data.get("schema_version") != 1
                     or not isinstance(data.get("scenes"), dict)
@@ -100,6 +107,19 @@ class CheckpointStore:
     def event(self, name: str, payload: dict[str, Any] | None = None) -> None:
         record = {"timestamp": self._now(), "event": name, "payload": payload or {}}
         with self._lock:
+            # Keep bounded local diagnostics: current log plus two rotated files.
+            max_log_bytes = 5 * 1024 * 1024
+            if self.events_path.exists() and self.events_path.stat().st_size >= max_log_bytes:
+                oldest = self.root / "events.jsonl.2"
+                middle = self.root / "events.jsonl.1"
+                try:
+                    oldest.unlink(missing_ok=True)
+                    if middle.exists():
+                        os.replace(middle, oldest)
+                    os.replace(self.events_path, middle)
+                except OSError:
+                    # Logging must not destroy checkpoint correctness if rotation fails.
+                    pass
             with self.events_path.open("a", encoding="utf-8", newline="") as stream:
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
                 stream.flush()
