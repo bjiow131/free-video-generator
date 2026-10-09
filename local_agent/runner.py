@@ -175,6 +175,7 @@ class LocalProjectRunner:
             assembled = self.media.concatenate(video_paths, final_path)
             if not assembled or not os.path.isfile(assembled) or os.path.getsize(assembled) == 0:
                 raise RuntimeError("Final video assembly returned no valid file")
+            self.media.validate_video(assembled, sum(scene.duration_seconds for scene in manifest.scenes))
             state["final_video_path"] = assembled
             state["status"] = "completed"
             state["error"] = None
