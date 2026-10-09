@@ -255,6 +255,10 @@ button{cursor:pointer}
       <input id="startFrameUpload" type="file" accept="image/png,image/jpeg,image/webp">
       <div class="hint">Выбери кадр из «Фото» или «Файлов». Он заменит ранее сохранённый кадр и станет первым кадром нового видео, в том числе после F5.</div>
       <div class="actions"><button type="button" id="clearStartFrameUpload" class="ghost">Убрать выбранный стартовый кадр</button></div>
+      <div class="label" style="margin-top:18px">Восстановить финальный кадр из готового видео</div>
+      <input id="recoveryVideoUpload" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm">
+      <div class="hint">Если задача пропала после сбоя, загрузи последнее видео из «Фото» или «Файлов». Кадр извлекается прямо в браузере — серверная задача не нужна.</div>
+      <div class="actions"><button type="button" id="extractRecoveryFrame" class="primary">Создать финальный кадр</button></div>
       <div class="hint">Для Image → Video можно выбрать сохранённого персонажа Мию и несколько его референсов. Рекомендуется 2–5 ракурсов.</div>
       <div class="label">Промпт движения для видео</div>
       <textarea id="videoPrompt" class="textarea" placeholder="Что делает Мия? Как движется камера? Что происходит в сцене?"></textarea>
@@ -682,6 +686,65 @@ async function restoreStartFramePreview(){
     console.warn('[Start frame recovery]',e);
   }
 }
+async function saveFrameBlob(blob,filename='финальный-кадр'){
+  if(!(blob instanceof Blob)||!blob.size){toast('Нет кадра для сохранения');return}
+  try{
+    const file=new File([blob],filename+'.png',{type:'image/png'});
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({title:filename,files:[file]});
+      toast('Кадр передан в меню сохранения');
+    }else{
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=filename+'.png';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1500);toast('Кадр подготовлен к сохранению');
+    }
+  }catch(e){if(e.name!=='AbortError')toast(e.message||'Не удалось сохранить кадр')}
+}
+async function extractRecoveryVideoFrame(){
+  const input=$('#recoveryVideoUpload'),file=input?.files?.[0],button=$('#extractRecoveryFrame');
+  if(!file){toast('Сначала загрузи последнее видео');return}
+  if(!file.type.startsWith('video/')&&!/\\.(mp4|mov|webm)$/i.test(file.name)){toast('Выбери видео MP4, MOV или WebM');return}
+  const original=button.textContent;button.disabled=true;button.textContent='Извлекаю кадр…';
+  let objectUrl='';
+  try{
+    objectUrl=URL.createObjectURL(file);
+    const video=document.createElement('video');video.preload='auto';video.muted=true;video.playsInline=true;video.src=objectUrl;
+    await new Promise((resolve,reject)=>{
+      video.onloadedmetadata=resolve;
+      video.onerror=()=>reject(new Error('Не удалось открыть видео. Попробуй MP4 или MOV из «Фото»/«Файлов».'));
+      video.load();
+    });
+    if(!Number.isFinite(video.duration)||video.duration<=0||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео не удалось определить длительность или размер кадра');
+    await new Promise((resolve,reject)=>{
+      let done=false;
+      const finish=(fn,value)=>{if(done)return;done=true;fn(value)};
+      video.onseeked=()=>video.readyState>=2?finish(resolve):finish(reject,new Error('Видео не успело декодировать финальный кадр'));
+      video.onerror=()=>finish(reject,new Error('Не удалось перейти к финальному кадру'));
+      video.currentTime=Math.max(0,video.duration-0.15);
+    });
+    if(video.readyState<2)throw new Error('Финальный кадр не декодирован. Попробуй ещё раз.');
+    const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Браузер не смог подготовить изображение кадра');
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    const frame=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось создать PNG')),'image/png'));
+    if(frame.size<1024)throw new Error('Получился пустой кадр. Проверь видео и попробуй ещё раз.');
+    generatedStartFrameBlob=frame;generatedStartFrameTaskId='recovered-upload:'+Date.now();
+    try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
+    await persistStartFrame(frame,generatedStartFrameTaskId);
+    await renderStartFramePreview(frame,'Финальный кадр из загруженного видео','Кадр извлечён из последнего видео и сохранён в браузере. Нажми «Сохранить финальный кадр», чтобы сохранить PNG на устройство, или сразу используй его для следующей сцены.');
+    $('#videoReference').value='';
+    const mode=$('#videoMode');if(mode){mode.value='i2v';saveFormState()}
+    $('#startFrameStatus').textContent='Финальный кадр восстановлен из файла · '+file.name;
+    $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
+    toast('Финальный кадр извлечён и сохранён в AI Studio');
+  }catch(e){
+    $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
+    toast(e.message||'Не удалось извлечь финальный кадр');
+  }finally{
+    if(objectUrl)URL.revokeObjectURL(objectUrl);
+    button.disabled=false;button.textContent=original;
+  }
+}
 async function handleStartFrameUpload(){
   const input=$('#startFrameUpload');const file=input?.files?.[0];if(!file)return;
   try{
@@ -732,7 +795,8 @@ async function renderStartFramePreview(blob,alt,caption){
     container.appendChild(img);
     const note=document.createElement('div');note.style.padding='12px';note.textContent=caption;container.appendChild(note);
     const saveRow=document.createElement('div');saveRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 12px';
-    const saveButton=document.createElement('a');saveButton.className='ghost';saveButton.href=url;saveButton.download='mia-start-frame.png';saveButton.textContent='Скачать кадр PNG';saveButton.style.cssText='display:inline-flex;align-items:center;text-decoration:none';
+    const saveButton=document.createElement('button');saveButton.type='button';saveButton.className='primary';saveButton.textContent='Сохранить финальный кадр';
+    saveButton.onclick=()=>saveFrameBlob(blob,alt.includes('Финальный')?'финальный-кадр':'стартовый-кадр');
     saveRow.appendChild(saveButton);container.appendChild(saveRow);
     img.onerror=()=>{
       container.replaceChildren();
@@ -1057,6 +1121,7 @@ $('#videoSelectAllRefs').onclick=async()=>{const refs=await getMiaRefs();renderV
 $('#videoClearAllRefs').onclick=()=>{document.querySelectorAll('#videoCharacterReference input[type="checkbox"]').forEach(x=>x.checked=false);updateVideoReferenceCount();saveFormState();};
 
 $('#createStartFrame').onclick=createStartFrame;
+$('#extractRecoveryFrame').onclick=extractRecoveryVideoFrame;
 $('#startFrameUpload').addEventListener('change',handleStartFrameUpload);
 $('#clearStartFrameUpload').onclick=clearStartFrameUpload;
 $('#videoClear').onclick=()=>{$('#videoPrompt').value='';$('#startFramePrompt').value='';delete $('#startFramePrompt').dataset.userEdited;syncStartFramePrompt(true);saveFormState();toast(generatedStartFrameBlob?'Промпты очищены. Финальный кадр сохранён.':'Промпты очищены')};
