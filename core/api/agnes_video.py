@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = os.environ.get("AGNES_BASE_URL", "https://apihub.agnes-ai.com/v1").rstrip("/")
 API_ROOT = BASE_URL.rsplit("/v1", 1)[0] if "/v1" in BASE_URL else "https://apihub.agnes-ai.com"
 
-DEFAULT_MODEL = os.environ.get("AGNES_VIDEO_MODEL", "agnes-video-v2.0")
+DEFAULT_MODEL = os.environ.get("AGNES_VIDEO_MODEL", "agnes-video-2.5-flash")
 LEGACY_MODEL = "agnes-video-v2.0"
 MODERN_MODELS = frozenset({"agnes-video-2.5-flash", "agnes-video-2.5"})
 
