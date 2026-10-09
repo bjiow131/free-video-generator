@@ -3,7 +3,7 @@
 Two typed operations are available to the local agent:
 
 - `blender_preflight` locates Blender from the locally configured executable path or PATH and queries its version. It does not create a scene.
-- `blender_open_mia_project` opens an existing generated Mia `.blend` project in the Blender GUI by launching Blender with the validated local file path; it does not click the Open dialog.\n- `blender_mia_blockout` runs a bundled fixed Blender Python script to create an editable starter scene with a simple Mia figure, brown hair, teal outfit, yellow scooter, and snail companion. It saves a `.blend` project and a PNG preview, then validates the outputs.
+- `blender_inspect_mia_project` opens the saved project in background mode with Blender auto-execution disabled, then reports object/mesh/camera/light/material counts, render settings, and missing image files. This is structural inspection, not visual-quality analysis.\n- `blender_open_mia_project` opens an existing generated Mia `.blend` project in the Blender GUI by launching Blender with the validated local file path; it does not click the Open dialog.\n- `blender_mia_blockout` runs a bundled fixed Blender Python script to create an editable starter scene with a simple Mia figure, brown hair, teal outfit, yellow scooter, and snail companion. It saves a `.blend` project and a PNG preview, then validates the outputs.
 
 ## Limits and safety
 
