@@ -1339,7 +1339,24 @@ async def _run_pipeline(pipeline: BasePipeline, state: BaseTaskState):
         except Exception as _ue:
             logger.debug(f"[Pipeline] Could not update status after shutdown: {_ue}")
     except Exception as e:
+        # A pipeline exception must become a terminal task state; otherwise the UI
+        # keeps polling a persisted RUNNING task forever (for example after Agnes timeout).
         logger.error(f"[Pipeline] Task {pipeline.task_id} failed: {e}", exc_info=True)
+        try:
+            _dir = _find_dir_name(pipeline.task_id)
+            _tm = TaskManager(pipeline.task_id, dir_name=_dir)
+            if _tm.load():
+                _tm.update_state(
+                    status=StepStatus.FAILED,
+                    error_message=str(e)[:1000],
+                    progress_message="Генерация завершилась с ошибкой",
+                    eta_seconds=None,
+                )
+        except Exception as _ue:
+            logger.error(
+                f"[Pipeline] Could not persist failed status for task {pipeline.task_id}: {_ue}",
+                exc_info=True,
+            )
     finally:
         # 身份比对：仅当字典里仍是当前 pipeline 时才删除。
         # 否则快速 resume→stop 会让旧 pipeline 的 finally 误删新 pipeline。
