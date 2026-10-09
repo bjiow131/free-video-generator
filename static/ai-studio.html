@@ -628,19 +628,53 @@ async function getSelectedVideoReferences(){
 let generatedStartFrameBlob=null;
 let generatedStartFrameTaskId='';
 const START_FRAME_TASK_KEY='aistudio_start_frame_task';
+const START_FRAME_DB='aistudio-start-frame-v1';
+function startFrameDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(START_FRAME_DB,1);
+    req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('frames'))req.result.createObjectStore('frames',{keyPath:'key'});};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  });
+}
+async function persistStartFrame(blob,taskId){
+  if(!(blob instanceof Blob)||!blob.type.startsWith('image/')||blob.size<1024)throw new Error('Нельзя сохранить пустой или некорректный кадр');
+  const db=await startFrameDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('frames','readwrite');
+    tx.objectStore('frames').put({key:'latest',blob,taskId:taskId||'',savedAt:Date.now(),type:blob.type});
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Не удалось сохранить кадр'));
+  });
+}
+async function readPersistedStartFrame(){
+  const db=await startFrameDb();
+  return new Promise((resolve,reject)=>{
+    const req=db.transaction('frames','readonly').objectStore('frames').get('latest');
+    req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error);
+  });
+}
 async function restoreStartFramePreview(){
   let taskId='';try{taskId=localStorage.getItem(START_FRAME_TASK_KEY)||''}catch{}
-  if(!taskId)return;
+  if(taskId){
+    try{
+      const response=await api('/api/image/'+encodeURIComponent(taskId));
+      if(!response.ok)throw new Error('Сервер пока не отдаёт сохранённый стартовый кадр');
+      const blob=await response.blob();
+      if(!blob.type||!blob.type.startsWith('image/'))throw new Error('Сохранённый стартовый кадр имеет неподдерживаемый формат');
+      generatedStartFrameBlob=blob;generatedStartFrameTaskId=taskId;
+      await persistStartFrame(blob,taskId);
+      await renderStartFramePreview(blob,'Стартовый кадр','Стартовый кадр восстановлен после обновления страницы и готов к использованию в видео.');
+      $('#startFrameStatus').textContent='Стартовый кадр восстановлен · '+taskId;
+      return;
+    }catch(e){console.warn('[Start frame server recovery]',e);}
+  }
   try{
-    const response=await api('/api/image/'+encodeURIComponent(taskId));
-    if(!response.ok)throw new Error('Сервер пока не отдаёт сохранённый стартовый кадр');
-    const blob=await response.blob();
-    if(!blob.type||!blob.type.startsWith('image/'))throw new Error('Сохранённый стартовый кадр имеет неподдерживаемый формат');
-    generatedStartFrameBlob=blob;generatedStartFrameTaskId=taskId;
-    await renderStartFramePreview(blob,'Стартовый кадр','Стартовый кадр восстановлен после обновления страницы и готов к использованию в видео.');
-    $('#startFrameStatus').textContent='Стартовый кадр восстановлен · '+taskId;
+    const saved=await readPersistedStartFrame();
+    if(!saved||!(saved.blob instanceof Blob))return;
+    generatedStartFrameBlob=saved.blob;generatedStartFrameTaskId=saved.taskId||'saved-frame';
+    await renderStartFramePreview(saved.blob,'Сохранённый стартовый кадр','Кадр восстановлен из локального хранилища браузера после F5 и готов к следующей сцене.');
+    $('#startFrameStatus').textContent='Кадр восстановлен после F5'+(saved.savedAt?' · '+new Date(saved.savedAt).toLocaleString():'');
   }catch(e){
-    $('#startFrameStatus').textContent='Не удалось восстановить стартовый кадр: '+(e.message||'ошибка загрузки');
+    $('#startFrameStatus').textContent='Не удалось восстановить сохранённый кадр: '+(e.message||'ошибка загрузки');
     console.warn('[Start frame recovery]',e);
   }
 }
@@ -669,6 +703,9 @@ async function renderStartFramePreview(blob,alt,caption){
     const container=$('#startFrameResult');container.replaceChildren();
     container.appendChild(img);
     const note=document.createElement('div');note.style.padding='12px';note.textContent=caption;container.appendChild(note);
+    const saveRow=document.createElement('div');saveRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 12px';
+    const saveButton=document.createElement('a');saveButton.className='ghost';saveButton.href=url;saveButton.download='mia-start-frame.png';saveButton.textContent='Скачать кадр PNG';saveButton.style.cssText='display:inline-flex;align-items:center;text-decoration:none';
+    saveRow.appendChild(saveButton);container.appendChild(saveRow);
     img.onerror=()=>{
       container.replaceChildren();
       const fallback=document.createElement('div');fallback.style.cssText='padding:18px;color:#8a342b;background:#fff1ee;border-radius:10px';fallback.textContent='Изображение больше недоступно для предпросмотра. Создай кадр заново; повреждённый кадр не следует использовать для следующей сцены.';
@@ -711,6 +748,7 @@ async function useLastVideoFrame(taskId,button){
     await renderStartFramePreview(frame,'Финальный кадр предыдущей сцены','Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.');
     generatedStartFrameBlob=frame;
     generatedStartFrameTaskId='continuity:'+taskId;
+    await persistStartFrame(frame,generatedStartFrameTaskId);
     $('#videoReference').value='';
     $('#startFrameStatus').textContent='Кадр для продолжения выбран · '+taskId;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -780,6 +818,7 @@ async function createStartFrame(){
     if(!imageResponse.ok)throw new Error('Кадр создан, но не удалось загрузить изображение');
     generatedStartFrameBlob=await imageResponse.blob();
     generatedStartFrameTaskId=data.task_id;
+    await persistStartFrame(generatedStartFrameBlob,generatedStartFrameTaskId);
     try{localStorage.setItem(START_FRAME_TASK_KEY,generatedStartFrameTaskId)}catch{}
     if(!generatedStartFrameBlob.type||!generatedStartFrameBlob.type.startsWith('image/'))throw new Error('Сервер вернул файл неподдерживаемого формата');
     $('#videoReference').value='';
@@ -1100,6 +1139,7 @@ function restoreFormState(){
       }else{
         const hasOption=el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===String(value));
         if(hasOption)el.value=String(value);
+        if(id==='startFramePrompt')el.dataset.userEdited='true';
       }
     });
   }catch(e){console.debug('[State] restore skipped',e)}
@@ -1108,7 +1148,7 @@ function bindFormState(){
   FORM_STATE_IDS.forEach(id=>{
     const el=$('#'+id); if(el)el.addEventListener('change',saveFormState);
   });
-  ['imagePrompt','videoPrompt'].forEach(id=>{
+  ['imagePrompt','videoPrompt','startFramePrompt'].forEach(id=>{
     const el=$('#'+id); if(el)el.addEventListener('input',saveFormState);
   });
 }
@@ -1116,7 +1156,7 @@ function bindFormState(){
 load().then(async()=>{
   await loadCharacters();
   restoreFormState();
-  syncStartFramePrompt(true);
+  syncStartFramePrompt();
   await syncCharacterReferenceSelector(await getMiaRefs());
   await syncVideoCharacterSelector(await getMiaRefs());
   // Restore dependent character/reference state after the selectors exist.
