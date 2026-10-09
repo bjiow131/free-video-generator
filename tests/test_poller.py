@@ -301,7 +301,7 @@ def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch)
             self.published = (task_id, result)
             return "result-commit"
     client = FakeClient()
-    monkeypatch.setattr(poller.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(poller, "sys", SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: False)))
     monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
     ran = []
     monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
