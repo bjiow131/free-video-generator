@@ -11,6 +11,7 @@ import json
 import os
 from typing import Any
 from urllib.parse import quote
+import re
 
 import requests
 
@@ -45,8 +46,8 @@ class QueueConfig:
         token = os.environ.get("LOCAL_AGENT_GITHUB_TOKEN", "").strip()
         ref = os.environ.get("LOCAL_AGENT_GITHUB_REF", "main").strip() or "main"
         path = os.environ.get("LOCAL_AGENT_GITHUB_MANIFEST", "queue/desired_task.json").strip()
-        if not repository or "/" not in repository or repository.startswith("/") or repository.endswith("/"):
-            raise QueueConfigurationError("Set LOCAL_AGENT_GITHUB_REPO to owner/private-repo.")
+        if not repository or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+            raise QueueConfigurationError("Set LOCAL_AGENT_GITHUB_REPO to owner/private-repo using only GitHub name characters.")
         if not token:
             raise QueueConfigurationError("GitHub token is not configured.")
         if not path or path.startswith("/") or ".." in path.split("/"):
