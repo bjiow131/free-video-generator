@@ -203,3 +203,10 @@ EXECUTION LOG — 2026-10-09 (local-first migration pass)
 - Follow-up 2026-10-09: hardened start_windows.bat with a bounded readiness loop and updated .github/workflows/server-test.yml to run on feature/** pushes and assert the new launcher contract.
 - Evidence: source files updated on feature/local-first-migration; GitHub workflow run result not yet available. Static source edits are not a Windows runtime PASS.
 - Next: inspect current branch CI once available; continue Render/config/deployment inventory and test launcher behavior on Windows when the computer is available.
+
+[FIXED] M14. Added setup_windows.bat to check Python 3.10+, FFmpeg/ffprobe, create .venv if absent, and install requirements. Windows execution remains NOT RUN.
+[FIXED] M15. Updated README Windows steps to run setup_windows.bat before start_windows.bat and corrected API-key/startup wording.
+[PLAN] M16. Add/verify port-conflict detection and robust child-process stop/cleanup after Windows runtime testing identifies the safest approach.
+
+- Follow-up 2026-10-09: added setup_windows.bat; updated README Windows first-run instructions; expanded the workflow's static contract check for setup script and added setup_windows.bat to both PR and feature-branch push path filters.
+- Runtime status remains NOT RUN. No Windows environment was available, and no CI result is asserted.
