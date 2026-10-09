@@ -150,15 +150,43 @@ def _save_state(data: dict[str, Any]) -> None:
 
 
 def classify_manifest(state: dict[str, Any], task_id: str, manifest_sha: str) -> str:
-    """Classify mailbox state without allowing a reused task ID to execute twice."""
-    previous_id = state.get("last_task_id")
-    previous_sha = state.get("manifest_sha")
-    if task_id != previous_id:
-        return "new"
-    if manifest_sha == previous_sha:
-        return "same"
-    return "reused_id"
+    """Classify mailbox content with bounded, persistent task-ID idempotency."""
+    processed = state.get("processed_tasks", {})
+    if not isinstance(processed, dict):
+        processed = {}
+    record = processed.get(task_id)
+    if isinstance(record, dict):
+        if manifest_sha == record.get("manifest_sha") or manifest_sha == record.get("rejected_sha"):
+            return "same"
+        return "reused_id"
+    # Migrate old state files safely.
+    if task_id == state.get("last_task_id"):
+        if manifest_sha == state.get("manifest_sha"):
+            return "same"
+        return "reused_id"
+    return "new"
 
+
+def _remember_manifest(
+    state: dict[str, Any], task_id: str, manifest_sha: str, *, rejected: bool = False
+) -> dict[str, Any]:
+    """Persist bounded task identity history; task IDs are immutable."""
+    processed = state.get("processed_tasks", {})
+    if not isinstance(processed, dict):
+        processed = {}
+    record = processed.get(task_id)
+    if not isinstance(record, dict):
+        record = {"manifest_sha": manifest_sha}
+    elif rejected:
+        record = {**record, "rejected_sha": manifest_sha}
+    processed[task_id] = record
+    # Keep newest 200 IDs so state cannot grow without bound.
+    processed = dict(list(processed.items())[-200:])
+    return {
+        "last_task_id": task_id,
+        "manifest_sha": manifest_sha,
+        "processed_tasks": processed,
+    }
 
 def _not_expired(task: Any) -> bool:
     try:
@@ -277,7 +305,8 @@ def main() -> int:
                 if decision == "new":
                     _run_one(client, task)
                     last_seen, last_sha = task.task_id, manifest_sha
-                    _save_state({"last_task_id": last_seen, "manifest_sha": last_sha})
+                    state = _remember_manifest(state, last_seen, last_sha)
+                    _save_state(state)
                 elif decision == "reused_id":
                     # Task IDs are immutable. A changed manifest with the same ID
                     # is rejected, never silently re-executed.
@@ -287,7 +316,8 @@ def main() -> int:
                         "reason": "task_id_reused_with_different_manifest",
                     })
                     last_sha = manifest_sha
-                    _save_state({"last_task_id": last_seen, "manifest_sha": last_sha})
+                    state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
+                    _save_state(state)
             backoff = interval
             time.sleep(interval)
         except KeyboardInterrupt:
