@@ -443,3 +443,43 @@ def test_os_project_lock_rejects_second_owner_and_releases(tmp_path):
 
     second = LocalProjectRunner._acquire_process_lock(lock_path)
     LocalProjectRunner._release_process_lock(second)
+
+@pytest.mark.asyncio
+async def test_runner_rejects_checkpoint_store_bound_to_another_workspace(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    foreign_store = CheckpointStore(tmp_path / "foreign-workspace", manifest.project_id)
+    runner = LocalProjectRunner(workspace, foreign_store, FakeBackend(), FakeMedia())
+
+    with pytest.raises(ValueError, match="CheckpointStore root must match"):
+        await runner.run(manifest)
+
+    assert foreign_store.load() is None
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_backend_video_path_outside_project(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"outside-video")
+
+    class EscapingBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            self.calls.append(kwargs)
+            Path(kwargs["output_path"]).parent.mkdir(parents=True, exist_ok=True)
+            Path(kwargs["output_path"]).write_bytes(b"generated-video")
+            return str(outside)
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, EscapingBackend(), FakeMedia())
+    state = await runner.run(manifest)
+
+    assert state["status"] == "failed"
+    assert "Backend video path resolves outside" in state["error"]
+    assert state["scenes"]["s1"]["status"] == "failed"
+
