@@ -118,7 +118,12 @@ class FFmpegMediaTools:
 
     @staticmethod
     def _stream_signature(data: dict[str, Any]) -> tuple[Any, ...]:
-        streams = data["streams"]
+        raw_streams = data.get("streams")
+        if not isinstance(raw_streams, list):
+            raise MediaError("ffprobe response has no valid stream metadata")
+        if any(not isinstance(stream, dict) for stream in raw_streams):
+            raise MediaError("ffprobe returned malformed stream metadata")
+        streams = raw_streams
         videos = [s for s in streams if s.get("codec_type") == "video"]
         audios = [s for s in streams if s.get("codec_type") == "audio"]
         if len(videos) != 1 or len(audios) > 1:
