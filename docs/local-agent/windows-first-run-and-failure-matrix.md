@@ -4,12 +4,12 @@ This is an implementation checklist, not a claim that a real Windows smoke test 
 
 ## Safe first setup
 
-1. Install Python 3.11+ and Blender from their official sources. Install Git if you want the agent to apply reviewed Git patches. The script does not download or silently install these tools.
+1. Install Git and Python 3.11+ from their official sources. Obtain this branch with `git clone --branch feature/local-first-migration https://github.com/bjiow131/free-video-generator.git`, then run commands from the cloned repository folder. If you use a ZIP instead, Git-based patch application will remain unavailable until you make a proper clone. Install Blender separately; the setup script does not download or silently install these tools.
 2. Use a **dedicated PRIVATE GitHub mailbox repository**. Do not use a public source-code repository as the mailbox: the transport deliberately refuses public repositories.
 3. Give a fine-grained GitHub token access to that private mailbox repository only, with Contents read/write. Store it in Windows Credential Manager using `python -m local_agent.credentials_cli set`; never put it in task JSON, source code, chat, or a committed .env file.
 4. Run `powershell -ExecutionPolicy Bypass -File .\scripts\windows\setup_local_agent.ps1` from the checked-out source repository.
 5. Review the diagnostic output and focused tests. Do not start polling if tests fail, the mailbox is public, the token is unconfigured, or the manifest format is invalid.
-6. Configure `queue/desired_task.json` in the private mailbox with a valid, short-lived task ID that has never been used before. First task should be a non-destructive `doctor` or `status` check. The agent asks for local approval before running a task.
+6. Configure `queue/desired_task.json` in the private mailbox with a valid, short-lived task ID that has never been used before. Use the exact sample and timestamp rules in [the private mailbox task template](private-mailbox-task-template.md). First task should be the non-destructive `preflight` check. The agent asks for local approval before running a task.
 
 The setup script stores only non-secret configuration as Windows user environment variables. It creates an isolated `.venv` and a workspace outside the source checkout. It does not install Blender, open firewall ports, enable remote desktop, create a service, or start at Windows login.
 
