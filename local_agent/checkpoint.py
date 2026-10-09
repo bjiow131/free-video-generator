@@ -21,7 +21,12 @@ class CheckpointStore:
     def __init__(self, workspace: str | os.PathLike[str], project_id: str):
         if not isinstance(project_id, str) or not _SAFE_PROJECT_ID.fullmatch(project_id):
             raise ValueError("Invalid project_id")
-        self.root = pathlib.Path(workspace).resolve() / project_id
+        workspace_root = pathlib.Path(workspace).resolve()
+        candidate_root = workspace_root / project_id
+        resolved_root = candidate_root.resolve()
+        if not resolved_root.is_relative_to(workspace_root):
+            raise ValueError("Project checkpoint directory resolves outside the configured workspace")
+        self.root = resolved_root
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "checkpoint.json"
         self.events_path = self.root / "events.jsonl"
