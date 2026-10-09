@@ -35,8 +35,17 @@ class CheckpointStore:
         with self._locks_guard:
             self._lock = self._path_locks.setdefault(lock_key, RLock())
 
+    @staticmethod
+    def _reject_symlink(path: pathlib.Path, label: str) -> None:
+        # Checkpoint and event files must remain regular files inside the
+        # project directory; following a pre-planted symlink could read or
+        # append data outside the configured workspace.
+        if path.is_symlink():
+            raise ValueError(f"{label} must not be a symlink")
+
     def load(self) -> dict[str, Any] | None:
         with self._lock:
+            self._reject_symlink(self.path, "Checkpoint file")
             if not self.path.exists():
                 return None
             try:
@@ -150,6 +159,7 @@ class CheckpointStore:
     def event(self, name: str, payload: dict[str, Any] | None = None) -> None:
         record = {"timestamp": self._now(), "event": name, "payload": payload or {}}
         with self._lock:
+            self._reject_symlink(self.events_path, "Event log")
             # Keep bounded local diagnostics: current log plus two rotated files.
             max_log_bytes = 5 * 1024 * 1024
             if self.events_path.exists() and self.events_path.stat().st_size >= max_log_bytes:
