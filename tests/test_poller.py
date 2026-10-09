@@ -17,3 +17,14 @@ def test_not_expired_rejects_expired_timestamp():
 
 def test_not_expired_rejects_timestamp_without_timezone():
     assert not _not_expired(SimpleNamespace(expires_at="2026-10-09T12:00:00"))
+
+
+
+def test_blender_preview_is_blocked_without_local_configuration(monkeypatch):
+    from local_agent.poller import _run_blender_forest_preview
+
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
+    result = _run_blender_forest_preview({"project_name": "mia"})
+    assert result["status"] == "blocked"
+    assert result["remote_paths_or_commands_accepted"] is False
