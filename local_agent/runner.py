@@ -213,7 +213,7 @@ class LocalProjectRunner:
                     continue
 
             if not previous_frame or not os.path.isfile(previous_frame):
-                state["status"] = "paused"
+                state["status"] = "failed"
                 state["error"] = f"Scene {index} is blocked: previous final frame is missing"
                 self.store.update_scene(state, scene.scene_id, status="failed", error=state["error"])
                 self.store.save(state)
@@ -249,14 +249,37 @@ class LocalProjectRunner:
                         duration_seconds=scene.duration_seconds,
                         aspect_ratio=scene.aspect_ratio, output_path=video_path,
                     )
+                    # A pause requested during generation takes effect after the
+                    # current backend call returns; cancellation takes precedence.
+                    await self._pause.wait()
+                    if self._cancel.is_set():
+                        self.store.update_scene(state, scene.scene_id, status="cancelled", error="Cancelled after generation returned")
+                        state["status"] = "cancelled"
+                        state["error"] = "Cancelled after generation returned"
+                        self.store.save(state)
+                        self.store.event("project_cancelled", {"scene_id": scene.scene_id, "phase": "post_generation"})
+                        return state
                     if not returned_path or not os.path.isfile(returned_path):
                         raise RuntimeError("Backend returned no readable video file")
                     self.store.update_scene(state, scene.scene_id, status="validating")
                     self.media.validate_video(returned_path, scene.duration_seconds)
                     extracted = self.media.extract_last_frame(returned_path, frame_path)
+                    if self._cancel.is_set():
+                        self.store.update_scene(state, scene.scene_id, status="cancelled", error="Cancelled during frame extraction")
+                        state["status"] = "cancelled"
+                        state["error"] = "Cancelled during frame extraction"
+                        self.store.save(state)
+                        self.store.event("project_cancelled", {"scene_id": scene.scene_id, "phase": "frame_extraction"})
+                        return state
                     if not extracted or not os.path.isfile(extracted):
                         raise RuntimeError("Final frame extraction returned no readable image")
                     self.media.validate_image(extracted)
+                    if self._cancel.is_set():
+                        self.store.update_scene(state, scene.scene_id, status="cancelled", error="Cancelled after frame validation")
+                        state["status"] = "cancelled"
+                        state["error"] = "Cancelled after frame validation"
+                        self.store.save(state)
+                        return state
                     self.store.update_scene(
                         state, scene.scene_id, status="completed",
                         video_path=returned_path, final_frame_path=extracted,
@@ -306,9 +329,22 @@ class LocalProjectRunner:
             self.store.save(state)
             return state
 
+        await self._pause.wait()
+        if self._cancel.is_set():
+            state["status"] = "cancelled"
+            state["error"] = "Cancelled before final assembly"
+            self.store.save(state)
+            self.store.event("project_cancelled", {"phase": "before_assembly"})
+            return state
         final_path = str(project_dir / manifest.output_name)
         try:
             assembled = self.media.concatenate(video_paths, final_path)
+            if self._cancel.is_set():
+                state["status"] = "cancelled"
+                state["error"] = "Cancelled during final assembly"
+                self.store.save(state)
+                self.store.event("project_cancelled", {"phase": "assembly"})
+                return state
             if not assembled or not os.path.isfile(assembled) or os.path.getsize(assembled) == 0:
                 raise RuntimeError("Final video assembly returned no valid file")
             self.media.validate_video(assembled, sum(scene.duration_seconds for scene in manifest.scenes))
