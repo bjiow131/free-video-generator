@@ -101,7 +101,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         if len(json.dumps(args["story_plan"], ensure_ascii=False).encode("utf-8")) > 48_000:
             raise ProtocolError("Story plan exceeds the 48 KB limit.")
         plan = args["story_plan"]
-        if plan.get("schema_version") != 1:
+        if isinstance(plan.get("schema_version"), bool) or not isinstance(plan.get("schema_version"), int) or plan.get("schema_version") != 1:
             raise ProtocolError("Unsupported story plan schema_version.")
         project_name = plan.get("project_name")
         if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
