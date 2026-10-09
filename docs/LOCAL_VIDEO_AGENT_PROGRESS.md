@@ -18,6 +18,7 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 - Hardened `local_agent/checkpoint.py`: unsupported/corrupt checkpoint shapes and changed manifests are rejected rather than silently resumed; checkpoint locks are shared across store instances in one process.
 - Fixed runner recovery so a completed scene whose stored media fails revalidation is invalidated and regenerated instead of aborting before the retry path.
 - Runner exceptions during setup now persist a terminal `failed` state when possible; explicit asyncio task cancellation persists `cancelled` and is re-raised to the caller.
+- A pause requested during generation takes effect when the active backend call returns, before validation proceeds. Cooperative cancellation requests are checked at generation, frame-extraction and assembly boundaries; they do not forcibly terminate a backend's native operation mid-call.
 - Permanent media-validation and input errors do not consume the retry loop. Scene attempt budgets are total per scene across resumes, not reset on each invocation.
 - A scene exhausted by retries is now marked `failed` rather than `paused`, and the runner never advances beyond it.
 - Added an ownership-token runner lock file with PID checks to reject concurrent execution of the same project across processes; the lock is released only when its token matches. Stale dead-PID locks are reclaimed, while malformed/unverifiable locks fail closed.
@@ -54,7 +55,7 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 
 ## Known next engineering items
 
-- Add direct checkpoint version/recovery tests and exercise pause/cancel/restart semantics under a real Python runtime.
+- Add direct checkpoint version/recovery tests and execute pause/cancel/restart regression tests under CI or a local Python runtime.
 - Test cross-process locking on Windows, including PID reuse and stale lock recovery; current lock strategy has not been executed on Windows.
 - Decide whether to use Wan2GP's documented in-process Python API or its inspected local Gradio API only after comparing against the installed version.
 - Implement and test the Windows-local service only after the runner state machine and backend contract are reliable.
