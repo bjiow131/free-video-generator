@@ -105,7 +105,7 @@ One-click launch, operate entirely in the browser. Interface available in **Russ
 ### Prerequisites
 
 - Python 3.10+
-- ffmpeg (for video concatenation and audio processing)
+- FFmpeg and ffprobe (for video processing, validation, and assembly)
 
 That's it. No GPU, no large RAM, a regular laptop is all you need.
 
