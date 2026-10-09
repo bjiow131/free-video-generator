@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 BASE_URL = os.environ.get("AGNES_BASE_URL", "https://apihub.agnes-ai.com/v1").rstrip("/")
 API_ROOT = BASE_URL.rsplit("/v1", 1)[0] if "/v1" in BASE_URL else "https://apihub.agnes-ai.com"
 
-DEFAULT_MODEL = os.environ.get("AGNES_VIDEO_MODEL", "agnes-video-2.5-flash")
 LEGACY_MODEL = "agnes-video-v2.0"
 MODERN_MODELS = frozenset({"agnes-video-2.5-flash", "agnes-video-2.5"})
+_configured_model = os.environ.get("AGNES_VIDEO_MODEL", "agnes-video-2.5-flash").strip()
+_allow_legacy_model = os.environ.get("AGNES_ALLOW_LEGACY_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
+DEFAULT_MODEL = _configured_model if (_configured_model in MODERN_MODELS or (_configured_model == LEGACY_MODEL and _allow_legacy_model)) else "agnes-video-2.5-flash"
 
 DURATION_PRESETS = {
     5: (121, 24),
