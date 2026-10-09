@@ -220,7 +220,7 @@ def main() -> int:
         "report_path": str(report_path) if report_path else None,
         "note": "Report remains local. No upload or remote control is enabled.",
     }, ensure_ascii=False, indent=2))
-    return 0 if status_value not in {"failed", "error", "timeout", "blocked"} else 1
+    return 0 if status_value not in {"failed", "error", "timeout", "blocked", "needs_setup"} else 1
 
 
 if __name__ == "__main__":
