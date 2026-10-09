@@ -54,3 +54,19 @@ Do not upload the inspector output publicly if it contains private local directo
 - FFmpeg adapter: added on `feature/local-video-agent`; subprocess behavior has mock-based tests authored, but tests have not been executed in this environment.
 - Real FFmpeg media validation and end-to-end generation: not executed.
 - No changes merged to `main`; no Render deployment.
+
+
+## Local proof-of-concept handoff
+
+Before adapter implementation, the Windows machine must provide the installed Wan2GP repository revision and the Python environment used to launch it. Do not install or run Wan2GP inside the hosted Render process.
+
+Once Windows is available:
+
+1. From the existing Wan2GP installation directory, capture the commit/version with `git rev-parse HEAD` (if it is a Git checkout) and the launch command currently used.
+2. Start Wan2GP without public-listen/share options. Keep its interface bound to loopback.
+3. From the agent repository's Python environment, run `python scripts/inspect_wan2gp_api.py --url http://127.0.0.1:7860` only after confirming the actual port from the local startup output.
+4. Save the inspector's text output locally and provide only the relevant endpoint names, component types/labels and version details. Redact personal directory names if necessary; do not send credentials or tokens.
+5. Manually generate one short I2V clip and confirm where Wan2GP reports the resulting MP4. This verifies the installed build's actual output behavior.
+6. Only after these observations, implement a thin adapter and run the two-scene test: scene 2's input must be the validated final frame extracted from scene 1.
+
+Do not add a local HTTP service or Render pairing before this local two-scene proof succeeds. The runner's new lock and example manifests are still unexecuted code and are not evidence of end-to-end readiness.
