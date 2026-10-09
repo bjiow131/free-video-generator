@@ -5,9 +5,9 @@ import asyncio
 import hashlib
 import os
 import json
-import uuid
 from pathlib import Path
 from threading import Lock
+from typing import Any
 from typing import Protocol
 
 from local_agent.checkpoint import CheckpointStore
@@ -75,9 +75,9 @@ class LocalProjectRunner:
                 raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
             _ACTIVE_PROJECTS.add(key)
         lock_path = self.store.root / ".runner.lock"
-        lock_token = uuid.uuid4().hex
+        lock_handle = None
         try:
-            self._acquire_process_lock(lock_path, lock_token)
+            lock_handle = self._acquire_process_lock(lock_path)
             try:
                 return await self._run_project(manifest)
             except asyncio.CancelledError:
@@ -88,8 +88,10 @@ class LocalProjectRunner:
                 # a checkpoint write, or an unexpected adapter operation fails.
                 self._persist_terminal_state("failed", f"{type(exc).__name__}: {exc}"[:2000])
                 raise
+            finally:
+                if lock_handle is not None:
+                    self._release_process_lock(lock_handle)
         finally:
-            self._release_process_lock(lock_path, lock_token)
             with _ACTIVE_PROJECTS_LOCK:
                 _ACTIVE_PROJECTS.discard(key)
 
@@ -108,45 +110,43 @@ class LocalProjectRunner:
             pass
 
     @staticmethod
-    def _acquire_process_lock(lock_path: Path, token: str) -> None:
-        payload = json.dumps({"pid": os.getpid(), "token": token})
-        for _ in range(2):
-            try:
-                descriptor = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                    stream.write(payload)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                return
-            except FileExistsError:
-                try:
-                    owner = json.loads(lock_path.read_text(encoding="utf-8"))
-                    pid = owner.get("pid")
-                    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
-                        raise RuntimeError("Project lock is malformed; inspect/remove it only after confirming no runner is active")
-                    try:
-                        os.kill(pid, 0)
-                    except ProcessLookupError:
-                        # A dead owner is verified; retry exclusive creation once.
-                        lock_path.unlink(missing_ok=True)
-                        continue
-                    except PermissionError:
-                        # Fail closed: the process exists but cannot be inspected.
-                        pass
-                    raise RuntimeError(f"Project is locked by process {pid}; refusing concurrent execution")
-                except (OSError, json.JSONDecodeError, AttributeError) as exc:
-                    raise RuntimeError("Project lock cannot be verified; refusing concurrent execution") from exc
-        raise RuntimeError("Could not acquire project execution lock")
+    def _acquire_process_lock(lock_path: Path) -> Any:
+        """Acquire a kernel-managed, non-blocking lock released automatically on process exit."""
+        stream = lock_path.open("a+b")
+        try:
+            # Windows byte-range locks require at least one byte. Concurrent writes
+            # of this sentinel are harmless; the lock itself arbitrates ownership.
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"\\0")
+                stream.flush()
+            stream.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return stream
+        except (OSError, BlockingIOError) as exc:
+            stream.close()
+            raise RuntimeError("Project is locked by another process; refusing concurrent execution") from exc
+        except BaseException:
+            stream.close()
+            raise
 
     @staticmethod
-    def _release_process_lock(lock_path: Path, token: str) -> None:
+    def _release_process_lock(stream: Any) -> None:
         try:
-            owner = json.loads(lock_path.read_text(encoding="utf-8"))
-            if owner.get("token") == token:
-                lock_path.unlink(missing_ok=True)
-        except (OSError, json.JSONDecodeError, AttributeError):
-            # Never delete a lock whose ownership cannot be verified.
-            pass
+            stream.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        finally:
+            stream.close()
 
     async def _run_project(self, manifest: ProjectManifest) -> dict:
         state = self.store.initialize(manifest.to_dict())
