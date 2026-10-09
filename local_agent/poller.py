@@ -1,8 +1,8 @@
-"""Interactive GitHub mailbox poller for bounded diagnostic tasks.
+"""Interactive GitHub mailbox poller for bounded diagnostics and reviewed patches.
 
-This is an initial poll-loop implementation, not a general coding agent.
-Code edits and service-control operations remain unsupported until separately
-implemented and reviewed.
+This is an initial, single-agent prototype. It is not a general coding agent:
+it supports fixed diagnostics and a bounded git patch after local approval.
+Service start/stop/backup operations are not implemented.
 """
 from __future__ import annotations
 
