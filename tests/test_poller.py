@@ -309,3 +309,77 @@ def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch)
     assert ran == []
     assert client.published[1]["status"] == "blocked"
     assert client.published[1]["reason"] == "local_console_approval_required_but_no_interactive_console"
+
+
+def test_failed_task_writes_report_and_notifies_user(monkeypatch, tmp_path):
+    from local_agent import poller
+    from types import SimpleNamespace
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="diagnostic-fail-104",
+        operation="doctor",
+        expires_at=future,
+        arguments={},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        published = None
+
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+
+    client = FakeClient()
+    report = tmp_path / "report.json"
+    notifications = []
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "failed", "reason": "test_failure"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: report)
+    monkeypatch.setattr(poller, "notify_user", lambda **kwargs: notifications.append(kwargs) or True)
+
+    poller._run_one(client, task, "manifest-sha")
+
+    assert client.published[0] == task.task_id
+    assert client.published[1]["status"] == "failed"
+    assert client.published[1]["local_report_path"].endswith("report.json")
+    assert len(notifications) == 1
+    assert task.task_id in notifications[0]["title"]
+    assert ".local_agent/reports" in notifications[0]["message"]
+
+
+def test_report_survives_github_publication_failure(monkeypatch, tmp_path):
+    from local_agent import poller
+    from local_agent.github_queue import QueueTransportError
+    from types import SimpleNamespace
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="diagnostic-fail-105",
+        operation="doctor",
+        expires_at=future,
+        arguments={},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            raise QueueTransportError("network unavailable")
+
+    report = tmp_path / "retained-report.json"
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "failed", "reason": "test_failure"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: report)
+    monkeypatch.setattr(poller, "notify_user", lambda **kwargs: True)
+
+    poller._run_one(FakeClient(), task, "manifest-sha")
+
+    # The local report was generated before the network publication attempt.
+    assert report.parent == tmp_path
