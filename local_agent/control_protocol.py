@@ -11,7 +11,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch"})
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 
@@ -30,7 +30,7 @@ class TaskEnvelope:
     arguments: dict[str, Any]
 
 
-def parse_task(raw: str, *, max_bytes: int = 16_384) -> TaskEnvelope:
+def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
     """Parse a bounded JSON task and reject unknown fields/operations."""
     if not isinstance(raw, str) or len(raw.encode("utf-8")) > max_bytes:
         raise ProtocolError("Task payload is missing or exceeds the size limit.")
@@ -59,8 +59,26 @@ def parse_task(raw: str, *, max_bytes: int = 16_384) -> TaskEnvelope:
         raise ProtocolError("All remote tasks must require local approval in the initial protocol.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
-    if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 8_192:
+    if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
         raise ProtocolError("Task arguments exceed the size limit.")
+
+    if value["operation"] == "apply_patch":
+        patch = value["arguments"].get("patch")
+        if set(value["arguments"]) != {"patch"} or not isinstance(patch, str):
+            raise ProtocolError("apply_patch requires exactly one string field named patch.")
+        if len(patch.encode("utf-8")) > 40_000 or not patch.startswith("diff --git "):
+            raise ProtocolError("Patch is missing a git diff header or exceeds the size limit.")
+        for line in patch.splitlines():
+            if line.startswith("diff --git "):
+                parts = line.split()
+                if len(parts) != 4:
+                    raise ProtocolError("Malformed git diff header.")
+                for path in parts[2:]:
+                    normalized = path[2:] if path.startswith(("a/", "b/")) else path
+                    if normalized.startswith(("/", "\\\\")) or ":" in normalized or ".." in normalized.split("/"):
+                        raise ProtocolError("Patch contains an unsafe path.")
+                    if normalized == ".git" or normalized.startswith(".git/"):
+                        raise ProtocolError("Patch may not modify Git metadata.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
