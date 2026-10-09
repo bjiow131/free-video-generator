@@ -52,8 +52,25 @@ class CheckpointStore:
                     or data.get("schema_version") != 1
                     or not isinstance(data.get("scenes"), dict)
                     or not isinstance(data.get("manifest"), dict)
-                    or not isinstance(data.get("project_id"), str)):
+                    or not isinstance(data.get("project_id"), str)
+                    or not _SAFE_PROJECT_ID.fullmatch(data.get("project_id", ""))):
                 raise ValueError("Checkpoint is malformed or uses an unsupported schema")
+            if data["manifest"].get("project_id") != data["project_id"]:
+                raise ValueError("Checkpoint manifest/project_id mismatch")
+            if data.get("status") not in {"queued", "running", "paused", "completed", "failed", "cancelled"}:
+                raise ValueError("Checkpoint contains an invalid project status")
+            for scene_id, scene in data["scenes"].items():
+                if not isinstance(scene_id, str) or not isinstance(scene, dict):
+                    raise ValueError("Checkpoint contains a malformed scene entry")
+                if scene.get("status") not in ALLOWED_SCENE_STATES:
+                    raise ValueError(f"Checkpoint scene {scene_id!r} has an invalid status")
+                attempts = scene.get("attempts")
+                if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 0:
+                    raise ValueError(f"Checkpoint scene {scene_id!r} has invalid attempts")
+                for field in ("video_path", "final_frame_path", "video_sha256", "frame_sha256", "input_frame_sha256", "error"):
+                    value = scene.get(field)
+                    if value is not None and not isinstance(value, str):
+                        raise ValueError(f"Checkpoint scene {scene_id!r} has invalid {field}")
             return data
 
     def initialize(self, manifest: dict[str, Any]) -> dict[str, Any]:
