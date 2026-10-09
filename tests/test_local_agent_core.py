@@ -537,3 +537,51 @@ def test_checkpoint_rejects_invalid_persisted_state(tmp_path, mutation, match):
     with pytest.raises(ValueError, match=match):
         store.load()
 
+@pytest.mark.asyncio
+async def test_runner_rejects_scene_output_symlink_before_backend_writes(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    project_dir = workspace / manifest.project_id
+    scene_dir = project_dir / "s1"
+    scene_dir.mkdir(parents=True)
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"preserve-me")
+    try:
+        (scene_dir / "attempt_01.mp4").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("File symlinks are not available in this environment")
+
+    backend = FakeBackend()
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, backend, FakeMedia())
+    with pytest.raises(ValueError, match="Backend output target resolves outside"):
+        await runner.run(manifest)
+
+    assert backend.calls == []
+    assert outside.read_bytes() == b"preserve-me"
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_final_output_symlink_before_assembly(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    project_dir = workspace / manifest.project_id
+    project_dir.mkdir(parents=True)
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"preserve-me")
+    try:
+        (project_dir / manifest.output_name).symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("File symlinks are not available in this environment")
+
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, FakeBackend(), FakeMedia())
+    with pytest.raises(ValueError, match="Final video target resolves outside"):
+        await runner.run(manifest)
+
+    assert outside.read_bytes() == b"preserve-me"
+
