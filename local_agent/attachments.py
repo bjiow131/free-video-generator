@@ -48,12 +48,13 @@ def _remote_path(value: str) -> str:
     """Accept only a relative POSIX path inside inbox/attachments/."""
     if not isinstance(value, str) or "\\" in value or value.startswith("/"):
         raise AttachmentExchangeError("Invalid remote attachment path.")
-    path = PurePosixPath(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    raw_parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
         raise AttachmentExchangeError("Invalid remote attachment path.")
-    if len(path.parts) < 3 or path.parts[:2] != ("inbox", "attachments"):
+    path = PurePosixPath(value)
+    if path.is_absolute() or len(raw_parts) < 3 or tuple(raw_parts[:2]) != ("inbox", "attachments"):
         raise AttachmentExchangeError("Remote path must be inside inbox/attachments/.")
-    if Path(path.name).suffix.lower() not in ALLOWED_SUFFIXES:
+    if Path(raw_parts[-1]).suffix.lower() not in ALLOWED_SUFFIXES:
         raise AttachmentExchangeError("File type is not allowed for exchange.")
     return path.as_posix()
 
