@@ -21,7 +21,7 @@ on:
       - "README.md"
       - ".github/workflows/server-test.yml"
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
     paths:
       - "server.py"
       - "requirements.txt"
@@ -101,6 +101,9 @@ jobs:
               '.venv\\Scripts\\python.exe',
               'server.py',
               'where ffmpeg',
+              'WAIT_ATTEMPTS',
+              'startup_failed',
+              'curl -fsS --max-time 2',
           ]
           missing = [item for item in required if item not in bat]
           if missing:
@@ -135,7 +138,7 @@ jobs:
             echo "| Regression tests | $TESTS |"
             echo "| Docker build | $DOCKER |"
             echo "| Web UI syntax | $WEB_UI |"
-            echo "| Windows launcher contract | $WINDOWS_LAUNCHER |"
+            echo "| Windows launcher static contract | $WINDOWS_LAUNCHER |"
             echo
             echo "This workflow checks the Linux CI environment. It does not replace runtime verification on Windows or real FFmpeg/media fixtures."
           } >> "$GITHUB_STEP_SUMMARY"
