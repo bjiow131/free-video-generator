@@ -7,7 +7,7 @@ This is the first local automation milestone for the Mia 3D-animation workflow. 
 - Launches the explicitly configured local Blender executable in background mode.
 - Creates a simple low-poly forest environment, winding path, lighting and a vertical 9:16 camera.
 - Saves `forest_starter.blend` and, unless disabled, renders `forest_preview.png`.
-- Validates the project name, keeps output inside the configured workspace, uses a fixed built-in Python scene script, and does not execute arbitrary code from prompts or mailbox attachments.
+- Validates the project name, keeps output inside the configured workspace, uses a fixed built-in Python scene script, and does not execute arbitrary code from prompts or mailbox attachments. It refuses to replace its known output files unless `--overwrite` is explicitly supplied.
 - Limits task execution time and checks Blender's exit code and output files.
 
 ## What it does not do yet
@@ -47,3 +47,6 @@ python -m local_agent.blender_cli --project mia_forest --no-render
 - Only the named task `forest-preview` is accepted; the bridge is not a general-purpose remote Python executor.
 - Do not place tokens, private reference images, or generated character assets in the public project repository.
 - Unit tests mock the Blender process; they verify validation and output handling but **do not prove** that Blender launches or renders correctly on Windows. A real local smoke test is still required.
+
+
+If you intentionally want to regenerate the same project and replace the bridge's three known outputs, pass `--overwrite`. Without that flag, existing outputs are left untouched.
