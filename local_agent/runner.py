@@ -42,8 +42,8 @@ class LocalProjectRunner:
         self, workspace: str | os.PathLike[str], store: CheckpointStore,
         backend: VideoBackend, media: MediaTools, *, max_attempts: int = 2,
     ):
-        if max_attempts < 1 or max_attempts > 10:
-            raise ValueError("max_attempts must be between 1 and 10")
+        if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 10:
+            raise ValueError("max_attempts must be an integer between 1 and 10")
         self.workspace = Path(workspace).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.store = store

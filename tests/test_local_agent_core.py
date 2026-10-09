@@ -39,6 +39,14 @@ class FakeMedia:
         return output_path
 
 
+@pytest.mark.parametrize("max_attempts", [0, -1, 11, True, 2.5, "2"])
+def test_runner_rejects_invalid_attempt_budget(tmp_path, max_attempts):
+    workspace = tmp_path / "workspace"
+    store = CheckpointStore(workspace, "attempt-test")
+    with pytest.raises(ValueError, match="max_attempts must be an integer between 1 and 10"):
+        LocalProjectRunner(workspace, store, FakeBackend(), FakeMedia(), max_attempts=max_attempts)
+
+
 def sample_manifest(start_image):
     return ProjectManifest.from_dict({
         "project_id": "test-project",
