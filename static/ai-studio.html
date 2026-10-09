@@ -726,13 +726,23 @@ async function extractRecoveryVideoFrame(){
           let settled=false;
           const timer=setTimeout(()=>finish(reject,new Error('Истекло время ожидания декодирования кадра')),10000);
           const finish=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);video.onseeked=null;fn(value)};
-          video.onseeked=()=>{
+          video.onseeked=async()=>{
             if(video.readyState<2){finish(reject,new Error('Видео ещё не декодировало выбранный кадр'));return}
-            // Safari/iOS may fire seeked before decoded pixels are available.
-            if(typeof video.requestVideoFrameCallback==='function'){
-              const frameTimer=setTimeout(()=>finish(reject,new Error('Не удалось дождаться декодированного кадра')),4000);
-              video.requestVideoFrameCallback(()=>{clearTimeout(frameTimer);finish(resolve)});
-            }else{
+            // iOS Safari can report seeked while the paused frame still paints white.
+            // Briefly play the muted video so the decoder presents real pixels.
+            try{
+              await video.play();
+              if(typeof video.requestVideoFrameCallback==='function'){
+                const frameTimer=setTimeout(()=>{video.pause();finish(reject,new Error('Не удалось дождаться декодированного кадра'))},5000);
+                video.requestVideoFrameCallback(()=>{
+                  clearTimeout(frameTimer);video.pause();
+                  requestAnimationFrame(()=>finish(resolve));
+                });
+              }else{
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{video.pause();finish(resolve)}));
+              }
+            }catch(playError){
+              // If autoplay is blocked, still give Safari another paint cycle after seeking.
               requestAnimationFrame(()=>requestAnimationFrame(()=>finish(resolve)));
             }
           };
