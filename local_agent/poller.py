@@ -240,6 +240,17 @@ def _run_blender_preflight(arguments: dict[str, Any]) -> dict[str, Any]:
     return discover_blender()
 
 
+def _run_blender_open_mia_project(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Open a generated Mia project in Blender's GUI using a fixed local path."""
+    from local_agent.blender_workflow import BlenderWorkflowError, open_mia_project
+    try:
+        return open_mia_project(arguments["project_name"])
+    except BlenderWorkflowError as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
     """Create and validate the fixed Mia starter blockout using local Blender."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
@@ -344,7 +355,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -425,6 +436,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
                 details = _run_blender_mia_blockout(task.arguments)
+            elif task.operation == "blender_open_mia_project":
+                details = _run_blender_open_mia_project(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
