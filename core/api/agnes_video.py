@@ -79,7 +79,12 @@ class AgnesVideoAPI:
         retry_base_delay: float = 30.0,
     ):
         self.api_key = api_key
-        self.model = model or DEFAULT_MODEL
+        requested_model = model or DEFAULT_MODEL
+        allow_legacy = os.environ.get("AGNES_ALLOW_LEGACY_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
+        if requested_model == LEGACY_MODEL and not allow_legacy:
+            logger.warning("[AgnesVideo] Overriding stale legacy model selection %s with %s", requested_model, DEFAULT_MODEL)
+            requested_model = DEFAULT_MODEL
+        self.model = requested_model
         self.default_duration = default_duration
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
