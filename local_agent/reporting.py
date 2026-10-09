@@ -9,8 +9,12 @@ import os
 import re
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)(\s*[=:]\s*)[^\s,;]+"),
-    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/-]+=*"),
+    re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|password|passwd|secret|client[_-]?secret)(\\s*[=:]\\s*)[^\\s,;]+"),
+    re.compile(r"(?i)(authorization\\s*[=:]\\s*)(?:bearer\\s+)?[^\\s,;]+"),
+    re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/-]+=*"),
+)
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|password|passwd|secret|credential|authorization|private[_-]?key)([_-]|$)"
 )
 _HOME = str(Path.home())
 
@@ -19,7 +23,12 @@ def redact_text(value: str) -> str:
     """Redact common credential formats and the current user's home path."""
     result = value
     for pattern in _SECRET_PATTERNS:
-        result = pattern.sub(lambda m: (m.group(1) + m.group(2) + "[REDACTED]") if m.lastindex and m.lastindex >= 2 else "[REDACTED]", result)
+        result = pattern.sub(
+            lambda m: (m.group(1) + m.group(2) + "[REDACTED]")
+            if m.lastindex and m.lastindex >= 2
+            else "[REDACTED]",
+            result,
+        )
     if _HOME and len(_HOME) > 3:
         result = result.replace(_HOME, "[USER_HOME]")
     return result
@@ -52,12 +61,17 @@ def write_report(report_dir: str | Path, *, kind: str, status: str,
 
 
 def _redact_value(value: Any) -> Any:
+    """Recursively redact sensitive mapping values as well as credential strings."""
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, dict):
-        return {str(k): _redact_value(v) for k, v in value.items()}
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            safe_key = redact_text(str(key))
+            redacted[safe_key] = "[REDACTED]" if _SENSITIVE_KEY.search(str(key)) else _redact_value(item)
+        return redacted
     if isinstance(value, (list, tuple)):
-        return [_redact_value(v) for v in value]
+        return [_redact_value(item) for item in value]
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return redact_text(str(value))
