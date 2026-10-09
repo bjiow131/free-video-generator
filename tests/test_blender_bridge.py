@@ -74,3 +74,17 @@ def test_missing_preview_is_reported(tmp_path: Path) -> None:
     bridge, _ = _bridge(tmp_path, fake_run)
     with pytest.raises(BlenderBridgeError, match="preview render is missing"):
         bridge.run_task("forest_preview", project_name="forest")
+
+
+
+def test_existing_outputs_are_not_overwritten_without_explicit_opt_in(tmp_path: Path) -> None:
+    calls = []
+    bridge, workspace = _bridge(tmp_path, lambda *a, **k: calls.append(a))
+    project_dir = workspace / "mia"
+    project_dir.mkdir(parents=True)
+    original = project_dir / "forest_starter.blend"
+    original.write_bytes(b"important existing project")
+    with pytest.raises(BlenderBridgeError, match="already has generated outputs"):
+        bridge.run_task("forest_preview", project_name="mia")
+    assert original.read_bytes() == b"important existing project"
+    assert calls == []
