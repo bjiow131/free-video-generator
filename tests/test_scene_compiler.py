@@ -42,3 +42,20 @@ def test_rejects_mismatched_project_name(tmp_path:Path):
     (project/"story_plan.json").write_text(json.dumps(plan),encoding="utf-8")
     with pytest.raises(StoryCompileError,match="does not match"):
         compile_project_story(tmp_path,"mia_snail")
+
+
+def test_compiler_resolves_assets_from_local_registry(tmp_path: Path):
+    from local_agent.asset_registry import scan_project_assets
+    save_story_plan(tmp_path, sample_plan())
+    assets = tmp_path / "mia_snail" / "assets"
+    assets.mkdir(parents=True)
+    (assets / "Mia_reference_model.blend").write_bytes(b"placeholder")
+    (assets / "snail.png").write_bytes(b"placeholder")
+    scan_project_assets(tmp_path, "mia_snail")
+    result = compile_project_story(tmp_path, "mia_snail")
+    compiled = json.loads(Path(result["compiled_path"]).read_text(encoding="utf-8"))
+    resolved = {asset["name"]: asset for asset in compiled["scenes"][0]["assets"]}
+    assert resolved["snail"]["resolution_status"] == "resolved_local_file"
+    assert resolved["snail"]["path"] == "assets/snail.png"
+    assert "blender_asset_importer_required" in compiled["requirements_not_implemented"]
+    assert "asset_registry_required" not in compiled["requirements_not_implemented"]
