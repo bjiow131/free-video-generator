@@ -11,7 +11,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets"})
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
@@ -94,6 +94,10 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             if flag in args and not isinstance(args[flag], bool):
                 raise ProtocolError(f"Blender argument {flag} must be a boolean.")
 
+    if value["operation"] == "scan_project_assets":
+        args = value["arguments"]
+        if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("scan_project_assets requires only a safe project_name.")
     if value["operation"] == "compile_story_plan":
         args = value["arguments"]
         if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
