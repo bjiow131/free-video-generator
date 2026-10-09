@@ -152,6 +152,8 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
                 return
             if task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"])
+            elif task.operation == "blender_forest_preview":
+                details = _run_blender_forest_preview(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
@@ -174,7 +176,7 @@ def main() -> int:
     backoff = interval
     last_seen = _load_state().get("last_task_id")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports diagnostics and locally approved bounded patches; runtime tests remain outstanding.")
+    print("This poller supports diagnostics, reviewed patches, and locally approved Blender forest previews; runtime tests remain outstanding.")
 
     while True:
         try:
