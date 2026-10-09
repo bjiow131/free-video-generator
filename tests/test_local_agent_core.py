@@ -483,3 +483,34 @@ async def test_runner_rejects_backend_video_path_outside_project(tmp_path):
     assert "Backend video path resolves outside" in state["error"]
     assert state["scenes"]["s1"]["status"] == "failed"
 
+@pytest.mark.asyncio
+async def test_runner_discards_checkpoint_media_paths_outside_project_and_regenerates(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    outside_video = tmp_path / "outside.mp4"
+    outside_frame = tmp_path / "outside.png"
+    outside_video.write_bytes(b"untrusted-video")
+    outside_frame.write_bytes(b"untrusted-frame")
+    store = CheckpointStore(workspace, manifest.project_id)
+    state = store.initialize(manifest.to_dict())
+    state["scenes"]["s1"].update({
+        "status": "completed",
+        "video_path": str(outside_video),
+        "final_frame_path": str(outside_frame),
+        "video_sha256": "untrusted",
+        "frame_sha256": "untrusted",
+        "input_frame_sha256": "untrusted",
+    })
+    store.save(state)
+
+    backend = FakeBackend()
+    runner = LocalProjectRunner(workspace, store, backend, FakeMedia())
+    result = await runner.run(manifest)
+
+    assert result["status"] == "completed"
+    assert len(backend.calls) == 2
+    assert result["scenes"]["s1"]["video_path"] != str(outside_video)
+    assert outside_video.read_bytes() == b"untrusted-video"
+
