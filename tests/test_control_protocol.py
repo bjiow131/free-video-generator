@@ -138,3 +138,17 @@ def test_rejects_invalid_task_timestamp_windows(created_at, expires_at):
     value["expires_at"] = expires_at
     with pytest.raises(ProtocolError):
         parse_task(json.dumps(value))
+
+
+def test_remote_approval_allowed_for_typed_blender_preview():
+    value = json.loads(_task("blender_forest_preview", {"project_name": "mia"}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.requires_local_approval is False
+
+
+def test_remote_approval_rejected_for_patch_operation():
+    value = json.loads(_task("apply_patch", {"patch": "diff --git a/a.txt b/a.txt\\n"}))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
+        parse_task(json.dumps(value))
