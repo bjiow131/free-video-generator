@@ -223,7 +223,11 @@ class LocalProjectRunner:
             final_error: str | None = None
             succeeded = False
             attempt_base = int(scene_state.get("attempts", 0) or 0)
-            for retry_index in range(1, self.max_attempts + 1):
+            attempts_left = max(0, self.max_attempts - attempt_base)
+            if attempts_left == 0:
+                final_error = scene_state.get("error") or "Configured total attempt limit has already been reached"
+                self.store.update_scene(state, scene.scene_id, status="failed", error=final_error)
+            for retry_index in range(1, attempts_left + 1):
                 attempt = attempt_base + retry_index
                 if self._cancel.is_set():
                     state["status"] = "cancelled"
@@ -272,7 +276,7 @@ class LocalProjectRunner:
                 except Exception as exc:  # Validation failures are permanent; backend failures may be transient.
                     final_error = f"{type(exc).__name__}: {exc}"[:2000]
                     permanent = isinstance(exc, (MediaError, ValueError, FileNotFoundError))
-                    will_retry = retry_index < self.max_attempts and not permanent
+                    will_retry = retry_index < attempts_left and not permanent
                     self.store.update_scene(
                         state, scene.scene_id, status="retry_wait" if will_retry else "failed",
                         error=final_error,
@@ -288,7 +292,7 @@ class LocalProjectRunner:
 
             if not succeeded:
                 state["status"] = "failed"
-                state["error"] = f"Scene {index} failed after bounded attempts: {final_error}"
+                state["error"] = f"Scene {index} failed; attempts used {state['scenes'][scene.scene_id].get('attempts', 0)}/{self.max_attempts}: {final_error}"
                 self.store.save(state)
                 self.store.event("project_failed_after_scene_failure", {"scene_id": scene.scene_id, "index": index, "error": final_error})
                 return state
