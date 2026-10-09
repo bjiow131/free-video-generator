@@ -514,3 +514,23 @@ async def test_runner_discards_checkpoint_media_paths_outside_project_and_regene
     assert result["scenes"]["s1"]["video_path"] != str(outside_video)
     assert outside_video.read_bytes() == b"untrusted-video"
 
+@pytest.mark.parametrize("mutation,match", [
+    (lambda state: state.update(status="mystery"), "invalid project status"),
+    (lambda state: state["scenes"]["s1"].update(attempts=-1), "invalid attempts"),
+    (lambda state: state["scenes"]["s1"].update(status="mystery"), "invalid status"),
+])
+def test_checkpoint_rejects_invalid_persisted_state(tmp_path, mutation, match):
+    import json
+
+    store = CheckpointStore(tmp_path, "persist-test")
+    manifest = {
+        "project_id": "persist-test",
+        "scenes": [{"scene_id": "s1", "prompt": "one", "duration_seconds": 5, "aspect_ratio": "9:16"}],
+    }
+    state = store.initialize(manifest)
+    mutation(state)
+    store.path.write_text(json.dumps(state), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        store.load()
+
