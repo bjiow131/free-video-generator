@@ -705,32 +705,69 @@ async function extractRecoveryVideoFrame(){
   if(!file){toast('Сначала загрузи последнее видео');return}
   if(!file.type.startsWith('video/')&&!/\\.(mp4|mov|webm)$/i.test(file.name)){toast('Выбери видео MP4, MOV или WebM');return}
   const original=button.textContent;button.disabled=true;button.textContent='Извлекаю кадр…';
-  let objectUrl='';
+  let objectUrl='',video=null;
   try{
     objectUrl=URL.createObjectURL(file);
-    const video=document.createElement('video');video.preload='auto';video.muted=true;video.playsInline=true;video.src=objectUrl;
+    video=document.createElement('video');video.preload='auto';video.muted=true;video.playsInline=true;video.src=objectUrl;
     await new Promise((resolve,reject)=>{
-      video.onloadedmetadata=resolve;
-      video.onerror=()=>reject(new Error('Не удалось открыть видео. Попробуй MP4 или MOV из «Фото»/«Файлов».'));
+      const timer=setTimeout(()=>reject(new Error('Видео слишком долго открывается. Попробуй выбрать его ещё раз.')),15000);
+      video.onloadedmetadata=()=>{clearTimeout(timer);resolve()};
+      video.onerror=()=>{clearTimeout(timer);reject(new Error('Не удалось открыть видео. Попробуй MP4 или MOV из «Фото»/«Файлов».'))};
       video.load();
     });
     if(!Number.isFinite(video.duration)||video.duration<=0||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео не удалось определить длительность или размер кадра');
-    await new Promise((resolve,reject)=>{
-      let done=false;
-      const finish=(fn,value)=>{if(done)return;done=true;fn(value)};
-      video.onseeked=()=>video.readyState>=2?finish(resolve):finish(reject,new Error('Видео не успело декодировать финальный кадр'));
-      video.onerror=()=>finish(reject,new Error('Не удалось перейти к финальному кадру'));
-      video.currentTime=Math.max(0,video.duration-0.15);
-    });
-    if(video.readyState<2)throw new Error('Финальный кадр не декодирован. Попробуй ещё раз.');
     const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
-    const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Браузер не смог подготовить изображение кадра');
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    const frame=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось создать PNG')),'image/png'));
-    if(frame.size<1024)throw new Error('Получился пустой кадр. Проверь видео и попробуй ещё раз.');
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw new Error('Браузер не смог подготовить изображение кадра');
+    const offsets=[0.25,0.45,0.8,1.3,2.0,3.0].map(x=>Math.min(x,Math.max(0,video.duration-0.05)));
+    let frame=null,chosenOffset=null,lastError=null;
+    for(const offset of [...new Set(offsets)]){
+      try{
+        await new Promise((resolve,reject)=>{
+          let settled=false;
+          const timer=setTimeout(()=>finish(reject,new Error('Истекло время ожидания декодирования кадра')),10000);
+          const finish=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);video.onseeked=null;fn(value)};
+          video.onseeked=()=>{
+            if(video.readyState<2){finish(reject,new Error('Видео ещё не декодировало выбранный кадр'));return}
+            // Give mobile browsers one paint cycle to update the decoded frame after seeking.
+            requestAnimationFrame(()=>requestAnimationFrame(()=>finish(resolve)));
+          };
+          video.onerror=()=>finish(reject,new Error('Не удалось прочитать кадр видео'));
+          video.currentTime=Math.max(0,video.duration-offset);
+          if(video.currentTime===0&&video.readyState>=2)requestAnimationFrame(()=>finish(resolve));
+        });
+        if(video.readyState<2)throw new Error('Финальный кадр не декодирован');
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        const sample=document.createElement('canvas');sample.width=24;sample.height=24;
+        const sampleCtx=sample.getContext('2d',{willReadFrequently:true});
+        if(sampleCtx){
+          sampleCtx.drawImage(canvas,0,0,24,24);
+          const pixels=sampleCtx.getImageData(0,0,24,24).data;
+          let nearWhite=0,min=[255,255,255],max=[0,0,0];
+          for(let i=0;i<pixels.length;i+=4){
+            const rgb=[pixels[i],pixels[i+1],pixels[i+2]];
+            if(rgb.every(v=>v>=248))nearWhite++;
+            rgb.forEach((v,j)=>{min[j]=Math.min(min[j],v);max[j]=Math.max(max[j],v)});
+          }
+          const almostBlank=nearWhite>=24*24*0.985&&max.every((v,j)=>v-min[j]<8);
+          if(almostBlank){lastError=new Error('Этот момент видео выглядит полностью белым; пробую кадр чуть раньше.');continue}
+        }
+        frame=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось создать PNG')),'image/png'));
+        if(!frame||frame.size<1024){lastError=new Error('Получился пустой кадр; пробую кадр чуть раньше.');frame=null;continue}
+        chosenOffset=offset;break;
+      }catch(e){lastError=e}
+    }
+    if(!frame)throw new Error(lastError?.message||'Не удалось получить видимый кадр. Попробуй MP4 или MOV из «Фото»/«Файлов».');
+    // Verify the PNG can actually be decoded before assigning it as the next scene's starting frame.
+    const testUrl=URL.createObjectURL(frame);
+    try{
+      const check=new Image();check.src=testUrl;
+      await new Promise((resolve,reject)=>{check.onload=resolve;check.onerror=()=>reject(new Error('PNG кадра не удалось открыть для предпросмотра'))});
+      if(check.naturalWidth<2||check.naturalHeight<2)throw new Error('Полученный кадр повреждён');
+    }finally{URL.revokeObjectURL(testUrl)}
     generatedStartFrameBlob=frame;generatedStartFrameTaskId='continuity:recovered-upload:'+Date.now();
     try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
-    // Keep the extracted frame in memory only; remove any older persisted frame to prevent stale recovery after reload.
+    // Keep the recovered frame in memory only; remove any older persisted frame to prevent stale recovery after reload.
     try{
       const db=await startFrameDb();
       await new Promise((resolve,reject)=>{
@@ -738,16 +775,18 @@ async function extractRecoveryVideoFrame(){
         tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Не удалось очистить старый кадр'));
       });
     }catch(e){console.warn('[Recovery frame cleanup]',e)}
-    await renderStartFramePreview(frame,'Финальный кадр из загруженного видео','Кадр находится только в памяти текущей страницы и выбран стартовым кадром следующей сцены. После обновления страницы его нужно извлечь заново. При необходимости нажми «Сохранить финальный кадр», чтобы скачать PNG.');
+    await renderStartFramePreview(frame,'Финальный кадр из загруженного видео','Кадр извлечён из видео (примерно за '+chosenOffset+' с до конца), выбран стартовым кадром следующей сцены и хранится только в памяти этой страницы. Если изображение снова выглядит белым, проверь само видео. Для сохранения PNG нажми «Сохранить финальный кадр».');
     $('#videoReference').value='';
     const mode=$('#videoMode');if(mode){mode.value='i2v';saveFormState()}
     $('#startFrameStatus').textContent='Финальный кадр готов только для следующей сцены · '+file.name;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
     toast('Финальный кадр выбран для следующей сцены');
   }catch(e){
+    generatedStartFrameBlob=null;generatedStartFrameTaskId='';
     $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
     toast(e.message||'Не удалось извлечь финальный кадр');
   }finally{
+    if(video){video.pause();video.removeAttribute('src');try{video.load()}catch{}}
     if(objectUrl)URL.revokeObjectURL(objectUrl);
     button.disabled=false;button.textContent=original;
   }
