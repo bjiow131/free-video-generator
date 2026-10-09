@@ -80,7 +80,8 @@ class CheckpointStore:
                     scene["scene_id"]: {
                         "index": index, "status": "pending", "attempts": 0,
                         "video_path": None, "final_frame_path": None,
-                        "video_sha256": None, "frame_sha256": None, "error": None,
+                        "video_sha256": None, "frame_sha256": None,
+                        "input_frame_sha256": None, "error": None,
                     }
                     for index, scene in enumerate(manifest["scenes"], start=1)
                 },
