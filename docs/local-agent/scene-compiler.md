@@ -19,3 +19,8 @@ The scene compiler turns a validated `story_plan.json` into `storyboard_compile.
 2. Add Blender scene-blockout generation from a fixed set of typed operations.
 3. Add preview validation and report missing assets/actions before attempting animation.
 4. Add rig-aware character motion and camera keyframes only after the needed assets are present.
+
+
+## Local asset index
+
+The allowlisted `scan_project_assets` operation indexes filenames beneath `PROJECT/assets/` using supported media/model extensions. It does not parse, open, execute, or upload those files. Duplicate stems are excluded as ambiguous. The generated `asset_registry.json` can be refreshed as assets change. Story compilation can resolve asset names against this local index; importing models and rigging/animation remain separate unfinished capabilities.
