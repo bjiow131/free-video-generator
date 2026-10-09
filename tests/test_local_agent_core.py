@@ -126,3 +126,61 @@ def test_manifest_rejects_path_like_output_name():
             "output_name": "..",
             "scenes": [{"prompt": "one"}],
         })
+
+
+
+def test_checkpoint_refuses_manifest_changes(tmp_path):
+    store = CheckpointStore(tmp_path, "persist-test")
+    manifest = {
+        "project_id": "persist-test",
+        "scenes": [{"scene_id": "s1", "prompt": "one", "duration_seconds": 5, "aspect_ratio": "9:16"}],
+    }
+    store.initialize(manifest)
+    changed = {
+        "project_id": "persist-test",
+        "scenes": [{"scene_id": "s1", "prompt": "different prompt", "duration_seconds": 5, "aspect_ratio": "9:16"}],
+    }
+    with pytest.raises(ValueError, match="differs from the checkpoint"):
+        store.initialize(changed)
+
+
+@pytest.mark.asyncio
+async def test_runner_regenerates_completed_scene_when_revalidation_fails(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    workspace = tmp_path / "workspace"
+    manifest = sample_manifest(start)
+    store = CheckpointStore(workspace, manifest.project_id)
+    state = store.initialize(manifest.to_dict())
+    scene_dir = workspace / manifest.project_id / "s1"
+    scene_dir.mkdir(parents=True)
+    old_video = scene_dir / "old.mp4"
+    old_frame = scene_dir / "old.png"
+    old_video.write_bytes(b"old-video")
+    old_frame.write_bytes(b"old-frame")
+    import hashlib
+    state["scenes"]["s1"].update({
+        "status": "completed",
+        "video_path": str(old_video),
+        "final_frame_path": str(old_frame),
+        "video_sha256": hashlib.sha256(old_video.read_bytes()).hexdigest(),
+        "frame_sha256": hashlib.sha256(old_frame.read_bytes()).hexdigest(),
+    })
+    store.save(state)
+
+    class FlakyValidationMedia(FakeMedia):
+        def __init__(self):
+            self.fail_once = True
+
+        def validate_video(self, path, expected_duration):
+            if self.fail_once and path == str(old_video):
+                self.fail_once = False
+                raise RuntimeError("saved video is corrupt")
+            super().validate_video(path, expected_duration)
+
+    backend = FakeBackend()
+    runner = LocalProjectRunner(workspace, store, backend, FlakyValidationMedia())
+    result = await runner.run(manifest)
+    assert result["status"] == "completed"
+    assert len(backend.calls) == 2
+    assert result["scenes"]["s1"]["video_path"] != str(old_video)
