@@ -17,6 +17,7 @@ from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
+from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -220,7 +221,15 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
     print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and the allowlisted local Blender forest preview.")
-    answer = input("Approve this local operation? Type YES to run: ").strip()
+    if getattr(task, "requires_local_approval", True) is False:
+        if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
+            result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
+            commit_sha = client.publish_result(task.task_id, result)
+            print(f"Remote approval blocked by local policy. Result commit: {commit_sha}")
+            return
+        answer = "YES"  # Explicit task authorization plus local opt-in; no shell/code payloads are accepted.
+    else:
+        answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
