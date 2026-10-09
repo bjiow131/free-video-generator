@@ -11,7 +11,7 @@ This is an implementation checklist, not a claim that a real Windows smoke test 
 5. Review the diagnostic output and focused tests. Do not start polling if tests fail, the mailbox is public, the token is unconfigured, or the manifest format is invalid.
 6. Configure `queue/desired_task.json` in the private mailbox with a valid, short-lived task ID that has never been used before. Use the exact sample and timestamp rules in [the private mailbox task template](private-mailbox-task-template.md). First task should be the non-destructive `preflight` check and should require local approval. The setup script asks separately whether to enable phone-driven remote approval for a strict allowlist of typed operations; default is No.
 
-The setup script stores only non-secret configuration as Windows user environment variables. It creates an isolated `.venv` and a workspace outside the source checkout. It does not install Blender, open firewall ports, enable remote desktop, create a service, or start at Windows login.
+The setup script stores only non-secret configuration as Windows user environment variables. It creates an isolated `.venv` and a workspace outside the source checkout. It does not install Blender, open firewall ports, enable remote desktop, or register background startup automatically. After tests pass and the first private-mailbox preflight succeeds, register the user-level background task with `powershell -ExecutionPolicy Bypass -File .\\scripts\\windows\\register_local_agent_task.ps1`. It starts at Windows sign-in, writes bounded rotating logs under `.local_agent\\logs\\poller.log`, and can be removed with `unregister_local_agent_task.ps1`. The task uses the current interactive user and does not enable automatic Windows sign-in; after a full reboot, a user must sign in once.
 
 ## Failure scenarios and expected behavior
 
@@ -26,8 +26,8 @@ The setup script stores only non-secret configuration as Windows user environmen
 | Desired task changes or is removed while approval is open | Supersede the stale task and do not run its old payload. |
 | A task ID is reused with different content | Reject the changed manifest; create a new unique ID for a new task. |
 | Same manifest remains in the mailbox after restart | Do not execute it a second time. Local state tracks a bounded history of recent task IDs. |
-| Agent is closed or Windows restarts | A task claim is saved before execution. If it remains in progress after restart, the agent reports an uncertain outcome and refuses blind replay; inspect files/results and submit a new task ID only after deciding whether retry is safe. Automatic Windows service/startup is not enabled yet. |
-| User changes a request quickly | Use a new task ID for a new desired task. The agent polls every 5–30 seconds (default 10); changes are not instantaneous. |
+| Agent is closed or Windows restarts | A task claim is saved before execution. If it remains in progress after restart, the agent reports an uncertain outcome and refuses blind replay; inspect files/results and submit a new task ID only after deciding whether retry is safe. The optional scheduled task starts at user sign-in, not before sign-in. |
+| User changes a request quickly | Use a new task ID for a new desired task. The agent polls every 5–30 seconds (default 10); changes are not instantaneous. |\n| A task requires local approval but the poller is running hidden | Publish a `blocked` result instead of hanging on an invisible console prompt. Use an allowlisted remote-approved task only after the owner opted in locally. |
 | Blender is missing or configured path is wrong | Block the Blender operation; diagnostics should identify the missing prerequisite. |
 | GPU driver is absent or GPU memory is insufficient | Prefer a low-cost Eevee preview or report a bounded failure; never claim rendering completed if output validation fails. |
 | Project folder, output, or registry path is a symlink/junction or escapes workspace | Reject the operation. |
@@ -44,7 +44,7 @@ The setup script stores only non-secret configuration as Windows user environmen
 - Outbound HTTPS from the PC to the GitHub API only; no inbound listener or port forwarding.
 - The private mailbox stores a single desired-task manifest and bounded result JSON.
 - A task is typed data, not a shell command, Python source, arbitrary URL, or executable path.
-- The PC is the execution boundary. Local approval is the default. If the owner explicitly enables `LOCAL_AGENT_ALLOW_REMOTE_APPROVAL=1`, only typed low-risk operations in the protocol allowlist may omit local approval. Patch application and generic test execution remain local-approval-only. Remote tasks are revalidated against the latest manifest before execution.
+- The PC is the execution boundary. Local approval is the default. If the owner explicitly enables `LOCAL_AGENT_ALLOW_REMOTE_APPROVAL=1`, only typed low-risk operations in the protocol allowlist may omit local approval. Patch application and generic test execution remain local-approval-only. Remote tasks are revalidated against the latest manifest before execution. The background runner blocks local-approval tasks if no interactive console exists.
 - Windows Credential Manager stores the token; source code and task payloads must never contain secrets.
 - The source checkout, private mailbox, and local project workspace are three separate things. The source repository is public, so it must never be used as the control mailbox.
 
