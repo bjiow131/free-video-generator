@@ -214,3 +214,20 @@ EXECUTION LOG — 2026-10-09 (local-first migration pass)
 [FOUND] M17. Inspected common deployment paths on this branch: render.yaml, render.yml, Procfile, .github/workflows/deploy.yml, .github/workflows/render-deploy.yml, fly.toml, and railway.json are absent. This does not rule out settings in an external Render dashboard or other uninspected paths.
 
 - Follow-up 2026-10-09: recorded deployment-manifest inventory in docs/LOCAL_MIGRATION_AUDIT.md; kept RENDER_EXTERNAL_HOSTNAME compatibility in place pending host/origin security regression tests.
+
+
+============================================================
+LOCAL-FIRST CONTROL CHANNEL TRACKER (2026-10-09)
+============================================================
+
+CONTROL-01 [FIXED — STATIC ONLY] Added local_agent/control_protocol.py: bounded JSON envelope parser, versioning, allowlisted typed operations, mandatory local approval, and rejection of free-form command/script/executable fields. No task execution is implemented.
+CONTROL-02 [FIXED — STATIC ONLY] Added local_agent/reporting.py: local JSON report writer and basic credential/home-path redaction. No report upload is implemented.
+CONTROL-03 [FIXED — STATIC ONLY] Added local_agent/cli.py starter commands: doctor, loopback-only status check, bounded log tail, and fixed pytest invocation. These commands have not been run on Windows or any user computer.
+CONTROL-04 [FIXED — STATIC ONLY] Added docs/LOCAL_CONTROL_CHANNEL_DESIGN.md with outbound-only transport architecture, threat model, implementation sequence, and acceptance criteria.
+CONTROL-05 [FIXED — STATIC ONLY] Added .local_agent/ to .gitignore to prevent local reports/runtime data from being committed by default.
+CONTROL-06 [PLAN] Select and implement authenticated transport only after checking repository visibility, credentials, and available ChatGPT connector behavior. Do not claim that GitHub automatically pushes results into this chat.
+CONTROL-07 [PLAN] Implement local approval UX, expiry/replay protection, authenticated queue client, explicit report preview, and optional sanitized report upload.
+CONTROL-08 [PLAN] Add fixed start/stop/backup operations, local audit trail, emergency stop, and safe recovery/uninstall path.
+CONTROL-09 [BLOCKED — COMPUTER REQUIRED] Run Windows checks, inspect redaction quality, verify loopback binding, exercise test command, and capture real evidence when the computer becomes available.
+
+SECURITY NOTE: No inbound listener, polling worker, remote execution, public endpoint, or Render deployment was enabled by these changes. No real computer tests were performed.
