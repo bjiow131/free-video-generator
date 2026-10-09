@@ -308,16 +308,16 @@ class AgnesVideoAPI:
                     last_error_code = str(response_data.get("code") or "").strip().lower()
                     queue_full = last_error_code == "video_queue_full"
                     retry_after = resp.headers.get("Retry-After")
-                    # Agnes documents 503/video_queue_full as transient busy responses.
-                    # Prefer server-provided Retry-After; otherwise use exponential
-                    # backoff so repeated workers do not retry at the same moment.
-                    if retry_after:
+                    # For HTTP 429, honor Retry-After to avoid making an account-level
+                    # rate limit worse. For temporary provider-busy/server errors, retry
+                    # faster with a short bounded backoff (5s, 10s, then 15s).
+                    if resp.status_code == 429 and retry_after:
                         try:
                             delay = float(retry_after)
                         except ValueError:
-                            delay = self.retry_base_delay * (2 ** attempt)
+                            delay = min(15.0, 5.0 * (attempt + 1))
                     else:
-                        delay = self.retry_base_delay * (2 ** attempt)
+                        delay = min(15.0, 5.0 * (attempt + 1))
                     delay = max(1.0, min(delay, 300.0))
                     response_hint = response_text[:300].replace("\n", " ").replace("\r", " ")
                     queue_hint = " [video queue full]" if queue_full else ""
