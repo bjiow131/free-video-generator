@@ -60,6 +60,30 @@ def test_video_without_video_stream_rejected(tmp_path, monkeypatch):
         FFmpegMediaTools().validate_video(str(path), 5)
 
 
+@pytest.mark.parametrize("duration", ["1.0", "3.7", "6.3", "10.0"])
+def test_materially_short_or_long_video_duration_rejected(tmp_path, monkeypatch, duration):
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"video")
+    monkeypatch.setattr(
+        "local_agent.ffmpeg_media.subprocess.run",
+        Mock(return_value=completed(json.dumps(probe_result(duration=duration)))),
+    )
+
+    with pytest.raises(MediaError, match="inconsistent with requested"):
+        FFmpegMediaTools().validate_video(str(path), 5)
+
+
+def test_small_video_duration_difference_is_accepted(tmp_path, monkeypatch):
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(b"video")
+    monkeypatch.setattr(
+        "local_agent.ffmpeg_media.subprocess.run",
+        Mock(return_value=completed(json.dumps(probe_result(duration="5.8")))),
+    )
+
+    FFmpegMediaTools().validate_video(str(path), 5)
+
+
 def test_invalid_duration_rejected(tmp_path, monkeypatch):
     path = tmp_path / "clip.mp4"
     path.write_bytes(b"x")
