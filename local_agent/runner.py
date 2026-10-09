@@ -72,7 +72,12 @@ class LocalProjectRunner:
             if key in _ACTIVE_PROJECTS:
                 raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
             _ACTIVE_PROJECTS.add(key)
-        expected_store_root = (self.workspace / manifest.project_id).resolve()
+        project_root_candidate = self.workspace / manifest.project_id
+        if project_root_candidate.is_symlink() or self.store.root.is_symlink():
+            with _ACTIVE_PROJECTS_LOCK:
+                _ACTIVE_PROJECTS.discard(key)
+            raise ValueError("Project output directory must not be a symlink")
+        expected_store_root = project_root_candidate.resolve()
         if not expected_store_root.is_relative_to(self.workspace):
             with _ACTIVE_PROJECTS_LOCK:
                 _ACTIVE_PROJECTS.discard(key)
