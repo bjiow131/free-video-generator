@@ -213,3 +213,11 @@ async def test_duplicate_project_run_is_rejected_and_registry_released(tmp_path)
     # Ownership is released after completion, so a subsequent resume is permitted.
     again = await runner.run(manifest)
     assert again["status"] == "completed"
+
+
+def test_corrupt_checkpoint_is_preserved_and_reports_recovery_hint(tmp_path):
+    store = CheckpointStore(tmp_path, "corrupt-test")
+    store.path.write_text('{"truncated":', encoding="utf-8")
+    with pytest.raises(ValueError, match="original file was preserved"):
+        store.load()
+    assert store.path.read_text(encoding="utf-8") == '{"truncated":'
