@@ -234,6 +234,20 @@ def _run_compile_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Search the bundled read-only Blender knowledge base; never executes code."""
+    from local_agent.blender_knowledge import search_knowledge
+    results = search_knowledge(arguments["query"], arguments.get("limit", 5))
+    return {
+        "status": "completed",
+        "task": "blender_knowledge_search",
+        "query": arguments["query"][:1000],
+        "results": results,
+        "result_count": len(results),
+        "note": "Guidance only; verify version-specific behavior and validate changes in Blender.",
+    }
+
+
 def _load_state() -> dict[str, Any]:
     try:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -313,7 +327,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -323,7 +337,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and the allowlisted local Blender forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, and the allowlisted local Blender forest preview.")
     if getattr(task, "requires_local_approval", True) is False:
         if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
             result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
@@ -388,6 +402,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_compile_story_plan(task.arguments)
             elif task.operation == "scan_project_assets":
                 details = _run_scan_project_assets(task.arguments)
+            elif task.operation == "blender_knowledge_search":
+                details = _run_blender_knowledge_search(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
