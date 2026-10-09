@@ -895,34 +895,63 @@ async function renderStartFramePreview(blob,alt,caption){
 }
 async function useLastVideoFrame(taskId,button){
   const originalLabel=button?.textContent||'Использовать последний кадр для следующей сцены';
-  if(button){button.disabled=true;button.textContent='Извлекаю последний кадр…'}
-  $('#startFrameStatus').textContent='Извлекаю финальный кадр предыдущей сцены…';
+  if(button){button.disabled=true;button.textContent='Извлекаю кадр…'}
+  $('#startFrameStatus').textContent='Извлекаю и проверяю кадр предыдущей сцены…';
+  let video=null;
   try{
-    const video=document.createElement('video');
+    video=document.createElement('video');
     video.preload='auto';video.muted=true;video.playsInline=true;video.crossOrigin='same-origin';
     video.src='/api/video/'+encodeURIComponent(taskId);
     await new Promise((resolve,reject)=>{
-      video.onloadedmetadata=resolve;
-      video.onerror=()=>reject(new Error('Не удалось открыть готовое видео для извлечения кадра'));
+      const timer=setTimeout(()=>reject(new Error('Видео слишком долго открывается.')),15000);
+      video.onloadedmetadata=()=>{clearTimeout(timer);resolve()};
+      video.onerror=()=>{clearTimeout(timer);reject(new Error('Не удалось открыть готовое видео для извлечения кадра'))};
       video.load();
     });
-    if(!Number.isFinite(video.duration)||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео нет доступного финального кадра');
-    await new Promise((resolve,reject)=>{
-      video.onseeked=()=>video.readyState>=2?resolve():reject(new Error('Видео не успело декодировать финальный кадр'));
-      video.onerror=()=>reject(new Error('Не удалось перейти к финальному кадру видео'));
-      video.currentTime=Math.max(0,video.duration-0.01);
-    });
-    if(video.readyState<2)throw new Error('Финальный кадр видео ещё не декодирован. Попробуй ещё раз.');
-    const canvas=document.createElement('canvas');
-    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
-    const ctx=canvas.getContext('2d');
-    if(!ctx)throw new Error('Не удалось подготовить изображение кадра');
-    ctx.drawImage(video,0,0,canvas.width,canvas.height);
-    const frame=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось сохранить извлечённый кадр')),'image/png'));
-    if(frame.size<1024)throw new Error('Извлечённый кадр пустой или повреждённый. Попробуй ещё раз.');
-    await renderStartFramePreview(frame,'Финальный кадр предыдущей сцены','Финальный кадр сцены выбран как старт следующей. Новый промпт изображения не создаётся; Agnes 2.0 получит этот кадр как исходный референс.');
-    generatedStartFrameBlob=frame;
-    generatedStartFrameTaskId='continuity:'+taskId;
+    if(!Number.isFinite(video.duration)||video.duration<=0||video.videoWidth<1||video.videoHeight<1)throw new Error('У видео нет доступного кадра');
+    const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw new Error('Не удалось подготовить изображение кадра');
+    let frame=null,usedOffset=null,lastError=null;
+    // Safari/iOS can fire seeked before the requested frame is actually decoded.
+    // Try several points near the end and reject blank/white frames instead of saving them.
+    const offsets=[0.04,0.12,0.25,0.45,0.8,1.2].map(x=>Math.min(x,Math.max(0,video.duration-0.03)));
+    for(const offset of [...new Set(offsets)]){
+      try{
+        await new Promise((resolve,reject)=>{
+          let settled=false;
+          const timer=setTimeout(()=>finish(reject,new Error('Истекло время декодирования кадра')),8000);
+          const finish=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);video.onseeked=null;fn(value)};
+          video.onseeked=()=>{
+            if(video.readyState<2){finish(reject,new Error('Кадр ещё не декодирован'));return}
+            if(typeof video.requestVideoFrameCallback==='function'){
+              let callbackId=null;
+              const frameTimer=setTimeout(()=>{if(callbackId!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(callbackId);finish(reject,new Error('Safari не подтвердил декодирование кадра'))},4000);
+              callbackId=video.requestVideoFrameCallback(()=>{clearTimeout(frameTimer);finish(resolve)});
+              video.play().catch(e=>{clearTimeout(frameTimer);if(callbackId!==null&&video.cancelVideoFrameCallback)video.cancelVideoFrameCallback(callbackId);finish(reject,e)});
+            }else{
+              video.play().then(()=>requestAnimationFrame(()=>setTimeout(()=>finish(resolve),180))).catch(e=>finish(reject,e));
+            }
+          };
+          video.onerror=()=>finish(reject,new Error('Ошибка чтения видеокадра'));
+          video.currentTime=Math.max(0,video.duration-offset);
+        });
+        if(video.readyState<2)throw new Error('Кадр не декодирован');
+        ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        const sample=document.createElement('canvas');sample.width=24;sample.height=24;
+        const sampleCtx=sample.getContext('2d',{willReadFrequently:true});if(!sampleCtx)throw new Error('Не удалось проверить кадр');
+        sampleCtx.drawImage(canvas,0,0,24,24);
+        const px=sampleCtx.getImageData(0,0,24,24).data;let white=0,black=0,min=[255,255,255],max=[0,0,0];
+        for(let i=0;i<px.length;i+=4){const rgb=[px[i],px[i+1],px[i+2]];if(rgb.every(v=>v>=248))white++;if(rgb.every(v=>v<=7))black++;rgb.forEach((v,j)=>{min[j]=Math.min(min[j],v);max[j]=Math.max(max[j],v)})}
+        const flat=max.every((v,j)=>v-min[j]<8);
+        if((white>=px.length/4*0.985&&flat)||(black>=px.length/4*0.985&&flat)){lastError=new Error('Получен пустой кадр; проверяю момент чуть раньше.');continue}
+        frame=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось сохранить кадр')),'image/png'));
+        if(!frame||frame.size<1024){frame=null;lastError=new Error('Получилось пустое изображение');continue}
+        usedOffset=offset;break;
+      }catch(e){lastError=e}
+    }
+    if(!frame)throw new Error((lastError?.message||'Не удалось извлечь непустой кадр')+' Попробуй открыть видео и убедиться, что оно воспроизводится.');
+    await renderStartFramePreview(frame,'Финальный кадр предыдущей сцены','Кадр взят примерно за '+usedOffset+' с до конца и проверен на пустое изображение. Он выбран как старт следующей сцены.');
+    generatedStartFrameBlob=frame;generatedStartFrameTaskId='continuity:'+taskId;
     await persistStartFrame(frame,generatedStartFrameTaskId);
     try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
     $('#videoReference').value='';
@@ -933,17 +962,14 @@ async function useLastVideoFrame(taskId,button){
     generatedStartFrameBlob=null;generatedStartFrameTaskId='';
     const message=e.message||'Не удалось извлечь финальный кадр';
     $('#startFrameStatus').textContent=message;
-    const container=$('#startFrameResult');
-    container.replaceChildren();
-    const error=document.createElement('div');
-    error.setAttribute('role','status');
+    const container=$('#startFrameResult');container.replaceChildren();
+    const error=document.createElement('div');error.setAttribute('role','status');
     error.style.cssText='padding:16px;color:#8a342b;background:#fff1ee;border-radius:12px;line-height:1.5';
-    error.textContent='Финальный кадр не получен. '+message+' Проверь, что видео полностью загружено и воспроизводится, затем попробуй ещё раз.';
-    container.appendChild(error);
-    container.classList.remove('hidden');
-    container.scrollIntoView({behavior:'smooth',block:'nearest'});
-    toast(message);
+    error.textContent='Финальный кадр не получен. '+message+' Белое изображение не будет сохранено как стартовый кадр.';
+    container.appendChild(error);container.classList.remove('hidden');
+    container.scrollIntoView({behavior:'smooth',block:'nearest'});toast(message);
   }finally{
+    if(video){video.pause();video.removeAttribute('src');try{video.load()}catch{}}
     if(button){button.disabled=false;button.textContent=originalLabel}
   }
 }
