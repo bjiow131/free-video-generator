@@ -81,6 +81,11 @@ class LocalProjectRunner:
         state = self.store.initialize(manifest.to_dict())
         project_dir = self.workspace / manifest.project_id
         project_dir.mkdir(parents=True, exist_ok=True)
+        # Reject pre-existing symlinks/junctions that redirect outputs outside the workspace.
+        resolved_project_dir = project_dir.resolve()
+        if not resolved_project_dir.is_relative_to(self.workspace):
+            raise ValueError("Project output directory resolves outside the configured workspace")
+        project_dir = resolved_project_dir
         previous_frame = manifest.initial_image
 
         if previous_frame:
