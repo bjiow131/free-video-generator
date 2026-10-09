@@ -43,13 +43,26 @@ class QueueConfig:
     @classmethod
     def from_environment(cls) -> "QueueConfig":
         repository = os.environ.get("LOCAL_AGENT_GITHUB_REPO", "").strip()
-        token = os.environ.get("LOCAL_AGENT_GITHUB_TOKEN", "").strip()
+        # Prefer Windows Credential Manager. Plain environment-variable
+        # tokens are ignored unless the user explicitly opts into dev mode.
+        token = ""
+        try:
+            from local_agent.windows_credentials import read_credential
+            token = (read_credential() or "").strip()
+        except Exception:
+            token = ""
+        if not token and os.environ.get("LOCAL_AGENT_ALLOW_ENV_TOKEN") == "1":
+            token = os.environ.get("LOCAL_AGENT_GITHUB_TOKEN", "").strip()
         ref = os.environ.get("LOCAL_AGENT_GITHUB_REF", "main").strip() or "main"
         path = os.environ.get("LOCAL_AGENT_GITHUB_MANIFEST", "queue/desired_task.json").strip()
         if not repository or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
             raise QueueConfigurationError("Set LOCAL_AGENT_GITHUB_REPO to owner/private-repo using only GitHub name characters.")
         if not token:
-            raise QueueConfigurationError("GitHub token is not configured.")
+            raise QueueConfigurationError(
+                "GitHub token is not stored in Windows Credential Manager. "
+                "Run: python -m local_agent.credentials_cli set "
+                "(or explicitly set LOCAL_AGENT_ALLOW_ENV_TOKEN=1 for temporary development use)."
+            )
         if not path or path.startswith("/") or ".." in path.split("/"):
             raise QueueConfigurationError("Invalid manifest path.")
         return cls(repository=repository, token=token, ref=ref, manifest_path=path)
