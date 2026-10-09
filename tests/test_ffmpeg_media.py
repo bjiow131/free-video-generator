@@ -146,3 +146,18 @@ def test_concat_preserves_order_and_cleans_list_file(tmp_path, monkeypatch):
     listing = Path(args[args.index("-i") + 1])
     assert not listing.exists()
     assert output.read_bytes() == b"final"
+
+
+
+def test_concat_refuses_to_overwrite_input_clip(tmp_path):
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"x")
+    with pytest.raises(MediaError, match="must not overwrite"):
+        FFmpegMediaTools().concatenate([str(source)], str(source))
+
+
+def test_frame_extraction_refuses_to_overwrite_source(tmp_path, monkeypatch):
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"x")
+    with pytest.raises(MediaError, match="must not overwrite"):
+        FFmpegMediaTools().extract_last_frame(str(source), str(source))
