@@ -184,13 +184,26 @@ class BlenderBridge:
         render: bool = True,
         preview: bool = True,
         cycles: bool = False,
+        overwrite: bool = False,
     ) -> dict[str, Any]:
         if task not in _ALLOWED_TASKS:
             raise BlenderBridgeError("Unsupported Blender task. Allowed: forest_preview.")
         if not _PROJECT_NAME.fullmatch(project_name or ""):
             raise BlenderBridgeError("Project name must use 1-49 letters, digits, underscores, or hyphens.")
-        project_dir = _inside(self.workspace, self.workspace / project_name)
+        requested_project_dir = self.workspace / project_name
+        if requested_project_dir.is_symlink() or getattr(requested_project_dir, "is_junction", lambda: False)():
+            raise BlenderBridgeError("Project output directory must not be a symlink or junction.")
+        project_dir = _inside(self.workspace, requested_project_dir)
         project_dir.mkdir(parents=True, exist_ok=True)
+        known_outputs = [
+            project_dir / "forest_starter.blend",
+            project_dir / "forest_preview.png",
+            project_dir / "blender_result.json",
+        ]
+        if not overwrite and any(path.exists() for path in known_outputs):
+            raise BlenderBridgeError(
+                "This project already has generated outputs; use overwrite=True only when intentional."
+            )
         config = {
             "output_dir": str(project_dir),
             "render": bool(render),
