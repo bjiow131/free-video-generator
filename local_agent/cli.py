@@ -19,7 +19,7 @@ from local_agent.reporting import redact_text, write_report
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_DIR = ROOT / ".local_agent" / "reports"
-DEFAULT_LOG_DIRS = (ROOT / "logs", ROOT / ".logs", ROOT / "output" / "logs")
+DEFAULT_LOG_DIRS = (ROOT / ".local_agent" / "logs", ROOT / "logs", ROOT / ".logs", ROOT / "output" / "logs")
 
 
 def _tool_version(command: list[str]) -> dict[str, Any]:
