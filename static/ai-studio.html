@@ -266,6 +266,7 @@ button{cursor:pointer}
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:14px"><strong id="videoProgressPercent" style="font-size:28px;line-height:1">0%</strong><span id="videoElapsed" style="font-size:12px;color:var(--muted,#777)">Прошло 00:00</span></div>
         <div style="height:9px;margin-top:10px;border-radius:99px;background:var(--surface-muted,#e7e3d9);overflow:hidden"><div id="videoProgressBar" style="height:100%;width:0%;border-radius:99px;background:var(--accent,#55755d);transition:width .5s ease"></div></div>
         <div id="videoProgressStage" style="font-size:12px;color:var(--muted,#777);margin-top:9px">Подготовка запроса…</div>
+        <button type="button" id="videoCancelButton" class="ghost hidden" style="margin-top:12px;border-color:#c87569;color:#9b3d32">Отменить генерацию</button>
         <div style="font-size:11px;color:var(--muted,#888);margin-top:6px">Процент отображается по статусу задачи, если модель его передаёт. Оставшееся время — приблизительная оценка.</div>
       </div>
       <div id="videoStatus" class="status"></div><div id="videoResult" class="result hidden"></div>
@@ -793,6 +794,8 @@ async function createStartFrame(){
 let videoProgressStartedAt=0;
 let videoEtaDeadline=0;
 let videoProgressTicker=null;
+let activeVideoTaskId='';
+let videoCancelRequested=false;
 function videoClock(seconds){
   seconds=Math.max(0,Math.floor(Number(seconds)||0));
   return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
@@ -839,12 +842,40 @@ function stopVideoProgressTicker(){
 function finishVideoProgress(label){
   if(label){
     $('#videoProgressHeading').textContent=label;
-    $('#videoEta').textContent=label==='Видео готово'?'Готово':'Не завершено';
+    $('#videoEta').textContent=label==='Видео готово'?'Готово':label==='Генерация отменена'?'Отменено':'Не завершено';
   }
   stopVideoProgressTicker();
   videoProgressStartedAt=0;
   videoEtaDeadline=0;
+  activeVideoTaskId='';
+  $('#videoCancelButton')?.classList.add('hidden');
 }
+async function cancelVideoGeneration(){
+  if(videoCancelRequested)return;
+  let taskId=activeVideoTaskId;
+  if(!taskId){try{taskId=localStorage.getItem('aistudio_active_video_task')||''}catch{}}
+  if(!taskId){toast('ID активной задачи не найден. Открой «История» и проверь статус задачи.');return}
+  videoCancelRequested=true;
+  const button=$('#videoCancelButton');
+  if(button){button.disabled=true;button.textContent='Отмена…'}
+  try{
+    await api('/api/tasks/'+encodeURIComponent(taskId)+'/stop',{method:'POST'});
+    try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+    $('#videoStatus').textContent='Генерация остановлена · '+taskId;
+    $('#videoProgressStage').textContent='Сервер подтвердил запрос на остановку.';
+    finishVideoProgress('Генерация отменена');
+    setGenerateBusy('video',false);
+    toast('Запрос на остановку отправлен');
+  }catch(e){
+    videoCancelRequested=false;
+    if(button){button.disabled=false;button.textContent='Отменить генерацию'}
+    $('#videoProgressStage').textContent='Не удалось отменить: '+e.message;
+    toast('Не удалось отменить генерацию: '+e.message);
+  }finally{
+    if(button){button.disabled=false;button.textContent='Отменить генерацию'}
+  }
+}
+$('#videoCancelButton')?.addEventListener('click',cancelVideoGeneration);
 async function generateVideo(){
   let p=$('#videoPrompt').value.trim();let mode=$('#videoMode').value;
   const continuingPreviousScene=Boolean(generatedStartFrameBlob&&generatedStartFrameTaskId.startsWith('continuity:'));
@@ -853,7 +884,7 @@ async function generateVideo(){
     p='CONTINUOUS SCENE CONTINUATION: Begin from the supplied final-frame image as the exact visual starting reference. Preserve the same forest layout, path, trees, foliage, lighting direction, color palette, camera position, character pose, screen position, scale, and orientation visible in that image. Do not establish a new location or redesign the environment. Continue the action naturally from that moment with no time jump, no camera reset, no cut, and no sudden change in character appearance.\n\nNEXT ACTION: '+p;
   }
   if(!p){toast('Напиши промпт движения');return}
-  setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
+  videoCancelRequested=false;activeVideoTaskId='';$('#videoCancelButton').classList.add('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
   try{
     let refs=[];
     if(mode==='i2v'||mode==='ti2vid'){
@@ -921,9 +952,9 @@ async function generateVideo(){
       payload.system_prompt='Character identity lock: preserve the exact identity of the selected character across every frame. Match the supplied reference images for facial structure, eyes, eyebrows, nose, lips, jawline, skin tone, natural hair color, hairstyle, age, body proportions, clothing, and distinctive visual details. Treat the references as the immutable identity source, not as loose inspiration. Keep the same person during motion, camera movement, changes of angle, and transitions. Do not redesign, beautify, age, de-age, resize, recolor, morph, replace, or reinterpret the character. Do not change facial geometry or hairstyle between frames. If a requested action conflicts with identity consistency, preserve identity and perform the action with the smallest necessary pose change.';
     }
     const q=new URLSearchParams({prompt:p,model:'agnes-video-v2.0',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});
-    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||d.error||'Не удалось запустить генерацию');const taskId=d.task_id;if(!taskId)throw new Error('Сервер не вернул номер задачи');try{localStorage.setItem('aistudio_active_video_task',taskId)}catch{}
+    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||d.error||'Не удалось запустить генерацию');const taskId=d.task_id;if(!taskId)throw new Error('Сервер не вернул номер задачи');activeVideoTaskId=taskId;$('#videoCancelButton').classList.remove('hidden');try{localStorage.setItem('aistudio_active_video_task',taskId)}catch{}
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
-    const poll=async()=>{try{const rr=await api('/api/tasks');if(!rr.ok)throw new Error('Не удалось получить статус задачи');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){$('#videoProgressStage').textContent='Задача принята сервером. Ожидаем статус…';setTimeout(poll,2500);return}
+    const poll=async()=>{if(videoCancelRequested)return;try{const rr=await api('/api/tasks');if(!rr.ok)throw new Error('Не удалось получить статус задачи');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){$('#videoProgressStage').textContent='Задача принята сервером. Ожидаем статус…';setTimeout(poll,2500);return}
       updateVideoProgress(task,taskId);
       if(task.status==='failed'){try{localStorage.removeItem('aistudio_active_video_task')}catch{};throw Error(task.error_message||task.progress_message||'Генерация видео не удалась')}
       if(task.status==='completed'){try{localStorage.removeItem('aistudio_active_video_task')}catch{}
@@ -988,6 +1019,7 @@ async function restoreActiveVideoTask(){
     const task=(data.tasks||[]).find(x=>x.task_id===taskId);
     if(!task){try{localStorage.removeItem('aistudio_active_video_task')}catch{};return}
     show('video',false);
+    activeVideoTaskId=taskId;videoCancelRequested=false;
     if(task.status==='completed'){
       try{localStorage.removeItem('aistudio_active_video_task')}catch{}
       const url='/api/video/'+encodeURIComponent(taskId);
@@ -999,8 +1031,9 @@ async function restoreActiveVideoTask(){
       try{localStorage.removeItem('aistudio_active_video_task')}catch{}
       $('#videoStatus').textContent=task.error_message||task.progress_message||'Генерация завершилась с ошибкой';return;
     }
-    videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);updateVideoProgress(task,taskId);
+    videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);$('#videoCancelButton').classList.remove('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';updateVideoProgress(task,taskId);
     const poll=async()=>{
+      if(videoCancelRequested)return;
       try{
         const rr=await api('/api/tasks');const dd=await rr.json();const current=(dd.tasks||[]).find(x=>x.task_id===taskId);
         if(!current){$('#videoProgressStage').textContent='Задача больше не найдена на сервере.';try{localStorage.removeItem('aistudio_active_video_task')}catch{};finishVideoProgress('Задача не найдена');setGenerateBusy('video',false);return}
