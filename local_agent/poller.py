@@ -174,7 +174,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, and local asset indexing, and the allowlisted local Blender forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and the allowlisted local Blender forest preview.")
     answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
@@ -248,7 +248,7 @@ def main() -> int:
     backoff = interval
     last_seen = _load_state().get("last_task_id")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, and locally approved Blender forest previews; runtime tests remain outstanding.")
+    print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and locally approved Blender forest previews; runtime tests remain outstanding.")
 
     while True:
         try:
