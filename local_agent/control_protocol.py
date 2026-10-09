@@ -60,7 +60,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("Unsupported protocol version.")
     if not isinstance(value["task_id"], str) or not TASK_ID_RE.fullmatch(value["task_id"]):
         raise ProtocolError("Invalid task_id.")
-    if value["operation"] not in ALLOWED_OPERATIONS:
+    if not isinstance(value["operation"], str) or value["operation"] not in ALLOWED_OPERATIONS:
         raise ProtocolError("Operation is not allowlisted.")
     if not isinstance(value["created_at"], str) or not isinstance(value["expires_at"], str):
         raise ProtocolError("Task timestamps must be strings.")
@@ -81,6 +81,8 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("This operation cannot use remote approval; local approval is mandatory.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
+    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup"} and value["arguments"]:
+        raise ProtocolError("This operation does not accept arguments.")
     if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
         raise ProtocolError("Task arguments exceed the size limit.")
 
