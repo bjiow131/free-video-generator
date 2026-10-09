@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import subprocess
 import time
 from typing import Any
 
@@ -24,6 +25,40 @@ SUPPORTED_HANDLERS = {
     "logs": tail_logs,
     "test": run_tests,
 }
+
+
+def _apply_patch(patch: str) -> dict[str, Any]:
+    """Apply a bounded git diff only after explicit local approval."""
+    if not (ROOT / ".git").exists():
+        return {"status": "blocked", "reason": "project_root_is_not_a_git_checkout"}
+    try:
+        check = subprocess.run(
+            ["git", "apply", "--check"],
+            cwd=ROOT, input=patch, capture_output=True, text=True,
+            timeout=30, check=False, shell=False,
+        )
+        if check.returncode != 0:
+            return {
+                "status": "rejected",
+                "reason": "git_apply_check_failed",
+                "stderr_tail": [line[:1000] for line in check.stderr.splitlines()[-30:]],
+            }
+        applied = subprocess.run(
+            ["git", "apply"],
+            cwd=ROOT, input=patch, capture_output=True, text=True,
+            timeout=30, check=False, shell=False,
+        )
+        if applied.returncode != 0:
+            return {
+                "status": "failed",
+                "reason": "git_apply_failed",
+                "stderr_tail": [line[:1000] for line in applied.stderr.splitlines()[-30:]],
+            }
+        return {"status": "applied", "test_run": False}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "timeout_seconds": 30}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
 
 
 def _load_state() -> dict[str, Any]:
@@ -72,14 +107,18 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Only allowlisted diagnostic handlers are currently supported.")
+    print("Supported operations: diagnostics and a bounded git patch (patch requires review).")
     answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
         try:
-            details = handler()
-            result = {"task_id": task.task_id, "status": "completed", "details": details}
+            if task.operation == "apply_patch":
+                details = _apply_patch(task.arguments["patch"])
+            else:
+                details = handler()
+            result_status = details.get("status", "completed")
+            result = {"task_id": task.task_id, "status": result_status, "details": details}
         except Exception as exc:  # Keep error details bounded and avoid leaking tracebacks.
             result = {"task_id": task.task_id, "status": "error", "error_type": type(exc).__name__}
     commit_sha = client.publish_result(task.task_id, result)
