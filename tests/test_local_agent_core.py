@@ -221,3 +221,17 @@ def test_corrupt_checkpoint_is_preserved_and_reports_recovery_hint(tmp_path):
     with pytest.raises(ValueError, match="original file was preserved"):
         store.load()
     assert store.path.read_text(encoding="utf-8") == '{"truncated":'
+
+
+def test_checkpoint_rejects_project_directory_symlink_escape(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = workspace / "symlink-test"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are not available in this environment")
+    with pytest.raises(ValueError, match="outside the configured workspace"):
+        CheckpointStore(workspace, "symlink-test")
