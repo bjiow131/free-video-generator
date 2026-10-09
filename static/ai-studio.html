@@ -626,6 +626,23 @@ async function getSelectedVideoReferences(){
 
 let generatedStartFrameBlob=null;
 let generatedStartFrameTaskId='';
+const START_FRAME_TASK_KEY='aistudio_start_frame_task';
+async function restoreStartFramePreview(){
+  let taskId='';try{taskId=localStorage.getItem(START_FRAME_TASK_KEY)||''}catch{}
+  if(!taskId)return;
+  try{
+    const response=await api('/api/image/'+encodeURIComponent(taskId));
+    if(!response.ok)throw new Error('Сервер пока не отдаёт сохранённый стартовый кадр');
+    const blob=await response.blob();
+    if(!blob.type||!blob.type.startsWith('image/'))throw new Error('Сохранённый стартовый кадр имеет неподдерживаемый формат');
+    generatedStartFrameBlob=blob;generatedStartFrameTaskId=taskId;
+    await renderStartFramePreview(blob,'Стартовый кадр','Стартовый кадр восстановлен после обновления страницы и готов к использованию в видео.');
+    $('#startFrameStatus').textContent='Стартовый кадр восстановлен · '+taskId;
+  }catch(e){
+    $('#startFrameStatus').textContent='Не удалось восстановить стартовый кадр: '+(e.message||'ошибка загрузки');
+    console.warn('[Start frame recovery]',e);
+  }
+}
 async function renderStartFramePreview(blob,alt,caption){
   if(!(blob instanceof Blob)||!blob.type||!blob.type.startsWith('image/'))throw new Error('Предпросмотр: сервер вернул файл неподдерживаемого формата');
   if(blob.size<1024)throw new Error('Предпросмотр: изображение пустое или повреждённое');
@@ -762,6 +779,7 @@ async function createStartFrame(){
     if(!imageResponse.ok)throw new Error('Кадр создан, но не удалось загрузить изображение');
     generatedStartFrameBlob=await imageResponse.blob();
     generatedStartFrameTaskId=data.task_id;
+    try{localStorage.setItem(START_FRAME_TASK_KEY,generatedStartFrameTaskId)}catch{}
     if(!generatedStartFrameBlob.type||!generatedStartFrameBlob.type.startsWith('image/'))throw new Error('Сервер вернул файл неподдерживаемого формата');
     $('#videoReference').value='';
     await renderStartFramePreview(generatedStartFrameBlob,'Стартовый кадр','Стартовый кадр готов. Нажми «Создать видео» — он будет передан в Agnes 2.0 автоматически.');
@@ -1079,5 +1097,6 @@ load().then(async()=>{
     if(!['image','characters','history','video'].includes(savedPage))savedPage='image';
   }catch{}
   show(savedPage,false);
+  await restoreStartFramePreview();
   await restoreActiveVideoTask();
 });</script></body></html>
