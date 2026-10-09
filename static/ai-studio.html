@@ -728,8 +728,13 @@ async function extractRecoveryVideoFrame(){
           const finish=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);video.onseeked=null;fn(value)};
           video.onseeked=()=>{
             if(video.readyState<2){finish(reject,new Error('Видео ещё не декодировало выбранный кадр'));return}
-            // Give mobile browsers one paint cycle to update the decoded frame after seeking.
-            requestAnimationFrame(()=>requestAnimationFrame(()=>finish(resolve)));
+            // Safari/iOS may fire seeked before decoded pixels are available.
+            if(typeof video.requestVideoFrameCallback==='function'){
+              const frameTimer=setTimeout(()=>finish(reject,new Error('Не удалось дождаться декодированного кадра')),4000);
+              video.requestVideoFrameCallback(()=>{clearTimeout(frameTimer);finish(resolve)});
+            }else{
+              requestAnimationFrame(()=>requestAnimationFrame(()=>finish(resolve)));
+            }
           };
           video.onerror=()=>finish(reject,new Error('Не удалось прочитать кадр видео'));
           video.currentTime=Math.max(0,video.duration-offset);
@@ -743,14 +748,19 @@ async function extractRecoveryVideoFrame(){
         if(sampleCtx){
           sampleCtx.drawImage(canvas,0,0,24,24);
           const pixels=sampleCtx.getImageData(0,0,24,24).data;
-          let nearWhite=0,min=[255,255,255],max=[0,0,0];
+          let nearWhite=0,nearBlack=0,min=[255,255,255],max=[0,0,0],sum=[0,0,0];
           for(let i=0;i<pixels.length;i+=4){
             const rgb=[pixels[i],pixels[i+1],pixels[i+2]];
             if(rgb.every(v=>v>=248))nearWhite++;
-            rgb.forEach((v,j)=>{min[j]=Math.min(min[j],v);max[j]=Math.max(max[j],v)});
+            if(rgb.every(v=>v<=7))nearBlack++;
+            rgb.forEach((v,j)=>{min[j]=Math.min(min[j],v);max[j]=Math.max(max[j],v);sum[j]+=v});
           }
-          const almostBlank=nearWhite>=24*24*0.985&&max.every((v,j)=>v-min[j]<8);
-          if(almostBlank){lastError=new Error('Этот момент видео выглядит полностью белым; пробую кадр чуть раньше.');continue}
+          const almostWhite=nearWhite>=24*24*0.985&&max.every((v,j)=>v-min[j]<8);
+          const almostBlack=nearBlack>=24*24*0.985&&max.every((v,j)=>v-min[j]<8);
+          const noVariation=max.every((v,j)=>v-min[j]<3);
+          if(almostWhite||almostBlack||(noVariation&&sum.every(v=>v/(24*24)<3))){
+            lastError=new Error('Браузер вернул пустой кадр; пробую другой момент видео.');continue
+          }
         }
         frame=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось создать PNG')),'image/png'));
         if(!frame||frame.size<1024){lastError=new Error('Получился пустой кадр; пробую кадр чуть раньше.');frame=null;continue}
