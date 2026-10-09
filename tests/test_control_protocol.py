@@ -48,3 +48,36 @@ def test_still_requires_local_approval_for_blender_task():
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="require local approval"):
         parse_task(json.dumps(value))
+
+
+def test_accepts_bounded_story_plan_task():
+    task = parse_task(_task("save_story_plan", {
+        "story_plan": {
+            "schema_version": 1,
+            "project_name": "mia_snail",
+            "title": "Мия и улитка",
+            "logline": "Мия помогает улитке.",
+            "target_duration_seconds": 30,
+            "language": "ru",
+            "character_bible": {},
+            "scenes": [{
+                "scene_id": "scene_001",
+                "title": "Лесная тропинка",
+                "duration_seconds": 12,
+                "location": "Лес",
+                "action": "Мия замечает улитку.",
+                "camera": "Крупный план",
+                "dialogue": [],
+                "assets": ["Mia_reference_model", "snail"]
+            }]
+        }
+    }))
+    assert task.operation == "save_story_plan"
+    assert task.arguments["story_plan"]["project_name"] == "mia_snail"
+
+
+def test_rejects_story_plan_with_unsafe_project_name():
+    with pytest.raises(ProtocolError):
+        parse_task(_task("save_story_plan", {"story_plan": {
+            "schema_version": 1, "project_name": "../outside"
+        }}))
