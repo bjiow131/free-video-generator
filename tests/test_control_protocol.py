@@ -81,3 +81,18 @@ def test_rejects_story_plan_with_unsafe_project_name():
         parse_task(_task("save_story_plan", {"story_plan": {
             "schema_version": 1, "project_name": "../outside"
         }}))
+
+
+def test_accepts_compile_story_plan_for_safe_project():
+    task = parse_task(_task("compile_story_plan", {"project_name": "mia_snail"}))
+    assert task.operation == "compile_story_plan"
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"project_name": "../outside"},
+    {"project_name": "mia", "path": "C:\\\\private"},
+])
+def test_rejects_unsafe_compile_story_plan_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("compile_story_plan", arguments))
