@@ -48,6 +48,11 @@ The setup script stores only non-secret configuration as Windows user environmen
 - Windows Credential Manager stores the token; source code and task payloads must never contain secrets.
 - The source checkout, private mailbox, and local project workspace are three separate things.
 
+## Current protections and remaining work
+
+- The local-only `preflight` command checks Python, workspace writability/free space, local mailbox configuration, Blender availability/version and optional tools without starting a render or making a network request. It does **not** prove that GitHub confirms the mailbox is private or that the token can read/write it; the first real mailbox connection must verify those conditions.
+- An OS-level singleton lock prevents two poller instances on the same PC from processing tasks concurrently.
+
 ## Still required before relying on the agent
 
 - Real Windows first-run and repeated Blender smoke tests.
