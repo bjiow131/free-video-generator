@@ -107,3 +107,12 @@ def test_accepts_scan_project_assets_for_safe_project():
 def test_rejects_unsafe_asset_scan_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("scan_project_assets", arguments))
+
+def test_accepts_argument_free_preflight_task():
+    task = parse_task(_task("preflight", {}))
+    assert task.operation == "preflight"
+
+
+def test_rejects_preflight_arguments():
+    with pytest.raises(ProtocolError, match="does not accept arguments"):
+        parse_task(_task("preflight", {"executable": "blender.exe"}))
