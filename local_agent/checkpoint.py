@@ -4,23 +4,30 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 from datetime import datetime, timezone
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 
 ALLOWED_SCENE_STATES = {"pending", "queued", "claimed", "running", "validating", "completed", "retry_wait", "failed", "paused", "cancelled"}
+_SAFE_PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
 
 class CheckpointStore:
+    _locks_guard = Lock()
+    _path_locks: dict[str, RLock] = {}
     """Persist state atomically; media files are referenced, never embedded."""
 
     def __init__(self, workspace: str | os.PathLike[str], project_id: str):
-        if not project_id or any(ch in project_id for ch in ("/", chr(92), "..")):
+        if not isinstance(project_id, str) or not _SAFE_PROJECT_ID.fullmatch(project_id):
             raise ValueError("Invalid project_id")
         self.root = pathlib.Path(workspace).resolve() / project_id
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "checkpoint.json"
         self.events_path = self.root / "events.jsonl"
-        self._lock = RLock()
+        lock_key = str(self.path.resolve())
+        with self._locks_guard:
+            self._lock = self._path_locks.setdefault(lock_key, RLock())
 
     def load(self) -> dict[str, Any] | None:
         with self._lock:
@@ -28,16 +35,25 @@ class CheckpointStore:
                 return None
             with self.path.open("r", encoding="utf-8") as stream:
                 data = json.load(stream)
-            if not isinstance(data, dict) or not isinstance(data.get("scenes"), dict):
-                raise ValueError("Checkpoint is malformed")
+            if (not isinstance(data, dict)
+                    or data.get("schema_version") != 1
+                    or not isinstance(data.get("scenes"), dict)
+                    or not isinstance(data.get("manifest"), dict)
+                    or not isinstance(data.get("project_id"), str)):
+                raise ValueError("Checkpoint is malformed or uses an unsupported schema")
             return data
 
     def initialize(self, manifest: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             existing = self.load()
             if existing is not None:
-                if existing.get("manifest", {}).get("project_id") != manifest.get("project_id"):
+                if existing.get("project_id") != manifest.get("project_id"):
                     raise ValueError("Checkpoint project_id mismatch")
+                if existing.get("manifest") != manifest:
+                    raise ValueError("Manifest differs from the checkpoint; refusing unsafe resume")
+                expected_ids = {scene.get("scene_id") for scene in manifest.get("scenes", []) if isinstance(scene, dict)}
+                if expected_ids != set(existing["scenes"]):
+                    raise ValueError("Checkpoint scene set does not match manifest")
                 return existing
             state = {
                 "schema_version": 1,
