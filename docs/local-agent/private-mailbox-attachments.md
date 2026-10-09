@@ -66,3 +66,28 @@ repository may carry reference files.
 Do not use this prototype to transfer credentials, identity documents, private
 keys, or arbitrary executables. Keep the repository private and delete test
 assets when they are no longer needed.
+
+## CLI usage (after local checkout)
+
+Install the repository's normal dependencies first. On Windows, store the token
+without echoing it or writing it to a file:
+
+```powershell
+$env:LOCAL_AGENT_GITHUB_REPO = "YOUR_GITHUB_LOGIN/local-agent-mailbox"
+python -m local_agent.credentials_cli set
+python -m local_agent.credentials_cli status
+```
+
+The private mailbox repo must already exist. Then transfer one explicitly
+selected file from an allowlisted folder:
+
+```powershell
+python -m local_agent.attachments_cli upload --root "D:\AI-Studio\References\Mia\outgoing" --file "mia-reference.png"
+python -m local_agent.attachments_cli download --remote "inbox/attachments/REPLACE-WITH-RETURNED-PATH.png" --destination-root "D:\AI-Studio\References\Mia\received"
+```
+
+The upload command prints the exact remote path and SHA-256. Use that exact path
+when retrieving the file in ChatGPT. These commands are manual by design for the
+first test; do not enable a folder watcher or unattended transfer until the
+private-repository and image-visibility tests pass. The environment variable
+contains only the repository name, not a token.
