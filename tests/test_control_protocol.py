@@ -218,3 +218,18 @@ def test_accepts_blender_mia_blockout_task():
 def test_rejects_unsafe_blender_mia_blockout_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("blender_mia_blockout", arguments))
+
+
+def test_accepts_blender_open_mia_project_task():
+    task = parse_task(_task("blender_open_mia_project", {"project_name": "mia_character"}))
+    assert task.operation == "blender_open_mia_project"
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"project_name": "../outside"},
+    {"project_name": "mia", "path": "outside.blend"},
+])
+def test_rejects_unsafe_blender_open_mia_project_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_open_mia_project", arguments))
