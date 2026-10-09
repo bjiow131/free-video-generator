@@ -628,3 +628,26 @@ async def test_runner_rejects_project_directory_symlink_created_after_store_init
     with pytest.raises(ValueError, match="outside the configured workspace"):
         await runner.run(manifest)
     assert list(outside.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_project_directory_symlink_to_another_workspace_project(tmp_path):
+    workspace = tmp_path / "workspace"
+    project_id = "test-project"
+    store = CheckpointStore(workspace, project_id)
+    other_project = workspace / "other-project"
+    other_project.mkdir(parents=True)
+    store.root.rmdir()
+    try:
+        store.root.symlink_to(other_project, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are not available in this environment")
+
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    runner = LocalProjectRunner(workspace, store, FakeBackend(), FakeMedia())
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        await runner.run(manifest)
+    assert list(other_project.iterdir()) == []

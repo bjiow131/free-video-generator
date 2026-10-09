@@ -24,6 +24,8 @@ class CheckpointStore:
             raise ValueError("Invalid project_id")
         workspace_root = pathlib.Path(workspace).resolve()
         candidate_root = workspace_root / project_id
+        if candidate_root.is_symlink():
+            raise ValueError("Project checkpoint directory must not be a symlink")
         resolved_root = candidate_root.resolve()
         if not resolved_root.is_relative_to(workspace_root):
             raise ValueError("Project checkpoint directory resolves outside the configured workspace")
