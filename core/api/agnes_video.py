@@ -252,6 +252,16 @@ class AgnesVideoAPI:
                 raise RuntimeError("Video generation cancelled by user")
 
             try:
+                if progress_callback:
+                    progress_callback(
+                        "submitting",
+                        0,
+                        f"Отправка задачи в Agnes · попытка {attempt + 1}/{self.max_retries} · ожидание ответа",
+                    )
+                logger.info(
+                    "[AgnesVideo] Submit attempt %d/%d for %s (model=%s)",
+                    attempt + 1, self.max_retries, mode_desc, self.model,
+                )
                 await asyncio.to_thread(get_rate_limiter().acquire)
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -363,6 +373,12 @@ class AgnesVideoAPI:
 
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, asyncio.TimeoutError) as exc:
                 delay = min(self.retry_base_delay * (attempt + 1), 300.0)
+                if progress_callback:
+                    progress_callback(
+                        "submit_retry",
+                        0,
+                        f"Нет ответа от Agnes · попытка {attempt + 1}/{self.max_retries} · повтор через {delay:.0f} с",
+                    )
                 logger.warning(
                     "[AgnesVideo] Transient network error on %s: %s; retry in %.0fs",
                     mode_desc, exc, delay,
