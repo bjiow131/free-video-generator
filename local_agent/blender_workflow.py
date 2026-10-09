@@ -260,3 +260,81 @@ def open_mia_project(project_name: str) -> dict[str, Any]:
     return {"status": "started", "project_path": str(blend),
             "process_id": getattr(process, "pid", None),
             "note": "Blender GUI launch requested; visual inspection is still required."}
+
+
+def inspect_mia_project(project_name: str) -> dict[str, Any]:
+    """Inspect a generated project with a bundled read-only Blender script."""
+    import re
+    if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
+        raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
+    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not executable or not workspace_value:
+        return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
+    blender = Path(executable).expanduser().resolve()
+    workspace = Path(workspace_value).expanduser().resolve()
+    project_dir = (workspace / project_name).resolve()
+    blend = project_dir / "mia_blockout.blend"
+    if not blender.is_file():
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
+    if not project_dir.is_relative_to(workspace) or project_dir == workspace or project_dir.is_symlink():
+        raise BlenderWorkflowError("Project path must be a real folder inside workspace.")
+    if blend.is_symlink() or not blend.is_file() or blend.stat().st_size == 0:
+        return {"status": "blocked", "reason": "valid_mia_blockout_project_not_found"}
+    import tempfile
+    script_text = r'''
+import bpy, json, os, sys
+args=sys.argv[sys.argv.index("--")+1:]
+blend_path=os.path.realpath(args[0]); report_path=os.path.realpath(args[1])
+bpy.ops.wm.open_mainfile(filepath=blend_path, load_ui=False)
+scene=bpy.context.scene
+missing=[]
+for image in bpy.data.images:
+    if image.source == "FILE" and image.filepath:
+        resolved=bpy.path.abspath(image.filepath)
+        if not os.path.exists(resolved):
+            missing.append(os.path.basename(image.filepath))
+data={
+ "status":"completed",
+ "scene_name":scene.name,
+ "object_count":len(scene.objects),
+ "mesh_count":sum(1 for o in scene.objects if o.type=="MESH"),
+ "camera_count":sum(1 for o in scene.objects if o.type=="CAMERA"),
+ "light_count":sum(1 for o in scene.objects if o.type=="LIGHT"),
+ "material_count":len(bpy.data.materials),
+ "camera_assigned":scene.camera is not None,
+ "render_resolution":[scene.render.resolution_x,scene.render.resolution_y],
+ "render_engine":scene.render.engine,
+ "missing_image_files":missing,
+ "object_names":[o.name for o in list(scene.objects)[:250]],
+ "blend_path":blend_path
+}
+with open(report_path,"w",encoding="utf-8") as f: json.dump(data,f,ensure_ascii=False)
+'''
+    report = project_dir / "mia_inspection.json"
+    if report.is_symlink():
+        raise BlenderWorkflowError("Inspection report path must not be a symlink.")
+    try:
+        with tempfile.TemporaryDirectory(prefix=".mia-inspect-", dir=project_dir) as temp:
+            script = Path(temp) / "inspect.py"
+            script.write_text(script_text, encoding="utf-8")
+            proc = subprocess.run([str(blender), "--disable-autoexec", "--background",
+                                   "--factory-startup", "--python", str(script), "--",
+                                   str(blend), str(report)],
+                                  cwd=str(project_dir), capture_output=True, text=True,
+                                  timeout=180, check=False, shell=False)
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "reason": "blender_inspection_timeout"}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+    if proc.returncode != 0 or not report.is_file() or report.stat().st_size == 0:
+        return {"status": "failed", "reason": "blender_inspection_failed",
+                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:]}
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"status": "failed", "reason": "inspection_report_unreadable"}
+    if data.get("status") != "completed" or data.get("blend_path") != str(blend):
+        return {"status": "failed", "reason": "inspection_report_validation_failed"}
+    return {"status": "completed", "task": "blender_inspect_mia_project", "inspection": data,
+            "note": "Structural inspection only; it does not judge visual quality."}
