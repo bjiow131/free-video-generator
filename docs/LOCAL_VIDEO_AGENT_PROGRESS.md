@@ -1,6 +1,6 @@
 # Local Video Agent — Progress Log
 
-Updated: 2026-10-09
+Updated: 2026-10-09 (Task 2 reliability pass)
 
 ## Confirmed repository state
 
@@ -17,6 +17,10 @@ Updated: 2026-10-09
 - Hardened `local_agent/manifest.py`: schema version is checked; project/scene IDs are restricted to safe path components; durations must be integers; ratios and MP4 output filenames are validated; project name is preserved.
 - Hardened `local_agent/checkpoint.py`: unsupported/corrupt checkpoint shapes and changed manifests are rejected rather than silently resumed; checkpoint locks are shared across store instances in one process.
 - Fixed runner recovery so a completed scene whose stored media fails revalidation is invalidated and regenerated instead of aborting before the retry path.
+- Added an ownership-token runner lock file with PID checks to reject concurrent execution of the same project across processes; the lock is released only when its token matches. Stale dead-PID locks are reclaimed, while malformed/unverifiable locks fail closed.
+- Added two-, ten- and one-hundred-scene fictional manifests under `examples/local_video_agent/` and tests that validate their scene counts.
+- Added duplicate-run regression coverage and checkpoint corruption-preservation coverage.
+- Added workspace containment validation so a project output directory redirected by a symlink/junction is rejected.
 - Added manifest validation tests for traversal-like identifiers, invalid duration types/ranges, unsafe output names and schema-version rejection.
 - Hardened `scripts/inspect_wan2gp_api.py`: loopback-only URLs, positive timeout, bounded response reads, malformed/unexpected JSON reporting, and reduced risk of printing URL credentials/query data.
 - Added mocked inspector tests for success, HTTP/connection errors, malformed and oversized responses, loopback restrictions, and omission of component default values.
@@ -31,12 +35,18 @@ Updated: 2026-10-09
 - None recorded. No test suite was executed, so this must not be interpreted as a clean test result.
 
 ### Not executed
-- All newly authored and existing pytest tests, including mocks. New regression coverage includes changed-manifest rejection and regeneration after saved-output revalidation failure.
+- All newly authored and existing pytest tests, including mocks. New regression coverage includes changed-manifest rejection, regeneration after saved-output revalidation failure, duplicate-run rejection/release, corrupted-checkpoint preservation and example-manifest parsing.
 - GitHub Actions CI status: no workflow run result was available through the inspected workflow-run query.
 - Real FFmpeg/ffprobe media validation and assembly.
 - Windows-specific filesystem/subprocess behavior.
 - Wan2GP API inspection against the user's installed version.
 - Real GPU generation and two-scene end-to-end continuity.
+
+## Concurrency and local service decision
+
+- Runner ownership is guarded within the process and with a per-project exclusive lock file for cross-process exclusion. A lock with an unverifiable owner fails closed; manual inspection may be required after an abnormal shutdown if PID information is malformed. This mechanism has not yet been exercised on Windows.
+- No local HTTP service was added in this pass. The runner state machine, cancellation of an in-flight backend job, and Windows lock behavior need executed tests before exposing lifecycle controls over HTTP. The first MVP remains a local CLI/process, not a Render-connected service.
+- FFmpeg assembly remains stream-copy concat only; incompatible clips fail explicitly. Crossfades and normalization are not implemented.
 
 ## Known next engineering items
 
