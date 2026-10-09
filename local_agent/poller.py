@@ -148,6 +148,18 @@ def _save_state(data: dict[str, Any]) -> None:
     temp.replace(STATE_PATH)
 
 
+
+def classify_manifest(state: dict[str, Any], task_id: str, manifest_sha: str) -> str:
+    """Classify mailbox state without allowing a reused task ID to execute twice."""
+    previous_id = state.get("last_task_id")
+    previous_sha = state.get("manifest_sha")
+    if task_id != previous_id:
+        return "new"
+    if manifest_sha == previous_sha:
+        return "same"
+    return "reused_id"
+
+
 def _not_expired(task: Any) -> bool:
     try:
         expiry = datetime.fromisoformat(task.expires_at.replace("Z", "+00:00"))
@@ -247,7 +259,9 @@ def main() -> int:
 
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
-    last_seen = _load_state().get("last_task_id")
+    state = _load_state()
+    last_seen = state.get("last_task_id")
+    last_sha = state.get("manifest_sha")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
     print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and locally approved Blender forest previews; runtime tests remain outstanding.")
 
@@ -256,10 +270,24 @@ def main() -> int:
             fetched = client.fetch_desired_task()
             if fetched is not None:
                 task, manifest_sha = fetched
-                if task.task_id != last_seen:
+                decision = classify_manifest(
+                    {"last_task_id": last_seen, "manifest_sha": last_sha},
+                    task.task_id, manifest_sha,
+                )
+                if decision == "new":
                     _run_one(client, task)
-                    last_seen = task.task_id
-                    _save_state({"last_task_id": last_seen, "manifest_sha": manifest_sha})
+                    last_seen, last_sha = task.task_id, manifest_sha
+                    _save_state({"last_task_id": last_seen, "manifest_sha": last_sha})
+                elif decision == "reused_id":
+                    # Task IDs are immutable. A changed manifest with the same ID
+                    # is rejected, never silently re-executed.
+                    client.publish_result(task.task_id, {
+                        "task_id": task.task_id,
+                        "status": "rejected",
+                        "reason": "task_id_reused_with_different_manifest",
+                    })
+                    last_sha = manifest_sha
+                    _save_state({"last_task_id": last_seen, "manifest_sha": last_sha})
             backoff = interval
             time.sleep(interval)
         except KeyboardInterrupt:
