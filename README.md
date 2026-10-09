@@ -123,7 +123,7 @@ start_windows.bat
 
 For Linux/macOS, use `./start.sh`.
 
-**Step 2 — Configure API Key**
+**Step 3 — Configure API Key**
 
 Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
 
