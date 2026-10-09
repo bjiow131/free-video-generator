@@ -60,6 +60,11 @@ Local hosting removes Render from the app runtime, but Agnes calls still require
 **Status:** FOUND (static)
 Current CI's launcher check is textual. Existing local-agent tests use fake media bytes according to the master backlog. Need Windows execution, real FFmpeg fixtures, real MP4/PNG validation, and an actual backend end-to-end run before claiming readiness.
 
+
+### F9 — No common Render deployment manifest found in the inspected branch
+**Status:** FOUND (static inventory; not proof that no external dashboard configuration exists)
+Direct path checks did not find `render.yaml`, `render.yml`, `Procfile`, `.github/workflows/deploy.yml`, `.github/workflows/render-deploy.yml`, `fly.toml`, or `railway.json` on this branch. The main local app therefore appears not to require one of these checked deployment manifests. Render-specific code still exists in `server.py`, and external service settings may exist outside the repository; continue inventory before removing compatibility code.
+
 ## Recommended migration sequence
 
 1. Preserve current working branch and user data; continue only on `feature/local-first-migration`.
