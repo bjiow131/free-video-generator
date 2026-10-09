@@ -103,11 +103,15 @@ class AgnesVideoAPI:
         return f"data:{mime};base64,{b64}"
 
     async def _resolve_image_ref(self, ref: str) -> str:
-        """Resolve local files to data URIs; modern Agnes accepts these directly."""
+        """Resolve local references using the transport supported by the selected Agnes API."""
         if ref.startswith(("http://", "https://", "data:")):
             return ref
         if os.path.exists(ref):
-            return await self._path_to_b64(ref)
+            if self.is_modern:
+                return await self._path_to_b64(ref)
+            # Legacy Agnes v2.0 requires provider-fetchable image URLs, not data URIs.
+            from core.provider_image_store import create_provider_image_url
+            return create_provider_image_url(ref)
         return ref
 
     def _aspect_ratio(self, width: int, height: int) -> str:
