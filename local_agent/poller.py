@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 from typing import Any
 
@@ -229,6 +230,11 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             return
         answer = "YES"  # Explicit task authorization plus local opt-in; no shell/code payloads are accepted.
     else:
+        if not sys.stdin.isatty():
+            result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
+            commit_sha = client.publish_result(task.task_id, result)
+            print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
+            return
         answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
