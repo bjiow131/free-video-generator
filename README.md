@@ -111,21 +111,27 @@ That's it. No GPU, no large RAM, a regular laptop is all you need.
 
 ### Option A: Windows (recommended)
 
-**Step 1 — Clone & Launch**
+**Step 1 — Clone & Prepare (first run)**
 
 ```bat
 git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
+setup_windows.bat
+```
+
+The setup script checks Python 3.10+, FFmpeg, and ffprobe; creates `.venv` if missing; and installs `requirements.txt`. Install FFmpeg separately and ensure both `ffmpeg` and `ffprobe` are on PATH before setup.
+
+**Step 2 — Start the local server**
+
+```bat
 start_windows.bat
 ```
 
-`start_windows.bat` requires an existing `.venv`, a Windows `AGNES_API_KEY`, and FFmpeg in PATH. It starts FastAPI and opens `http://127.0.0.1:8765`. Create the environment first as shown by the script.
+The launcher starts FastAPI at `http://127.0.0.1:8765` and opens the browser. It checks server readiness for up to 60 seconds instead of waiting indefinitely. An Agnes API key is not required just to open the app, but generation through Agnes requires a valid key configured in the Web UI or the `AGNES_API_KEY` environment variable.
 
-For Linux/macOS, use `./start.sh`.
+**Step 3 — Configure the API key (for Agnes generation)**
 
-**Step 3 — Configure API Key**
-
-Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
+Get an API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
 
 ```bat
 REM Windows CMD
@@ -142,14 +148,17 @@ $env:AGNES_API_KEY = "your-api-key"
 export AGNES_API_KEY="your-api-key"
 ```
 
-On Windows, the launcher requires `AGNES_API_KEY` in the environment. For other local launches, the key can also be saved through the Web UI. The local endpoint accepts multipart form data:
+The key can also be saved through the Web UI. The local API configuration endpoint accepts multipart form data:
 
 ```bash
 curl -X POST http://localhost:8765/api/config -F "api_key=your-api-key"
 ```
-**Step 3 — Create Your First Video**
 
-Open `http://localhost:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
+**Step 4 — Create your first video**
+
+Open `http://127.0.0.1:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
+
+For Linux/macOS, use `./start.sh`.
 
 ### Option B: Docker (optional, local only)
 
