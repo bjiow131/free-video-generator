@@ -86,6 +86,20 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
 
 
+def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Store a validated creative plan locally; do not launch Blender or execute plan text."""
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        return {"status": "blocked", "reason": "set_LOCAL_AGENT_WORKSPACE_locally"}
+    from local_agent.story_plan import StoryPlanError, save_story_plan
+    try:
+        return save_story_plan(workspace, arguments["story_plan"])
+    except StoryPlanError as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _load_state() -> dict[str, Any]:
     try:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -122,7 +136,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -178,6 +192,8 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
                 details = _apply_patch(task.arguments["patch"])
             elif task.operation == "blender_forest_preview":
                 details = _run_blender_forest_preview(task.arguments)
+            elif task.operation == "save_story_plan":
+                details = _run_save_story_plan(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
