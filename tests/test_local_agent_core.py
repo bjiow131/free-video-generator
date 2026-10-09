@@ -305,3 +305,26 @@ async def test_task_cancellation_persists_cancelled_state(tmp_path):
     state = store.load()
     assert state["status"] == "cancelled"
     assert state["scenes"]["s1"]["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_total_attempt_budget_is_not_reset_by_resume(tmp_path):
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+
+    class AlwaysFailBackend(FakeBackend):
+        async def generate_i2v(self, **kwargs):
+            self.calls.append(kwargs)
+            raise RuntimeError("backend unavailable")
+
+    backend = AlwaysFailBackend()
+    store = CheckpointStore(workspace, manifest.project_id)
+    runner = LocalProjectRunner(workspace, store, backend, FakeMedia(), max_attempts=2)
+    first = await runner.run(manifest)
+    assert first["status"] == "failed"
+    assert first["scenes"]["s1"]["attempts"] == 2
+    second = await runner.run(manifest)
+    assert second["status"] == "failed"
+    assert len(backend.calls) == 2
