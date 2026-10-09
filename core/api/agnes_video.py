@@ -251,6 +251,8 @@ class AgnesVideoAPI:
     @timed_step
     async def _submit_with_retry(self, payload: dict, mode_desc: str, progress_callback=None) -> str:
         last_error_code = ""
+        last_http_status = None
+        last_response_text = ""
         for attempt in range(self.max_retries):
             if self.shutdown_event and self.shutdown_event.is_set():
                 raise RuntimeError("Video generation cancelled by user")
@@ -297,6 +299,8 @@ class AgnesVideoAPI:
 
                 if resp.status_code == 429 or resp.status_code in {500, 502, 503, 504, 520, 522, 524}:
                     response_text = resp.text[:1000]
+                    last_http_status = resp.status_code
+                    last_response_text = response_text
                     try:
                         response_data = resp.json()
                     except ValueError:
@@ -408,11 +412,33 @@ class AgnesVideoAPI:
             raise RuntimeError(
                 "[AgnesVideo] Agnes video queue is full after "
                 f"{self.max_retries} attempts. The provider is temporarily overloaded; "
-                "please retry later."
+                f"last_http_status={last_http_status}; last_response={last_response_text[:500]!r}. "
+                "Please retry later."
+            )
+        if last_http_status is not None:
+            try:
+                error_data = json.loads(last_response_text)
+                provider_message = (
+                    (error_data.get("error") or {}).get("message")
+                    if isinstance(error_data, dict) else None
+                )
+                provider_code = (
+                    (error_data.get("error") or {}).get("code")
+                    if isinstance(error_data, dict) else None
+                )
+            except (ValueError, TypeError, AttributeError):
+                provider_message = None
+                provider_code = None
+            detail = f"provider_message={provider_message!r}; provider_code={provider_code!r}" if provider_message else f"last_response={last_response_text[:500]!r}"
+            raise RuntimeError(
+                f"[AgnesVideo] {mode_desc}: Agnes remained unavailable after "
+                f"{self.max_retries} attempts (HTTP {last_http_status}); {detail}. "
+                "The provider may be busy or the account may have reached its rate limit."
             )
         raise RuntimeError(
             f"[AgnesVideo] {mode_desc}: Agnes remained unavailable after "
-            f"{self.max_retries} attempts. The service may be busy; please retry later."
+            f"{self.max_retries} attempts. No HTTP response was received; "
+            "check network connectivity and provider status."
         )
 
     @timed_step
