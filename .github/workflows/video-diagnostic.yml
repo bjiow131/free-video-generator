@@ -65,11 +65,7 @@ jobs:
             fi
 
             if [[ "$status" == "failed" || "$status" == "error" || "$status" == "cancelled" ]]; then
-              python - <<'PY' <<< "$response"
-          import json, sys
-          d = json.load(sys.stdin)
-          print("Task error:", d.get("error_message") or d.get("error") or "No error details returned")
-          PY
+              python -c 'import json,sys; d=json.load(sys.stdin); print("Task error:", d.get("error_message") or d.get("error") or "No error details returned")' <<< "$response"
               exit 1
             fi
             sleep 15
