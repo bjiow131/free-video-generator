@@ -202,7 +202,7 @@ def _not_expired(task: Any) -> bool:
         return False
 
 
-def _run_one(client: GitHubQueueClient, task: Any) -> None:
+def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | None = None) -> None:
     if not _not_expired(task):
         client.publish_result(task.task_id, {
             "task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"
@@ -237,11 +237,11 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
                 commit_sha = client.publish_result(task.task_id, result)
                 print(f"Task removed before execution. Result commit: {commit_sha}")
                 return
-            latest_task = latest[0]
-            # Compare the complete validated envelope, not just task_id. If a
+            latest_task, latest_manifest_sha = latest
+            # Compare both the raw manifest revision and validated envelope, not just task_id. If a
             # mailbox writer accidentally reuses an ID with changed arguments,
             # the approved object must not be silently replaced underneath us.
-            if latest_task != task:
+            if latest_task != task or (expected_manifest_sha is not None and latest_manifest_sha != expected_manifest_sha):
                 result = {
                     "task_id": task.task_id,
                     "status": "superseded",
@@ -350,7 +350,7 @@ def main() -> int:
                             state, task.task_id, manifest_sha, status="in_progress"
                         )
                         _save_state(state)
-                        _run_one(client, task)
+                        _run_one(client, task, manifest_sha)
                         last_seen, last_sha = task.task_id, manifest_sha
                         state = _remember_manifest(
                             state, last_seen, last_sha, status="processed"
