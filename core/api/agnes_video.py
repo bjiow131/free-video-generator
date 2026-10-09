@@ -364,10 +364,13 @@ class AgnesVideoAPI:
                         queue_hint,
                         f": {response_hint}" if response_hint else "",
                     )
-                    # Modern free queues can reject submissions with several transient
-                    # HTTP codes, not only the documented video_queue_full code. Switch
-                    # to the legacy model immediately for transient provider availability
-                    # failures instead of keeping the user waiting through long retries.
+                    # Only trigger the optional legacy fallback when an operator
+                    # explicitly enabled it. Otherwise, retry the configured modern model
+                    # with the bounded backoff below; a temporary 503 must not fail a task
+                    # immediately or silently switch to an unavailable legacy channel.
+                    legacy_fallback_enabled = os.environ.get(
+                        "AGNES_ENABLE_LEGACY_FALLBACK", ""
+                    ).strip().lower() in {"1", "true", "yes", "on"}
                     transient_unavailable = resp.status_code in {
                         429, 500, 502, 503, 504, 520, 522, 524
                     }
@@ -375,8 +378,10 @@ class AgnesVideoAPI:
                         marker in response_text.lower()
                         for marker in ("busy", "overload", "queue full", "temporarily unavailable")
                     )
-                    if self.is_modern and (queue_full or resp.status_code in {429, 503} or
-                                           (transient_unavailable and busy_hint)):
+                    if self.is_modern and legacy_fallback_enabled and (
+                        queue_full or resp.status_code in {429, 503}
+                        or (transient_unavailable and busy_hint)
+                    ):
                         raise RuntimeError(
                             f"[AgnesVideo] transient HTTP {resp.status_code}; "
                             "trigger provider fallback"
