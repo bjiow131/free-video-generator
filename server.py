@@ -42,6 +42,7 @@ from core.pipelines import (
     ManuscriptVideoPipeline,
 )
 from core.api.agnes_image import AgnesImageAPI
+from core.api.agnes_video import DEFAULT_MODEL as DEFAULT_VIDEO_MODEL
 from core.api.agnes_chat import AgnesChatAPI
 from core.provider_image_store import resolve_provider_image, provider_image_media_type
 from core.api.comfyui import ComfyUIClient, ComfyUIError, build_workflow
@@ -1506,7 +1507,7 @@ async def create_simple_task(request: Request):
     # Some reverse proxies/clients can drop multipart fields while preserving
     # the query string. Scalar parameters are mirrored in the query string.
     prompt = str(form.get("prompt") or request.query_params.get("prompt") or "").strip()
-    model = "agnes-video-v2.0"  # Always submit directly to Agnes 2.0; do not probe 2.5 first.
+    model = DEFAULT_VIDEO_MODEL
     mode = str(form.get("mode") or request.query_params.get("mode") or "t2v").strip()
     try:
         duration = int(form.get("duration") or request.query_params.get("duration") or 5)
