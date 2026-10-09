@@ -33,38 +33,137 @@ SUPPORTED_HANDLERS = {
 }
 
 
-def _apply_patch(patch: str) -> dict[str, Any]:
-    """Apply a bounded git diff only after explicit local approval."""
+def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
+    """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
+    import re
+
     if not (ROOT / ".git").exists():
         return {"status": "blocked", "reason": "project_root_is_not_a_git_checkout"}
+    safe_id = re.sub(r"[^A-Za-z0-9._-]", "-", task_id)[:80]
+    if not safe_id:
+        return {"status": "blocked", "reason": "invalid_task_id_for_isolated_worktree"}
+
+    branch = f"agent/task-{safe_id}"
+    worktree_root = ROOT.parent / ".local_agent_worktrees"
+    worktree = worktree_root / f"task-{safe_id}"
+    if worktree.exists():
+        return {
+            "status": "blocked",
+            "reason": "task_worktree_already_exists; inspect it before retrying",
+            "worktree": str(worktree),
+            "branch": branch,
+        }
+
+    def run_git(args: list[str], *, cwd: Path = ROOT, timeout: int = 60, input_text: str | None = None):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, input=input_text, capture_output=True,
+            text=True, timeout=timeout, check=False, shell=False,
+        )
+
     try:
-        check = subprocess.run(
-            ["git", "apply", "--check"],
-            cwd=ROOT, input=patch, capture_output=True, text=True,
-            timeout=30, check=False, shell=False,
-        )
-        if check.returncode != 0:
+        head = run_git(["rev-parse", "--verify", "HEAD"])
+        if head.returncode != 0:
+            return {"status": "blocked", "reason": "could_not_resolve_base_commit"}
+        base_sha = head.stdout.strip()
+        branch_check = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
+        if branch_check.returncode == 0:
             return {
-                "status": "rejected",
-                "reason": "git_apply_check_failed",
-                "stderr_tail": [line[:1000] for line in check.stderr.splitlines()[-30:]],
+                "status": "blocked",
+                "reason": "task_branch_already_exists; inspect it before retrying",
+                "branch": branch,
             }
-        applied = subprocess.run(
-            ["git", "apply"],
-            cwd=ROOT, input=patch, capture_output=True, text=True,
-            timeout=30, check=False, shell=False,
-        )
+
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        created = run_git(["worktree", "add", "-b", branch, str(worktree), base_sha], timeout=120)
+        if created.returncode != 0:
+            return {
+                "status": "error",
+                "reason": "could_not_create_isolated_worktree",
+                "stderr_tail": [line[:500] for line in created.stderr.splitlines()[-20:]],
+            }
+
+        checked = run_git(["apply", "--check"], cwd=worktree, input_text=patch)
+        if checked.returncode != 0:
+            reason = "git_apply_check_failed"
+            error_lines = [line[:500] for line in checked.stderr.splitlines()[-20:]]
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "rejected", "reason": reason, "stderr_tail": error_lines},
+            )
+
+        applied = run_git(["apply"], cwd=worktree, input_text=patch)
         if applied.returncode != 0:
-            return {
-                "status": "failed",
-                "reason": "git_apply_failed",
-                "stderr_tail": [line[:1000] for line in applied.stderr.splitlines()[-30:]],
-            }
-        return {"status": "applied", "test_run": False}
+            error_lines = [line[:500] for line in applied.stderr.splitlines()[-20:]]
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "git_apply_failed", "stderr_tail": error_lines},
+            )
+
+        try:
+            tests = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q"],
+                cwd=worktree, capture_output=True, text=True, timeout=900,
+                check=False, shell=False,
+            )
+        except subprocess.TimeoutExpired:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "post_patch_tests_timed_out", "timeout_seconds": 900},
+            )
+        except OSError as exc:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "post_patch_tests_could_not_start", "error_type": type(exc).__name__},
+            )
+
+        if tests.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {
+                    "status": "failed_rolled_back",
+                    "reason": "post_patch_tests_failed",
+                    "test_return_code": tests.returncode,
+                    "stdout_tail": [line[:1000] for line in tests.stdout.splitlines()[-60:]],
+                    "stderr_tail": [line[:1000] for line in tests.stderr.splitlines()[-60:]],
+                },
+            )
+
+        return {
+            "status": "completed",
+            "reason": "patch_applied_and_tests_passed_in_isolated_worktree",
+            "base_commit": base_sha,
+            "branch": branch,
+            "worktree": str(worktree),
+            "test_return_code": tests.returncode,
+            "requires_review_before_merge": True,
+            "active_checkout_modified": False,
+        }
     except subprocess.TimeoutExpired:
-        return {"status": "timeout", "timeout_seconds": 30}
+        return {"status": "timeout", "reason": "git_operation_timed_out"}
     except OSError as exc:
         return {"status": "error", "error_type": type(exc).__name__}
+
+
+def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[str, Any]) -> dict[str, Any]:
+    """Remove only the disposable worktree created for this task after a failure."""
+    remove = run_git(["worktree", "remove", "--force", str(worktree)], timeout=120)
+    delete_branch = run_git(["branch", "-D", branch], timeout=60)
+    if remove.returncode != 0 or delete_branch.returncode != 0:
+        return {
+            "status": "failed_needs_user",
+            "reason": "failed_task_cleanup_not_fully_verified",
+            "original_failure": result,
+            "worktree_remove_return_code": remove.returncode,
+            "branch_delete_return_code": delete_branch.returncode,
+            "worktree": str(worktree),
+            "branch": branch,
+        }
+    return {
+        **result,
+        "rollback_verified": True,
+        "temporary_worktree_removed": True,
+        "temporary_branch_removed": True,
+    }
 
 
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -279,7 +378,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
             if task.operation == "apply_patch":
-                details = _apply_patch(task.arguments["patch"])
+                details = _apply_patch(task.arguments["patch"], task.task_id)
             elif task.operation == "blender_forest_preview":
                 details = _run_blender_forest_preview(task.arguments)
             elif task.operation == "save_story_plan":
