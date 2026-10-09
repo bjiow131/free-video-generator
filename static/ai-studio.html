@@ -903,12 +903,12 @@ async function generateVideo(){
       payload.system_prompt='Character identity lock: preserve the exact identity of the selected character across every frame. Match the supplied reference images for facial structure, eyes, eyebrows, nose, lips, jawline, skin tone, natural hair color, hairstyle, age, body proportions, clothing, and distinctive visual details. Treat the references as the immutable identity source, not as loose inspiration. Keep the same person during motion, camera movement, changes of angle, and transitions. Do not redesign, beautify, age, de-age, resize, recolor, morph, replace, or reinterpret the character. Do not change facial geometry or hairstyle between frames. If a requested action conflicts with identity consistency, preserve identity and perform the action with the smallest necessary pose change.';
     }
     const q=new URLSearchParams({prompt:p,model:'agnes-video-v2.0',mode,duration:String($('#videoDuration').value),video_width:String(video_width),video_height:String(video_height)});
-    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||d.error||'Не удалось запустить генерацию');const taskId=d.task_id;if(!taskId)throw new Error('Сервер не вернул номер задачи');
+    const r=await api('/api/tasks/simple?'+q.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||d.error||'Не удалось запустить генерацию');const taskId=d.task_id;if(!taskId)throw new Error('Сервер не вернул номер задачи');try{localStorage.setItem('aistudio_active_video_task',taskId)}catch{}
     $('#videoStatus').textContent='Видео поставлено в очередь · задача '+taskId;
     const poll=async()=>{try{const rr=await api('/api/tasks');if(!rr.ok)throw new Error('Не удалось получить статус задачи');const dd=await rr.json();const task=(dd.tasks||[]).find(x=>x.task_id===taskId);if(!task){$('#videoProgressStage').textContent='Задача принята сервером. Ожидаем статус…';setTimeout(poll,2500);return}
       updateVideoProgress(task,taskId);
-      if(task.status==='failed'){throw Error(task.error_message||task.progress_message||'Генерация видео не удалась')}
-      if(task.status==='completed'){
+      if(task.status==='failed'){try{localStorage.removeItem('aistudio_active_video_task')}catch{};throw Error(task.error_message||task.progress_message||'Генерация видео не удалась')}
+      if(task.status==='completed'){try{localStorage.removeItem('aistudio_active_video_task')}catch{}
         const url='/api/video/'+encodeURIComponent(taskId);
         $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button><button class="primary" id="useLastFrameButton">Использовать последний кадр для следующей сцены</button></div>';
         $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');
@@ -958,6 +958,51 @@ async function loadHistory(){
     if(historyTimer)clearTimeout(historyTimer);
     if(items.some(x=>x.status!=='completed'&&x.status!=='failed'))historyTimer=setTimeout(loadHistory,3000);
   }catch(e){$('#historyList').innerHTML='<div class="card">'+escapeHtml(e.message)+'</div>'}
+}
+
+/* Restore the active video task after F5 when the server still has it. */
+async function restoreActiveVideoTask(){
+  let taskId='';
+  try{taskId=localStorage.getItem('aistudio_active_video_task')||''}catch{}
+  if(!taskId)return;
+  try{
+    const response=await api('/api/tasks');const data=await response.json();
+    const task=(data.tasks||[]).find(x=>x.task_id===taskId);
+    if(!task){try{localStorage.removeItem('aistudio_active_video_task')}catch{};return}
+    show('video',false);
+    if(task.status==='completed'){
+      try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+      const url='/api/video/'+encodeURIComponent(taskId);
+      $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button><button class="primary" id="useLastFrameButton">Использовать последний кадр для следующей сцены</button></div>';
+      $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');$('#useLastFrameButton').onclick=()=>useLastVideoFrame(taskId,$('#useLastFrameButton'));
+      $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;return;
+    }
+    if(task.status==='failed'){
+      try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+      $('#videoStatus').textContent=task.error_message||task.progress_message||'Генерация завершилась с ошибкой';return;
+    }
+    videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);updateVideoProgress(task,taskId);
+    const poll=async()=>{
+      try{
+        const rr=await api('/api/tasks');const dd=await rr.json();const current=(dd.tasks||[]).find(x=>x.task_id===taskId);
+        if(!current){$('#videoProgressStage').textContent='Задача больше не найдена на сервере.';try{localStorage.removeItem('aistudio_active_video_task')}catch{};finishVideoProgress('Задача не найдена');setGenerateBusy('video',false);return}
+        updateVideoProgress(current,taskId);
+        if(current.status==='completed'){
+          try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+          const url='/api/video/'+encodeURIComponent(taskId);
+          $('#videoResult').innerHTML='<video controls playsinline style="width:100%;display:block" src="'+url+'"></video><div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost" id="saveVideoButton">Сохранить видео</button><button class="primary" id="useLastFrameButton">Использовать последний кадр для следующей сцены</button></div>';
+          $('#saveVideoButton').onclick=()=>openSaveModal(taskId,'video');$('#useLastFrameButton').onclick=()=>useLastVideoFrame(taskId,$('#useLastFrameButton'));
+          $('#videoResult').classList.remove('hidden');$('#videoStatus').textContent='Готово · '+taskId;finishVideoProgress('Видео готово');setGenerateBusy('video',false);return;
+        }
+        if(current.status==='failed'){
+          try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+          $('#videoStatus').textContent=current.error_message||current.progress_message||'Генерация видео не удалась';finishVideoProgress('Ошибка генерации');setGenerateBusy('video',false);return;
+        }
+        setTimeout(poll,3000);
+      }catch(e){$('#videoProgressStage').textContent='Не удалось восстановить статус: '+e.message;setTimeout(poll,5000)}
+    };
+    setTimeout(poll,1000);
+  }catch(e){console.debug('[Task recovery] restore skipped',e)}
 }
 
 /* Persist UI state across F5/reload. File inputs are intentionally excluded:
@@ -1034,4 +1079,5 @@ load().then(async()=>{
     if(!['image','characters','history','video'].includes(savedPage))savedPage='image';
   }catch{}
   show(savedPage,false);
+  await restoreActiveVideoTask();
 });</script></body></html>
