@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import json
+import uuid
 from pathlib import Path
 from threading import Lock
 from typing import Protocol
@@ -71,11 +73,56 @@ class LocalProjectRunner:
             if key in _ACTIVE_PROJECTS:
                 raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
             _ACTIVE_PROJECTS.add(key)
+        lock_path = self.store.root / ".runner.lock"
+        lock_token = uuid.uuid4().hex
         try:
+            self._acquire_process_lock(lock_path, lock_token)
             return await self._run_project(manifest)
         finally:
+            self._release_process_lock(lock_path, lock_token)
             with _ACTIVE_PROJECTS_LOCK:
                 _ACTIVE_PROJECTS.discard(key)
+
+    @staticmethod
+    def _acquire_process_lock(lock_path: Path, token: str) -> None:
+        payload = json.dumps({"pid": os.getpid(), "token": token})
+        for _ in range(2):
+            try:
+                descriptor = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                    stream.write(payload)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                return
+            except FileExistsError:
+                try:
+                    owner = json.loads(lock_path.read_text(encoding="utf-8"))
+                    pid = owner.get("pid")
+                    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
+                        raise RuntimeError("Project lock is malformed; inspect/remove it only after confirming no runner is active")
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        # A dead owner is verified; retry exclusive creation once.
+                        lock_path.unlink(missing_ok=True)
+                        continue
+                    except PermissionError:
+                        # Fail closed: the process exists but cannot be inspected.
+                        pass
+                    raise RuntimeError(f"Project is locked by process {pid}; refusing concurrent execution")
+                except (OSError, json.JSONDecodeError, AttributeError) as exc:
+                    raise RuntimeError("Project lock cannot be verified; refusing concurrent execution") from exc
+        raise RuntimeError("Could not acquire project execution lock")
+
+    @staticmethod
+    def _release_process_lock(lock_path: Path, token: str) -> None:
+        try:
+            owner = json.loads(lock_path.read_text(encoding="utf-8"))
+            if owner.get("token") == token:
+                lock_path.unlink(missing_ok=True)
+        except (OSError, json.JSONDecodeError, AttributeError):
+            # Never delete a lock whose ownership cannot be verified.
+            pass
 
     async def _run_project(self, manifest: ProjectManifest) -> dict:
         state = self.store.initialize(manifest.to_dict())
