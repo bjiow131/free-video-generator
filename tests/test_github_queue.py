@@ -46,23 +46,33 @@ def test_fetch_desired_task_parses_valid_task():
         "requires_local_approval": True,
         "arguments": {},
     }).encode()
-    session = FakeSession([FakeResponse(data={
-        "type": "file", "encoding": "base64",
-        "content": base64.b64encode(raw).decode(), "sha": "file-sha",
-    })])
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={
+            "type": "file", "encoding": "base64",
+            "content": base64.b64encode(raw).decode(), "sha": "file-sha",
+        }),
+    ])
     task, sha = GitHubQueueClient(cfg(), session=session).fetch_desired_task()
     assert task.task_id == "task-42"
     assert sha == "file-sha"
 
 
 def test_fetch_rejects_non_file_manifest():
-    client = GitHubQueueClient(cfg(), session=FakeSession([FakeResponse(data={"type": "dir"})]))
+    client = GitHubQueueClient(cfg(), session=FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={"type": "dir"}),
+    ]))
     with pytest.raises(QueueTransportError):
         client.fetch_desired_task()
 
 
 def test_publish_result_creates_result_file_and_redacts_secrets():
-    session = FakeSession([FakeResponse(status_code=404), FakeResponse(data={"commit": {"sha": "commit-123"}})])
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(status_code=404),
+        FakeResponse(data={"commit": {"sha": "commit-123"}}),
+    ])
     sha = GitHubQueueClient(cfg(), session=session).publish_result(
         "task-42", {"status": "ok", "note": "api_key=abc123"}
     )
@@ -73,3 +83,12 @@ def test_publish_result_rejects_path_traversal():
     client = GitHubQueueClient(cfg(), session=FakeSession([]))
     with pytest.raises(QueueConfigurationError):
         client.publish_result("../other", {"status": "ok"})
+
+
+
+def test_public_mailbox_repository_is_refused():
+    client = GitHubQueueClient(cfg(), session=FakeSession([
+        FakeResponse(data={"private": False}),
+    ]))
+    with pytest.raises(QueueTransportError, match="not confirmed private"):
+        client.fetch_desired_task()
