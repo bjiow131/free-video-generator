@@ -99,6 +99,8 @@ class FFmpegMediaTools:
     def extract_last_frame(self, video_path: str, output_path: str) -> str:
         self._probe(video_path)
         target = Path(output_path)
+        if target.resolve() == Path(video_path).resolve():
+            raise MediaError("Frame output path must not overwrite the source video")
         target.parent.mkdir(parents=True, exist_ok=True)
         self._run([
             self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
@@ -133,6 +135,9 @@ class FFmpegMediaTools:
         if any(signature != signatures[0] for signature in signatures[1:]):
             raise MediaError("Clips have incompatible codecs, dimensions, frame rates, or audio streams; stream-copy concat refused")
         target = Path(output_path)
+        resolved_target = target.resolve()
+        if any(Path(path).resolve() == resolved_target for path in video_paths):
+            raise MediaError("Assembly output path must not overwrite a source clip")
         target.parent.mkdir(parents=True, exist_ok=True)
         # Keep list file beside target so paths with spaces and non-ASCII characters
         # are handled consistently by FFmpeg on Windows.
