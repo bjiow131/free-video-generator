@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import re
+import tempfile
 from datetime import datetime, timezone
 from threading import Lock, RLock
 from typing import Any
@@ -93,12 +94,25 @@ class CheckpointStore:
     def save(self, state: dict[str, Any]) -> None:
         with self._lock:
             state["updated_at"] = self._now()
-            temp_path = self.path.with_suffix(".json.tmp")
-            with temp_path.open("w", encoding="utf-8", newline="") as stream:
-                json.dump(state, stream, ensure_ascii=False, indent=2)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temp_path, self.path)
+            # Unique temp files avoid collisions between interrupted writes or
+            # separate store instances. The last complete checkpoint remains intact
+            # until the atomic replace succeeds; orphaned temps are never auto-loaded.
+            descriptor, temp_name = tempfile.mkstemp(
+                prefix="checkpoint.", suffix=".tmp", dir=str(self.root)
+            )
+            temp_path = pathlib.Path(temp_name)
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+                    json.dump(state, stream, ensure_ascii=False, indent=2)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temp_path, self.path)
+            except BaseException:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
 
     def update_scene(self, state: dict[str, Any], scene_id: str, **updates: Any) -> None:
         with self._lock:
