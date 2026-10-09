@@ -146,7 +146,7 @@ def _run_one(client: GitHubQueueClient, task: Any) -> None:
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
-    print("Supported operations: diagnostics, bounded reviewed patches, and the allowlisted local Blender forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage, and the allowlisted local Blender forest preview.")
     answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
