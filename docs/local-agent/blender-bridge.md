@@ -13,7 +13,7 @@ This is the first local automation milestone for the Mia 3D-animation workflow. 
 ## What it does not do yet
 
 - It does not generate or rig Mia from a reference image.
-- It does not provide a conversational interface, automatic mailbox polling, or a full scene timeline.
+- It does not provide a full scene timeline or a conversational interface by itself. The mailbox poller now recognizes the typed `blender_forest_preview` task, but every remote task still requires typing `YES` on the Windows computer.
 - It does not yet integrate with `LocalProjectRunner` or export a finished animated MP4.
 - The generated forest is a technical starter scene, not a final art-directed environment.
 
@@ -50,3 +50,36 @@ python -m local_agent.blender_cli --project mia_forest --no-render
 
 
 If you intentionally want to regenerate the same project and replace the bridge's three known outputs, pass `--overwrite`. Without that flag, existing outputs are left untouched.
+
+
+## Route a forest-preview request through the local agent
+
+After the private mailbox exists and the local poller is configured, set these variables in the same PowerShell session:
+
+```powershell
+$env:BLENDER_EXECUTABLE = "C:\\Program Files\\Blender Foundation\\Blender 4.x\\blender.exe"
+$env:LOCAL_AGENT_WORKSPACE = "D:\\AI-Studio\\MiaProjects"
+$env:LOCAL_AGENT_GITHUB_REPO = "YOUR_GITHUB_LOGIN/local-agent-mailbox"
+python -m local_agent.poller
+```
+
+The private mailbox manifest at `queue/desired_task.json` may contain this typed task:
+
+```json
+{
+  "protocol_version": 1,
+  "task_id": "mia-forest-preview-001",
+  "operation": "blender_forest_preview",
+  "created_at": "2026-10-09T10:00:00Z",
+  "expires_at": "2026-10-09T10:10:00Z",
+  "requires_local_approval": true,
+  "arguments": {
+    "project_name": "mia_forest",
+    "render": true,
+    "preview": true,
+    "cycles": false
+  }
+}
+```
+
+Use current UTC timestamps when creating a real task. The example timestamps are illustrative and will expire. The protocol rejects arbitrary script/command/executable fields, invalid project names, unknown arguments, and tasks that do not require local approval. On the PC, the agent prints the task and waits for the user to type `YES`; otherwise it declines the task. Existing generated outputs are never replaced unless the local CLI is run with an explicit overwrite flag (the remote task does not expose that flag).
