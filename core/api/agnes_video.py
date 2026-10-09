@@ -338,6 +338,28 @@ class AgnesVideoAPI:
 
                     queue_full = last_error_code == "video_queue_full"
 
+                    # A full provider queue will not improve by retrying the same job.
+                    # Stop immediately instead of leaving the task blocked by the 1 RPM limiter.
+                    if queue_full:
+                        provider_message = (
+                            provider_error.get("message")
+                            or response_data.get("message")
+                            or response_text[:500]
+                        )
+                        logger.warning(
+                            "[AgnesVideo] Provider queue full; stopping retries for %s",
+                            mode_desc,
+                        )
+                        if progress_callback:
+                            progress_callback(
+                                "failed", 0,
+                                "Очередь Agnes переполнена. Повторите генерацию позже.",
+                            )
+                        raise RuntimeError(
+                            "[AgnesVideo] Video queue is full. Please retry later. "
+                            f"Provider response: {provider_message}"
+                        )
+
                     # A missing model/channel is a configuration or account-access
                     # problem, not a transient overload. Do not waste four more retries.
                     if (
