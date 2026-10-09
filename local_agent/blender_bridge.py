@@ -1,0 +1,238 @@
+"""Safe local Blender launcher for deterministic starter-scene tasks.
+
+The bridge accepts a small typed task schema; it never executes arbitrary Python
+provided by a user or downloaded from the mailbox. Blender runs locally.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+from typing import Any, Callable
+
+_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+_ALLOWED_TASKS = {"forest_preview"}
+_DEFAULT_TIMEOUT = 900
+
+
+class BlenderBridgeError(RuntimeError):
+    """A Blender launch or output-validation error."""
+
+
+def _inside(root: Path, candidate: Path) -> Path:
+    root = root.expanduser().resolve()
+    candidate = candidate.expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise BlenderBridgeError("Output path must stay inside the configured workspace.")
+    return resolved
+
+
+def _scene_script() -> str:
+    """Return a fixed script; all dynamic values are read as JSON data."""
+    return r'''
+import bpy, json, math, os, sys
+from mathutils import Vector
+
+args = sys.argv[sys.argv.index("--") + 1:]
+with open(args[0], "r", encoding="utf-8") as handle:
+    cfg = json.load(handle)
+out_dir = os.path.realpath(cfg["output_dir"])
+os.makedirs(out_dir, exist_ok=True)
+
+# Start from a clean scene.
+bpy.ops.object.select_all(action="SELECT")
+bpy.ops.object.delete(use_global=False)
+for datablocks in (bpy.data.meshes, bpy.data.curves, bpy.data.materials, bpy.data.cameras, bpy.data.lights):
+    pass
+
+def material(name, color, roughness=0.82):
+    m = bpy.data.materials.new(name)
+    m.diffuse_color = (*color, 1.0)
+    m.use_nodes = True
+    bsdf = m.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = (*color, 1.0)
+        bsdf.inputs["Roughness"].default_value = roughness
+    return m
+
+grass = material("Forest floor | moss", (0.16, 0.29, 0.13))
+path_mat = material("Winding path | warm earth", (0.36, 0.25, 0.16))
+bark = material("Tree bark", (0.22, 0.12, 0.07))
+leaf_a = material("Canopy | deep green", (0.10, 0.27, 0.12))
+leaf_b = material("Canopy | light green", (0.20, 0.39, 0.16))
+sun_mat = material("Sun glow", (1.0, 0.73, 0.35))
+
+bpy.ops.mesh.primitive_plane_add(size=70, location=(0, 0, -0.12))
+ground = bpy.context.object
+ground.name = "Forest floor"
+ground.data.materials.append(grass)
+
+# A broad, slightly winding path made from overlapping low-poly segments.
+for i in range(12):
+    y = -13 + i * 2.4
+    x = math.sin(i * 0.43) * 1.8
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, -0.025))
+    segment = bpy.context.object
+    segment.name = "Path segment %02d" % i
+    segment.dimensions = (3.8, 2.65, 0.12)
+    segment.rotation_euler[2] = math.sin(i * 0.43) * 0.12
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    segment.data.materials.append(path_mat)
+    bevel = segment.modifiers.new("Soft path edges", "BEVEL")
+    bevel.width = 0.18
+    bevel.segments = 2
+
+# Deterministic procedural trees, kept outside the central path corridor.
+for row in range(2):
+    for i in range(11):
+        y = -13 + i * 2.6 + (row * 0.7)
+        side = -1 if row == 0 else 1
+        x = side * (4.1 + (i % 3) * 1.05)
+        height = 3.3 + (i % 4) * 0.48
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.22, depth=height * 0.48,
+                                            location=(x, y, height * 0.24))
+        trunk = bpy.context.object
+        trunk.name = "Tree trunk %02d %02d" % (row, i)
+        trunk.data.materials.append(bark)
+        for layer in range(3):
+            radius = 1.15 - layer * 0.23
+            bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=radius, radius2=0.06,
+                                            depth=1.75, location=(x, y, height * 0.48 + layer * 0.82))
+            crown = bpy.context.object
+            crown.name = "Tree canopy %02d %02d %02d" % (row, i, layer)
+            crown.data.materials.append(leaf_a if (i + layer) % 2 else leaf_b)
+
+# Camera is framed as a vertical storybook establishing shot.
+bpy.ops.object.camera_add(location=(10.8, -16.5, 9.4))
+camera = bpy.context.object
+camera.name = "Story camera | vertical"
+target = Vector((0, 0, 1.0))
+direction = target - camera.location
+camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+camera.data.lens = 42
+bpy.context.scene.camera = camera
+
+bpy.ops.object.light_add(type="AREA", location=(-5, -2, 12))
+key = bpy.context.object
+key.name = "Soft forest sunlight"
+key.data.energy = 1700
+key.data.shape = "DISK"
+key.data.size = 8
+key.rotation_euler = (math.radians(25), 0, math.radians(-25))
+
+bpy.ops.object.light_add(type="SUN", location=(4, 2, 9))
+sun = bpy.context.object
+sun.name = "Warm sun"
+sun.data.energy = 1.6
+sun.rotation_euler = (math.radians(25), math.radians(-18), math.radians(-25))
+
+scene = bpy.context.scene
+scene.render.engine = "CYCLES" if cfg.get("cycles", False) else "BLENDER_EEVEE_NEXT"
+scene.render.resolution_x = 720
+scene.render.resolution_y = 1280
+scene.render.resolution_percentage = 50 if cfg.get("preview", True) else 100
+scene.render.film_transparent = False
+scene.render.image_settings.file_format = "PNG"
+scene.render.filepath = os.path.join(out_dir, "forest_preview.png")
+scene.world.color = (0.055, 0.055, 0.055)
+scene.render.image_settings.color_mode = "RGBA"
+scene.camera.data.lens = 42
+
+blend_path = os.path.join(out_dir, "forest_starter.blend")
+bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+if cfg.get("render", True):
+    bpy.ops.render.render(write_still=True)
+with open(os.path.join(out_dir, "blender_result.json"), "w", encoding="utf-8") as handle:
+    json.dump({"status": "completed", "blend_path": blend_path,
+               "preview_path": scene.render.filepath if cfg.get("render", True) else None,
+               "engine": scene.render.engine,
+               "resolution": [scene.render.resolution_x, scene.render.resolution_y]}, handle, ensure_ascii=False)
+'''
+
+
+class BlenderBridge:
+    """Launch a fixed, validated Blender task inside a user-selected workspace."""
+
+    def __init__(
+        self,
+        blender_executable: str | os.PathLike[str],
+        workspace: str | os.PathLike[str],
+        *,
+        timeout_seconds: int = _DEFAULT_TIMEOUT,
+        popen: Callable[..., Any] = subprocess.run,
+    ) -> None:
+        executable = Path(blender_executable).expanduser().resolve()
+        if not executable.is_file():
+            raise BlenderBridgeError("Blender executable was not found; configure its full path.")
+        self.executable = executable
+        self.workspace = Path(workspace).expanduser().resolve()
+        self.workspace.mkdir(parents=True, exist_ok=True)
+        self.timeout_seconds = max(30, min(int(timeout_seconds), 7200))
+        self._run = popen
+
+    def run_task(
+        self,
+        task: str,
+        *,
+        project_name: str,
+        render: bool = True,
+        preview: bool = True,
+        cycles: bool = False,
+    ) -> dict[str, Any]:
+        if task not in _ALLOWED_TASKS:
+            raise BlenderBridgeError("Unsupported Blender task. Allowed: forest_preview.")
+        if not _PROJECT_NAME.fullmatch(project_name or ""):
+            raise BlenderBridgeError("Project name must use 1-49 letters, digits, underscores, or hyphens.")
+        project_dir = _inside(self.workspace, self.workspace / project_name)
+        project_dir.mkdir(parents=True, exist_ok=True)
+        config = {
+            "output_dir": str(project_dir),
+            "render": bool(render),
+            "preview": bool(preview),
+            "cycles": bool(cycles),
+        }
+        # Keep generated runner/config within the project workspace and never accept
+        # executable script content from a mailbox or a natural-language prompt.
+        with tempfile.TemporaryDirectory(prefix=".blender-task-", dir=project_dir) as temp:
+            temp_dir = Path(temp)
+            script_path = temp_dir / "starter_scene.py"
+            config_path = temp_dir / "task.json"
+            script_path.write_text(_scene_script(), encoding="utf-8")
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            command = [
+                str(self.executable), "--background", "--factory-startup",
+                "--python", str(script_path), "--", str(config_path),
+            ]
+            try:
+                result = self._run(
+                    command, cwd=str(project_dir), capture_output=True, text=True,
+                    timeout=self.timeout_seconds, check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise BlenderBridgeError("Blender task timed out; inspect the local log and retry.") from exc
+            except OSError as exc:
+                raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
+            if result.returncode != 0:
+                stderr = (result.stderr or "")[-3000:]
+                raise BlenderBridgeError(f"Blender exited with code {result.returncode}: {stderr}")
+        result_path = project_dir / "blender_result.json"
+        if not result_path.is_file():
+            raise BlenderBridgeError("Blender exited without writing its result manifest.")
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise BlenderBridgeError("Blender result manifest is unreadable.") from exc
+        expected_blend = _inside(project_dir, project_dir / "forest_starter.blend")
+        if payload.get("status") != "completed" or not expected_blend.is_file():
+            raise BlenderBridgeError("Blender result manifest failed validation.")
+        if render:
+            expected_preview = _inside(project_dir, project_dir / "forest_preview.png")
+            if not expected_preview.is_file() or expected_preview.stat().st_size == 0:
+                raise BlenderBridgeError("Expected preview render is missing or empty.")
+        return payload
