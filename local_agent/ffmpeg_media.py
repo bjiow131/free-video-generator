@@ -82,8 +82,10 @@ class FFmpegMediaTools:
             raise MediaError("Video duration is missing or invalid") from exc
         if not 0.05 <= seconds <= 24 * 60 * 60:
             raise MediaError(f"Video duration is unreasonable: {seconds}")
-        # Generators can differ slightly from the requested duration.
-        if abs(seconds - expected_duration) > max(3.0, expected_duration * 0.6):
+        # Reject materially short/long clips while allowing small encoder and
+        # container-timestamp differences. A large absolute/percentage tolerance
+        # silently accepted truncated clips (and was especially loose for long reels).
+        if abs(seconds - expected_duration) > max(1.0, expected_duration * 0.05):
             raise MediaError(f"Video duration {seconds:.2f}s is inconsistent with requested {expected_duration}s")
         video = videos[0]
         if not isinstance(video.get("width"), int) or not isinstance(video.get("height"), int):
