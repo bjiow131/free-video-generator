@@ -32,11 +32,11 @@ Updated: 2026-10-09 (Task 2 reliability pass)
 - No Python test suite or real FFmpeg command has been executed in this development environment.
 
 ### Executed and failed
-- None recorded. No test suite was executed, so this must not be interpreted as a clean test result.
+- Attempted to clone the branch for local test execution, but the environment could not resolve `github.com` (`Could not resolve host: github.com`). This blocked checkout; pytest itself did not run.
 
 ### Not executed
 - All newly authored and existing pytest tests, including mocks. New regression coverage includes changed-manifest rejection, regeneration after saved-output revalidation failure, duplicate-run rejection/release, corrupted-checkpoint preservation and example-manifest parsing.
-- GitHub Actions CI status: no workflow run result was available through the inspected workflow-run query.
+- GitHub Actions CI status: the workflow-run query returned an empty list for the inspected latest commit; no run result is available, so CI is unconfirmed.
 - Real FFmpeg/ffprobe media validation and assembly.
 - Windows-specific filesystem/subprocess behavior.
 - Wan2GP API inspection against the user's installed version.
