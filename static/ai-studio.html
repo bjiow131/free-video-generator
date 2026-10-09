@@ -705,6 +705,9 @@ async function extractRecoveryVideoFrame(){
   if(!file){toast('Сначала загрузи последнее видео');return}
   if(!file.type.startsWith('video/')&&!/\\.(mp4|mov|webm)$/i.test(file.name)){toast('Выбери видео MP4, MOV или WebM');return}
   const original=button.textContent;button.disabled=true;button.textContent='Извлекаю кадр…';
+  const preview=$('#startFrameResult');
+  preview.replaceChildren();preview.classList.add('hidden');
+  $('#startFrameStatus').textContent='Проверяю видео и извлекаю кадр…';
   let objectUrl='',video=null;
   try{
     objectUrl=URL.createObjectURL(file);
@@ -726,24 +729,29 @@ async function extractRecoveryVideoFrame(){
           let settled=false;
           const timer=setTimeout(()=>finish(reject,new Error('Истекло время ожидания декодирования кадра')),10000);
           const finish=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);video.onseeked=null;fn(value)};
-          video.onseeked=async()=>{
+          video.onseeked=()=>{
             if(video.readyState<2){finish(reject,new Error('Видео ещё не декодировало выбранный кадр'));return}
-            // iOS Safari can report seeked while the paused frame still paints white.
-            // Briefly play the muted video so the decoder presents real pixels.
-            try{
-              await video.play();
-              if(typeof video.requestVideoFrameCallback==='function'){
-                const frameTimer=setTimeout(()=>{video.pause();finish(reject,new Error('Не удалось дождаться декодированного кадра'))},5000);
-                video.requestVideoFrameCallback(()=>{
-                  clearTimeout(frameTimer);video.pause();
-                  requestAnimationFrame(()=>finish(resolve));
-                });
-              }else{
-                requestAnimationFrame(()=>requestAnimationFrame(()=>{video.pause();finish(resolve)}));
-              }
-            }catch(playError){
-              // If autoplay is blocked, still give Safari another paint cycle after seeking.
-              requestAnimationFrame(()=>requestAnimationFrame(()=>finish(resolve)));
+            // Register before playback: this is the most reliable way to wait for
+            // a real decoded frame from a local video Blob in iOS Safari.
+            if(typeof video.requestVideoFrameCallback==='function'){
+              let callbackId=null;
+              const frameTimer=setTimeout(()=>{
+                if(callbackId!==null&&typeof video.cancelVideoFrameCallback==='function')video.cancelVideoFrameCallback(callbackId);
+                video.pause();finish(reject,new Error('iPhone не передал декодированный кадр вовремя'));
+              },5000);
+              callbackId=video.requestVideoFrameCallback(()=>{
+                clearTimeout(frameTimer);video.pause();
+                requestAnimationFrame(()=>finish(resolve));
+              });
+              video.play().catch(()=>{
+                clearTimeout(frameTimer);
+                if(callbackId!==null&&typeof video.cancelVideoFrameCallback==='function')video.cancelVideoFrameCallback(callbackId);
+                finish(reject,new Error('Safari не смог запустить видео для чтения кадра'));
+              });
+            }else{
+              video.play().then(()=>{
+                requestAnimationFrame(()=>setTimeout(()=>{video.pause();finish(resolve)},180));
+              }).catch(()=>finish(reject,new Error('Браузер не разрешил прочитать кадр видео')));
             }
           };
           video.onerror=()=>finish(reject,new Error('Не удалось прочитать кадр видео'));
@@ -803,6 +811,12 @@ async function extractRecoveryVideoFrame(){
     toast('Финальный кадр выбран для следующей сцены');
   }catch(e){
     generatedStartFrameBlob=null;generatedStartFrameTaskId='';
+    preview.replaceChildren();
+    const error=document.createElement('div');
+    error.setAttribute('role','status');
+    error.style.cssText='padding:16px;color:#8a342b;background:#fff1ee;border-radius:12px;line-height:1.5';
+    error.textContent='Финальный кадр не получен. '+(e.message||'Не удалось извлечь кадр')+' Генерацию следующей сцены пока не запускай.';
+    preview.appendChild(error);preview.classList.remove('hidden');
     $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
     toast(e.message||'Не удалось извлечь финальный кадр');
   }finally{
