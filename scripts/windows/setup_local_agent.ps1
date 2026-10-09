@@ -100,7 +100,7 @@ Write-Step "Run safe local diagnostics"
 if ($LASTEXITCODE -ne 0) { Write-Warn "Diagnostics returned a non-zero exit code." }
 
 Write-Step "Run focused agent tests"
-& $VenvPython -m pytest -q tests/test_control_protocol.py tests/test_poller.py tests/test_github_queue.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py
+& $VenvPython -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py
 if ($LASTEXITCODE -ne 0) { Write-Warn "Some focused tests failed. Do not start mailbox polling until reviewed." }
 
 if (-not $SkipCredentialPrompt) {
