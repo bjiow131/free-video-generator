@@ -1171,6 +1171,8 @@ async def list_tasks():
         elif isinstance(state, SimpleVideoTask):
             task["prompt"] = state.prompt[:100] if state.prompt else ""
             task["mode"] = state.mode
+            # Expose the upstream provider ID in History for stalled-job diagnostics.
+            task["video_id"] = getattr(state, "video_id", "") or ""
         elif isinstance(state, SimpleImageTask):
             task["prompt"] = state.prompt[:100] if state.prompt else ""
             task["size"] = state.size
