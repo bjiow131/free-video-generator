@@ -1,6 +1,6 @@
 """Validated, data-only story plans authored by the remote creative director."""
 from __future__ import annotations
-import json, re
+import json, os, re
 from pathlib import Path
 from typing import Any
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -18,7 +18,7 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict): raise StoryPlanError("Story plan must be a JSON object.")
     allowed = {"schema_version","project_name","title","logline","target_duration_seconds","language","character_bible","scenes","continuity_notes"}
     if set(data)-allowed: raise StoryPlanError("Story plan contains unsupported top-level fields.")
-    if data.get("schema_version") != 1: raise StoryPlanError("Unsupported story plan schema_version.")
+    if isinstance(data.get("schema_version"), bool) or not isinstance(data.get("schema_version"), int) or data.get("schema_version") != 1: raise StoryPlanError("Unsupported story plan schema_version.")
     project_name=data.get("project_name")
     if not isinstance(project_name,str) or not _PROJECT_RE.fullmatch(project_name): raise StoryPlanError("project_name must use 1-48 letters, digits, underscores, or hyphens.")
     title=_text(data.get("title"),"title",limit=180); logline=_text(data.get("logline"),"logline",limit=1200)
@@ -70,7 +70,11 @@ def save_story_plan(workspace: str | Path, data: Any) -> dict[str, Any]:
     try:
         with temp.open("x",encoding="utf-8",newline="\n") as stream:
             json.dump(plan,stream,ensure_ascii=False,indent=2); stream.write("\n")
-        temp.replace(destination)
+        try:
+            os.link(temp, destination)  # Atomic no-clobber creation on the same filesystem.
+        except FileExistsError as exc:
+            raise StoryPlanError("story_plan.json already exists; refusing to overwrite it.") from exc
+        temp.unlink()
     finally:
         try: temp.unlink(missing_ok=True)
         except OSError: pass
