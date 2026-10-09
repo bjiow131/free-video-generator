@@ -45,6 +45,7 @@ from core.api.agnes_image import AgnesImageAPI
 from core.api.agnes_chat import AgnesChatAPI
 from core.api.comfyui import ComfyUIClient, ComfyUIError, build_workflow
 from core.task_manager import TaskManager
+from core.filebase_storage import restore_from_filebase, sync_loop
 
 from models.task import (
     AnchorVideoTask,
@@ -262,6 +263,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(upload_dir, exist_ok=True)
 
     working_dir = get_working_dir()
+    await asyncio.to_thread(restore_from_filebase, working_dir)
     if os.path.exists(working_dir):
         for name in os.listdir(working_dir):
             task_file = os.path.join(working_dir, name, "task_state.json")
@@ -289,8 +291,16 @@ async def lifespan(app: FastAPI):
                     logger.warning(f"[Startup] Failed to reset stale task {name}: {e}", exc_info=True)
 
     _rebuild_task_dir_cache()
+    filebase_sync_task = asyncio.create_task(sync_loop(working_dir))
 
-    yield
+    try:
+        yield
+    finally:
+        filebase_sync_task.cancel()
+        try:
+            await filebase_sync_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Agnes Video Generator", lifespan=lifespan)
