@@ -864,6 +864,7 @@ let videoEtaDeadline=0;
 let videoProgressTicker=null;
 let activeVideoTaskId='';
 let videoCancelRequested=false;
+let missingVideoTaskId='';
 function videoClock(seconds){
   seconds=Math.max(0,Math.floor(Number(seconds)||0));
   return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
@@ -923,12 +924,14 @@ async function cancelVideoGeneration(){
   let taskId=activeVideoTaskId;
   if(!taskId){try{taskId=localStorage.getItem('aistudio_active_video_task')||''}catch{}}
   if(!taskId){toast('ID активной задачи не найден. Открой «История» и проверь статус задачи.');return}
+  const isMissingTask=missingVideoTaskId===taskId;
   videoCancelRequested=true;
   const button=$('#videoCancelButton');
   if(button){button.disabled=true;button.textContent='Отмена…'}
   try{
     await api('/api/tasks/'+encodeURIComponent(taskId)+'/stop',{method:'POST'});
     try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+    missingVideoTaskId='';
     $('#videoStatus').textContent='Генерация остановлена · '+taskId;
     $('#videoProgressStage').textContent='Сервер подтвердил запрос на остановку.';
     finishVideoProgress('Генерация отменена');
@@ -936,7 +939,16 @@ async function cancelVideoGeneration(){
     toast('Запрос на остановку отправлен');
   }catch(e){
     videoCancelRequested=false;
-    if(button){button.disabled=false;button.textContent='Отменить генерацию'}
+    if(isMissingTask&&/Задача не выполняется|Задача не найдена|not found/i.test(e.message||'')){
+      try{localStorage.removeItem('aistudio_active_video_task')}catch{}
+      activeVideoTaskId='';missingVideoTaskId='';
+      $('#videoStatus').textContent='Активная задача на сервере не найдена; устаревшая запись очищена.';
+      $('#videoProgressStage').textContent='Сервер не выполняет эту задачу. Запись удалена из интерфейса; остановка больше не требуется.';
+      $('#videoCancelButton')?.classList.add('hidden');
+      finishVideoProgress('Активной задачи нет');setGenerateBusy('video',false);
+      toast('Устаревшая запись задачи очищена');return;
+    }
+    if(button){button.disabled=false;button.textContent=isMissingTask?'Очистить запись задачи':'Отменить генерацию'}
     $('#videoProgressStage').textContent='Не удалось отменить: '+e.message;
     toast('Не удалось отменить генерацию: '+e.message);
     // Resume status polling after a failed stop request.
@@ -955,7 +967,7 @@ async function generateVideo(){
     p='CONTINUOUS SCENE CONTINUATION: Begin from the supplied final-frame image as the exact visual starting reference. Preserve the same forest layout, path, trees, foliage, lighting direction, color palette, camera position, character pose, screen position, scale, and orientation visible in that image. Do not establish a new location or redesign the environment. Continue the action naturally from that moment with no time jump, no camera reset, no cut, and no sudden change in character appearance.\n\nNEXT ACTION: '+p;
   }
   if(!p){toast('Напиши промпт движения');return}
-  videoCancelRequested=false;activeVideoTaskId='';$('#videoCancelButton').classList.add('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
+  videoCancelRequested=false;activeVideoTaskId='';missingVideoTaskId='';$('#videoCancelButton').classList.add('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';setGenerateBusy('video',true);$('#videoStatus').textContent='Подготовка запроса…';$('#videoResult').classList.add('hidden');videoEtaDeadline=0;videoProgressStartedAt=Date.now();showVideoProgress();$('#videoProgressPercent').textContent='0%';$('#videoProgressBar').style.width='0%';$('#videoProgressHeading').textContent='Подготовка генерации';$('#videoProgressStage').textContent='Подготовка запроса…';$('#videoEta').textContent='Оцениваем время…';$('#videoElapsed').textContent='Прошло 00:00';
   try{
     let refs=[];
     if(mode==='i2v'||mode==='ti2vid'){
@@ -1092,14 +1104,14 @@ async function restoreActiveVideoTask(){
     const task=(data.tasks||[]).find(x=>x.task_id===taskId);
     if(!task){
       // Keep the saved task ID even if its state file vanished: the pipeline may still be active in memory.
-      show('video',false);activeVideoTaskId=taskId;videoCancelRequested=false;videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);
+      show('video',false);activeVideoTaskId=taskId;missingVideoTaskId=taskId;videoCancelRequested=false;videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);
       $('#videoProgressHeading').textContent='Генерация не отображается в списке';
       $('#videoProgressStage').textContent='Состояние задачи не найдено, но можно попробовать остановить активный процесс.';
-      $('#videoCancelButton').classList.remove('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';
-      $('#videoStatus').textContent='Проверка задачи не удалась · '+taskId;return;
+      $('#videoCancelButton').classList.remove('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Очистить запись задачи';
+      $('#videoStatus').textContent='Состояние задачи не найдено · '+taskId;return;
     }
     show('video',false);
-    activeVideoTaskId=taskId;videoCancelRequested=false;
+    activeVideoTaskId=taskId;missingVideoTaskId='';videoCancelRequested=false;
     if(task.status==='completed'){
       try{localStorage.removeItem('aistudio_active_video_task')}catch{}
       const url='/api/video/'+encodeURIComponent(taskId);
