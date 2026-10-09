@@ -62,8 +62,20 @@ def read_asset_registry(project_dir: str | Path, project_name: str) -> dict[str,
         if not isinstance(entry,dict) or entry.get("ambiguous") is True: continue
         asset_id,relative=entry.get("asset_id"),entry.get("path")
         if not isinstance(asset_id,str) or not isinstance(relative,str): continue
-        candidate=(project/relative).resolve()
-        if not candidate.is_relative_to(assets_root) or not candidate.is_file() or candidate.is_symlink() or candidate.suffix.lower() not in _ALLOWED_EXTENSIONS: continue
+        relative_path=Path(relative)
+        if relative_path.is_absolute() or "\\\\" in relative or any(part in {"", ".", ".."} for part in relative_path.parts): continue
+        raw_candidate=project/relative_path
+        if not raw_candidate.is_relative_to(assets_root): continue
+        current=raw_candidate
+        unsafe_component=False
+        while current != assets_root:
+            if current.is_symlink() or getattr(current,"is_junction",lambda:False)():
+                unsafe_component=True
+                break
+            current=current.parent
+        if unsafe_component: continue
+        candidate=raw_candidate.resolve()
+        if not candidate.is_relative_to(assets_root) or not candidate.is_file() or candidate.suffix.lower() not in _ALLOWED_EXTENSIONS: continue
         if asset_id in result: result.pop(asset_id,None); continue
         result[asset_id]={"asset_id":asset_id,"path":relative,"extension":candidate.suffix.lower()}
     return result
