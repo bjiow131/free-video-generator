@@ -379,6 +379,7 @@ VIDEO_RESOLUTION_PRESETS = {
 # 时长 → (num_frames, frame_rate) 映射
 DURATION_FRAME_MAP = {
     5: (121, 24),
+    8: (193, 24),
     10: (241, 24),
     15: (361, 24),
     18: (441, 24),
