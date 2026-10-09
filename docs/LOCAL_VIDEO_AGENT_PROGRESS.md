@@ -15,6 +15,8 @@ Updated: 2026-10-09
 - Added `local_agent/ffmpeg_media.py`: subprocess calls use argument lists and `shell=False`; ffprobe metadata is checked; missing/empty files, missing video streams, unreasonable duration/dimensions, incompatible stream-copy concatenation, command failures and timeouts raise actionable `MediaError` messages.
 - Added mocked tests for FFmpeg argument safety, Unicode/space-containing paths, duration/stream failures, timeouts, concat ordering, compatibility checks and source-overwrite prevention.
 - Hardened `local_agent/manifest.py`: schema version is checked; project/scene IDs are restricted to safe path components; durations must be integers; ratios and MP4 output filenames are validated; project name is preserved.
+- Hardened `local_agent/checkpoint.py`: unsupported/corrupt checkpoint shapes and changed manifests are rejected rather than silently resumed; checkpoint locks are shared across store instances in one process.
+- Fixed runner recovery so a completed scene whose stored media fails revalidation is invalidated and regenerated instead of aborting before the retry path.
 - Added manifest validation tests for traversal-like identifiers, invalid duration types/ranges, unsafe output names and schema-version rejection.
 - Hardened `scripts/inspect_wan2gp_api.py`: loopback-only URLs, positive timeout, bounded response reads, malformed/unexpected JSON reporting, and reduced risk of printing URL credentials/query data.
 - Added mocked inspector tests for success, HTTP/connection errors, malformed and oversized responses, loopback restrictions, and omission of component default values.
@@ -29,7 +31,7 @@ Updated: 2026-10-09
 - None recorded. No test suite was executed, so this must not be interpreted as a clean test result.
 
 ### Not executed
-- All newly authored and existing pytest tests, including mocks.
+- All newly authored and existing pytest tests, including mocks. New regression coverage includes changed-manifest rejection and regeneration after saved-output revalidation failure.
 - GitHub Actions CI status: no workflow run result was available through the inspected workflow-run query.
 - Real FFmpeg/ffprobe media validation and assembly.
 - Windows-specific filesystem/subprocess behavior.
