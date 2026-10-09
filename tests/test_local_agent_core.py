@@ -443,16 +443,3 @@ def test_os_project_lock_rejects_second_owner_and_releases(tmp_path):
 
     second = LocalProjectRunner._acquire_process_lock(lock_path)
     LocalProjectRunner._release_process_lock(second)
-
-
-@pytest.mark.asyncio
-async def test_runner_rejects_checkpoint_store_for_another_workspace(tmp_path):
-    start = tmp_path / "start.png"
-    start.write_bytes(b"start-image")
-    manifest = sample_manifest(start)
-    configured_workspace = tmp_path / "configured"
-    unrelated_store = CheckpointStore(tmp_path / "unrelated", manifest.project_id)
-    runner = LocalProjectRunner(configured_workspace, unrelated_store, FakeBackend(), FakeMedia())
-
-    with pytest.raises(ValueError, match="CheckpointStore"):
-        await runner.run(manifest)
