@@ -191,3 +191,17 @@ def test_in_progress_manifest_is_not_new_after_restart():
     assert classify_manifest(state, "claimed-1", "sha-1") == "same"
     state = _remember_manifest(state, "claimed-1", "sha-1", status="interrupted")
     assert state["processed_tasks"]["claimed-1"]["status"] == "interrupted"
+
+
+def test_poller_single_instance_lock_rejects_second_owner(tmp_path):
+    import pytest
+    from local_agent.poller import _acquire_instance_lock
+    lock_path = tmp_path / "poller.lock"
+    first = _acquire_instance_lock(lock_path)
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            _acquire_instance_lock(lock_path)
+    finally:
+        first.close()
+    second = _acquire_instance_lock(lock_path)
+    second.close()
