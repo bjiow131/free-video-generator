@@ -1,7 +1,8 @@
-"""Interactive GitHub mailbox poller for bounded diagnostics and reviewed patches.
+"""Interactive mailbox poller for locally approved, allowlisted agent operations.
 
-This is an initial, single-agent prototype. It is not a general coding agent:
-it supports fixed diagnostics and a bounded git patch after local approval.
+The prototype supports fixed diagnostics, reviewed patches, structured story-plan
+storage/compilation, local asset indexing, and one deterministic Blender preview.
+It does not execute arbitrary remote commands or claim full animation support.
 Service start/stop/backup operations are not implemented.
 """
 from __future__ import annotations
