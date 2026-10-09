@@ -105,7 +105,9 @@ class FFmpegMediaTools:
         self._run([
             self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
             "-sseof", "-1", "-i", str(video_path), "-map", "0:v:0",
-            "-frames:v", "1", "-f", "image2", str(target),
+            # Seek into the final second, then reverse that buffered segment so
+            # the first emitted frame is the actual final decoded frame.
+            "-vf", "reverse", "-frames:v", "1", "-f", "image2", str(target),
         ])
         if not target.is_file() or target.stat().st_size == 0:
             raise MediaError("FFmpeg did not produce the final-frame image")
