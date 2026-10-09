@@ -871,6 +871,8 @@ async function cancelVideoGeneration(){
     if(button){button.disabled=false;button.textContent='Отменить генерацию'}
     $('#videoProgressStage').textContent='Не удалось отменить: '+e.message;
     toast('Не удалось отменить генерацию: '+e.message);
+    // Resume status polling after a failed stop request.
+    restoreActiveVideoTask();
   }finally{
     if(button){button.disabled=false;button.textContent='Отменить генерацию'}
   }
@@ -1017,7 +1019,14 @@ async function restoreActiveVideoTask(){
   try{
     const response=await api('/api/tasks');const data=await response.json();
     const task=(data.tasks||[]).find(x=>x.task_id===taskId);
-    if(!task){try{localStorage.removeItem('aistudio_active_video_task')}catch{};return}
+    if(!task){
+      // Keep the saved task ID even if its state file vanished: the pipeline may still be active in memory.
+      show('video',false);activeVideoTaskId=taskId;videoCancelRequested=false;videoProgressStartedAt=Date.now();showVideoProgress();setGenerateBusy('video',true);
+      $('#videoProgressHeading').textContent='Генерация не отображается в списке';
+      $('#videoProgressStage').textContent='Состояние задачи не найдено, но можно попробовать остановить активный процесс.';
+      $('#videoCancelButton').classList.remove('hidden');$('#videoCancelButton').disabled=false;$('#videoCancelButton').textContent='Отменить генерацию';
+      $('#videoStatus').textContent='Проверка задачи не удалась · '+taskId;return;
+    }
     show('video',false);
     activeVideoTaskId=taskId;videoCancelRequested=false;
     if(task.status==='completed'){
