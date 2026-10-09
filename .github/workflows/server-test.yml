@@ -17,6 +17,7 @@ on:
       - "static/**"
       - "tests/**"
       - "start_windows.bat"
+      - "setup_windows.bat"
       - "Dockerfile"
       - "README.md"
       - ".github/workflows/server-test.yml"
@@ -110,6 +111,26 @@ jobs:
               raise SystemExit(f"Windows launcher missing: {missing}")
           PY
 
+      - name: 11. Validate Windows setup script contract
+        id: windows_setup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          script = Path("setup_windows.bat").read_text(encoding="utf-8")
+          required = [
+              "py -3",
+              "sys.version_info >= (3,10)",
+              "where ffmpeg",
+              "where ffprobe",
+              "pip install -r requirements.txt",
+              ":setup_failed",
+          ]
+          missing = [item for item in required if item not in script]
+          if missing:
+              raise SystemExit(f"Windows setup script missing: {missing}")
+          PY
+
       - name: 11. Write verification summary
         if: always()
         env:
@@ -123,6 +144,7 @@ jobs:
           DOCKER: ${{ steps.docker.outcome }}
           WEB_UI: ${{ steps.web_ui.outcome }}
           WINDOWS_LAUNCHER: ${{ steps.windows_launcher.outcome }}
+          WINDOWS_SETUP: ${{ steps.windows_setup.outcome }}
         run: |
           {
             echo "## Sequential verification report"
@@ -139,6 +161,7 @@ jobs:
             echo "| Docker build | $DOCKER |"
             echo "| Web UI syntax | $WEB_UI |"
             echo "| Windows launcher static contract | $WINDOWS_LAUNCHER |"
+            echo "| Windows setup static contract | $WINDOWS_SETUP |"
             echo
             echo "This workflow checks the Linux CI environment. It does not replace runtime verification on Windows or real FFmpeg/media fixtures."
           } >> "$GITHUB_STEP_SUMMARY"
