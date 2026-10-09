@@ -389,3 +389,44 @@ async def test_pause_during_generation_waits_before_validation(tmp_path):
     runner.resume()
     result = await task
     assert result["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_regenerating_upstream_scene_invalidates_downstream_frame_chain(tmp_path):
+    import hashlib
+
+    start = tmp_path / "start.png"
+    start.write_bytes(b"start-image")
+    manifest = sample_manifest(start)
+    workspace = tmp_path / "workspace"
+    store = CheckpointStore(workspace, manifest.project_id)
+
+    class ChangingFramesMedia(FakeMedia):
+        def __init__(self):
+            self.frame_number = 0
+
+        def extract_last_frame(self, video_path, output_path):
+            self.frame_number += 1
+            Path(output_path).write_bytes(f"frame-{self.frame_number}".encode())
+            return output_path
+
+    media = ChangingFramesMedia()
+    backend = FakeBackend()
+    runner = LocalProjectRunner(workspace, store, backend, media)
+    first = await runner.run(manifest)
+    assert first["status"] == "completed"
+    assert first["scenes"]["s1"]["input_frame_sha256"] == hashlib.sha256(start.read_bytes()).hexdigest()
+    assert first["scenes"]["s2"]["input_frame_sha256"] == first["scenes"]["s1"]["frame_sha256"]
+
+    # Simulate a checkpoint whose first scene output fails integrity validation
+    # after restart. Rebuilding scene 1 changes its final frame, so scene 2 must
+    # be rebuilt too instead of reusing a clip generated from the old frame.
+    first["scenes"]["s1"]["video_sha256"] = "not-the-real-checksum"
+    store.save(first)
+    resumed = await runner.run(manifest)
+
+    assert resumed["status"] == "completed"
+    assert len(backend.calls) == 4
+    assert backend.calls[2]["input_image"].endswith("s1/attempt_02_last.png")
+    assert backend.calls[3]["input_image"].endswith("s2/attempt_02_last.png")
+    assert resumed["scenes"]["s2"]["input_frame_sha256"] == resumed["scenes"]["s1"]["frame_sha256"]
