@@ -318,6 +318,22 @@ class AgnesVideoAPI:
                     last_error_code = str(
                         response_data.get("code") or provider_error.get("code") or ""
                     ).strip().lower()
+
+                    # An explicit free-tier API quota error will not clear by retrying
+                    # this same request. Stop immediately and explain the account limit.
+                    if last_error_code == "rate_limit_exceeded":
+                        provider_message = (
+                            provider_error.get("message")
+                            or response_data.get("message")
+                            or response_text[:500]
+                        )
+                        raise RuntimeError(
+                            "[AgnesVideo] Agnes API rate limit reached for this account. "
+                            "The provider says free-user limits are exhausted; wait for "
+                            "the provider's reset or use an eligible Token Plan. "
+                            f"Provider response: {provider_message}"
+                        )
+
                     queue_full = last_error_code == "video_queue_full"
 
                     # A missing model/channel is a configuration or account-access
