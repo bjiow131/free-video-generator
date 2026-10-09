@@ -49,6 +49,8 @@ class CheckpointStore:
                     "the original file was preserved. Restore a known-good copy or inspect it before retrying."
                 ) from exc
             if (not isinstance(data, dict)
+                    or isinstance(data.get("schema_version"), bool)
+                    or not isinstance(data.get("schema_version"), int)
                     or data.get("schema_version") != 1
                     or not isinstance(data.get("scenes"), dict)
                     or not isinstance(data.get("manifest"), dict)
