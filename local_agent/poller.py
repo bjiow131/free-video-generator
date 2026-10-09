@@ -15,13 +15,14 @@ import subprocess
 import time
 from typing import Any
 
-from local_agent.cli import doctor, run_tests, status, tail_logs
+from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
+    "preflight": preflight,
     "status": status,
     "logs": tail_logs,
     "test": run_tests,
