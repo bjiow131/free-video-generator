@@ -430,3 +430,16 @@ async def test_regenerating_upstream_scene_invalidates_downstream_frame_chain(tm
     assert backend.calls[2]["input_image"].endswith("s1/attempt_02_last.png")
     assert backend.calls[3]["input_image"].endswith("s2/attempt_02_last.png")
     assert resumed["scenes"]["s2"]["input_frame_sha256"] == resumed["scenes"]["s1"]["frame_sha256"]
+
+
+def test_os_project_lock_rejects_second_owner_and_releases(tmp_path):
+    lock_path = tmp_path / ".runner.lock"
+    first = LocalProjectRunner._acquire_process_lock(lock_path)
+    try:
+        with pytest.raises(RuntimeError, match="locked by another process"):
+            LocalProjectRunner._acquire_process_lock(lock_path)
+    finally:
+        LocalProjectRunner._release_process_lock(first)
+
+    second = LocalProjectRunner._acquire_process_lock(lock_path)
+    LocalProjectRunner._release_process_lock(second)
