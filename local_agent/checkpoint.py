@@ -77,7 +77,7 @@ class CheckpointStore:
             if scene_id not in state["scenes"]:
                 raise KeyError(f"Unknown scene_id: {scene_id}")
             if "status" in updates and updates["status"] not in ALLOWED_SCENE_STATES:
-                raise ValueError(f"Invalid scene status: {updates["status"]}")
+                raise ValueError("Invalid scene status: " + str(updates["status"]))
             state["scenes"][scene_id].update(updates)
             self.save(state)
 
