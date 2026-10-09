@@ -166,3 +166,30 @@ def test_rejects_unexpected_arguments_for_diagnostic_task():
     value["arguments"] = {"project_name": "ignored"}
     with pytest.raises(ProtocolError, match="does not accept arguments"):
         parse_task(json.dumps(value))
+
+
+def test_accepts_blender_knowledge_search():
+    task = parse_task(_task("blender_knowledge_search", {"query": "риггинг кости", "limit": 5}))
+    assert task.operation == "blender_knowledge_search"
+    assert task.arguments["limit"] == 5
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"query": ""},
+    {"query": "x" * 1001},
+    {"query": "render", "limit": 0},
+    {"query": "render", "limit": 11},
+    {"query": "render", "limit": True},
+    {"query": "render", "script": "print(1)"},
+])
+def test_rejects_invalid_blender_knowledge_search(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_knowledge_search", arguments))
+
+
+def test_blender_knowledge_search_can_use_explicit_remote_approval():
+    value = json.loads(_task("blender_knowledge_search", {"query": "render"}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.requires_local_approval is False
