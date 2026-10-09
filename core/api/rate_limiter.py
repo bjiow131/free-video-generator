@@ -143,3 +143,27 @@ def reset_rate_limiter() -> None:
     global _instance
     with _instance_lock:
         _instance = None
+
+
+# Video creation requests have a stricter provider limit than status polling.
+# Keep this limiter separate so polling and image generation are not slowed to 1 RPM.
+_VIDEO_SUBMIT_RPM = max(1.0 / 60.0, float(os.environ.get("AGNES_VIDEO_SUBMIT_RPM", "1")))
+_video_submit_instance: AgnesRateLimiter | None = None
+_video_submit_lock = threading.Lock()
+
+
+def get_video_submit_limiter() -> AgnesRateLimiter:
+    """Shared limiter for video-creation submissions (default: one per minute)."""
+    global _video_submit_instance
+    if _video_submit_instance is None:
+        with _video_submit_lock:
+            if _video_submit_instance is None:
+                _video_submit_instance = AgnesRateLimiter(
+                    rate_per_minute=_VIDEO_SUBMIT_RPM,
+                    max_burst=1,
+                )
+                logger.info(
+                    "[VideoSubmitLimiter] initialized: %.2f video submissions/min",
+                    _VIDEO_SUBMIT_RPM,
+                )
+    return _video_submit_instance
