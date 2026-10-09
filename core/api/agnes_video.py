@@ -31,6 +31,7 @@ MODERN_MODELS = frozenset({"agnes-video-2.5-flash", "agnes-video-2.5"})
 
 DURATION_PRESETS = {
     5: (121, 24),
+    8: (193, 24),
     10: (241, 24),
     15: (361, 24),
     18: (409, 24),
