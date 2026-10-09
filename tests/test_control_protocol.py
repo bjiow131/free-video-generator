@@ -96,3 +96,14 @@ def test_accepts_compile_story_plan_for_safe_project():
 def test_rejects_unsafe_compile_story_plan_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("compile_story_plan", arguments))
+
+
+def test_accepts_scan_project_assets_for_safe_project():
+    task = parse_task(_task("scan_project_assets", {"project_name": "mia_snail"}))
+    assert task.operation == "scan_project_assets"
+
+
+@pytest.mark.parametrize("arguments", [{}, {"project_name": "../outside"}, {"project_name": "mia", "path": "C:\\\\private"}])
+def test_rejects_unsafe_asset_scan_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("scan_project_assets", arguments))
