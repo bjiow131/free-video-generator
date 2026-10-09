@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -119,6 +119,15 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             if flag in args and not isinstance(args[flag], bool):
                 raise ProtocolError(f"Blender argument {flag} must be a boolean.")
 
+    if value["operation"] == "blender_knowledge_search":
+        args = value["arguments"]
+        if set(args) - {"query", "limit"} or not isinstance(args.get("query"), str):
+            raise ProtocolError("blender_knowledge_search requires a query string and optional limit.")
+        if not args["query"].strip() or len(args["query"]) > 1000:
+            raise ProtocolError("Blender knowledge query must contain 1-1000 characters.")
+        limit = args.get("limit", 5)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10:
+            raise ProtocolError("Blender knowledge limit must be an integer from 1 to 10.")
     if value["operation"] == "scan_project_assets":
         args = value["arguments"]
         if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
