@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import json
+import struct
+import zlib
+import binascii
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
+
+
+def _write_png(path: Path, width: int, height: int) -> None:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
+    raw = b"".join(b"\\x00" + bytes(width * 4) for _ in range(height))
+    path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
 def _bridge(tmp_path: Path, fake_run):
@@ -41,7 +51,7 @@ def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) ->
         assert kwargs["check"] is False
         project_dir = Path(kwargs["cwd"])
         (project_dir / "forest_starter.blend").write_bytes(b"blend placeholder")
-        (project_dir / "forest_preview.png").write_bytes(b"png placeholder")
+        _write_png(project_dir / "forest_preview.png", 360, 640)
         (project_dir / "blender_result.json").write_text(json.dumps({
             "status": "completed",
             "blend_path": str(project_dir / "forest_starter.blend"),
