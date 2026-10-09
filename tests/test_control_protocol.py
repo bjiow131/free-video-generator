@@ -193,3 +193,28 @@ def test_blender_knowledge_search_can_use_explicit_remote_approval():
     value["requires_local_approval"] = False
     task = parse_task(json.dumps(value))
     assert task.requires_local_approval is False
+
+
+def test_accepts_blender_preflight_task():
+    task = parse_task(_task("blender_preflight", {}))
+    assert task.operation == "blender_preflight"
+
+
+def test_rejects_blender_preflight_arguments():
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_preflight", {"unexpected": "value"}))
+
+
+def test_accepts_blender_mia_blockout_task():
+    task = parse_task(_task("blender_mia_blockout", {"project_name": "mia_character"}))
+    assert task.operation == "blender_mia_blockout"
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"project_name": "../outside"},
+    {"project_name": "mia", "script": "print(1)"},
+])
+def test_rejects_unsafe_blender_mia_blockout_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_blockout", arguments))
