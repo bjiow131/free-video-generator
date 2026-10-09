@@ -65,8 +65,8 @@ class LocalProjectRunner:
         self._pause.set()
 
     async def run(self, manifest: ProjectManifest) -> dict:
-        # This registry protects duplicate runs within this Python process only.
-        # Cross-process ownership requires an OS-level lock and is not claimed here.
+        # The registry provides a fast same-process check; the OS lock below
+        # also arbitrates ownership across processes on the same local filesystem.
         key = (str(self.workspace.resolve()), manifest.project_id)
         with _ACTIVE_PROJECTS_LOCK:
             if key in _ACTIVE_PROJECTS:
