@@ -421,6 +421,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_scan_project_assets(task.arguments)
             elif task.operation == "blender_knowledge_search":
                 details = _run_blender_knowledge_search(task.arguments)
+            elif task.operation == "blender_preflight":
+                details = _run_blender_preflight(task.arguments)
+            elif task.operation == "blender_mia_blockout":
+                details = _run_blender_mia_blockout(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
