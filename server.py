@@ -269,10 +269,18 @@ async def lifespan(app: FastAPI):
                 try:
                     with open(task_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    if data.get("status") in ("running", "queued"):
+                    if data.get("status") in ("running", "queued", "pending"):
                         old_status = data["status"]
-                        data["status"] = "pending"
-                        # H5: 原子写（临时文件 + os.replace），避免写入中途崩溃损坏 JSON
+                        # A restarted process cannot continue an in-memory pipeline safely.
+                        # Mark interrupted tasks as failed instead of leaving the UI polling
+                        # a permanently pending task that will never resume by itself.
+                        data["status"] = "failed"
+                        data["error_message"] = (
+                            "Сервер перезапустился во время генерации. Эта задача остановлена; "
+                            "проверь настройки и запусти новую задачу."
+                        )
+                        data["progress_message"] = "Задача прервана перезапуском сервера"
+                        # Atomic write prevents a partially written task state on restart.
                         tmp_fd, tmp_path = tempfile.mkstemp(
                             dir=os.path.join(working_dir, name), suffix=".tmp"
                         )
@@ -284,7 +292,7 @@ async def lifespan(app: FastAPI):
                             if os.path.exists(tmp_path):
                                 os.remove(tmp_path)
                             raise
-                        logger.info(f"[Startup] Reset stale {old_status} task {name} -> pending")
+                        logger.info(f"[Startup] Marked interrupted {old_status} task {name} -> failed")
                 except Exception as e:
                     logger.warning(f"[Startup] Failed to reset stale task {name}: {e}", exc_info=True)
 
