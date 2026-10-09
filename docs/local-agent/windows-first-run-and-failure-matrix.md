@@ -26,7 +26,7 @@ The setup script stores only non-secret configuration as Windows user environmen
 | Desired task changes or is removed while approval is open | Supersede the stale task and do not run its old payload. |
 | A task ID is reused with different content | Reject the changed manifest; create a new unique ID for a new task. |
 | Same manifest remains in the mailbox after restart | Do not execute it a second time. Local state tracks a bounded history of recent task IDs. |
-| Agent is closed or Windows restarts | Restart manually; unfinished task status must be checked against actual files and result manifests before resuming. Automatic Windows service/startup is not enabled yet. |
+| Agent is closed or Windows restarts | A task claim is saved before execution. If it remains in progress after restart, the agent reports an uncertain outcome and refuses blind replay; inspect files/results and submit a new task ID only after deciding whether retry is safe. Automatic Windows service/startup is not enabled yet. |
 | User changes a request quickly | Use a new task ID for a new desired task. The agent polls every 5–30 seconds (default 10); changes are not instantaneous. |
 | Blender is missing or configured path is wrong | Block the Blender operation; diagnostics should identify the missing prerequisite. |
 | GPU driver is absent or GPU memory is insufficient | Prefer a low-cost Eevee preview or report a bounded failure; never claim rendering completed if output validation fails. |
