@@ -87,6 +87,8 @@ async def test_runner_passes_final_frame_to_next_scene(tmp_path):
     assert backend.calls[0]["input_image"] == str(start)
     assert backend.calls[1]["input_image"].endswith("s1/attempt_01_last.png")
     assert Path(state["final_video_path"]).read_bytes() == b"final-mp4"
+    assert state["scenes"]["s1"]["video_sha256"]
+    assert state["scenes"]["s1"]["frame_sha256"]
 
 
 @pytest.mark.asyncio
