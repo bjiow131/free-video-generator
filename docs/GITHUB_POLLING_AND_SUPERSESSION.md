@@ -22,4 +22,4 @@ The initial GitHub transport and interactive poll loop are implemented in source
 
 ## Private mailbox required
 
-The project repository `bjiow131/free-video-generator` is public. It must contain source code and public docs only. Create a separate private repository for `queue/desired_task.json` and `queue/results/`. Store the token in Windows Credential Manager, not in source code or logs. Verify that the ChatGPT GitHub connector can read and write the private mailbox before claiming the full round trip works.
+The project repository `bjiow131/free-video-generator` is public. It must contain source code and public docs only. Create a separate private repository for `queue/desired_task.json` and `queue/results/`. **The current prototype reads `LOCAL_AGENT_GITHUB_TOKEN` from an environment variable; Windows Credential Manager support is not implemented yet. Do not configure or run the poller with a real token until OS-protected credential retrieval is added and reviewed.** Verify that the ChatGPT GitHub connector can read and write the private mailbox before claiming the full round trip works.
