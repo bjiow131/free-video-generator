@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Protocol
 
 from local_agent.checkpoint import CheckpointStore
@@ -23,6 +24,10 @@ class MediaTools(Protocol):
     def extract_last_frame(self, video_path: str, output_path: str) -> str: ...
     def validate_image(self, path: str) -> None: ...
     def concatenate(self, video_paths: list[str], output_path: str) -> str: ...
+
+
+_ACTIVE_PROJECTS_LOCK = Lock()
+_ACTIVE_PROJECTS: set[tuple[str, str]] = set()
 
 
 class LocalProjectRunner:
@@ -59,6 +64,20 @@ class LocalProjectRunner:
         self._pause.set()
 
     async def run(self, manifest: ProjectManifest) -> dict:
+        # This registry protects duplicate runs within this Python process only.
+        # Cross-process ownership requires an OS-level lock and is not claimed here.
+        key = (str(self.workspace.resolve()), manifest.project_id)
+        with _ACTIVE_PROJECTS_LOCK:
+            if key in _ACTIVE_PROJECTS:
+                raise RuntimeError(f"Project {manifest.project_id!r} is already running in this process")
+            _ACTIVE_PROJECTS.add(key)
+        try:
+            return await self._run_project(manifest)
+        finally:
+            with _ACTIVE_PROJECTS_LOCK:
+                _ACTIVE_PROJECTS.discard(key)
+
+    async def _run_project(self, manifest: ProjectManifest) -> dict:
         state = self.store.initialize(manifest.to_dict())
         project_dir = self.workspace / manifest.project_id
         project_dir.mkdir(parents=True, exist_ok=True)
