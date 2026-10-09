@@ -728,15 +728,22 @@ async function extractRecoveryVideoFrame(){
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
     const frame=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Не удалось создать PNG')),'image/png'));
     if(frame.size<1024)throw new Error('Получился пустой кадр. Проверь видео и попробуй ещё раз.');
-    generatedStartFrameBlob=frame;generatedStartFrameTaskId='recovered-upload:'+Date.now();
+    generatedStartFrameBlob=frame;generatedStartFrameTaskId='continuity:recovered-upload:'+Date.now();
     try{localStorage.removeItem(START_FRAME_TASK_KEY)}catch{}
-    await persistStartFrame(frame,generatedStartFrameTaskId);
-    await renderStartFramePreview(frame,'Финальный кадр из загруженного видео','Кадр извлечён из последнего видео и сохранён в браузере. Нажми «Сохранить финальный кадр», чтобы сохранить PNG на устройство, или сразу используй его для следующей сцены.');
+    // Keep the extracted frame in memory only; remove any older persisted frame to prevent stale recovery after reload.
+    try{
+      const db=await startFrameDb();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction('frames','readwrite');tx.objectStore('frames').delete('latest');
+        tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('Не удалось очистить старый кадр'));
+      });
+    }catch(e){console.warn('[Recovery frame cleanup]',e)}
+    await renderStartFramePreview(frame,'Финальный кадр из загруженного видео','Кадр находится только в памяти текущей страницы и выбран стартовым кадром следующей сцены. После обновления страницы его нужно извлечь заново. При необходимости нажми «Сохранить финальный кадр», чтобы скачать PNG.');
     $('#videoReference').value='';
     const mode=$('#videoMode');if(mode){mode.value='i2v';saveFormState()}
-    $('#startFrameStatus').textContent='Финальный кадр восстановлен из файла · '+file.name;
+    $('#startFrameStatus').textContent='Финальный кадр готов только для следующей сцены · '+file.name;
     $('#startFrameResult').scrollIntoView({behavior:'smooth',block:'nearest'});
-    toast('Финальный кадр извлечён и сохранён в AI Studio');
+    toast('Финальный кадр выбран для следующей сцены');
   }catch(e){
     $('#startFrameStatus').textContent=e.message||'Не удалось извлечь финальный кадр';
     toast(e.message||'Не удалось извлечь финальный кадр');
