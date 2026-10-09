@@ -75,7 +75,9 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
                     raise ProtocolError("Malformed git diff header.")
                 for path in parts[2:]:
                     normalized = path[2:] if path.startswith(("a/", "b/")) else path
-                    if normalized.startswith(("/", "\\")) or ":" in normalized or ".." in normalized.split("/"):
+                    # Git diff paths must use forward slashes; rejecting backslashes
+                    # avoids Windows traversal variants such as "..\\outside.py".
+                    if "\\" in normalized or normalized.startswith("/") or ":" in normalized or ".." in normalized.split("/"):
                         raise ProtocolError("Patch contains an unsafe path.")
                     if normalized == ".git" or normalized.startswith(".git/"):
                         raise ProtocolError("Patch may not modify Git metadata.")
