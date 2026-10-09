@@ -78,7 +78,7 @@ class ProjectManifest:
         if not isinstance(global_prompt, str) or len(global_prompt) > 12000:
             raise ValueError("global_prompt must be a string no longer than 12000 characters")
         output_name = str(data.get("output_name") or "final_video.mp4")
-        if output_name != output_name.split("/")[-1] or output_name != output_name.split("\\")[-1]:
+        if output_name in {".", ".."} or output_name != output_name.split("/")[-1] or output_name != output_name.split("\\")[-1]:
             raise ValueError("output_name must be a filename, not a path")
         metadata = data.get("metadata") or {}
         if not isinstance(metadata, dict):
