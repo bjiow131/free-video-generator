@@ -26,6 +26,8 @@ def main() -> int:
                         help="Render preview at full 720x1280 resolution instead of 50%%.")
     parser.add_argument("--cycles", action="store_true",
                         help="Use Cycles instead of the default Eevee engine.")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Explicitly allow replacing this task's known output files.")
     args = parser.parse_args()
 
     if not args.blender:
@@ -40,6 +42,7 @@ def main() -> int:
             render=not args.no_render,
             preview=not args.full_preview,
             cycles=args.cycles,
+            overwrite=args.overwrite,
         )
     except BlenderBridgeError as exc:
         print(f"Blender task failed: {exc}")
