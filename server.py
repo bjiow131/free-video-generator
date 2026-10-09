@@ -1080,7 +1080,7 @@ async def generate_image(request: Request):
         state.status = StepStatus.FAILED
         tm.update_state(status=StepStatus.FAILED)
         logger.error(f"[Image] Task {task_id} failed: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail="Не удалось сгенерировать изображение. Проверьте API и повторите попытку.")
+        raise HTTPException(status_code=502, detail=f"Не удалось сгенерировать изображение: {str(e)[:350]}")
     finally:
         # Only remove temporary uploads; persistent character references stay in the character pack.
         if reference_images:
