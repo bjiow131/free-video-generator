@@ -7,6 +7,7 @@ on:
       - "requirements.txt"
       - "core/**"
       - "models/**"
+      - "local_agent/**"
       - "static/**"
       - "tests/**"
       - "start_windows.bat"
@@ -26,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Compile Python
-        run: python -m compileall -q server.py core models
+        run: python -m compileall -q server.py core models local_agent
       - name: Import FastAPI app
         run: python -c "from server import app; print(app.title)"
       - name: Install test runner
