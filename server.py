@@ -576,7 +576,11 @@ if os.path.exists(static_dir):
 async def root():
     studio_path = os.path.join(os.path.dirname(__file__), "static", "ai-studio.html")
     if os.path.exists(studio_path):
-        return FileResponse(studio_path)
+        # The UI contains inline JavaScript; prevent iOS Safari from reusing an old cached build.
+        return FileResponse(
+            studio_path,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+        )
     return {"message": "AI Studio API"}
 
 
