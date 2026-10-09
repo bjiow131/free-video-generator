@@ -621,10 +621,13 @@ class AgnesVideoAPI:
         try:
             return await self._submit_with_retry(payload, mode_desc, progress_callback=progress_callback)
         except RuntimeError as exc:
-            # The free 2.5 Flash queue is frequently saturated. Do not make the
-            # user wait through all retries when the legacy free video model is
-            # available as a compatible fallback.
-            if self.is_modern and (
+            # Legacy v2.0 may not have an active provider channel for this API key.
+            # Never switch models implicitly: enable this fallback only after the
+            # account's v2.0 access has been confirmed in Agnes.
+            legacy_fallback_enabled = os.environ.get(
+                "AGNES_ENABLE_LEGACY_FALLBACK", ""
+            ).strip().lower() in {"1", "true", "yes", "on"}
+            if legacy_fallback_enabled and self.is_modern and (
                 "video queue is full" in str(exc).lower()
                 or "trigger provider fallback" in str(exc).lower()
             ):
