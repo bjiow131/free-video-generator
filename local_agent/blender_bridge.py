@@ -133,7 +133,15 @@ sun.data.energy = 1.6
 sun.rotation_euler = (math.radians(25), math.radians(-18), math.radians(-25))
 
 scene = bpy.context.scene
-engine_ids = {item.identifier for item in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items}\nif cfg.get("cycles", False) and "CYCLES" in engine_ids:\n    scene.render.engine = "CYCLES"\nelif "BLENDER_EEVEE_NEXT" in engine_ids:\n    scene.render.engine = "BLENDER_EEVEE_NEXT"\nelif "BLENDER_EEVEE" in engine_ids:\n    scene.render.engine = "BLENDER_EEVEE"\nelse:\n    raise RuntimeError("No supported Eevee/Cycles render engine is available in this Blender build.")
+engine_ids = {item.identifier for item in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items}
+if cfg.get("cycles", False) and "CYCLES" in engine_ids:
+    scene.render.engine = "CYCLES"
+elif "BLENDER_EEVEE_NEXT" in engine_ids:
+    scene.render.engine = "BLENDER_EEVEE_NEXT"
+elif "BLENDER_EEVEE" in engine_ids:
+    scene.render.engine = "BLENDER_EEVEE"
+else:
+    raise RuntimeError("No supported Eevee/Cycles render engine is available in this Blender build.")
 scene.render.resolution_x = 720
 scene.render.resolution_y = 1280
 scene.render.resolution_percentage = 50 if cfg.get("preview", True) else 100
