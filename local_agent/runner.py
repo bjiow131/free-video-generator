@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from pathlib import Path
 from typing import Protocol
@@ -92,9 +93,17 @@ class LocalProjectRunner:
             if scene_state.get("status") == "completed" and saved_video and saved_frame and os.path.isfile(saved_video) and os.path.isfile(saved_frame):
                 self.media.validate_video(saved_video, scene.duration_seconds)
                 self.media.validate_image(saved_frame)
-                video_paths.append(saved_video)
-                previous_frame = saved_frame
-                continue
+                video_hash = self._sha256_file(saved_video)
+                frame_hash = self._sha256_file(saved_frame)
+                if ((scene_state.get("video_sha256") and scene_state["video_sha256"] != video_hash) or
+                        (scene_state.get("frame_sha256") and scene_state["frame_sha256"] != frame_hash)):
+                    self.store.update_scene(state, scene.scene_id, status="pending", error="Saved output checksum mismatch; regenerating scene")
+                    self.store.event("scene_checkpoint_checksum_mismatch", {"scene_id": scene.scene_id, "index": index})
+                else:
+                    self.store.update_scene(state, scene.scene_id, video_sha256=video_hash, frame_sha256=frame_hash)
+                    video_paths.append(saved_video)
+                    previous_frame = saved_frame
+                    continue
 
             if not previous_frame or not os.path.isfile(previous_frame):
                 state["status"] = "paused"
@@ -137,7 +146,9 @@ class LocalProjectRunner:
                     self.media.validate_image(extracted)
                     self.store.update_scene(
                         state, scene.scene_id, status="completed",
-                        video_path=returned_path, final_frame_path=extracted, error=None,
+                        video_path=returned_path, final_frame_path=extracted,
+                        video_sha256=self._sha256_file(returned_path),
+                        frame_sha256=self._sha256_file(extracted), error=None,
                     )
                     self.store.event("scene_completed", {"scene_id": scene.scene_id, "index": index, "attempt": attempt})
                     video_paths.append(returned_path)
@@ -187,6 +198,14 @@ class LocalProjectRunner:
             self.store.save(state)
             self.store.event("project_assembly_failed", {"error": state["error"]})
         return state
+
+    @staticmethod
+    def _sha256_file(path: str) -> str:
+        digest = hashlib.sha256()
+        with open(path, "rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _compose_prompt(global_prompt: str, scene: SceneSpec) -> str:
