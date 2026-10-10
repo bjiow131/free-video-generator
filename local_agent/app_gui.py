@@ -24,8 +24,9 @@ from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
 from local_agent.character_library import CharacterPassportImportError, import_character_passport
+from local_agent.scene01_reference_pack import ReferencePackError, download_scene01_reference_pack
 
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.6.2"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -209,6 +210,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
         ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
+        ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
@@ -786,6 +788,42 @@ class BlenderAgentApp(tk.Tk):
                 f"ПОСТОЯННЫЕ ОСОБЕННОСТИ\n{card.get('description','') or 'Описание пока не заполнено.'}\n\n"
                 f"БИБЛИОТЕКА РЕФЕРЕНСОВ · НУМЕРАЦИЯ СОХРАНЯЕТСЯ\n{refs}\n")
         self.character_detail.configure(state="disabled")
+
+    def _download_scene01_references(self) -> None:
+        """Fetch the selected open-license references after explicit user confirmation."""
+        include_characters = messagebox.askyesno(
+            "Набор референсов сцены 01",
+            "Скачать референсы улитки и лесной тропинки, а также дополнительный CC0-пак персонажей?\n\n"
+            "Пак персонажей общий и не гарантирует подходящий образ четырёхлетней Мии; его содержимое нужно проверить отдельно.",
+            parent=self,
+        )
+        try:
+            result = download_scene01_reference_pack(
+                CHARACTER_DIR,
+                include_character_pack=include_characters,
+            )
+        except (ReferencePackError, OSError, ValueError) as exc:
+            messagebox.showerror("Не удалось подготовить референсы", str(exc), parent=self)
+            self._set_status("Загрузка референсов завершилась ошибкой.")
+            return
+
+        downloaded = sum(item["status"] == "downloaded" for item in result["assets"])
+        already = sum(item["status"] == "already_present" for item in result["assets"])
+        failed = len(result["failures"])
+        details = [
+            f"Папка: {result['pack_dir']}",
+            f"Скачано новых файлов: {downloaded}",
+            f"Уже были на диске: {already}",
+            f"Ошибок: {failed}",
+            f"Манифест источников и лицензий: {result['manifest_path']}",
+        ]
+        if result["failures"]:
+            details.append("\nНе удалось скачать:")
+            details.extend(f"• {item['filename']}: {item['error']}" for item in result["failures"])
+        messagebox.showinfo("Референсы сцены 01", "\n".join(details), parent=self)
+        self._set_status(
+            f"Набор референсов сцены 01: новых файлов {downloaded}, уже были {already}, ошибок {failed}."
+        )
 
     def _import_character_passport(self) -> None:
         """Import a JSON passport into the existing character library without executing it."""
