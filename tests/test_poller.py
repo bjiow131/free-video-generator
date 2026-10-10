@@ -557,3 +557,9 @@ def test_run_one_redacts_sensitive_arguments_from_console(monkeypatch, capsys, t
     output = capsys.readouterr().out
     assert "ghp_test_secret_do_not_log" not in output
     assert "[REDACTED]" in output
+
+
+def test_not_expired_rejects_task_created_too_far_in_the_future():
+    future_created = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    future_expiry = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
+    assert not _not_expired(SimpleNamespace(created_at=future_created, expires_at=future_expiry))
