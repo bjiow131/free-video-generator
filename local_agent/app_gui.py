@@ -200,9 +200,13 @@ class BlenderAgentApp(tk.Tk):
 
     def _build_library_tab(self) -> None:
         top = ttk.Frame(self.library_tab)
-        top.pack(fill="x", pady=(0, 10))
-        ttk.Label(top, text="Карточки персонажей и референсов", style="Title.TLabel").pack(side="left")
-        ttk.Button(top, text="Добавить карточку", command=self._add_character).pack(side="right")
+        top.pack(fill="x", pady=(0, 16))
+        title_block = ttk.Frame(top)
+        title_block.pack(side="left", fill="x", expand=True)
+        ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
+        ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
+        ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
         left = ttk.Frame(split, padding=(0, 0, 10, 0))
@@ -217,7 +221,9 @@ class BlenderAgentApp(tk.Tk):
         self.character_tree.pack(fill="both", expand=True)
         self.character_tree.bind("<<TreeviewSelect>>", self._select_character)
         self.character_tree.bind("<Double-Button-1>", self._open_character_references)
-        self.character_detail = tk.Text(right, height=12, wrap="word", font=("Segoe UI", 10), relief="solid", bd=1, padx=10, pady=10)
+        self.character_detail = tk.Text(right, height=12, wrap="word", font=("Segoe UI", 10), relief="flat", bd=0, padx=14, pady=14,
+            highlightthickness=1, highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
+            bg=self.colors["surface"], fg=self.colors["ink"], insertbackground=self.colors["accent"])
         self.character_detail.pack(fill="both", expand=True)
         actions = ttk.Frame(right)
         actions.pack(fill="x", pady=(10, 0))
@@ -690,8 +696,11 @@ class BlenderAgentApp(tk.Tk):
         card = self._selected_card()
         self.character_detail.delete("1.0", "end")
         if card:
-            refs = "\n".join(f"• {p}" for p in card.get("references", [])) or "Референсы пока не добавлены."
-            self.character_detail.insert("1.0", f"Имя: {card.get('name','')}\nТип: {card.get('kind','Персонаж')}\n\nОписание:\n{card.get('description','')}\n\nРеференсы:\n{refs}\n")
+            refs = "\n".join(
+                f"{index}. {card.get('reference_labels', {}).get(str(path), Path(path).stem)} — {Path(path).name}"
+                for index, path in enumerate(card.get("references", []), 1)
+            ) or "Референсы пока не добавлены. Добавь виды спереди, сбоку, сзади и ключевые позы."
+            self.character_detail.insert("1.0", f"{card.get('name','')}\n{'─' * min(44, max(12, len(card.get('name',''))))}\nКатегория: {card.get('profile_type','Человек')}\nВизуальный стиль: {card.get('visual_style','Стилизованный 3D')}\nРеференсов: {len(card.get('references', []))}\n\nПостоянные особенности\n{card.get('description','')}\n\nРеференсы по порядку\n{refs}\n")
         self.character_detail.configure(state="normal")
 
     def _add_character(self) -> None:
