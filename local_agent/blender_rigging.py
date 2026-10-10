@@ -1,7 +1,6 @@
-"""Bounded Blender skeleton prototype for an existing Mia blockout project.
+"""Bounded Blender rig prototype for an existing Mia blockout project.
 
-Creates a separate .blend output. This is a skeleton smoke test only: meshes are
-not yet weighted to the armature and therefore are not expected to deform.
+Creates a separate .blend output with rigid per-part proxy weights; not production skinning.
 """
 from __future__ import annotations
 
@@ -24,6 +23,7 @@ bpy.ops.wm.open_mainfile(filepath=source_path, load_ui=False)
 arm_data = bpy.data.armatures.new("Mia_Rig")
 arm = bpy.data.objects.new("Mia_Rig", arm_data)
 bpy.context.scene.collection.objects.link(arm)
+bpy.ops.object.select_all(action="DESELECT")
 bpy.context.view_layer.objects.active = arm
 arm.select_set(True)
 bpy.ops.object.mode_set(mode="EDIT")
@@ -91,6 +91,8 @@ for obj in list(bpy.context.scene.objects):
     modifier.object = arm
     bound_objects.append({"object": obj.name, "bone": bone_name})
 # Smoke-test a small forearm rotation, then reset the pose before saving.
+bpy.ops.object.select_all(action="DESELECT")
+arm.select_set(True)
 bpy.context.view_layer.objects.active = arm
 bpy.ops.object.mode_set(mode="POSE")
 pose = arm.pose.bones["forearm.L"]
