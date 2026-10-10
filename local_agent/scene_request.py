@@ -562,7 +562,7 @@ if background:
 scene.render.film_transparent = bool(cfg.get("transparent_background", False))
 if hasattr(scene, "eevee") and hasattr(scene.eevee, "taa_render_samples"):
     scene.eevee.taa_render_samples = 64 if cfg["render_percentage"] >= 75 else 32
-scene.render.fps = 24
+scene.render.fps = 30
 animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
