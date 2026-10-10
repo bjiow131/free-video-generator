@@ -191,9 +191,11 @@ def run_tests() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local-first AI Studio diagnostic agent")
-    parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test"))
+    parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test", "face-rig-check"))
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--log-lines", type=int, default=200)
+    parser.add_argument("--project", help="Local project folder name for face-rig-check")
+    parser.add_argument("--blend-file", help="Optional .blend filename inside the project folder")
     args = parser.parse_args()
 
     if args.operation == "doctor":
@@ -204,6 +206,12 @@ def main() -> int:
         details = status()
     elif args.operation == "logs":
         details = tail_logs(max(1, min(args.log_lines, 500)))
+    elif args.operation == "face-rig-check":
+        if not args.project:
+            details = {"status": "blocked", "reason": "face_rig_check_requires_project_name"}
+        else:
+            from local_agent.blender_face_rig_check import check_face_rig
+            details = check_face_rig(args.project, args.blend_file)
     else:
         details = run_tests()
 
