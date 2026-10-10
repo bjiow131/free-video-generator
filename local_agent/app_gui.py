@@ -518,11 +518,11 @@ class BlenderAgentApp(tk.Tk):
             name = str(card.get("name", "")).strip().casefold()
             if not name:
                 continue
-            candidates = {name}
+            name_pattern = r"(?<![\w])" + re.escape(name)
             if len(name) >= 5:
-                candidates.add(name[:-1])  # common Russian case endings, e.g. Степа -> Степы/Степе
-            if any(candidate and re.search(r"(?<![\w])" + re.escape(candidate) + r"(?![\w])", normalized_prompt)
-                   for candidate in candidates):
+                # Match common inflections without confusing unrelated short names.
+                name_pattern = r"(?<![\w])(?:" + re.escape(name) + r"|" + re.escape(name[:-1]) + r"[а-яё]{0,3})(?![\w])"
+            if re.search(name_pattern, normalized_prompt):
                 chosen[card.get("id")] = card
         return list(chosen.values())[:8]
 
