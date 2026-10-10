@@ -48,3 +48,30 @@ def test_multiple_speakers_are_preserved_in_cues():
     assert {cue["speaker"] for cue in result["cues"]} == {"Mia", "Friend"}
     assert min(cue["frame_start"] for cue in result["cues"]) >= 101
     assert max(cue["frame_end"] for cue in result["cues"]) <= 340
+
+
+def test_explicit_blender_speaker_mapping_never_falls_back():
+    from types import SimpleNamespace
+    from local_agent.mouth_motion import apply_blender_mouth_cues, index_character_meshes
+
+    class Key:
+        name = "Mouth_Open"
+        def __init__(self):
+            self.value = 0.0
+            self.frames = []
+        def keyframe_insert(self, *, data_path, frame):
+            self.frames.append((frame, self.value))
+
+    key = Key()
+    obj = SimpleNamespace(name="StepaHead", type="MESH", data=SimpleNamespace(shape_keys=SimpleNamespace(key_blocks=[key])))
+    obj.get = lambda prop: "char.stepa.master" if prop == "local_agent_character_id" else None
+    index = index_character_meshes([obj])["characters"]
+    result = apply_blender_mouth_cues(
+        [{"speaker": "Мия", "frame_start": 10, "frame_end": 14, "mouth": "open"}],
+        objects_by_character_id=index,
+        speaker_to_character_id={"Стёпа": "char.stepa.master"},
+        frame_start=1, frame_end=100,
+    )
+    assert result["status"] == "rejected"
+    assert result["reason"] == "invalid_or_unmapped_cue"
+    assert key.frames == []
