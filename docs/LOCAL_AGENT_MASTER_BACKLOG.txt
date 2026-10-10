@@ -168,3 +168,66 @@ EXECUTION LOG — APPEND A NEW ENTRY FOR EACH WORK SESSION
 2026-10-09 — Created this master backlog file from the first 100-point static audit.
 Result: backlog recorded; no code changes or runtime tests performed in this session.
 Next: continue static audit and prepare fixes; do not claim Windows/real-media/backend checks passed until actually run.
+
+
+============================================================
+LOCAL-FIRST MIGRATION TRACKER — 2026-10-09
+============================================================
+This section tracks migration readiness without renumbering the existing 100 technical audit points. Product direction and staged exit criteria: docs/PRODUCT_ROADMAP.md. Static current-state findings and acceptance checklist: docs/LOCAL_MIGRATION_AUDIT.md.
+
+[FINDING] M1. Main FastAPI application already has a local Windows launch path; verify it on a clean Windows machine before replacing the existing architecture.
+[FIXED] M2. start_windows.bat now bounds /health readiness polling to 30 attempts (up to 60 seconds) and displays an actionable failure message. Windows runtime behavior and child-process cleanup remain NOT RUN.
+[FINDING] M3. server.py defaults to 127.0.0.1:8765; Docker uses 0.0.0.0 inside the container but Compose publishes only to host loopback. Preserve and test local-only defaults.
+[FINDING] M4. server.py still reads RENDER_EXTERNAL_HOSTNAME for host allowlisting; isolate/remove only after local host/origin security regression tests.
+[FINDING] M5. Current data locations are filesystem-based (.working_dir, .agnes_config, configured workspaces); document and preserve existing user data before any path changes.
+[FINDING] M6. local_agent lacks a concrete verified VideoBackend adapter and standalone CLI; it is not yet a drop-in replacement for the current server pipelines.
+[FINDING] M7. Agnes inference still depends on the provider/network and its limits; local app hosting must not be described as offline or unlimited generation.
+[PLAN] M8. Inventory every Render-specific reference, environment variable, CI/deployment file, and external runtime assumption across the repository.
+[PLAN] M9. Define backward-compatible local configuration/data-root behavior; do not relocate/delete user data automatically.
+[PLAN] M10. Add and test bounded Windows startup, port-conflict diagnostics, reliable stop/restart, and process cleanup.
+[PLAN] M11. Verify clean Windows setup, UI/health endpoints, real FFmpeg media, actual generator integration, multi-scene assembly, restart/resume, and backup/restore.
+[PLAN] M12. Remove Render-only compatibility only after local security tests and source inventory demonstrate it is safe.
+[PLAN] M13. Keep public/LAN exposure and any deployment disabled until full release acceptance and explicit approval.
+
+EXECUTION LOG — 2026-10-09 (local-first migration pass)
+- Created feature/local-first-migration from feature/local-video-agent; existing branch and main were not modified.
+- Added docs/PRODUCT_ROADMAP.md and docs/LOCAL_MIGRATION_AUDIT.md.
+- Static evidence reviewed: README.md, requirements.txt, Dockerfile, docker-compose.yml, start_windows.bat, start.sh, .gitignore, core/config.py, server.py, local_agent modules, and .github/workflows/server-test.yml.
+- Confirmed: local launch and local persistence are already part of the repository design; Render is not inherently required to run the main app.
+- Static finding: Windows launcher readiness loop has no apparent timeout/process-exit check.
+- Static finding: Render-specific hostname compatibility remains in server.py.
+- Static finding: local_agent still lacks a concrete verified generator adapter and CLI.
+- Runtime status: NOT RUN. No Windows commands, real media, real generator, or runtime tests were executed in this pass.
+- Next: finish repository-wide Render/deployment inventory; then make the smallest safe startup hardening change and add regression coverage before Windows verification.
+
+- Follow-up 2026-10-09: hardened start_windows.bat with a bounded readiness loop and updated .github/workflows/server-test.yml to run on feature/** pushes and assert the new launcher contract.
+- Evidence: source files updated on feature/local-first-migration; GitHub workflow run result not yet available. Static source edits are not a Windows runtime PASS.
+- Next: inspect current branch CI once available; continue Render/config/deployment inventory and test launcher behavior on Windows when the computer is available.
+
+[FIXED] M14. Added setup_windows.bat to check Python 3.10+, FFmpeg/ffprobe, create .venv if absent, and install requirements. Windows execution remains NOT RUN.
+[FIXED] M15. Updated README Windows steps to run setup_windows.bat before start_windows.bat and corrected API-key/startup wording.
+[PLAN] M16. Add/verify port-conflict detection and robust child-process stop/cleanup after Windows runtime testing identifies the safest approach.
+
+- Follow-up 2026-10-09: added setup_windows.bat; updated README Windows first-run instructions; expanded the workflow's static contract check for setup script and added setup_windows.bat to both PR and feature-branch push path filters.
+- Runtime status remains NOT RUN. No Windows environment was available, and no CI result is asserted.
+
+[FOUND] M17. Inspected common deployment paths on this branch: render.yaml, render.yml, Procfile, .github/workflows/deploy.yml, .github/workflows/render-deploy.yml, fly.toml, and railway.json are absent. This does not rule out settings in an external Render dashboard or other uninspected paths.
+
+- Follow-up 2026-10-09: recorded deployment-manifest inventory in docs/LOCAL_MIGRATION_AUDIT.md; kept RENDER_EXTERNAL_HOSTNAME compatibility in place pending host/origin security regression tests.
+
+
+============================================================
+LOCAL-FIRST CONTROL CHANNEL TRACKER (2026-10-09)
+============================================================
+
+CONTROL-01 [FIXED — STATIC ONLY] Added local_agent/control_protocol.py: bounded JSON envelope parser, versioning, allowlisted typed operations, mandatory local approval, and rejection of free-form command/script/executable fields. No task execution is implemented.
+CONTROL-02 [FIXED — STATIC ONLY] Added local_agent/reporting.py: local JSON report writer and basic credential/home-path redaction. No report upload is implemented.
+CONTROL-03 [FIXED — STATIC ONLY] Added local_agent/cli.py starter commands: doctor, loopback-only status check, bounded log tail, and fixed pytest invocation. These commands have not been run on Windows or any user computer.
+CONTROL-04 [FIXED — STATIC ONLY] Added docs/LOCAL_CONTROL_CHANNEL_DESIGN.md with outbound-only transport architecture, threat model, implementation sequence, and acceptance criteria.
+CONTROL-05 [FIXED — STATIC ONLY] Added .local_agent/ to .gitignore to prevent local reports/runtime data from being committed by default.
+CONTROL-06 [PLAN] Select and implement authenticated transport only after checking repository visibility, credentials, and available ChatGPT connector behavior. Do not claim that GitHub automatically pushes results into this chat.
+CONTROL-07 [PLAN] Implement local approval UX, expiry/replay protection, authenticated queue client, explicit report preview, and optional sanitized report upload.
+CONTROL-08 [PLAN] Add fixed start/stop/backup operations, local audit trail, emergency stop, and safe recovery/uninstall path.
+CONTROL-09 [BLOCKED — COMPUTER REQUIRED] Run Windows checks, inspect redaction quality, verify loopback binding, exercise test command, and capture real evidence when the computer becomes available.
+
+SECURITY NOTE: No inbound listener, polling worker, remote execution, public endpoint, or Render deployment was enabled by these changes. No real computer tests were performed.

@@ -3,7 +3,7 @@ name: Server Test
 # Keep one verification run per PR/ref. New commits must not interrupt a run
 # that has already started; GitHub may keep only the newest pending run queued.
 concurrency:
-  group: server-test-${{ github.event.pull_request.number || github.ref }}
+  group: server-test-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 on:
@@ -17,11 +17,12 @@ on:
       - "static/**"
       - "tests/**"
       - "start_windows.bat"
+      - "setup_windows.bat"
       - "Dockerfile"
       - "README.md"
       - ".github/workflows/server-test.yml"
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
     paths:
       - "server.py"
       - "requirements.txt"
@@ -31,6 +32,7 @@ on:
       - "static/**"
       - "tests/**"
       - "start_windows.bat"
+      - "setup_windows.bat"
       - "Dockerfile"
       - "README.md"
       - ".github/workflows/server-test.yml"
@@ -101,13 +103,36 @@ jobs:
               '.venv\\Scripts\\python.exe',
               'server.py',
               'where ffmpeg',
+              'WAIT_ATTEMPTS',
+              'startup_failed',
+              'curl -fsS --max-time 2',
           ]
           missing = [item for item in required if item not in bat]
           if missing:
               raise SystemExit(f"Windows launcher missing: {missing}")
           PY
 
-      - name: 11. Write verification summary
+      - name: 11. Validate Windows setup script contract
+        id: windows_setup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          script = Path("setup_windows.bat").read_text(encoding="utf-8")
+          required = [
+              "py -3",
+              "sys.version_info >= (3,10)",
+              "where ffmpeg",
+              "where ffprobe",
+              "pip install -r requirements.txt",
+              ":setup_failed",
+          ]
+          missing = [item for item in required if item not in script]
+          if missing:
+              raise SystemExit(f"Windows setup script missing: {missing}")
+          PY
+
+      - name: 12. Write verification summary
         if: always()
         env:
           CHECKOUT: ${{ steps.checkout.outcome }}
@@ -120,6 +145,7 @@ jobs:
           DOCKER: ${{ steps.docker.outcome }}
           WEB_UI: ${{ steps.web_ui.outcome }}
           WINDOWS_LAUNCHER: ${{ steps.windows_launcher.outcome }}
+          WINDOWS_SETUP: ${{ steps.windows_setup.outcome }}
         run: |
           {
             echo "## Sequential verification report"
@@ -135,7 +161,8 @@ jobs:
             echo "| Regression tests | $TESTS |"
             echo "| Docker build | $DOCKER |"
             echo "| Web UI syntax | $WEB_UI |"
-            echo "| Windows launcher contract | $WINDOWS_LAUNCHER |"
+            echo "| Windows launcher static contract | $WINDOWS_LAUNCHER |"
+            echo "| Windows setup static contract | $WINDOWS_SETUP |"
             echo
             echo "This workflow checks the Linux CI environment. It does not replace runtime verification on Windows or real FFmpeg/media fixtures."
           } >> "$GITHUB_STEP_SUMMARY"

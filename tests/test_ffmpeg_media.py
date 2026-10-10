@@ -140,15 +140,17 @@ def test_extract_frame_uses_safe_args_and_unicode_paths(tmp_path, monkeypatch):
         if args[0] == "ffprobe":
             if str(source) in args:
                 return completed(json.dumps(probe_result()))
-            target.write_bytes(b"png")
             return completed(json.dumps({"streams": [{"codec_type": "video"}]}))
-        target.write_bytes(b"png")
+        Path(args[-1]).write_bytes(b"png")
         return completed()
     monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
     result = FFmpegMediaTools().extract_last_frame(str(source), str(target))
     assert result == str(target)
     ffmpeg_args = next(args for args in calls if args[0] == "ffmpeg")
-    assert str(source) in ffmpeg_args and str(target) in ffmpeg_args
+    assert str(source) in ffmpeg_args
+    assert ffmpeg_args[-1] != str(target)
+    assert Path(ffmpeg_args[-1]).suffix == ".png"
+    assert target.read_bytes() == b"png"
     assert "-frames:v" in ffmpeg_args
     assert ffmpeg_args[ffmpeg_args.index("-vf") + 1] == "reverse"
 
@@ -240,3 +242,43 @@ def test_malformed_format_metadata_raises_media_error(tmp_path, monkeypatch, for
 
     with pytest.raises(MediaError, match="valid format metadata"):
         FFmpegMediaTools().validate_video(str(path), 5)
+
+
+def test_failed_frame_extraction_preserves_existing_target(tmp_path, monkeypatch):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    target = tmp_path / "last_frame.png"
+    target.write_bytes(b"previous valid frame")
+
+    def fake_run(args, **kwargs):
+        if args[0] == "ffprobe":
+            return completed(json.dumps(probe_result()))
+        return completed(returncode=1, stderr="simulated ffmpeg failure")
+
+    monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
+    with pytest.raises(MediaError, match="failed"):
+        FFmpegMediaTools().extract_last_frame(str(source), str(target))
+
+    assert target.read_bytes() == b"previous valid frame"
+    assert not list(tmp_path.glob("frame_*.png"))
+
+
+def test_failed_concat_preserves_existing_final_video(tmp_path, monkeypatch):
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    first.write_bytes(b"first source")
+    second.write_bytes(b"second source")
+    target = tmp_path / "final.mp4"
+    target.write_bytes(b"previous final video")
+
+    def fake_run(args, **kwargs):
+        if args[0] == "ffprobe":
+            return completed(json.dumps(probe_result()))
+        return completed(returncode=1, stderr="simulated concat failure")
+
+    monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
+    with pytest.raises(MediaError, match="failed"):
+        FFmpegMediaTools().concatenate([str(first), str(second)], str(target))
+
+    assert target.read_bytes() == b"previous final video"
+    assert not list(tmp_path.glob("concat_output_*.mp4"))
