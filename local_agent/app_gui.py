@@ -140,37 +140,62 @@ class BlenderAgentApp(tk.Tk):
         row = ttk.Frame(project, style="Panel.TFrame")
         row.pack(fill="x", pady=(8, 2))
         self.project_label_var = tk.StringVar(value="Новый проект: задание будет обработано как создание сцены.")
-        ttk.Label(row, textvariable=self.project_label_var, background="#ffffff").pack(side="left", fill="x", expand=True)
+        ttk.Label(row, textvariable=self.project_label_var, background=self.colors["surface"], foreground=self.colors["ink"]).pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="Открыть готовый проект…", command=self._open_project).pack(side="right")
         ttk.Button(row, text="Сбросить проект", command=self._clear_project).pack(side="right", padx=(0, 8))
         ttk.Button(row, text="Экспортировать видео…", command=self._export_video).pack(side="right", padx=(0, 8))
 
-        prompt_panel = ttk.Frame(self.task_tab, style="Panel.TFrame", padding=14)
+        prompt_panel = ttk.Frame(self.task_tab, style="Panel.TFrame", padding=22)
         prompt_panel.pack(fill="both", expand=True)
-        ttk.Label(prompt_panel, text="Задание", style="PanelTitle.TLabel").pack(anchor="w")
-        ttk.Label(prompt_panel, text="Вставьте сюда задачу. При открытом проекте она относится к нему, а не запускает создание новой сцены.", background="#ffffff", wraplength=900).pack(anchor="w", pady=(4, 8))
-        character_panel = ttk.Frame(prompt_panel, style="Panel.TFrame")
-        character_panel.pack(fill="x", pady=(0, 8))
-        ttk.Label(character_panel, text="Персонажи в этой сцене (можно выбрать несколько):", style="PanelTitle.TLabel").pack(anchor="w")
-        self.character_selection_list = tk.Listbox(character_panel, selectmode="extended", height=4, exportselection=False,
-                                                   font=("Segoe UI", 10), relief="solid", bd=1)
-        self.character_selection_list.pack(side="left", fill="x", expand=True, pady=(5, 0))
-        selection_actions = ttk.Frame(character_panel, style="Panel.TFrame")
-        selection_actions.pack(side="right", fill="y", padx=(10, 0), pady=(5, 0))
-        ttk.Button(selection_actions, text="Обновить список", command=self._refresh_character_choices).pack(fill="x")
-        ttk.Button(selection_actions, text="Открыть карточки", command=lambda: self.tabs.select(self.library_tab)).pack(fill="x", pady=(6, 0))
+        prompt_heading = ttk.Frame(prompt_panel, style="Panel.TFrame")
+        prompt_heading.pack(fill="x")
+        ttk.Label(prompt_heading, text="СОЗДАНИЕ СЦЕНЫ", style="Eyebrow.TLabel").pack(anchor="w")
+        ttk.Label(prompt_heading, text="Опиши, что должно произойти", style="Title.TLabel").pack(anchor="w", pady=(4, 2))
+        ttk.Label(prompt_heading, text="Укажи действие, окружение, стиль, движение камеры и нужные референсы персонажей.", background=self.colors["surface"], foreground=self.colors["muted"], wraplength=920).pack(anchor="w", pady=(0, 12))
+
+        settings_row = ttk.Frame(prompt_panel, style="Panel.TFrame")
+        settings_row.pack(fill="x", pady=(0, 12))
+        ttk.Label(settings_row, text="Визуальный режим", style="PanelTitle.TLabel").pack(side="left", padx=(0, 12))
+        self.visual_mode_var = tk.StringVar(value="Стилизованная 3D-сцена")
+        self.visual_mode_combo = ttk.Combobox(settings_row, textvariable=self.visual_mode_var, state="readonly", width=27,
+            values=("Стилизованная 3D-сцена", "Реалистичная сцена", "Свободный стиль"))
+        self.visual_mode_combo.pack(side="left")
+        ttk.Label(settings_row, text="Режим задаёт направление проекта; доступная детализация зависит от текущего генератора.", background=self.colors["surface"], foreground=self.colors["muted"]).pack(side="left", padx=(12, 0))
+
+        character_panel = ttk.Frame(prompt_panel, style="Inset.TFrame", padding=12)
+        character_panel.pack(fill="x", pady=(0, 12))
+        character_head = ttk.Frame(character_panel, style="Inset.TFrame")
+        character_head.pack(fill="x")
+        ttk.Label(character_head, text="ПЕРСОНАЖИ СЦЕНЫ", background=self.colors["surface_alt"], foreground=self.colors["accent"], font=("Segoe UI Semibold", 9)).pack(side="left")
+        ttk.Label(character_head, text="Можно не выбирать вручную — поиск по именам в задании включён", background=self.colors["surface_alt"], foreground=self.colors["muted"], font=("Segoe UI", 9)).pack(side="right")
+        self.character_selection_list = tk.Listbox(character_panel, selectmode="extended", height=3, exportselection=False,
+            font=("Segoe UI", 10), relief="flat", bd=0, highlightthickness=1,
+            highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
+            bg=self.colors["surface"], fg=self.colors["ink"], selectbackground=self.colors["accent_soft"],
+            selectforeground=self.colors["ink"], activestyle="none")
+        self.character_selection_list.pack(side="left", fill="x", expand=True, pady=(9, 0))
+        selection_actions = ttk.Frame(character_panel, style="Inset.TFrame")
+        selection_actions.pack(side="right", fill="y", padx=(12, 0), pady=(9, 0))
+        ttk.Button(selection_actions, text="Обновить", command=self._refresh_character_choices).pack(fill="x")
+        ttk.Button(selection_actions, text="Библиотека персонажей", command=lambda: self.tabs.select(self.library_tab)).pack(fill="x", pady=(7, 0))
         self.character_selection_list.bind("<Double-Button-1>", self._open_selected_character_card)
-        self.prompt = tk.Text(prompt_panel, height=10, wrap="word", font=("Segoe UI", 11), undo=True, relief="solid", bd=1, padx=10, pady=10)
+
+        ttk.Label(prompt_panel, text="ТЕКСТ ЗАДАНИЯ", style="Eyebrow.TLabel").pack(anchor="w", pady=(0, 6))
+        self.prompt = tk.Text(prompt_panel, height=9, wrap="word", font=("Segoe UI", 11), undo=True,
+            relief="flat", bd=0, padx=14, pady=12, highlightthickness=1,
+            highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
+            bg=self.colors["surface_alt"], fg=self.colors["ink"], insertbackground=self.colors["accent"],
+            selectbackground=self.colors["accent_soft"], selectforeground=self.colors["ink"])
         self.prompt.pack(fill="both", expand=True)
-        self.prompt.insert("1.0", "Например: Мия и Лисёнок идут по лесу, находят улитку и вместе помогают ей вернуться домой. Вертикально 9:16.")
+        self.prompt.insert("1.0", "Например: В сцене участвуют Мия (референсы №2 и №3) и Степа (референс «Профиль справа»). Они встречают друг друга на лесной тропе. Камера плавно приближается. Вертикально 9:16.")
         self.prompt.bind("<KeyRelease>", self._update_prompt_count)
         bottom = ttk.Frame(prompt_panel, style="Panel.TFrame")
         bottom.pack(fill="x", pady=(10, 0))
-        self.prompt_count = ttk.Label(bottom, text=f"0 / {PROMPT_LIMIT}", background="#ffffff")
+        self.prompt_count = ttk.Label(bottom, text=f"0 / {PROMPT_LIMIT}", background=self.colors["surface"], foreground=self.colors["muted"])
         self.prompt_count.pack(side="left")
         self.create_btn = ttk.Button(bottom, text="Создать / выполнить задание", style="Accent.TButton", command=self._submit_task)
         self.create_btn.pack(side="right")
-        ttk.Label(prompt_panel, text="Опиши всё одним текстом: объекты и цвета, окружение, стиль, формат кадра, композицию, свет, надпись или простую анимацию. Поддерживаемые составные объекты включают дома, деревья, персонажей, транспорт, мебель, игрушки и тематические сцены. Если формулировка не распознана, агент сообщит об этом, а не заявит об успехе.", background="#ffffff", foreground="#687788", wraplength=900).pack(anchor="w", pady=(9, 0))
+        ttk.Label(prompt_panel, text="Поддерживаются описания сцен, окружения, композиции, света, движения и формата кадра. Референсы нумеруются в порядке списка карточки; можно указать номер или точную метку позы. Если точная 3D-модель по референсам ещё не построена, агент сохранит связь с исходными изображениями, но не будет выдавать простую модель за точную копию.", background=self.colors["surface"], foreground=self.colors["muted"], wraplength=920).pack(anchor="w", pady=(10, 0))
 
     def _build_library_tab(self) -> None:
         top = ttk.Frame(self.library_tab)
