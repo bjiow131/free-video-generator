@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "character_id": "babochka-luna",
+  "status": "design_ready_model_not_built",
+  "display_name": "Луна",
+  "category": "animal",
+  "role": "Появляется в сценах наблюдения за природой",
+  "age_or_species": "бабочка",
+  "visual_identity": "Два крупных симметричных крыла с простым рисунком; пастельная палитра, заметна на фоне зелени.",
+  "personality": [
+    "лёгкая",
+    "спокойная",
+    "переменчивая"
+  ],
+  "animation_requirements": "петляющий полёт, посадка на цветок, раскрытие/закрытие крыльев",
+  "voice_and_mouth_sync": "без речи; музыкальные/звуковые сигналы добавляются отдельно",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "CC0 3D animal collection; inspect individual asset licenses",
+      "url": "https://opengameart.org/content/cc0-3d-animals-creatures",
+      "license": "CC0 collection; verify each item page",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "CC0 animated low-poly wolf/dog/cat/eagle/piranha pack",
+      "url": "https://opengameart.org/content/animated-animales-low-poly",
+      "license": "CC0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Полёт по кривым и простая деформация крыльев предпочтительнее физической симуляции."
+}

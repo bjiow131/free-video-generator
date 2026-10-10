@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "character_id": "belka-tishka",
+  "status": "design_ready_model_not_built",
+  "display_name": "Тишка",
+  "category": "animal",
+  "role": "Быстрый помощник и источник комических ситуаций",
+  "age_or_species": "белка",
+  "visual_identity": "Пышный хвост, небольшие лапы, тёплая рыже-коричневая палитра; один простой отличительный аксессуар допустим.",
+  "personality": [
+    "проворная",
+    "запасливая",
+    "добрая"
+  ],
+  "animation_requirements": "бег, прыжки, баланс хвоста, удержание ореха, лазание по стволу",
+  "voice_and_mouth_sync": "быстрая лёгкая речь или звуковые реакции",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "CC0 3D animal collection; inspect individual asset licenses",
+      "url": "https://opengameart.org/content/cc0-3d-animals-creatures",
+      "license": "CC0 collection; verify each item page",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "CC0 animated low-poly wolf/dog/cat/eagle/piranha pack",
+      "url": "https://opengameart.org/content/animated-animales-low-poly",
+      "license": "CC0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Проверить, есть ли в выбранном CC0-наборе белка с подходящим ригом; иначе сделать оригинальную модель."
+}
