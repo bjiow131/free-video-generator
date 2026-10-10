@@ -83,7 +83,9 @@ class GitHubQueueClient:
         })
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
-        url = f"{API_ROOT}/repos/{self.config.repository}/{path.lstrip('/')}"
+        base_url = f"{API_ROOT}/repos/{self.config.repository}"
+        clean_path = path.lstrip("/")
+        url = f"{base_url}/{clean_path}" if clean_path else base_url
         try:
             response = self.session.request(method, url, timeout=self.config.timeout_seconds, **kwargs)
         except requests.RequestException as exc:
@@ -122,7 +124,8 @@ class GitHubQueueClient:
             item = response.json()
             if item.get("type") != "file" or item.get("encoding") != "base64":
                 raise QueueTransportError("Task manifest must be a regular base64-encoded file.")
-            raw_bytes = base64.b64decode(item["content"], validate=True)
+            encoded_content = "".join(item["content"].split())
+            raw_bytes = base64.b64decode(encoded_content, validate=True)
             if len(raw_bytes) > MAX_MANIFEST_BYTES:
                 raise QueueTransportError("Task manifest exceeds the size limit.")
             raw = raw_bytes.decode("utf-8")

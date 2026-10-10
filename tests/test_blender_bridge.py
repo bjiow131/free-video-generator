@@ -15,8 +15,8 @@ from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
 def _write_png(path: Path, width: int, height: int) -> None:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
-    raw = b"".join(b"\\x00" + bytes(width * 4) for _ in range(height))
-    path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    raw = b"".join(b"\x00" + bytes(width * 4) for _ in range(height))
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
 def _bridge(tmp_path: Path, fake_run):
@@ -45,7 +45,7 @@ def test_rejects_unsafe_project_names(tmp_path: Path, name: str) -> None:
 
 def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) -> None:
     def fake_run(command, **kwargs):
-        assert command[1:3] == ["--background", "--factory-startup"]
+        assert command[1:2] == ["--factory-startup"]
         assert command[3] == "--python"
         assert kwargs["capture_output"] is True
         assert kwargs["check"] is False
@@ -66,6 +66,50 @@ def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) ->
     assert result["status"] == "completed"
     assert result["resolution"] == [720, 1280]
     assert (workspace / "mia_forest" / "forest_starter.blend").is_file()
+
+
+
+def test_gui_launcher_returns_after_manifest_without_waiting_for_window_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class FakeGuiProcess:
+        def poll(self):
+            # A real GUI remains alive until the user closes the Blender window.
+            return None
+
+    def fake_popen(command, **kwargs):
+        calls.append((command, kwargs))
+        project_dir = Path(kwargs["cwd"])
+        (project_dir / "forest_starter.blend").write_bytes(b"blend placeholder")
+        _write_png(project_dir / "forest_preview.png", 360, 640)
+        (project_dir / "blender_result.json").write_text(json.dumps({
+            "status": "completed",
+            "blend_path": str(project_dir / "forest_starter.blend"),
+            "preview_path": str(project_dir / "forest_preview.png"),
+            "engine": "BLENDER_EEVEE_NEXT",
+            "resolution": [720, 1280],
+        }), encoding="utf-8")
+        return FakeGuiProcess()
+
+    # Make the production path recognize the fake as the configured Popen factory.
+    monkeypatch.setattr("local_agent.blender_bridge.subprocess.Popen", fake_popen)
+    executable = tmp_path / "blender.exe"
+    executable.write_bytes(b"test executable placeholder")
+    workspace = tmp_path / "workspace"
+    bridge = BlenderBridge(executable, workspace, popen=fake_popen)
+
+    result = bridge.run_task("forest_preview", project_name="gui_scene")
+
+    assert result["status"] == "completed"
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[1:2] == ["--factory-startup"]
+    assert kwargs["stdin"] is not None
+    assert "capture_output" not in kwargs
+    assert kwargs["stdout"] is not None
+    assert kwargs["stderr"] is not None
 
 
 def test_missing_preview_is_reported(tmp_path: Path) -> None:

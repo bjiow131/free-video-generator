@@ -18,12 +18,9 @@ import time
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
-from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
-from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
-from local_agent.result_outbox import ResultOutbox
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -463,21 +460,18 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, Blender discovery, Mia blockout creation, and the allowlisted forest preview.")
-    if getattr(task, "requires_local_approval", True) is False:
-        if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
-            result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
-            commit_sha = _publish_result_durable(client, task.task_id, result)
-            print(f"Remote approval blocked by local policy. Result commit: {commit_sha}")
-            return
-        answer = "YES"  # Explicit task authorization plus local opt-in; no shell/code payloads are accepted.
-    else:
-        if not sys.stdin.isatty():
-            result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
-            commit_sha = _publish_result_durable(client, task.task_id, result)
-            print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
-            return
-        answer = input("Approve this local operation? Type YES to run: ").strip()
+    print("Supported work: local diagnostics and tests, plus allowlisted Blender workflows. Every task requires approval on this computer.")
+    if getattr(task, "requires_local_approval", True) is not True:
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_disabled"}
+        commit_sha = _publish_result_durable(client, task.task_id, result)
+        print(f"Remote approval is disabled. Result commit: {commit_sha}")
+        return
+    if not sys.stdin.isatty():
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
+        commit_sha = _publish_result_durable(client, task.task_id, result)
+        print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
+        return
+    answer = input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
@@ -645,6 +639,9 @@ def _acquire_instance_lock(path: Path):
 
 
 def main() -> int:
+    print("Remote mailbox polling is disabled. Use run_blender_agent.bat for local Blender-only operation.")
+    return 2
+
     try:
         config = QueueConfig.from_environment()
         client = GitHubQueueClient(config)
@@ -670,7 +667,7 @@ def main() -> int:
     last_seen = state.get("last_task_id")
     last_sha = state.get("manifest_sha")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and locally approved Blender forest previews; runtime tests remain outstanding.")
+    print("This poller supports local diagnostics and Blender workflows. Run Blender integration tests on the target Windows computer before production use.")
 
     try:
         while True:

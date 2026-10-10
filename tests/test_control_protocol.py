@@ -140,17 +140,16 @@ def test_rejects_invalid_task_timestamp_windows(created_at, expires_at):
         parse_task(json.dumps(value))
 
 
-def test_remote_approval_allowed_for_typed_blender_preview():
+def test_remote_approval_is_rejected_for_typed_blender_preview():
     value = json.loads(_task("blender_forest_preview", {"project_name": "mia"}))
     value["requires_local_approval"] = False
-    task = parse_task(json.dumps(value))
-    assert task.requires_local_approval is False
-
+    with pytest.raises(ProtocolError, match="require local approval"):
+        parse_task(json.dumps(value))
 
 def test_remote_approval_rejected_for_patch_operation():
     value = json.loads(_task("apply_patch", {"patch": "diff --git a/a.txt b/a.txt\\n"}))
     value["requires_local_approval"] = False
-    with pytest.raises(ProtocolError, match="local approval is mandatory"):
+    with pytest.raises(ProtocolError, match="require local approval"):
         parse_task(json.dumps(value))
 
 
@@ -188,12 +187,11 @@ def test_rejects_invalid_blender_knowledge_search(arguments):
         parse_task(_task("blender_knowledge_search", arguments))
 
 
-def test_blender_knowledge_search_can_use_explicit_remote_approval():
+def test_blender_knowledge_search_requires_local_approval():
     value = json.loads(_task("blender_knowledge_search", {"query": "render"}))
     value["requires_local_approval"] = False
-    task = parse_task(json.dumps(value))
-    assert task.requires_local_approval is False
-
+    with pytest.raises(ProtocolError, match="require local approval"):
+        parse_task(json.dumps(value))
 
 def test_accepts_blender_preflight_task():
     task = parse_task(_task("blender_preflight", {}))
@@ -262,8 +260,8 @@ def test_rejects_unsafe_blender_mia_skeleton_arguments(arguments):
         parse_task(_task("blender_mia_skeleton", arguments))
 
 
-def test_blender_mia_skeleton_can_use_explicit_remote_approval():
+def test_blender_mia_skeleton_requires_local_approval():
     value = json.loads(_task("blender_mia_skeleton", {"project_name": "mia_character"}))
     value["requires_local_approval"] = False
-    task = parse_task(json.dumps(value))
-    assert task.requires_local_approval is False
+    with pytest.raises(ProtocolError, match="require local approval"):
+        parse_task(json.dumps(value))

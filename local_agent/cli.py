@@ -99,28 +99,16 @@ def preflight() -> dict[str, Any]:
                 blender_check["error_type"] = type(exc).__name__
         else:
             blender_check["error"] = "configured_executable_not_found"
-    try:
-        from local_agent.github_queue import QueueConfig
-        config = QueueConfig.from_environment()
-        mailbox = {"configured": True, "repository": config.repository, "ref": config.ref,
-                   "manifest_path": config.manifest_path, "token_value_reported": False}
-    except Exception as exc:
-        mailbox = {"configured": False, "configuration_error_type": type(exc).__name__}
     checks = {
         "python_311_plus": sys.version_info >= (3, 11),
         "workspace_ready": workspace_check.get("exists") is True and workspace_check.get("writable") is True,
-        "mailbox_configured": mailbox.get("configured") is True,
         "blender_available": blender_check.get("available") is True,
     }
     return {
         "status": "ready" if all(checks.values()) else "needs_setup",
         "checks": checks, "python": {"version": sys.version.split()[0]},
         "workspace": workspace_check, "disk_free_bytes": disk_free_bytes,
-        "mailbox": mailbox, "blender": blender_check,
-        "git": _tool_version(["git", "--version"]),
-        "ffmpeg": _tool_version(["ffmpeg", "-version"]),
-        "ffprobe": _tool_version(["ffprobe", "-version"]),
-        "nvidia_smi": _tool_version(["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]),
+        "blender": blender_check,
         "network_request_performed": False, "blender_scene_created": False,
         "render_started": False, "secret_values_returned": False,
     }
@@ -190,7 +178,7 @@ def run_tests() -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Local-first AI Studio diagnostic agent")
+    parser = argparse.ArgumentParser(description="Local Blender agent diagnostics; no remote task queue")
     parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test"))
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--log-lines", type=int, default=200)

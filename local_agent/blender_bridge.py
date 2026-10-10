@@ -13,6 +13,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import time
 from typing import Any, Callable
 
 _PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -57,7 +58,7 @@ def _png_dimensions(path: Path) -> tuple[int, int]:
             header = stream.read(24)
     except OSError as exc:
         raise BlenderBridgeError("Preview PNG could not be read.") from exc
-    if len(header) < 24 or header[:8] != b"\\x89PNG\\r\\n\\x1a\\n" or header[12:16] != b"IHDR":
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
         raise BlenderBridgeError("Preview output is not a valid PNG header.")
     width, height = struct.unpack(">II", header[16:24])
     if width <= 0 or height <= 0:
@@ -205,7 +206,7 @@ class BlenderBridge:
         workspace: str | os.PathLike[str],
         *,
         timeout_seconds: int = _DEFAULT_TIMEOUT,
-        popen: Callable[..., Any] = subprocess.run,
+        popen: Callable[..., Any] = subprocess.Popen,
     ) -> None:
         executable = Path(blender_executable).expanduser().resolve()
         if not executable.is_file():
@@ -359,28 +360,74 @@ class BlenderBridge:
             script_path.write_text(_scene_script(), encoding="utf-8")
             config_path.write_text(json.dumps(config), encoding="utf-8")
             command = [
-                str(self.executable), "--background", "--factory-startup",
+                str(self.executable), "--factory-startup",
                 "--python", str(script_path), "--", str(config_path),
             ]
-            try:
-                result = self._run(
-                    command, cwd=str(project_dir), capture_output=True, text=True,
-                    timeout=self.timeout_seconds, check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                _write_bounded_log(project_dir / "blender_stdout.log", exc.stdout)
-                _write_bounded_log(project_dir / "blender_stderr.log", exc.stderr)
-                raise BlenderBridgeError("Blender task timed out; bounded local logs were saved when possible.") from exc
-            except OSError as exc:
-                raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
-            stdout_logged = _write_bounded_log(project_dir / "blender_stdout.log", result.stdout)
-            stderr_logged = _write_bounded_log(project_dir / "blender_stderr.log", result.stderr)
-            if result.returncode != 0:
-                stderr = (result.stderr or "")[-3000:]
-                raise BlenderBridgeError(
-                    f"Blender exited with code {result.returncode}; "
-                    f"local_logs_written={stdout_logged and stderr_logged}: {stderr}"
-                )
+            if self._run is subprocess.Popen:
+                # Launch Blender as a visible GUI process. Wait for the task manifest,
+                # not for the user to close Blender; the scene stays open after rendering.
+                result_path = project_dir / "blender_result.json"
+                stdout_path = project_dir / "blender_stdout.log"
+                stderr_path = project_dir / "blender_stderr.log"
+                try:
+                    with stdout_path.open("wb") as stdout_stream, stderr_path.open("wb") as stderr_stream:
+                        process = self._run(
+                            command, cwd=str(project_dir), stdin=subprocess.DEVNULL,
+                            stdout=stdout_stream, stderr=stderr_stream, shell=False,
+                        )
+                        deadline = time.monotonic() + self.timeout_seconds
+                        while True:
+                            if result_path.is_file() and result_path.stat().st_size > 0:
+                                try:
+                                    manifest = json.loads(result_path.read_text(encoding="utf-8"))
+                                except (OSError, ValueError):
+                                    manifest = {}
+                                if manifest.get("status") == "completed":
+                                    break
+                            return_code = process.poll()
+                            if return_code is not None:
+                                stderr_tail = ""
+                                try:
+                                    stderr_tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+                                except OSError:
+                                    pass
+                                raise BlenderBridgeError(
+                                    f"Blender exited with code {return_code} before reporting task completion. "
+                                    f"See blender_stderr.log. {stderr_tail}"
+                                )
+                            if time.monotonic() >= deadline:
+                                process.terminate()
+                                try:
+                                    process.wait(timeout=5)
+                                except (subprocess.TimeoutExpired, OSError):
+                                    process.kill()
+                                raise BlenderBridgeError(
+                                    "Blender task timed out; the process was stopped and local logs were saved."
+                                )
+                            time.sleep(0.25)
+                except OSError as exc:
+                    raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
+            else:
+                # Injectable synchronous runner retained for deterministic unit tests.
+                try:
+                    result = self._run(
+                        command, cwd=str(project_dir), capture_output=True, text=True,
+                        timeout=self.timeout_seconds, check=False,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    _write_bounded_log(project_dir / "blender_stdout.log", exc.stdout)
+                    _write_bounded_log(project_dir / "blender_stderr.log", exc.stderr)
+                    raise BlenderBridgeError("Blender task timed out; bounded local logs were saved when possible.") from exc
+                except OSError as exc:
+                    raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
+                stdout_logged = _write_bounded_log(project_dir / "blender_stdout.log", result.stdout)
+                stderr_logged = _write_bounded_log(project_dir / "blender_stderr.log", result.stderr)
+                if result.returncode != 0:
+                    stderr = (result.stderr or "")[-3000:]
+                    raise BlenderBridgeError(
+                        f"Blender exited with code {result.returncode}; "
+                        f"local_logs_written={stdout_logged and stderr_logged}: {stderr}"
+                    )
         result_path = project_dir / "blender_result.json"
         if result_path.is_symlink() or getattr(result_path, "is_junction", lambda: False)():
             raise BlenderBridgeError("Blender result manifest must not be a symlink or junction.")
