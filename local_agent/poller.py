@@ -617,7 +617,9 @@ def main() -> int:
     try:
         while True:
             try:
-                pending_results = _result_outbox().flush(client)
+                result_outbox = _result_outbox()
+                pending_before_flush = result_outbox.pending_task_ids()
+                pending_results = result_outbox.flush(client)
                 if pending_results["published"] or pending_results["invalid"]:
                     print(f"Pending results: published={pending_results['published']}, deferred={pending_results['deferred']}, invalid={pending_results['invalid']}")
                 fetched = client.fetch_desired_task()
@@ -640,17 +642,27 @@ def main() -> int:
                     elif decision == "same":
                         record = state.get("processed_tasks", {}).get(task.task_id, {})
                         if isinstance(record, dict) and record.get("status") == "in_progress":
-                            # Execution may have finished while result publication failed,
-                            # or the process may have crashed mid-operation. Do not rerun.
-                            _publish_result_durable(client, task.task_id, {
-                                "task_id": task.task_id,
-                                "status": "interrupted",
-                                "reason": "outcome_uncertain_requires_local_inspection_before_retry",
-                            })
-                            state = _remember_manifest(
-                                state, task.task_id, manifest_sha, status="interrupted"
-                            )
-                            _save_state(state)
+                            # A durable result may have been written just before a crash.
+                            # Never overwrite it with a synthetic interrupted result.
+                            if task.task_id in pending_before_flush:
+                                if task.task_id in result_outbox.pending_task_ids():
+                                    print(f"Task {task.task_id} has a pending result that needs delivery or repair; preserving it.")
+                                else:
+                                    state = _remember_manifest(
+                                        state, task.task_id, manifest_sha, status="processed"
+                                    )
+                                    _save_state(state)
+                            else:
+                                # No durable result exists: execution outcome is uncertain.
+                                _publish_result_durable(client, task.task_id, {
+                                    "task_id": task.task_id,
+                                    "status": "interrupted",
+                                    "reason": "outcome_uncertain_requires_local_inspection_before_retry",
+                                })
+                                state = _remember_manifest(
+                                    state, task.task_id, manifest_sha, status="interrupted"
+                                )
+                                _save_state(state)
                     elif decision == "reused_id":
                         # Task IDs are immutable. A changed manifest with the same ID
                         # is rejected, never silently re-executed.
