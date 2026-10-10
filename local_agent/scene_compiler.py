@@ -6,6 +6,7 @@ from typing import Any
 from local_agent.story_plan import StoryPlanError, validate_story_plan
 from local_agent.asset_registry import read_asset_registry
 from local_agent.timeline import TimelineError, compile_timeline
+from local_agent.mouth_motion import MouthMotionError, compile_mouth_motion
 
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 _ACTION_CAPABILITIES = {
@@ -65,6 +66,12 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
         timeline = compile_timeline(plan["scenes"])
     except TimelineError as exc:
         raise StoryCompileError(f"Timeline could not be compiled: {exc}") from exc
+    try:
+        mouth_motion = compile_mouth_motion(plan["scenes"], timeline)
+    except MouthMotionError as exc:
+        raise StoryCompileError(f"Mouth motion could not be compiled: {exc}") from exc
+    if mouth_motion["cue_count"]:
+        requirements.add("character_mouth_rig")
     return {
         "schema_version": 1,
         "compiler": "local_agent.scene_compiler",
@@ -78,6 +85,7 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
         "requirements_not_implemented": sorted(requirements),
         "scenes": compiled_scenes,
         "timeline": timeline,
+        "mouth_motion": mouth_motion,
         "safety_note": "This file is inert JSON data. It does not run Blender or execute natural-language instructions.",
     }
 
