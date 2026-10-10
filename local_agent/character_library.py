@@ -108,10 +108,15 @@ def import_character_passport(
     character_id, passport = _select_passport(payload, character_id)
 
     library = Path(library_dir).expanduser()
-    library.mkdir(parents=True, exist_ok=True)
-    library = library.resolve()
     if library.is_symlink():
         raise CharacterPassportImportError("Папка библиотеки не должна быть символической ссылкой.")
+    library.mkdir(parents=True, exist_ok=True)
+    library = library.resolve()
+    validated_references = [
+        _regular_file(raw, suffixes=_ALLOWED_IMAGES, max_bytes=_MAX_IMAGE_BYTES)
+        for raw in reference_paths
+    ]
+    blend = _regular_file(blend_path, suffixes={".blend"}, max_bytes=_MAX_BLEND_BYTES) if blend_path else None
     card_dir = library / character_id
     if card_dir.is_symlink():
         raise CharacterPassportImportError("Папка персонажа не должна быть символической ссылкой.")
@@ -121,19 +126,30 @@ def import_character_passport(
         raise CharacterPassportImportError("Папка версий не должна быть символической ссылкой.")
     versions_dir.mkdir(parents=True, exist_ok=True)
 
-    versions = sorted(versions_dir.glob("v*.json"))
-    next_version = len(versions) + 1
-    version_path = versions_dir / f"v{next_version:04d}.json"
-    if version_path.exists():
-        raise CharacterPassportImportError("Файл следующей версии уже существует; импорт остановлен.")
-    passport_copy = dict(passport)
-    passport_copy.setdefault("character_id", character_id)
-    _atomic_json(version_path, passport_copy)
+    version_lock = card_dir / ".passport-import.lock"
+    try:
+        lock_fd = os.open(str(version_lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise CharacterPassportImportError("Паспорт этого персонажа уже импортируется; повторите позже.") from exc
+    try:
+        os.close(lock_fd)
+        versions = sorted(versions_dir.glob("v*.json"))
+        next_version = len(versions) + 1
+        version_path = versions_dir / f"v{next_version:04d}.json"
+        if version_path.exists():
+            raise CharacterPassportImportError("Файл следующей версии уже существует; импорт остановлен.")
+        passport_copy = dict(passport)
+        passport_copy.setdefault("character_id", character_id)
+        _atomic_json(version_path, passport_copy)
+    finally:
+        try:
+            version_lock.unlink()
+        except FileNotFoundError:
+            pass
 
     refs_added: list[str] = []
     refs_dir = card_dir / "references"
-    for raw in reference_paths:
-        image = _regular_file(raw, suffixes=_ALLOWED_IMAGES, max_bytes=_MAX_IMAGE_BYTES)
+    for image in validated_references:
         destination = refs_dir / f"{len(refs_added) + 1:02d}_{image.name}"
         refs_dir.mkdir(parents=True, exist_ok=True)
         if destination.exists():
@@ -142,8 +158,7 @@ def import_character_passport(
         refs_added.append(str(destination))
 
     copied_blend = None
-    if blend_path:
-        blend = _regular_file(blend_path, suffixes={".blend"}, max_bytes=_MAX_BLEND_BYTES)
+    if blend:
         model_dir = card_dir / "model"
         model_dir.mkdir(parents=True, exist_ok=True)
         destination = model_dir / blend.name
