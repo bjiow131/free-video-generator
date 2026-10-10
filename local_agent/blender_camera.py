@@ -141,7 +141,7 @@ def control_camera(project_name: str, *, preset: str, move: str = "static",
          "preset":preset,"move":move,"frames":frames,"spec":PRESETS[preset],
          "create_camera_if_missing":create_camera_if_missing}
     # Fail closed on a missing camera unless caller explicitly allows creation.
-    check_script='import bpy,json,sys; p=sys.argv[sys.argv.index("--")+1]; bpy.ops.wm.open_mainfile(filepath=p,load_ui=False); print("AGENT_CAMERA_PRESENT="+str(bpy.context.scene.camera is not None))'
+    check_script='import bpy,sys; p=sys.argv[sys.argv.index("--")+1]; bpy.ops.wm.open_mainfile(filepath=p,load_ui=False); s=bpy.context.scene; print("AGENT_CAMERA_PRESENT="+str(s.camera is not None)); print("AGENT_CAMERA_ANIMATED="+str(bool(s.camera and s.camera.animation_data and s.camera.animation_data.action)))'
     try:
         check=subprocess.run([str(blender),"--disable-autoexec","--background",
                               "--python-expr",check_script,"--",str(source)],capture_output=True,text=True,
@@ -149,6 +149,9 @@ def control_camera(project_name: str, *, preset: str, move: str = "static",
         if check.returncode!=0:
             return {"status":"failed","reason":"source_project_preflight_failed","stderr_tail":(check.stderr or "")[-1500:]}
         has_camera="AGENT_CAMERA_PRESENT=True" in (check.stdout or "")
+        has_animation="AGENT_CAMERA_ANIMATED=True" in (check.stdout or "")
+        if has_animation:
+            return {"status":"blocked","reason":"active_camera_has_animation; refusing_to_replace_existing_animation"}
         if not has_camera and not create_camera_if_missing:
             return {"status":"blocked","reason":"source_project_has_no_active_camera"}
         with tempfile.TemporaryDirectory(prefix=".camera-control-",dir=project) as temp:
