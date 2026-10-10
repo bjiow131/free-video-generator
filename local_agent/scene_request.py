@@ -611,9 +611,41 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
 '''
 
 
-def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str, Any]] | None) -> dict[str, Any]:
-    """Add selected character cards as safe data, never executable code, to a scene plan."""
-    selected_characters: list[dict[str, str]] = []
+def _reference_indices_for_character(card: dict[str, Any], prompt: str) -> list[int]:
+    """Resolve explicitly requested reference numbers/pose labels near this character's name."""
+    references = card.get("references", [])
+    if not isinstance(references, list) or not references:
+        return []
+    name = str(card.get("name", "")).strip()
+    text = prompt.casefold()
+    name_at = text.find(name.casefold()) if name else -1
+    # Keep reference-number parsing local to the character mention, so one hero's pose
+    # numbers are not accidentally applied to every other hero in the scene.
+    if name_at >= 0:
+        window = text[max(0, name_at - 100): min(len(text), name_at + len(name) + 180)]
+    else:
+        window = text
+    requested: list[int] = []
+    for match in re.finditer(r"(?:№|#)\s*(\d{1,2})", window):
+        index = int(match.group(1)) - 1
+        if 0 <= index < len(references) and index not in requested:
+            requested.append(index)
+    labels = card.get("reference_labels", {})
+    if not isinstance(labels, dict):
+        labels = {}
+    if not requested:
+        for index, path in enumerate(references):
+            label = str(labels.get(str(path), Path(str(path)).stem)).casefold()
+            label_words = [word for word in re.findall(r"[\w-]+", label) if len(word) >= 3]
+            if label and label in window or any(word in window for word in label_words):
+                requested.append(index)
+    return requested if requested else list(range(min(len(references), 16)))
+
+
+def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str, Any]] | None,
+                            prompt: str = "") -> dict[str, Any]:
+    """Attach generic character-card data and only the relevant reference set to a scene plan."""
+    selected_characters: list[dict[str, Any]] = []
     for card in (character_cards or [])[:8]:
         if not isinstance(card, dict):
             continue
@@ -622,21 +654,24 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         description = str(card.get("description", "")).strip()[:1200]
         if not name or not card_id:
             continue
-        first_name = name.casefold().replace("—", " ").replace("-", " ").split()[0] if name else ""
-        is_mia = first_name in {"mia", "мия"}
         raw_references = card.get("references", [])
         if not isinstance(raw_references, list):
             raw_references = []
-        references = [str(p)[:1000] for p in raw_references[:16]
-                      if isinstance(p, str) and Path(p).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}]
+        valid_references = [str(path)[:1000] for path in raw_references[:64]
+                            if isinstance(path, str) and Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}]
         raw_labels = card.get("reference_labels", {})
         if not isinstance(raw_labels, dict):
             raw_labels = {}
-        reference_labels = {path: str(raw_labels.get(path, Path(path).stem))[:80] for path in references}
+        all_labels = {path: str(raw_labels.get(path, Path(path).stem))[:80] for path in valid_references}
+        requested_indices = _reference_indices_for_character(
+            {"name": name, "references": valid_references, "reference_labels": all_labels}, prompt
+        )
+        references = [valid_references[index] for index in requested_indices if index < len(valid_references)]
+        reference_labels = {path: all_labels[path] for path in references}
         character_object = {
-            "primitive": "mia" if is_mia else "person",
-            "color_name": "turquoise" if is_mia else "blue",
-            "color": [0.025, 0.56, 0.56, 1.0] if is_mia else [0.025, 0.18, 0.85, 1.0],
+            "primitive": "person",
+            "color_name": "blue",
+            "color": [0.24, 0.29, 0.42, 1.0],
             "scale": 1.0,
             "name": name,
             "character_card_id": card_id,
@@ -644,26 +679,22 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "character_references": references,
             "character_reference_labels": reference_labels,
         }
-        existing_mia = next((obj for obj in plan["objects"] if is_mia and obj.get("primitive") == "mia"), None)
-        if existing_mia is not None:
-            existing_mia.update(character_object)
-        else:
-            if len(plan["objects"]) >= _MAX_OBJECTS:
-                raise SceneRequestError(f"Сцена не может содержать больше {_MAX_OBJECTS} объектов вместе с выбранными персонажами.")
-            plan["objects"].append(character_object)
-        selected_characters.append({"id": card_id, "name": name, "description": description, "references": references, "reference_labels": reference_labels})
+        if len(plan["objects"]) >= _MAX_OBJECTS:
+            raise SceneRequestError(f"Сцена не может содержать больше {_MAX_OBJECTS} объектов вместе с выбранными персонажами.")
+        plan["objects"].append(character_object)
+        selected_characters.append({
+            "id": card_id, "name": name, "description": description,
+            "references": references, "reference_labels": reference_labels,
+            "reference_indices": [index + 1 for index in requested_indices],
+        })
     plan["selected_characters"] = selected_characters
-    source_text = str(plan.get("prompt_summary", "")).casefold()
-    has_selected_mia = any("мия" in item["name"].casefold() or "mia" in item["name"].casefold() for item in selected_characters)
-    if has_selected_mia and "самокат" in source_text and any(word in source_text for word in ("едет", "катается", "проезжает", "движется")):
-        plan.setdefault("relationships", {})["mia_riding_scooter"] = True
     return plan
 
 
 def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT,
                             character_cards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Create a scene from a bounded prompt and explicitly selected character cards."""
-    plan = _append_character_cards(parse_scene_request(prompt), character_cards)
+    plan = _append_character_cards(parse_scene_request(prompt), character_cards, prompt)
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise SceneRequestError("Project name must use 1-48 letters, digits, underscores, or hyphens.")
     blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
