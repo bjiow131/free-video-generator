@@ -642,6 +642,10 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             plan["objects"].append(character_object)
         selected_characters.append({"id": card_id, "name": name, "description": description, "references": references})
     plan["selected_characters"] = selected_characters
+    source_text = str(plan.get("prompt_summary", "")).casefold()
+    has_selected_mia = any("мия" in item["name"].casefold() or "mia" in item["name"].casefold() for item in selected_characters)
+    if has_selected_mia and "самокат" in source_text and any(word in source_text for word in ("едет", "катается", "проезжает", "движется")):
+        plan.setdefault("relationships", {})["mia_riding_scooter"] = True
     return plan
 
 
