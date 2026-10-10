@@ -502,13 +502,17 @@ The redesign was structurally verified on the branch, including responsive break
 The implementation is designed so these captures can be added without changing the application code.
 
 
-## Local Windows Agent (starter scaffold)
+## Local Windows Agent (feature-branch prototype)
 
-The first local diagnostic-agent scaffold and control-channel security plan are in [`docs/LOCAL_CONTROL_CHANNEL_DESIGN.md`](docs/LOCAL_CONTROL_CHANNEL_DESIGN.md). The current CLI is intentionally local-only and does not connect to ChatGPT or upload reports. After installing the project dependencies, the initial commands are:
+The agent now includes an outbound HTTPS GitHub mailbox poller, a strict task protocol, private-repository enforcement, Windows Credential Manager token storage, local approval, replay protection, and redacted result reporting. Start with the [channel setup guide](docs/LOCAL_AGENT_CHANNEL_SETUP.md) and [security/design notes](docs/LOCAL_CONTROL_CHANNEL_DESIGN.md).
 
+Local diagnostics:
 - `python -m local_agent.cli doctor`
+- `python -m local_agent.cli preflight`
 - `python -m local_agent.cli status`
 - `python -m local_agent.cli logs`
 - `python -m local_agent.cli test`
 
-Reports are written under `.local_agent/reports/`, which is excluded from Git. These commands have not been run on the user's computer; Windows behavior remains unverified. A real communication channel and locally approved task execution are future work, not active features.
+The poller command is `python -m local_agent.poller`. It expects a **dedicated private mailbox repository**, a manifest at `queue/desired_task.json`, and a token stored with `python -m local_agent.credentials_cli set`. Do not use the public application repository as the mailbox.
+
+**Important:** the communication channel is implemented in code but is not yet connected to the user's Windows computer. The private mailbox repository, token configuration, Windows preflight, and live request/result round-trip still need to be completed and verified. No successful Windows or Blender runtime test is claimed.
