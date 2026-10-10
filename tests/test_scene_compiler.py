@@ -17,6 +17,10 @@ def test_compiler_marks_missing_capabilities_instead_of_claiming_execution():
     assert compiled["timeline"]["clips"][0]["start_frame"] == 1
     assert compiled["timeline"]["clips"][0]["end_frame"] == 240
     assert compiled["timeline"]["readiness"] == "planning_only"
+    assert compiled["mouth_motion"]["audio_required"] is False
+    assert compiled["mouth_motion"]["phoneme_alignment"] is False
+    assert compiled["mouth_motion"]["cue_count"] > 0
+    assert "character_mouth_rig" in compiled["requirements_not_implemented"]
     assert compiled["scenes"][0]["action_steps"][0]["execution_status"]=="not_executable_yet"
     assert "character_rig_required" in compiled["requirements_not_implemented"]
     assert "asset_registry_required" in compiled["requirements_not_implemented"]
