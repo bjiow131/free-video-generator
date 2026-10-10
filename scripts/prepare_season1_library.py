@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def atomic_write(path: Path, data) -> None:
 
 
 def main() -> int:
-    library = Path.home() / "BlenderAgentLibrary"
+    library = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary"))).expanduser()
     library.mkdir(parents=True, exist_ok=True)
     database = library / "characters.json"
     if database.is_symlink():
