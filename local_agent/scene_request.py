@@ -32,7 +32,7 @@ _COLORS: tuple[tuple[str, tuple[str, ...], tuple[float, float, float, float]], .
     ("red", ("красный", "красная", "красное", "красные", "красного", "красную", "красных"), (0.8, 0.035, 0.025, 1.0)),
     ("green", ("зелёный", "зеленый", "зелёная", "зеленая", "зелёное", "зелёные", "зеленые", "зелёных", "зеленых"), (0.04, 0.48, 0.12, 1.0)),
     ("blue", ("синий", "синяя", "синее", "синие", "синих", "голубой", "голубая"), (0.025, 0.18, 0.85, 1.0)),
-    ("yellow", ("жёлтый", "желтый", "жёлтая", "желтая", "жёлтое", "желтое", "жёлтых", "желтых"), (0.95, 0.58, 0.025, 1.0)),
+    ("yellow", ("жёлтый", "желтый", "жёлтая", "желтая", "жёлтое", "желтое", "жёлтых", "желтых", "жёлтым", "желтым"), (0.95, 0.58, 0.025, 1.0)),
     ("orange", ("оранжевый", "оранжевая", "оранжевое"), (1.0, 0.22, 0.025, 1.0)),
     ("purple", ("фиолетовый", "фиолетовая", "фиолетовое"), (0.38, 0.07, 0.68, 1.0)),
     ("white", ("белый", "белая", "белое", "белые"), (0.88, 0.88, 0.88, 1.0)),
@@ -181,7 +181,15 @@ def make_material(index, rgba):
 
 for index, item in enumerate(cfg["objects"]):
     primitive = item["primitive"]
-    location = ((index - (len(cfg["objects"]) - 1) / 2) * 2.3, 0.0, 1.0)
+    if cfg["aspect_ratio"] == "9:16":
+        location = (0.0, 0.0, 1.0 + index * 2.0)
+    elif cfg["aspect_ratio"] == "1:1":
+        columns = max(1, math.ceil(math.sqrt(len(cfg["objects"]))))
+        rows = math.ceil(len(cfg["objects"]) / columns)
+        location = ((index % columns - (columns - 1) / 2) * 2.3,
+                    ((index // columns) - (rows - 1) / 2) * 2.3, 1.0)
+    else:
+        location = ((index - (len(cfg["objects"]) - 1) / 2) * 2.3, 0.0, 1.0)
     if primitive == "cube":
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=location)
     elif primitive == "uv_sphere":
@@ -209,10 +217,21 @@ bpy.context.object.name = "Environment | floor"
 bpy.context.object.data.materials.append(floor_material)
 
 center_x = 0.0
-bpy.ops.object.camera_add(location=(center_x + 7.0, -10.0, 7.5))
+if cfg["aspect_ratio"] == "9:16":
+    target_height = (len(cfg["objects"]) - 1) * 1.0 + 1.0
+    camera_location = (7.0, -13.0, target_height + 4.0)
+    target = Vector((0.0, 0.0, target_height))
+elif cfg["aspect_ratio"] == "1:1":
+    camera_distance = max(10.0, math.sqrt(len(cfg["objects"])) * 5.0)
+    camera_location = (camera_distance * 0.65, -camera_distance, camera_distance * 0.65)
+    target = Vector((0.0, 0.0, 0.8))
+else:
+    camera_distance = max(10.0, len(cfg["objects"]) * 1.2)
+    camera_location = (camera_distance * 0.55, -camera_distance * 0.85, camera_distance * 0.65)
+    target = Vector((0.0, 0.0, 0.8))
+bpy.ops.object.camera_add(location=camera_location)
 camera = bpy.context.object
 camera.name = "Camera | generated scene"
-target = Vector((0.0, 0.0, 0.8))
 camera.rotation_euler = (target - camera.location).to_track_quat("-Z", "Y").to_euler()
 camera.data.lens = 50
 scene.camera = camera
