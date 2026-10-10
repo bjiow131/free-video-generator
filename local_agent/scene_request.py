@@ -367,6 +367,12 @@ floor_color = (0.12, 0.14, 0.17, 1.0)
 if environment == "forest": floor_color = (0.055, 0.20, 0.065, 1.0)
 elif environment == "island": floor_color = (0.78, 0.62, 0.32, 1.0)
 elif environment == "mountains": floor_color = (0.18, 0.22, 0.19, 1.0)
+elif environment == "underwater": floor_color = (0.025, 0.20, 0.34, 1.0)
+elif environment == "desert": floor_color = (0.72, 0.48, 0.23, 1.0)
+elif environment == "winter": floor_color = (0.82, 0.88, 0.94, 1.0)
+elif environment == "village": floor_color = (0.18, 0.28, 0.12, 1.0)
+elif environment == "playground": floor_color = (0.08, 0.34, 0.09, 1.0)
+elif environment == "fantasy": floor_color = (0.12, 0.08, 0.20, 1.0)
 elif environment == "room": floor_color = (0.28, 0.23, 0.18, 1.0)
 elif environment == "city": floor_color = (0.18, 0.19, 0.21, 1.0)
 elif style == "minimal": floor_color = (0.78, 0.80, 0.82, 1.0)
@@ -538,7 +544,11 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
         "engine": scene.render.engine,
         "object_count": len(scene.objects),
         "generated_object_count": len(cfg["objects"]),
-        "aspect_ratio": cfg["aspect_ratio"],\n        "environment": cfg.get("environment", "auto"),\n        "style": cfg.get("style", "balanced"),\n        "lighting": cfg.get("lighting", "soft"),\n        "animation_enabled": bool(cfg.get("animation", {}).get("enabled")),
+        "aspect_ratio": cfg["aspect_ratio"],
+        "environment": cfg.get("environment", "auto"),
+        "style": cfg.get("style", "balanced"),
+        "lighting": cfg.get("lighting", "soft"),
+        "animation_enabled": bool(cfg.get("animation", {}).get("enabled")),
     }, stream, ensure_ascii=False)
 '''
 
