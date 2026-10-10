@@ -69,7 +69,7 @@ def _estimated_dialogue_cues(
     # Longer lines receive a larger estimated speaking window. This is only a
     # rough storyboard allocation; recorded voice timing must replace it later.
     weights = [
-        max(1, len(re.findall(r"\\w+", line["text"])))
+        max(1, len(re.findall(r"\w+", line["text"])))
         + min(3, sum(line["text"].count(mark) for mark in ".,!?;:"))
         for line in valid_lines
     ]
