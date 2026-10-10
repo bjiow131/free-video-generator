@@ -210,6 +210,29 @@ class BlenderAgentApp(tk.Tk):
             except OSError as exc:
                 messagebox.showerror("Ошибка запуска Blender", f"Не удалось открыть Blender: {exc}", parent=self)
 
+    def _choose_video_preset(self) -> str | None:
+        window = tk.Toplevel(self)
+        window.title("Формат видео")
+        window.transient(self)
+        window.grab_set()
+        window.resizable(False, False)
+        panel = ttk.Frame(window, padding=16)
+        panel.pack(fill="both", expand=True)
+        ttk.Label(panel, text="Выберите площадку для экспорта:").pack(anchor="w", pady=(0, 8))
+        selected = tk.StringVar(value="YouTube Shorts")
+        combo = ttk.Combobox(panel, textvariable=selected, values=list(VIDEO_PRESETS), state="readonly", width=28)
+        combo.pack(fill="x", pady=(0, 12))
+        result = {"value": None}
+        def accept():
+            result["value"] = selected.get()
+            window.destroy()
+        buttons = ttk.Frame(panel)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Отмена", command=window.destroy).pack(side="right")
+        ttk.Button(buttons, text="Продолжить", command=accept).pack(side="right", padx=(0, 8))
+        window.wait_window()
+        return result["value"]
+
     def _export_video(self) -> None:
         project = self.active_project
         if not project or not project.is_file():
@@ -217,12 +240,8 @@ class BlenderAgentApp(tk.Tk):
             if not chosen:
                 return
             project = Path(chosen).expanduser().resolve()
-        preset = simpledialog.askstring("Экспорт видео", "Введите платформу: TikTok, YouTube, YouTube Shorts или Instagram Reels", initialvalue="YouTube Shorts", parent=self)
+        preset = self._choose_video_preset()
         if not preset:
-            return
-        preset = preset.strip()
-        if preset not in VIDEO_PRESETS:
-            messagebox.showerror("Неизвестный формат", "Выберите: " + ", ".join(VIDEO_PRESETS), parent=self)
             return
         details = VIDEO_PRESETS[preset]
         default_name = project.stem + "_" + preset.lower().replace(" ", "_") + ".mp4"
