@@ -49,6 +49,9 @@ if errorlevel 1 goto failed
 
 echo.
 echo Checking stored GitHub credential...
+echo The fine-grained token must have access to bjiow131/local-agent-mailbox.
+echo Required repository permission: Contents - Read and write.
+echo Repository Metadata read access is also required by GitHub.
 "%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli status
 echo.
 echo Setup completed.
