@@ -23,7 +23,7 @@ from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
-from local_agent.repair_channel import fetch_repair, RepairProtocolError
+from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -762,6 +762,30 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         else:
             details = _apply_patch(patch, f"repair-{repair_id}", expected_base_sha=manifest["base_commit_sha"])
             result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
+            if details.get("status") == "completed" and details.get("repair_commit"):
+                try:
+                    diff = subprocess.run(
+                        ["git", "diff", "--no-ext-diff", "--unified=3",
+                         manifest["base_commit_sha"], details["repair_commit"]],
+                        cwd=Path(details["worktree"]), capture_output=True,
+                        text=True, timeout=30, check=False, shell=False,
+                    )
+                    if diff.returncode != 0 or not diff.stdout.startswith("diff --git "):
+                        raise RuntimeError("could_not_build_tested_repair_diff")
+                    if any(marker in diff.stdout for marker in (
+                        "GIT binary patch", "Binary files ", "new file mode 120000",
+                        "old mode 120000", "160000",
+                    )):
+                        raise RuntimeError("tested_repair_diff_contains_binary_or_special_files")
+                    _validate_patch_paths(diff.stdout)
+                    artifact = client.publish_repair_artifact(repair_id, diff.stdout)
+                    result["tested_patch_artifact"] = artifact
+                except Exception as exc:
+                    result["status"] = "completed_local_only"
+                    result["tested_patch_artifact"] = {
+                        "status": "publish_failed",
+                        "error_type": type(exc).__name__,
+                    }
     except Exception as exc:
         result = {"task_id": f"repair-{repair_id}", "status": "error", "error_type": type(exc).__name__}
     publish_repair_result(result)
