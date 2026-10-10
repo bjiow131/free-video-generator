@@ -122,3 +122,12 @@ def test_generated_blender_script_is_valid_python_syntax():
     from local_agent.scene_request import _BLENDER_SCRIPT
 
     compile(_BLENDER_SCRIPT, "generated_scene_builder.py", "exec")
+
+
+def test_explicitly_excluded_objects_are_not_added():
+    from local_agent.scene_language import parse_scene_request as compile_prompt, SceneRequestError
+
+    plan = compile_prompt("Создай красный куб без деревьев")
+    assert [item["primitive"] for item in plan["objects"]] == ["cube"]
+    with pytest.raises(SceneRequestError, match="исключены"):
+        compile_prompt("Создай лес без деревьев")
