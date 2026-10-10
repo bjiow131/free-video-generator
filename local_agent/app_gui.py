@@ -523,7 +523,10 @@ class BlenderAgentApp(tk.Tk):
             path = str(card.get("references", [])[int(selected[0])])
         except (IndexError, ValueError, TypeError):
             return
-        current = card.get("reference_labels", {}).get(path, Path(path).stem)
+        saved_labels = card.get("reference_labels", {})
+        if not isinstance(saved_labels, dict):
+            saved_labels = {}
+        current = saved_labels.get(path, Path(path).stem)
         label = simpledialog.askstring("Название позы", "Например: Фронт, Профиль слева, Вид сзади, Бег, Едет на самокате:", initialvalue=current, parent=self)
         if label is None:
             return
