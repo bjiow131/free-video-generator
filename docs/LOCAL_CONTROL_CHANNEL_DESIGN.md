@@ -34,6 +34,7 @@ Allow the user to submit typed, bounded tasks from ChatGPT on the iPhone to a lo
 - Do not enable `LOCAL_AGENT_ALLOW_REMOTE_APPROVAL=1` during initial setup. Start in the foreground with local approval.
 - Logs, machine details and generated assets remain local by default. Only bounded, redacted task result JSON is sent to the mailbox.
 - Task IDs are immutable. If the same ID appears with changed content, the task is rejected; uncertain interrupted operations are not blindly replayed.
+- Replay-state corruption or unreadable state now stops the poller instead of silently resetting task history; automated tests cover missing, malformed, and invalid state files.
 - No auto-start, hidden service, firewall change or remote desktop is installed.
 - Task authentication currently relies on GitHub HTTPS plus the restricted token and private-repository access; the protocol does not add a separate cryptographic signature to each manifest.
 - No actual Windows, Blender render, notification, or live mailbox round-trip has yet been verified.
