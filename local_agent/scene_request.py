@@ -103,7 +103,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     previous_end = 0
     for pos, primitive, alias, end in selected:
         # Match a count immediately before the primitive, allowing up to three adjectives.
-        prefix = text[max(previous_end, pos - 64):pos]
+        prefix = count_text[max(previous_end, pos - 64):pos]
         local_count = _LOCAL_COUNT.search(prefix)
         count = 1
         if local_count:
