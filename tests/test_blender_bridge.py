@@ -98,7 +98,7 @@ def test_gui_launcher_returns_after_manifest_without_waiting_for_window_close(
     executable = tmp_path / "blender.exe"
     executable.write_bytes(b"test executable placeholder")
     workspace = tmp_path / "workspace"
-    bridge = BlenderBridge(executable, workspace)
+    bridge = BlenderBridge(executable, workspace, popen=fake_popen)
 
     result = bridge.run_task("forest_preview", project_name="gui_scene")
 
