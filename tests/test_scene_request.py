@@ -214,3 +214,21 @@ def test_reference_numbers_are_selected_per_character_card():
     by_id = {item["id"]: item for item in plan["selected_characters"]}
     assert by_id["mia"]["reference_indices"] == [2, 3]
     assert by_id["stepa"]["reference_indices"] == [1]
+
+
+def test_character_profile_category_selects_generic_animal_blockout():
+    from local_agent.scene_language import parse_scene_request
+    from local_agent.scene_request import _append_character_cards
+
+    plan = _append_character_cards(parse_scene_request("Создай лесную поляну"), [
+        {
+            "id": "bobik", "name": "Бобик", "kind": "Персонаж",
+            "profile_type": "Животное", "visual_style": "Стилизованный 3D",
+            "description": "Небольшая коричневая собака с длинными ушами",
+            "references": ["C:/library/bobik/01_front.png"],
+        },
+    ], "Бобик стоит на лесной поляне, референс №1")
+    bobik = next(obj for obj in plan["objects"] if obj.get("character_card_id") == "bobik")
+    assert bobik["primitive"] == "animal"
+    assert bobik["profile_type"] == "Животное"
+    assert plan["selected_characters"][0]["reference_indices"] == [1]
