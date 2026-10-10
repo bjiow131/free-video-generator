@@ -83,3 +83,19 @@ def test_compiler_leaves_silent_scene_without_dialogue_cues():
     plan["scenes"][0]["dialogue"] = []
     compiled = compile_story_plan(plan)
     assert compiled["scenes"][0]["dialogue_cues"] == []
+
+
+def test_estimated_dialogue_window_scales_with_line_length():
+    plan = sample_plan()
+    plan["scenes"][0]["duration_seconds"] = 20
+    plan["scenes"][0]["dialogue"] = [
+        {"speaker": "Мия", "text": "Да."},
+        {"speaker": "Стёпа", "text": "Давай посмотрим внимательно на эту маленькую улитку!"},
+    ]
+    cues = compile_story_plan(plan)["scenes"][0]["dialogue_cues"]
+    first_span = cues[0]["events"][-1]["frame"] - cues[0]["events"][0]["frame"]
+    second_span = cues[1]["events"][-1]["frame"] - cues[1]["events"][0]["frame"]
+    assert cues[0]["speaker_id"] == "char.mia.master"
+    assert cues[1]["speaker_id"] == "char.stepa.master"
+    assert second_span > first_span
+    assert all(cue["timing_status"] == "estimated_until_voiceover" for cue in cues)
