@@ -242,6 +242,10 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         environment = "winter"
     elif _has(text, "деревн", "посёлок", "поселок"):
         environment = "village"
+    elif _has(text, "площадк", "детская площадка"):
+        environment = "playground"
+    elif _has(text, "фэнтези", "сказоч", "волшебный мир"):
+        environment = "fantasy"
     elif _has(text, "студия", "предметная съёмка", "предметная съемка", "на подиуме"):
         environment = "studio"
     else:
