@@ -25,7 +25,7 @@ from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError,
 from local_agent.update_manager import apply_update_archive, UpdateError
 
 APP_VERSION = "0.6.0"
-APP_TITLE = "Blender Work Agent"
+APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
 CHARACTER_DB = CHARACTER_DIR / "characters.json"
@@ -285,7 +285,7 @@ class BlenderAgentApp(tk.Tk):
             return
         self.active_project = project
         self.project_label_var.set(f"Открыт проект: {project}")
-        self.project_badge.configure(text=f"Редактирование: {project.name}")
+        self.project_badge.configure(text=f"●  ПРОЕКТ  /  {project.name}")
         self._set_status("Проект выбран. Следующее задание будет обработано как доработка этого проекта.")
         if messagebox.askyesno("Открыть проект", "Открыть выбранный проект в графическом интерфейсе Blender сейчас?", parent=self):
             try:
@@ -368,7 +368,7 @@ class BlenderAgentApp(tk.Tk):
     def _clear_project(self) -> None:
         self.active_project = None
         self.project_label_var.set("Новый проект: задание будет обработано как создание сцены.")
-        self.project_badge.configure(text="Проект не открыт")
+        self.project_badge.configure(text="●  НОВАЯ СЦЕНА")
         self._set_status("Режим нового проекта. Следующее задание будет рассматриваться как создание сцены.")
 
     def _submit_task(self) -> None:
