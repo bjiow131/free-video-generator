@@ -143,3 +143,11 @@ def test_explicit_resolution_presets_are_respected():
     assert full_hd["render_percentage"] == 100
     assert vertical_4k["resolution"] == [2160, 3840]
     assert vertical_4k["render_percentage"] == 100
+
+def test_mia_riding_scooter_relationship_is_detected():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    plan = compile_prompt("Создай Мию, которая едет на самокате по лесу, мультфильм, вертикально 9:16")
+    assert plan["relationships"]["mia_riding_scooter"] is True
+    assert plan["environment"] == "forest"
+    assert plan["animation"]["enabled"] is True
