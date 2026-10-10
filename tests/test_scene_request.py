@@ -87,3 +87,23 @@ def test_catalog_includes_every_supported_composite_family():
     assert {"tree", "house", "mountain", "cloud", "person", "car", "table", "chair",
             "lamp", "bench", "flower", "grass", "rock", "road", "fence", "bed",
             "book", "mug", "bottle", "smartphone", "rocket", "sun", "moon", "star"} <= names
+
+
+def test_mia_scooter_snail_prompt_is_compiled_from_text_only():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    plan = compile_prompt("Создай Мию на жёлтом самокате рядом с улиткой, мультяшный стиль, 9:16")
+    assert [item["primitive"] for item in plan["objects"]] == ["mia", "scooter", "snail"]
+    assert plan["style"] == "cartoon"
+    assert plan["aspect_ratio"] == "9:16"
+
+
+def test_thematic_scene_catalog_includes_additional_families():
+    from local_agent.scene_language import OBJECTS, parse_scene_request as compile_prompt
+
+    names = {name for name, _aliases in OBJECTS}
+    assert {"snail", "scooter", "bicycle", "fish", "cactus", "snowman", "castle",
+            "sofa", "submarine", "coral", "swing", "slide", "mia"} <= names
+    underwater = compile_prompt("Создай подводный мир с рыбами, кораллами и подлодкой")
+    assert underwater["environment"] == "underwater"
+    assert [item["primitive"] for item in underwater["objects"]] == ["fish", "coral", "submarine"]
