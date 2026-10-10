@@ -381,8 +381,6 @@ class BlenderAgentApp(tk.Tk):
             character_summary = "\n\nПерсонажи из карточек: " + ", ".join(mentioned)
         visual_mode = self.visual_mode_var.get() if not self.active_project and hasattr(self, "visual_mode_var") else "Свободный стиль"
         mode = "доработка открытого проекта" if self.active_project else f"создание новой сцены · {visual_mode}"
-        if not self.active_project:
-            prompt = prompt + f"\n\nВизуальный режим проекта: {visual_mode}."
         if not self._ask_confirm(f"Режим: {mode}{character_summary}\n\n{prompt}"):
             self._set_status("Задание отменено.")
             return
