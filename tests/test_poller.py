@@ -644,3 +644,10 @@ def test_agent_state_directory_rejects_symlink_escape(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="must not be a symlink"):
         poller._ensure_agent_dir()
+
+
+def test_github_mailbox_poller_is_opt_in(monkeypatch, capsys):
+    from local_agent import poller
+    monkeypatch.delenv("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX", raising=False)
+    assert poller.main() == 2
+    assert "GitHub mailbox polling is disabled" in capsys.readouterr().out
