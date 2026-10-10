@@ -145,3 +145,22 @@ def test_dialogue_cue_batch_rejects_duplicate_line_ids():
     )
     assert result["status"] == "rejected"
     assert result["reason"] == "duplicate_line_id"
+
+
+
+def test_malformed_later_cue_does_not_partially_animate_earlier_speaker():
+    from local_agent.blender_dialogue import apply_dialogue_cues
+
+    key = FakeShapeKey("Mouth_Open")
+    mia = SimpleNamespace(name="Mia | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[key])
+    ))
+    malformed = cue([{"frame": 999, "mouth_state": "open"}])
+    with pytest.raises(ValueError):
+        apply_dialogue_cues(
+            [cue(), malformed],
+            character_objects_by_speaker={"char.mia.master": [mia]},
+            frame_start=1,
+            frame_end=240,
+        )
+    assert key.inserted == []
