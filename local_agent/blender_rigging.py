@@ -54,7 +54,43 @@ for name, head, tail, parent in bones:
 bpy.ops.object.mode_set(mode="OBJECT")
 arm.show_in_front = True
 arm_data.display_type = "OCTAHEDRAL"
-# Smoke-test a small pose, then reset every bone before saving.
+# Bind Mia's separate proxy parts rigidly to matching bones. This is not
+# smooth skinning; it lets the blockout test articulated pose changes.
+bound_objects = []
+unbound_objects = []
+for obj in list(bpy.context.scene.objects):
+    if obj.type != "MESH" or not obj.name.startswith("Mia |"):
+        continue
+    label = obj.name.lower()
+    x = obj.matrix_world.translation.x
+    side = ".L" if x >= 0 else ".R"
+    bone_name = None
+    if any(word in label for word in ("head", "hair", "eye", "iris", "nose")):
+        bone_name = "head"
+    elif "neck" in label:
+        bone_name = "neck"
+    elif "torso" in label:
+        bone_name = "spine"
+    elif "skirt" in label:
+        bone_name = "pelvis"
+    elif "upper arm" in label:
+        bone_name = "upper_arm" + side
+    elif "forearm" in label or "hand" in label:
+        bone_name = "forearm" + side
+    elif "lower leg" in label or "shoe" in label:
+        bone_name = "shin" + side
+    elif "leg" in label:
+        bone_name = "thigh" + side
+    if bone_name is None or bone_name not in arm_data.bones:
+        unbound_objects.append(obj.name)
+        continue
+    group = obj.vertex_groups.new(name=bone_name)
+    if len(obj.data.vertices):
+        group.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    modifier = obj.modifiers.new(name="Mia rigid bone binding", type="ARMATURE")
+    modifier.object = arm
+    bound_objects.append({"object": obj.name, "bone": bone_name})
+# Smoke-test a small forearm rotation, then reset the pose before saving.
 bpy.context.view_layer.objects.active = arm
 bpy.ops.object.mode_set(mode="POSE")
 pose = arm.pose.bones["forearm.L"]
@@ -67,13 +103,16 @@ bpy.ops.object.mode_set(mode="OBJECT")
 bpy.ops.wm.save_as_mainfile(filepath=output_path)
 report = {
     "status": "completed",
-    "stage": "skeleton_smoke_test",
+    "stage": "rigged_proxy_smoke_test",
     "source_path": source_path,
     "output_path": output_path,
     "armature": arm.name,
     "bone_count": len(arm_data.bones),
     "pose_smoke_test": "passed_and_reset",
-    "mesh_binding": "not_implemented",
+    "mesh_binding": "rigid_per_part_weights",
+    "bound_object_count": len(bound_objects),
+    "unbound_objects": unbound_objects,
+    "bound_objects": bound_objects,
 }
 with open(report_path, "w", encoding="utf-8") as f:
     json.dump(report, f, ensure_ascii=False)
@@ -128,12 +167,14 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
         result = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"status": "failed", "reason": "skeleton_report_unreadable"}
-    if result.get("status") != "completed" or result.get("bone_count") != 13 or result.get("pose_smoke_test") != "passed_and_reset":
+    if result.get("status") != "completed" or result.get("stage") != "rigged_proxy_smoke_test" or result.get("bone_count") != 13 or result.get("pose_smoke_test") != "passed_and_reset" or result.get("bound_object_count", 0) < 1:
         return {"status": "failed", "reason": "skeleton_report_validation_failed"}
     return {
         "status": "completed", "task": "blender_mia_skeleton",
         "blend_path": str(output), "bone_count": result["bone_count"],
         "pose_smoke_test": result["pose_smoke_test"],
-        "mesh_binding": "not_implemented",
-        "note": "Skeleton prototype only; meshes are not weighted and will not deform yet.",
+        "mesh_binding": "rigid_per_part_weights",
+        "bound_object_count": result["bound_object_count"],
+        "unbound_objects": result["unbound_objects"],
+        "note": "Proxy parts follow bones rigidly; this is not smooth production skinning and needs visual validation.",
     }
