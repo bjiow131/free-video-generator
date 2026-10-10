@@ -59,3 +59,27 @@ def test_compiler_resolves_assets_from_local_registry(tmp_path: Path):
     assert resolved["snail"]["path"] == "assets/snail.png"
     assert "blender_asset_importer_required" in compiled["requirements_not_implemented"]
     assert "asset_registry_required" not in compiled["requirements_not_implemented"]
+
+
+def test_compiler_emits_estimated_dialogue_cues_with_stable_ids():
+    compiled = compile_story_plan(sample_plan())
+    scene = compiled["scenes"][0]
+    cues = scene["dialogue_cues"]
+    assert len(cues) == 1
+    cue = cues[0]
+    assert cue["speaker_id"] == "char.mia.master"
+    assert cue["line_id"] == "scene_001_L001"
+    assert cue["timing_status"] == "estimated_until_voiceover"
+    assert cue["events"][0]["mouth_state"] == "open"
+    assert all(1 <= event["frame"] <= 300 for event in cue["events"])
+    assert all(
+        cue["events"][index]["frame"] < cue["events"][index + 1]["frame"]
+        for index in range(len(cue["events"]) - 1)
+    )
+
+
+def test_compiler_leaves_silent_scene_without_dialogue_cues():
+    plan = sample_plan()
+    plan["scenes"][0]["dialogue"] = []
+    compiled = compile_story_plan(plan)
+    assert compiled["scenes"][0]["dialogue_cues"] == []
