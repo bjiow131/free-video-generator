@@ -58,15 +58,30 @@ def _estimated_dialogue_cues(
         return []
     fps = 30
     frame_end = max(1, int(duration_seconds * fps))
-    count = len(dialogue)
+    valid_lines = [
+        line for line in dialogue
+        if isinstance(line.get("speaker", ""), str)
+        and isinstance(line.get("text", ""), str)
+        and line.get("text", "").strip()
+    ]
+    if not valid_lines:
+        return []
+    # Longer lines receive a larger estimated speaking window. This is only a
+    # rough storyboard allocation; recorded voice timing must replace it later.
+    weights = [
+        max(1, len(re.findall(r"\\w+", line["text"])))
+        + min(3, sum(line["text"].count(mark) for mark in ".,!?;:"))
+        for line in valid_lines
+    ]
+    total_weight = sum(weights)
     cues = []
-    for index, line in enumerate(dialogue):
+    elapsed_weight = 0
+    for index, (line, weight) in enumerate(zip(valid_lines, weights)):
         speaker = line.get("speaker", "")
         text = line.get("text", "")
-        if not isinstance(speaker, str) or not isinstance(text, str) or not text.strip():
-            continue
-        start = 1 + (index * frame_end) // count
-        end = max(start, min(frame_end, ((index + 1) * frame_end) // count))
+        start = 1 + (elapsed_weight * frame_end) // total_weight
+        elapsed_weight += weight
+        end = max(start, min(frame_end, (elapsed_weight * frame_end) // total_weight))
         events = []
         frame = start
         state = "open"
