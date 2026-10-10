@@ -15,8 +15,8 @@ from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
 def _write_png(path: Path, width: int, height: int) -> None:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
-    raw = b"".join(b"\\x00" + bytes(width * 4) for _ in range(height))
-    path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    raw = b"".join(b"\x00" + bytes(width * 4) for _ in range(height))
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
 def _bridge(tmp_path: Path, fake_run):
