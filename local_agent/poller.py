@@ -273,6 +273,12 @@ def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Build a fixed skeleton prototype for an existing local Mia blockout."""
+    from local_agent.blender_rigging import create_mia_skeleton
+    return create_mia_skeleton(arguments["project_name"])
+
+
 def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     """Search the bundled read-only Blender knowledge base; never executes code."""
     from local_agent.blender_knowledge import search_knowledge
@@ -366,7 +372,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"}:
         client.publish_result(task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -451,6 +457,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_open_mia_project(task.arguments)
             elif task.operation == "blender_inspect_mia_project":
                 details = _run_blender_inspect_mia_project(task.arguments)
+            elif task.operation == "blender_mia_skeleton":
+                details = _run_blender_mia_skeleton(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
