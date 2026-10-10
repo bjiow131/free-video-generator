@@ -1,5 +1,6 @@
 """Tests for the GitHub mailbox transport; all HTTP is mocked."""
 import base64
+import hashlib
 import json
 
 import pytest
@@ -151,3 +152,45 @@ def test_free_text_github_tokens_are_redacted():
     assert "github_pat_abcdefghijklmnopqrstuvwxyz0123456789" not in values["message"]
     assert "[REDACTED]" in values["traceback"]
     assert "[REDACTED]" in values["message"]
+
+
+def test_publish_repair_artifact_creates_immutable_patch():
+    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\\n"
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(status_code=404),
+        FakeResponse(data={
+            "content": {"sha": "blob-sha"},
+            "commit": {"sha": "commit-sha"},
+        }),
+    ])
+    result = GitHubQueueClient(cfg(), session=session).publish_repair_artifact("repair-01", patch)
+    assert result["path"] == "queue/repair_results/repair-01.patch"
+    assert result["sha256"] == hashlib.sha256(patch.encode()).hexdigest()
+    assert result["commit_sha"] == "commit-sha"
+    assert result["already_present"] is False
+
+
+def test_publish_repair_artifact_is_idempotent_for_same_content():
+    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\\n"
+    encoded = base64.b64encode(patch.encode()).decode()
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={"type": "file", "encoding": "base64", "content": encoded, "sha": "existing-blob"}),
+    ])
+    result = GitHubQueueClient(cfg(), session=session).publish_repair_artifact("repair-02", patch)
+    assert result["already_present"] is True
+    assert result["content_sha"] == "existing-blob"
+
+
+def test_publish_repair_artifact_refuses_different_content_for_existing_id():
+    existing_patch = "diff --git a/local_agent/old.py b/local_agent/old.py\\n"
+    requested_patch = "diff --git a/local_agent/new.py b/local_agent/new.py\\n"
+    encoded = base64.b64encode(existing_patch.encode()).decode()
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={"type": "file", "encoding": "base64", "content": encoded, "sha": "existing-blob"}),
+    ])
+    client = GitHubQueueClient(cfg(), session=session)
+    with pytest.raises(QueueConfigurationError, match="different content"):
+        client.publish_repair_artifact("repair-03", requested_patch)
