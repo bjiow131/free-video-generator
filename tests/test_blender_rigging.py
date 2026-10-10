@@ -51,4 +51,7 @@ def test_skeleton_script_is_fixed_and_declares_unbound_meshes():
     assert "bpy.ops.wm.open_mainfile" in rigging._RIG_SCRIPT
     assert "pose_smoke_test" in rigging._RIG_SCRIPT
     assert "mesh_binding" in rigging._RIG_SCRIPT
+    assert "rigid_per_part_weights" in rigging._RIG_SCRIPT
+    assert "vertex_groups.new" in rigging._RIG_SCRIPT
+    assert "bound_object_count" in rigging._RIG_SCRIPT
     assert "exec(" not in rigging._RIG_SCRIPT
