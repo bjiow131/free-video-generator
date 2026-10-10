@@ -57,6 +57,20 @@ OBJECTS = (
     ("sun", ("солнце", "солнца")),
     ("moon", ("луна", "месяц")),
     ("star", ("звезда", "звёзды", "звезды", "звезду")),
+    ("snail", ("улитка", "улитку", "улитки", "улиток")),
+    ("scooter", ("самокат", "самоката", "самокаты", "самокате")),
+    ("bicycle", ("велосипед", "велосипеда", "велосипеды", "велосипеде")),
+    ("fish", ("рыба", "рыбу", "рыбы", "рыбка", "рыбку", "рыбки")),
+    ("cactus", ("кактус", "кактуса", "кактусы")),
+    ("snowman", ("снеговик", "снеговика", "снеговики")),
+    ("castle", ("замок", "замка", "замки", "крепость")),
+    ("sofa", ("диван", "дивана", "диваны")),
+    ("submarine", ("подлодка", "подводная лодка", "субмарина")),
+    ("coral", ("коралл", "кораллы")),
+    ("swing", ("качели", "качель")),
+    ("slide", ("горка", "горку", "горки")),
+    ("mia", ("мия", "девочка", "девочку", "девушка", "девушку")),
+
 )
 
 COUNT_WORDS = {
@@ -103,11 +117,23 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         # Scene-only prompts are useful too: infer a small starter composition.
         if _has(text, "лес", "роща", "лесной"):
             default_kind = "tree"
+        elif _has(text, "подводный мир", "под водой", "океанариум"):
+            default_kind = "fish"
+        elif _has(text, "пустын", "сахара"):
+            default_kind = "cactus"
+        elif _has(text, "зим", "снег", "снежный"):
+            default_kind = "snowman"
+        elif _has(text, "деревн", "посёлок", "поселок"):
+            default_kind = "house"
+        elif _has(text, "площадк", "детская площадка"):
+            default_kind = "swing"
+        elif _has(text, "фэнтези", "сказоч", "волшебный мир"):
+            default_kind = "castle"
         elif _has(text, "город", "улица", "городской"):
             default_kind = "house"
         elif _has(text, "космос", "галактик", "звёздное небо", "звездное небо"):
             default_kind = "rocket"
-        elif _has(text, "горы", "горный пейзаж", "долина", "скалы"):
+        elif _has(text, "горы", "горный пейзаж", "долина", "скалы", "пейзаж", "природа"):
             default_kind = "mountain"
         elif _has(text, "остров", "пляж", "море", "океан"):
             default_kind = "tree"
@@ -193,8 +219,16 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         environment = "space"
     elif _has(text, "остров", "пляж", "море", "океан"):
         environment = "island"
-    elif _has(text, "горы", "горный пейзаж", "долина"):
+    elif _has(text, "горы", "горный пейзаж", "долина", "пейзаж", "природа"):
         environment = "mountains"
+    elif _has(text, "подводный мир", "под водой", "океанариум"):
+        environment = "underwater"
+    elif _has(text, "пустын", "сахара"):
+        environment = "desert"
+    elif _has(text, "зим", "снег", "снежный"):
+        environment = "winter"
+    elif _has(text, "деревн", "посёлок", "поселок"):
+        environment = "village"
     elif _has(text, "студия", "предметная съёмка", "предметная съемка", "на подиуме"):
         environment = "studio"
     else:
