@@ -626,6 +626,12 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     if fetched is None:
         return state
     manifest, manifest_sha, patch = fetched
+
+    def publish_repair_result(result: dict[str, Any]) -> None:
+        try:
+            _publish_result_durable(client, f"repair-{manifest['repair_id']}", result)
+        except QueueTransportError:
+            print("Repair result retained in local outbox; GitHub delivery will retry.")
     repair_id = manifest["repair_id"]
     processed = state.get("processed_repairs", {})
     if not isinstance(processed, dict):
@@ -635,7 +641,7 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         if previous.get("manifest_sha") == manifest_sha:
             return state
         result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_id_reused_with_different_manifest"}
-        _publish_result_durable(client, f"repair-{repair_id}", result)
+        publish_repair_result(result)
         processed[repair_id] = {"manifest_sha": manifest_sha, "status": "rejected"}
         state = {**state, "processed_repairs": dict(list(processed.items())[-100:])}
         _save_state(state)
