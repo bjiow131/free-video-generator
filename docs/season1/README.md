@@ -1,18 +1,15 @@
-# Season 1 — character library
+# Season 1 character library
 
-This folder is the structured starting package for a 30-episode preschool adventure series. The episode scripts are deliberately stored in a separate private branch.
+This branch retains 14 character passport descriptions and the scene inventory. All external visual-reference links have been removed from the passports and asset catalog. The catalog is empty pending original project-generated images and models.
 
-## Included
-- 14 character passports under `character_passports/`.
-- A CC0/public-domain reference catalog with source links and usage limits.
-- Reusable location/prop/effect inventory.
-- Passports define intended design and animation needs; they do **not** claim a model or rig already exists.
+## Policy
+
+Only original project-specific visual assets may be imported into the production reference library. Do not automatically download third-party photos or models. Keep character identity, rig requirements, and scene descriptions as planning metadata, not as proof of completed visuals.
 
 ## Import
-The current GUI passport importer imports one passport at a time. Import each JSON from `character_passports/` via **Библиотека → Импортировать паспорт…**. Then add downloaded reference images through the character's reference tab. The script `scripts/prepare_season1_library.py` (added in this branch) automates card creation and writes the season asset manifest for local library use.
 
-## References and licenses
-See `asset_catalog.json`. Most links are CC0; where a collection aggregates third-party works, inspect the specific asset page and retain the exact license record. Adult human models are technical rig/style references only and must not determine the appearance of child characters.
+Run `scripts/prepare_season1_library.py` to import the passport metadata. The script no longer downloads outside reference images. Add original reference files separately using the local library interface. Existing local library content is not automatically deleted by these repository changes.
 
-## Blender readiness gate
-Before production: import candidate assets, inspect scale/origin/materials, verify rig and action clips, test deformation and mouth-open control, render a turntable, record SHA-256 and source/license. A passport marked `design_ready_model_not_built` is not yet production-ready.
+## Blender readiness
+
+Each character needs an approved turnaround, an actual 3D model, a validated rig, and a Blender preview before production. Status `awaiting_original_references` means these prerequisites have not been met.
