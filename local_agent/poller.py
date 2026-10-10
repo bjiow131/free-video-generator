@@ -19,7 +19,7 @@ from typing import Any
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
 from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
-from local_agent.reporting import write_report
+from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
 
@@ -398,7 +398,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
-    print("Arguments:", json.dumps(task.arguments, ensure_ascii=False))
+    print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
     print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, Blender discovery, Mia blockout creation, and the allowlisted forest preview.")
     if getattr(task, "requires_local_approval", True) is False:
         if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
