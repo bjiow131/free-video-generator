@@ -67,6 +67,8 @@ Example (illustrative only; frame numbers are not final voice synchronization):
 
 The rig adapter must declare whether it supports mouth-state control. If no compatible mouth control exists, report `unsupported_rig_control`; do not pretend the cue was applied.
 
+For Blender object discovery, character mesh objects may carry the custom property `local_agent_character_id` with a stable value such as `char.mia.master`. The adapter indexes only explicit IDs, groups multiple mesh parts under one character, and does not infer identity from object names. Untagged objects remain unindexed; non-mesh objects are excluded. This index helper is available to callers but is not yet wired into the bridge task executor.
+
 ## Action capability registry
 
 Each action ID must declare:
