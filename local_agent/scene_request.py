@@ -236,17 +236,51 @@ def make_item(item, location, index):
         part("cylinder", (0, 0, 0.60), (0.38, 0.38, 1.35), primary, "body")
         part("cone", (0, 0, 1.45), (0.38, 0.38, 0.55), roof, "nose")
         for x in (-0.32, 0.32): part("cone", (x, 0, 0.12), (0.20, 0.20, 0.55), roof, "fin")
-    elif kind in ("person", "mia"):
+    elif kind == "mia":
+        skin = material_for("Mia | skin", (0.78, 0.53, 0.39, 1))
+        hair = material_for("Mia | muted brown hair", (0.24, 0.105, 0.045, 1))
+        shirt = material_for("Mia | white shirt", (0.94, 0.93, 0.88, 1))
+        overalls = material_for("Mia | turquoise overalls", (0.025, 0.56, 0.56, 1))
+        yellow = material_for("Mia | yellow details", (1.0, 0.72, 0.035, 1))
+        eyes = material_for("Mia | eye whites", (1.0, 0.98, 0.90, 1))
+        pupils = material_for("Mia | pupils", (0.025, 0.018, 0.014, 1))
+        pink = material_for("Mia | pink backpack", (1.0, 0.13, 0.48, 1))
+        part("uv_sphere", (0, -0.015, 1.72), (0.39, 0.34, 0.40), skin, "large head")
+        part("uv_sphere", (0, 0.035, 1.98), (0.41, 0.34, 0.24), hair, "hair cap")
+        for x in (-0.31, 0.31):
+            part("uv_sphere", (x, 0.045, 1.68), (0.13, 0.18, 0.34), hair, "shoulder hair")
+        for x in (-0.24, 0.24):
+            part("uv_sphere", (x, -0.335, 1.76), (0.105, 0.045, 0.13), eyes, "eye")
+            part("uv_sphere", (x, -0.375, 1.755), (0.052, 0.025, 0.075), pupils, "pupil")
+            part("uv_sphere", (x-0.025, -0.398, 1.79), (0.018, 0.012, 0.022), eyes, "eye highlight")
+        part("uv_sphere", (0, -0.345, 1.58), (0.07, 0.035, 0.045), skin, "nose")
+        part("uv_sphere", (0, -0.331, 1.49), (0.11, 0.025, 0.025), material_for("Mia | smile", (0.42,0.08,0.07,1)), "smile")
+        for x in (-0.34, 0.34):
+            for j in range(3):
+                part("uv_sphere", (x, 0.015, 1.46-j*0.12), (0.075,0.075,0.09), hair, "braid")
+        part("uv_sphere", (-0.27, -0.285, 2.02), (0.11,0.045,0.08), yellow, "snail hair clip")
+        part("torus", (-0.27, -0.335, 2.02), (0.045,0.018,0.045), material_for("Mia | clip spiral", (0.72,0.32,0.02,1)), "clip spiral")
+        part("uv_sphere", (0, 0, 1.12), (0.31,0.25,0.36), shirt, "white t-shirt")
+        part("cube", (0, -0.025, 0.99), (0.49,0.30,0.42), overalls, "overalls bib")
+        for x in (-0.16, 0.16):
+            part("cube", (x, -0.18, 1.22), (0.085,0.045,0.32), overalls, "overall strap")
+            part("uv_sphere", (x, -0.208, 1.11), (0.035,0.025,0.035), yellow, "overall button")
+            part("cylinder", (x, 0, 0.57), (0.095,0.10,0.52), skin, "leg")
+            part("uv_sphere", (x, -0.10, 0.30), (0.16,0.23,0.12), yellow, "yellow sneaker")
+        for x in (-0.39, 0.39):
+            arm = part("cylinder", (x*1.12, -0.12, 1.12), (0.085,0.09,0.39), skin, "arm")
+            arm.rotation_euler[1] = -0.55 if x < 0 else 0.55
+        part("uv_sphere", (0, 0.27, 1.10), (0.28,0.18,0.34), pink, "pink backpack")
+        part("uv_sphere", (0, 0.435, 1.10), (0.14,0.035,0.14), material_for("Mia | backpack snail symbol", (0.98,0.68,0.82,1)), "backpack emblem")
+    elif kind == "person":
         skin = material_for("skin", (0.72, 0.45, 0.30, 1))
-        hair = material_for("hair", (0.18, 0.075, 0.025, 1))
-        outfit = material_for("Mia yellow outfit", (0.95, 0.58, 0.025, 1)) if kind == "mia" else primary
         part("uv_sphere", (0, 0, 1.68), (0.30, 0.30, 0.30), skin, "head")
-        part("uv_sphere", (0, 0.03, 1.88), (0.32, 0.32, 0.20), hair, "hair")
-        part("cone", (0, 0, 1.03), (0.42, 0.42, 0.72), outfit, "body")
+        part("uv_sphere", (0, 0.03, 1.88), (0.32, 0.32, 0.20), material_for("hair", (0.18, 0.075, 0.025, 1)), "hair")
+        part("cone", (0, 0, 1.03), (0.42, 0.42, 0.72), primary, "body")
         part("cylinder", (-0.16, 0, 0.35), (0.10, 0.10, 0.45), dark, "left leg")
         part("cylinder", (0.16, 0, 0.35), (0.10, 0.10, 0.45), dark, "right leg")
-        part("cylinder", (-0.40, 0, 1.05), (0.09, 0.09, 0.42), outfit, "left arm")
-        part("cylinder", (0.40, 0, 1.05), (0.09, 0.09, 0.42), outfit, "right arm")
+        part("cylinder", (-0.40, 0, 1.05), (0.09, 0.09, 0.42), primary, "left arm")
+        part("cylinder", (0.40, 0, 1.05), (0.09, 0.09, 0.42), primary, "right arm")
     elif kind == "snail":
         part("uv_sphere", (0, 0, 0.38), (0.62, 0.32, 0.22), leaf, "foot")
         part("uv_sphere", (-0.10, 0, 0.66), (0.34, 0.34, 0.34), material_for("snail shell", (0.62,0.25,0.06,1)), "shell")
