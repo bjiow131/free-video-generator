@@ -39,21 +39,34 @@ def _parse_time(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _validate_one_path(raw_path: str) -> None:
+    path = raw_path.strip()
+    if path in {"/dev/null", "dev/null"}:
+        return
+    if path.startswith(("a/", "b/")):
+        path = path[2:]
+    if (not path or path.startswith("/") or "\\\\" in path or ":" in path
+            or ".." in path.split("/") or path == ".git" or path.startswith(".git/")):
+        raise RepairProtocolError("patch contains an unsafe path")
+    if not (path.startswith(_ALLOWED_PREFIXES) or path in _ALLOWED_ROOT_FILES):
+        raise RepairProtocolError("patch path is outside the repair allowlist")
+
+
 def _validate_patch_paths(patch: str) -> None:
     headers = [line for line in patch.splitlines() if line.startswith("diff --git ")]
     if not headers:
         raise RepairProtocolError("patch has no git diff headers")
-    for header in headers:
-        parts = header.split()
-        if len(parts) != 4:
-            raise RepairProtocolError("malformed git diff header")
-        for raw_path in parts[2:]:
-            path = raw_path[2:] if raw_path.startswith(("a/", "b/")) else raw_path
-            if (not path or path.startswith("/") or "\\" in path or ":" in path
-                    or ".." in path.split("/") or path == ".git" or path.startswith(".git/")):
-                raise RepairProtocolError("patch contains an unsafe path")
-            if not (path.startswith(_ALLOWED_PREFIXES) or path in _ALLOWED_ROOT_FILES):
-                raise RepairProtocolError("patch path is outside the repair allowlist")
+    for line in patch.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split()
+            if len(parts) != 4:
+                raise RepairProtocolError("malformed git diff header")
+            _validate_one_path(parts[2])
+            _validate_one_path(parts[3])
+        elif line.startswith(("--- ", "+++ ")):
+            _validate_one_path(line[4:])
+        elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
+            _validate_one_path(line.split(" ", 2)[2])
 
 
 def parse_repair_manifest(raw: str, *, now: datetime | None = None) -> dict[str, Any]:
