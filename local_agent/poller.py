@@ -662,7 +662,7 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         result = {"task_id": f"repair-{repair_id}", "status": "error", "reason": "could_not_check_local_base", "error_type": type(exc).__name__}
-        _publish_result_durable(client, f"repair-{repair_id}", result)
+        publish_repair_result(result)
         state = record("error")
         _save_state(state)
         return state
@@ -673,21 +673,21 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
             "reason": "base_commit_mismatch", "expected_base_commit": manifest["base_commit_sha"],
             "actual_base_commit": actual_base or None,
         }
-        _publish_result_durable(client, f"repair-{repair_id}", result)
+        publish_repair_result(result)
         state = record("rejected")
         _save_state(state)
         print("Repair rejected: local checkout is not at the required base commit.")
         return state
     if not sys.stdin.isatty():
         result = {"task_id": f"repair-{repair_id}", "status": "blocked", "reason": "local_console_approval_required"}
-        _publish_result_durable(client, f"repair-{repair_id}", result)
+        publish_repair_result(result)
         state = record("blocked")
         _save_state(state)
         return state
     answer = input("Apply this repair in a separate Git worktree and run tests? Type YES: ").strip()
     if answer != "YES":
         result = {"task_id": f"repair-{repair_id}", "status": "declined", "reason": "local_user_declined"}
-        _publish_result_durable(client, f"repair-{repair_id}", result)
+        publish_repair_result(result)
         state = record("declined")
         _save_state(state)
         return state
@@ -704,10 +704,7 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
             result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
     except Exception as exc:
         result = {"task_id": f"repair-{repair_id}", "status": "error", "error_type": type(exc).__name__}
-    try:
-        _publish_result_durable(client, f"repair-{repair_id}", result)
-    except QueueTransportError:
-        print("Repair result queued locally; GitHub delivery will retry.")
+    publish_repair_result(result)
     state = record(str(result.get("status", "unknown")))
     _save_state(state)
     print(f"Repair {repair_id}: {result.get('status')}. Active checkout was not modified.")
