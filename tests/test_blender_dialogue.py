@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from local_agent.blender_dialogue import apply_mouth_cue
+
+
+class FakeShapeKey:
+    def __init__(self, name):
+        self.name = name
+        self.value = 0.0
+        self.inserted = []
+
+    def keyframe_insert(self, *, data_path, frame):
+        self.inserted.append((data_path, frame, self.value))
+
+
+def cue(events=None):
+    return {
+        "speaker_id": "char.mia.master",
+        "line_id": "S01E01_L001",
+        "text": "Смотри, улитка!",
+        "timing_status": "estimated_until_voiceover",
+        "events": events or [
+            {"frame": 18, "mouth_state": "open"},
+            {"frame": 22, "mouth_state": "closed"},
+            {"frame": 26, "mouth_state": "open"},
+        ],
+    }
+
+
+def test_applies_mouth_open_close_to_supported_shape_key():
+    key = FakeShapeKey("Mouth_Open")
+    obj = SimpleNamespace(name="Mia | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[key])
+    ))
+    result = apply_mouth_cue(
+        cue(), character_objects=[obj], frame_start=1, frame_end=240
+    )
+    assert result["status"] == "applied"
+    assert result["shape_key"] == "Mouth_Open"
+    assert result["timing_status"] == "estimated_until_voiceover"
+    assert key.inserted == [
+        ("value", 1, 0.0),
+        ("value", 18, 1.0),
+        ("value", 22, 0.0),
+        ("value", 26, 1.0),
+    ]
+
+
+def test_explicitly_reports_unsupported_rig():
+    obj = SimpleNamespace(name="Mia | Head", data=SimpleNamespace(shape_keys=None))
+    result = apply_mouth_cue(
+        cue(), character_objects=[obj], frame_start=1, frame_end=240
+    )
+    assert result["status"] == "unsupported_rig_control"
+    assert result["applied_events"] == 0
+
+
+def test_event_at_shot_start_overrides_initial_closed_keyframe():
+    key = FakeShapeKey("mouth_open")
+    obj = SimpleNamespace(data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[key])
+    ))
+    result = apply_mouth_cue(
+        cue([{"frame": 1, "mouth_state": "open"}]),
+        character_objects=[obj], frame_start=1, frame_end=240
+    )
+    assert result["applied_events"] == 1
+    assert key.inserted == [("value", 1, 1.0)]
+
+
+def test_rejects_invalid_cue_before_touching_rig():
+    key = FakeShapeKey("Mouth_Open")
+    obj = SimpleNamespace(data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[key])
+    ))
+    malformed = cue([{"frame": 999, "mouth_state": "open"}])
+    with pytest.raises(ValueError):
+        apply_mouth_cue(
+            malformed, character_objects=[obj], frame_start=1, frame_end=240
+        )
+    assert key.inserted == []
