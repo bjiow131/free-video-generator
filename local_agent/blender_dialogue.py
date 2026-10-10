@@ -165,3 +165,44 @@ def apply_dialogue_cues(
     else:
         status = "unsupported"
     return {"status": status, "results": results}
+
+
+def index_character_objects_by_speaker(
+    objects: Iterable[Any],
+    *,
+    id_property: str = "local_agent_character_id",
+) -> dict[str, Any]:
+    """Index Blender objects only by an explicit stable character-ID property.
+
+    No object-name guessing is allowed: all mesh parts of one character may
+    carry the same property value and are grouped for shape-key discovery.
+    """
+    import re
+
+    if not isinstance(id_property, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", id_property):
+        return {"status": "rejected", "reason": "invalid_id_property", "characters": {}, "unindexed_objects": []}
+
+    characters: dict[str, list[Any]] = {}
+    unindexed: list[str] = []
+    invalid: list[str] = []
+    for obj in objects:
+        name = str(getattr(obj, "name", ""))
+        getter = getattr(obj, "get", None)
+        character_id = getter(id_property) if callable(getter) else None
+        if not isinstance(character_id, str) or not re.fullmatch(r"char\.[a-z0-9_.-]{1,100}", character_id):
+            unindexed.append(name)
+            continue
+        if getattr(obj, "type", "MESH") != "MESH":
+            invalid.append(name)
+            continue
+        characters.setdefault(character_id, []).append(obj)
+
+    return {
+        "status": "indexed",
+        "id_property": id_property,
+        "characters": characters,
+        "character_count": len(characters),
+        "indexed_object_count": sum(len(items) for items in characters.values()),
+        "unindexed_objects": unindexed,
+        "non_mesh_objects": invalid,
+    }
