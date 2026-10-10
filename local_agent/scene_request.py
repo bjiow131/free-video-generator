@@ -245,6 +245,20 @@ def make_item(item, location, index):
         part("cylinder", (0.16, 0, 0.35), (0.10, 0.10, 0.45), dark, "right leg")
         part("cylinder", (-0.40, 0, 1.05), (0.09, 0.09, 0.42), primary, "left arm")
         part("cylinder", (0.40, 0, 1.05), (0.09, 0.09, 0.42), primary, "right arm")
+    elif kind == "animal":
+        coat = primary
+        muzzle = material_for("animal muzzle", (0.82, 0.70, 0.56, 1))
+        eyes = material_for("animal eyes", (0.035, 0.025, 0.02, 1))
+        part("uv_sphere", (0, 0, 0.82), (0.70, 0.34, 0.34), coat, "animal body")
+        part("uv_sphere", (0.48, 0, 1.05), (0.30, 0.28, 0.30), coat, "animal head")
+        part("uv_sphere", (0.70, -0.02, 0.98), (0.20, 0.17, 0.14), muzzle, "muzzle")
+        part("cone", (0.38, -0.16, 1.30), (0.11, 0.09, 0.20), coat, "left ear")
+        part("cone", (0.58, 0.16, 1.30), (0.11, 0.09, 0.20), coat, "right ear")
+        for x in (-0.42, -0.02, 0.35, 0.55):
+            part("cylinder", (x, 0, 0.34), (0.09, 0.09, 0.40), coat, "animal leg")
+        tail = part("cone", (-0.72, 0.02, 0.98), (0.15, 0.15, 0.42), coat, "tail")
+        tail.rotation_euler[1] = -0.85
+        part("uv_sphere", (0.73, -0.17, 1.02), (0.035, 0.025, 0.035), eyes, "eye")
     elif kind == "snail":
         part("uv_sphere", (0, 0, 0.38), (0.62, 0.32, 0.22), leaf, "foot")
         part("uv_sphere", (-0.10, 0, 0.66), (0.34, 0.34, 0.34), material_for("snail shell", (0.62,0.25,0.06,1)), "shell")
@@ -651,12 +665,18 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         )
         references = [valid_references[index] for index in requested_indices if index < len(valid_references)]
         reference_labels = {path: all_labels[path] for path in references}
+        profile_type = str(card.get("profile_type", "Человек"))[:80]
+        visual_style = str(card.get("visual_style", "Стилизованный 3D"))[:80]
+        primitive = "animal" if profile_type == "Животное" else ("cube" if profile_type == "Объект / предмет" else "person")
+        color_name, color = ("brown", [0.28, 0.14, 0.06, 1.0]) if profile_type == "Животное" else (("purple", [0.38, 0.16, 0.56, 1.0]) if profile_type == "Фантастическое существо" else (("gray", [0.32, 0.35, 0.40, 1.0]) if profile_type == "Объект / предмет" else ("blue", [0.24, 0.29, 0.42, 1.0])))
         character_object = {
-            "primitive": "person",
-            "color_name": "blue",
-            "color": [0.24, 0.29, 0.42, 1.0],
+            "primitive": primitive,
+            "color_name": color_name,
+            "color": color,
             "scale": 1.0,
             "name": name,
+            "profile_type": profile_type,
+            "visual_style": visual_style,
             "character_card_id": card_id,
             "character_description": description,
             "character_references": references,
