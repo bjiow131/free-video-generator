@@ -21,11 +21,10 @@
       "visual_identity_source": "approved_snail_reference_set"
     },
     {
-      "id": "companion",
+      "id": "stepa",
       "role": "supporting_character",
       "required": true,
-      "design_pending": true,
-      "visual_identity_source": "approved_companion_reference_set"
+      "visual_identity_source": "approved_stepa_reference_set"
     }
   ],
   "beats": [
