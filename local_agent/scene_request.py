@@ -650,6 +650,12 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "reference_indices": [index + 1 for index in requested_indices],
         })
     plan["selected_characters"] = selected_characters
+    if selected_characters and plan.get("relationships", {}).get("character_riding_scooter"):
+        # The first explicitly selected/mentioned card is the rider unless a future
+        # scene planner supplies a more specific role assignment.
+        plan["relationships"]["character_riding_scooter"] = selected_characters[0]["id"]
+    else:
+        plan.setdefault("relationships", {}).pop("character_riding_scooter", None)
     return plan
 
 
