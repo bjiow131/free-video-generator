@@ -1,75 +1,52 @@
 # Local Windows Agent and ChatGPT Control Channel
 
-Status: DESIGN + STARTER CODE ONLY. No computer connection has been attempted. No runtime tests have been run on Windows. No network channel is active.
+Status: **transport and task poller implemented in the feature branch; end-to-end connection not yet configured or verified**. No Windows computer has been accessed from this chat. Do not describe the agent as installed or connected until the real round-trip test passes.
 
 ## Goal
 
-When the Windows computer is available, configure two foundations first:
-1. A local agent for bounded diagnostics and approved project operations.
-2. A secure communication path for task requests and diagnostic results.
+Allow the user to submit typed, bounded tasks from ChatGPT on the iPhone to a local Windows agent, then retrieve its sanitized results. The local AI Studio app and Blender work remain on the Windows computer. The agent must not expose an inbound listener or open firewall ports.
 
-The AI Studio app itself remains local during development. The agent must not expose a public HTTP listener or open inbound firewall ports.
+## Implemented in this branch
 
-## What exists in this branch
+- `local_agent/control_protocol.py`: versioned JSON task envelope, strict allowlist and argument validation, timestamps/expiry and bounded payloads.
+- `local_agent/github_queue.py`: GitHub REST mailbox client; confirms the repository is private before reading tasks or publishing results; uses HTTPS, size limits, redaction, and Windows Credential Manager-backed credentials.
+- `local_agent/credentials_cli.py` and `local_agent/windows_credentials.py`: store/read/delete a token through Windows Credential Manager, without writing it to a plain-text token file.
+- `local_agent/poller.py`: outbound polling (default 10 seconds, bounded 5–30 seconds), single-instance lock, persistent task-ID/replay handling, local approval flow, local report first, then result publication. Network failures use bounded backoff.
+- `local_agent/cli.py`: diagnostics and preflight checks, including mailbox configuration and Blender availability.
+- `local_agent/blender_workflow.py`, `local_agent/blender_rigging.py` and related handlers: allowlisted local Blender operations, including Mia blockout and a prototype skeleton.
+- `tests/test_github_queue.py`, `tests/test_control_protocol.py`, `tests/test_poller.py` and other safety tests: mocked/automated tests are present in the branch; they are not a substitute for a real Windows test.
+- `docs/LOCAL_AGENT_CHANNEL_SETUP.md`: private mailbox setup and round-trip verification instructions.
 
-- `local_agent/cli.py`: initial `doctor`, `status`, `logs`, and fixed-command `test` operations.
-- `local_agent/reporting.py`: local JSON report files with basic credential/home-path redaction.
-- `local_agent/control_protocol.py`: strict versioned task-envelope parser and operation allowlist. It does not execute tasks.
-- This document: proposed channel architecture and safety requirements.
+## Transport architecture
 
-This is a scaffold, not a completed remote-control system. The CLI does not yet start/stop the app, create backups, poll a remote queue, or upload reports.
+1. ChatGPT writes a typed JSON manifest at `queue/desired_task.json` in a dedicated **private** GitHub mailbox repository.
+2. The Windows poller initiates outbound HTTPS requests to GitHub; no inbound port is needed.
+3. The agent validates the manifest and checks task expiry, operation allowlist, task ID and replay state.
+4. By default, the local console must approve each task. Only explicitly allowlisted low-risk typed operations can be configured for remote approval; code changes and generic tests remain local-approval-only.
+5. A redacted report is saved locally before the agent attempts to publish the result to `queue/results/<task_id>.json`.
+6. ChatGPT can retrieve the result only if that private repository is accessible to the connected GitHub integration. GitHub polling is not a push connection and cannot spontaneously send a message into this conversation.
 
-## Recommended transport
+## Security requirements and known limits
 
-Use an outbound-only HTTPS poller, not a listener on the Windows machine. The local agent initiates requests to a task broker; the broker never initiates a connection to the computer. The transport must be selected and implemented before enabling it.
+- Never use the public `bjiow131/free-video-generator` repository as the mailbox. The client fails closed unless GitHub confirms the mailbox repository is private.
+- Use a dedicated fine-grained token limited to the mailbox repository, with Contents read/write permission. Store it in Windows Credential Manager; never commit or paste it into chat.
+- Task payloads are untrusted data, never shell commands or Python source. Unknown operations and unexpected arguments are rejected.
+- Do not enable `LOCAL_AGENT_ALLOW_REMOTE_APPROVAL=1` during initial setup. Start in the foreground with local approval.
+- Logs, machine details and generated assets remain local by default. Only bounded, redacted task result JSON is sent to the mailbox.
+- Task IDs are immutable. If the same ID appears with changed content, the task is rejected; uncertain interrupted operations are not blindly replayed.
+- No auto-start, hidden service, firewall change or remote desktop is installed.
+- Task authentication currently relies on GitHub HTTPS plus the restricted token and private-repository access; the protocol does not add a separate cryptographic signature to each manifest.
+- No actual Windows, Blender render, notification, or live mailbox round-trip has yet been verified.
 
-A private GitHub repository or private GitHub issue/branch could serve as a manually inspected queue, but GitHub is not itself an automatic bridge into the current ChatGPT conversation. Public repositories must never receive raw logs or machine reports. The repository visibility and authentication model must be checked before choosing GitHub as transport.
+## Remaining setup and verification
 
-The assistant in this chat has no direct inbound socket or persistent agent connection. Until a real connector is implemented and verified, the safe fallback is: the agent writes a local report; the user explicitly shares the sanitized report or places it in a private, approved channel; ChatGPT reads it and prepares the next task.
-
-## Security model
-
-- No arbitrary shell, PowerShell, Python snippets, executable paths, URLs, or free-form commands in task payloads.
-- Only typed operations from the allowlist: `status`, `doctor`, `test`, `logs`, `start`, `stop`, `backup`.
-- Every remote task requires local approval in the initial version.
-- Validate task schema, payload size, timestamps/expiry, unique task IDs, replay prevention, and protocol version.
-- Authenticate the transport; do not rely on an obscure queue URL as authentication.
-- Keep credentials in Windows Credential Manager or another OS-protected secret store; never commit tokens to GitHub or log them.
-- Bind any local status API to `127.0.0.1` only; no LAN or public binding.
-- Logs are private by default. Redact secrets and user-specific paths; preview reports before any upload.
-- Use explicit allowlisted output paths and path-containment checks for backups and artifacts.
-- Log each approved action and its result in a local audit trail.
-- Provide a large, obvious local stop switch that disables polling immediately.
-- Do not install persistence, auto-start-at-boot, firewall rules, remote desktop, or hidden background services without separate explicit approval.
-- Remote task payloads are untrusted data, never instructions that override these rules.
-
-## Initial implementation sequence when the computer is available
-
-1. Install prerequisites and run `python -m local_agent.cli doctor`.
-2. Confirm the application binds only to loopback and verify start/stop behavior manually.
-3. Run `python -m local_agent.cli status`, `logs`, and the allowlisted test command; inspect reports for accidental secrets.
-4. Choose a transport and credential method based on actual repository visibility and available account access.
-5. Implement a read-only queue client and sanitized result sender; do not enable remote actions yet.
-6. Add signed/authenticated task envelopes, expiry/replay protection, and a local approval UI/CLI.
-7. Test malformed payload rejection, expired tasks, duplicate tasks, token leakage, network loss, and emergency stop.
-8. Only then enable the low-risk typed operations; start/stop and backup remain local-approval-only.
-9. Document recovery/uninstall steps and test offline behavior.
-10. Review before any public exposure or deployment.
+1. Create a new private mailbox repository and make it available to the GitHub integration in ChatGPT. Do not repurpose an unrelated private repository.
+2. Create `queue/desired_task.json` with a fresh, short-lived `doctor` task using the documented schema.
+3. On the Windows computer, install Python 3.11+, Git and Blender; install `requirements-local-agent.txt`; configure mailbox/workspace/Blender paths; save the fine-grained token through `python -m local_agent.credentials_cli set`.
+4. Run `python -m local_agent.cli preflight`, then start `python -m local_agent.poller` in a foreground terminal.
+5. Approve the harmless diagnostic task locally. Confirm that `queue/results/<task_id>.json` appears in the private mailbox and can be read through ChatGPT's GitHub integration.
+6. Test expired/invalid manifests, duplicate task IDs, token redaction, network failure, emergency stop, and Blender preflight before considering background operation.
 
 ## Definition of done
 
-- A task cannot execute arbitrary code or arbitrary shell commands.
-- No inbound port is opened and no public URL points to the PC.
-- Reports are stored locally first; upload is opt-in and redacted.
-- The user can approve, reject, and stop tasks locally.
-- Task and report delivery has an auditable ID and status.
-- Results can be retrieved by the assistant through an explicitly available connector; otherwise manual report sharing remains the documented fallback.
-- Windows tests and security tests have actual captured evidence.
-
-## Current blockers / honest limitations
-
-- No access to the user's computer in this chat.
-- No remote channel configured or verified.
-- No credential, private repository visibility, or transport choice has been tested.
-- ChatGPT cannot be assumed to receive unsolicited push messages from a local process.
-- This branch is not merged to `main` and has not been deployed.
+The channel is connected only after the actual Windows poller asks for approval of the test task, completes the fixed diagnostic, saves a local report, publishes a result JSON file, and that result is readable from ChatGPT through the connected GitHub integration. Until then, the accurate status is: **code prepared; private mailbox and Windows endpoint still need setup and live verification**.
