@@ -144,7 +144,10 @@ def check_face_rig(project_name: str, blend_file: str | None = None, report_name
             return {"status": "blocked", "reason": "source_blend_missing_or_ambiguous",
                     "candidates": sorted(p.name for p in candidates)[:30]}
         source = candidates[0]
-    if (not isinstance(report_name, str) or Path(report_name).name != report_name\n            or not report_name.endswith(".json") or report_name in {"", ".", ".."}):\n        raise ValueError("report_name must be a local JSON filename.")\n    report = project / report_name
+    if (not isinstance(report_name, str) or Path(report_name).name != report_name
+            or not report_name.endswith(".json") or report_name in {"", ".", ".."}):
+        raise ValueError("report_name must be a local JSON filename.")
+    report = project / report_name
     if source.is_symlink() or not source.is_file() or source.stat().st_size == 0:
         return {"status": "blocked", "reason": "source_blend_missing_or_invalid"}
     if report.is_symlink() or getattr(report, "is_junction", lambda: False)():
