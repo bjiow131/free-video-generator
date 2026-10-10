@@ -141,7 +141,7 @@ def control_camera(project_name: str, *, preset: str, move: str = "static",
          "preset":preset,"move":move,"frames":frames,"spec":PRESETS[preset],
          "create_camera_if_missing":create_camera_if_missing}
     # Fail closed on a missing camera unless caller explicitly allows creation.
-    check_script='import bpy,sys; p=sys.argv[sys.argv.index("--")+1]; bpy.ops.wm.open_mainfile(filepath=p,load_ui=False); s=bpy.context.scene; print("AGENT_CAMERA_PRESENT="+str(s.camera is not None)); print("AGENT_CAMERA_ANIMATED="+str(bool(s.camera and s.camera.animation_data and s.camera.animation_data.action)))'
+    check_script='import bpy,sys; p=sys.argv[sys.argv.index("--")+1]; bpy.ops.wm.open_mainfile(filepath=p,load_ui=False); s=bpy.context.scene; print("AGENT_CAMERA_PRESENT="+str(s.camera is not None)); print("AGENT_CAMERA_ANIMATED="+str(bool(s.camera and s.camera.animation_data)))'
     try:
         check=subprocess.run([str(blender),"--disable-autoexec","--background",
                               "--python-expr",check_script,"--",str(source)],capture_output=True,text=True,
