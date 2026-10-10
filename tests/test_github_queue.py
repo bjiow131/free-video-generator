@@ -115,3 +115,27 @@ def test_fetch_rejects_manifest_with_malformed_base64():
     with pytest.raises(QueueTransportError, match="Task manifest rejected"):
         client.fetch_desired_task()
 
+
+
+def test_fetch_accepts_whitespace_wrapped_base64():
+    raw = json.dumps({
+        "protocol_version": 1,
+        "task_id": "task-wrapped",
+        "operation": "doctor",
+        "created_at": "2026-10-09T10:00:00Z",
+        "expires_at": "2026-10-09T10:05:00Z",
+        "requires_local_approval": True,
+        "arguments": {},
+    }).encode()
+    encoded = base64.b64encode(raw).decode()
+    wrapped = encoded[:24] + "\n" + encoded[24:]
+    client = GitHubQueueClient(cfg(), session=FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={
+            "type": "file", "encoding": "base64",
+            "content": wrapped, "sha": "file-sha",
+        }),
+    ]))
+    task, sha = client.fetch_desired_task()
+    assert task.task_id == "task-wrapped"
+    assert sha == "file-sha"
