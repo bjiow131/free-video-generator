@@ -51,7 +51,21 @@ echo This Blender launcher uses Python standard-library modules only.
 echo No pip packages or API credentials are required.
 echo.
 echo Setup completed. No credentials are needed.
-echo Next: launch run_blender_agent.bat.
+echo Installing automatic startup for the current Windows user...
+if exist "%~dp0install_blender_agent_autostart.ps1" (
+  set "BLENDER_AGENT_AUTOSTART_SILENT=1"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_blender_agent_autostart.ps1"
+  if errorlevel 1 (
+    echo [WARNING] Agent setup succeeded, but automatic startup could not be installed.
+    echo Run install_blender_agent_autostart.bat manually later.
+  ) else (
+    echo Automatic startup installed. The agent console will open when you sign in.
+  )
+) else (
+  echo [WARNING] Autostart installer was not found in this folder.
+)
+echo.
+echo Next: launch run_blender_agent.bat now, or sign out and sign in to test autostart.
 echo.
 pause
 exit /b 0
