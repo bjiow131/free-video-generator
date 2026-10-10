@@ -23,6 +23,7 @@ from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
+from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -62,7 +63,7 @@ SUPPORTED_HANDLERS = {
 }
 
 
-def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
+def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None) -> dict[str, Any]:
     """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
     import re
 
@@ -73,9 +74,18 @@ def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
         return {"status": "blocked", "reason": "invalid_task_id_for_isolated_worktree"}
 
     branch = f"agent/task-{safe_id}"
+    parent_root = ROOT.parent.resolve()
     worktree_root = ROOT.parent / ".local_agent_worktrees"
+    if worktree_root.is_symlink() or getattr(worktree_root, "is_junction", lambda: False)():
+        return {"status": "blocked", "reason": "worktree_root_must_not_be_symlink_or_junction"}
+    try:
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        if worktree_root.resolve().parent != parent_root:
+            return {"status": "blocked", "reason": "worktree_root_resolves_outside_expected_parent"}
+    except OSError as exc:
+        return {"status": "error", "reason": "could_not_prepare_worktree_root", "error_type": type(exc).__name__}
     worktree = worktree_root / f"task-{safe_id}"
-    if worktree.exists():
+    if worktree.exists() or worktree.is_symlink() or getattr(worktree, "is_junction", lambda: False)():
         return {
             "status": "blocked",
             "reason": "task_worktree_already_exists; inspect it before retrying",
@@ -94,6 +104,8 @@ def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
         if head.returncode != 0:
             return {"status": "blocked", "reason": "could_not_resolve_base_commit"}
         base_sha = head.stdout.strip()
+        if expected_base_sha is not None and base_sha != expected_base_sha:
+            return {"status": "rejected", "reason": "base_commit_mismatch", "expected_base_commit": expected_base_sha, "actual_base_commit": base_sha}
         branch_check = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
         if branch_check.returncode == 0:
             return {
@@ -102,7 +114,6 @@ def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
                 "branch": branch,
             }
 
-        worktree_root.mkdir(parents=True, exist_ok=True)
         created = run_git(["worktree", "add", "-b", branch, str(worktree), base_sha], timeout=120)
         if created.returncode != 0:
             return {
@@ -157,15 +168,67 @@ def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
                 },
             )
 
+        whitespace = run_git(["diff", "--check"], cwd=worktree, timeout=60)
+        if whitespace.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "git_diff_check_failed",
+                 "stderr_tail": [line[:500] for line in whitespace.stderr.splitlines()[-20:]]},
+            )
+
+        # Stage only paths named in the validated patch; never stage the whole worktree.
+        patch_paths = []
+        for line in patch.splitlines():
+            if line.startswith("diff --git "):
+                parts = line.split()
+                if len(parts) != 4:
+                    return _discard_failed_worktree(
+                        run_git, worktree, branch,
+                        {"status": "rejected", "reason": "malformed_patch_header_after_validation"},
+                    )
+                for raw_path in parts[2:]:
+                    patch_paths.append(raw_path[2:])
+        patch_paths = sorted(set(patch_paths))
+        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
+        if staged.returncode != 0:
+            return {
+                "status": "completed_needs_review",
+                "reason": "tests_passed_but_patch_paths_could_not_be_staged",
+                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
+                "stderr_tail": [line[:500] for line in staged.stderr.splitlines()[-20:]],
+                "active_checkout_modified": False,
+            }
+        staged_diff = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
+        if staged_diff.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "staged_diff_check_failed"},
+            )
+        commit = run_git([
+            "-c", "user.name=Blender Work Agent",
+            "-c", "user.email=blender-work-agent@users.noreply.github.com",
+            "commit", "-m", f"Apply reviewed repair {safe_id}",
+        ], cwd=worktree, timeout=120)
+        if commit.returncode != 0:
+            return {
+                "status": "completed_needs_review",
+                "reason": "tests_passed_but_local_repair_commit_failed",
+                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
+                "stderr_tail": [line[:500] for line in commit.stderr.splitlines()[-20:]],
+                "active_checkout_modified": False,
+            }
+        commit_sha = run_git(["rev-parse", "--verify", "HEAD"], cwd=worktree, timeout=15)
         return {
             "status": "completed",
-            "reason": "patch_applied_and_tests_passed_in_isolated_worktree",
+            "reason": "patch_applied_tested_and_committed_in_isolated_worktree",
             "base_commit": base_sha,
+            "repair_commit": commit_sha.stdout.strip() if commit_sha.returncode == 0 else None,
             "branch": branch,
             "worktree": str(worktree),
             "test_return_code": tests.returncode,
             "requires_review_before_merge": True,
             "active_checkout_modified": False,
+            "pushed_to_remote": False,
         }
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "git_operation_timed_out"}
@@ -420,6 +483,7 @@ def _remember_manifest(
     # Keep newest 200 IDs so state cannot grow without bound.
     processed = dict(list(processed.items())[-200:])
     return {
+        **state,
         "last_task_id": task_id,
         "manifest_sha": manifest_sha,
         "processed_tasks": processed,
@@ -604,6 +668,133 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
 
 
 
+
+def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[str, Any]:
+    """Fetch one ChatGPT-authored repair; require local approval and test in isolation."""
+    try:
+        fetched = fetch_repair(client)
+    except QueueTransportError as exc:
+        if "Mailbox item not found" not in str(exc):
+            print(f"Repair channel unavailable: {type(exc).__name__}")
+        return state
+    except RepairProtocolError as exc:
+        print(f"Repair rejected by protocol validation: {str(exc)[:240]}")
+        return state
+    except Exception as exc:
+        print(f"Repair fetch failed safely: {type(exc).__name__}")
+        return state
+    if fetched is None:
+        return state
+    manifest, manifest_sha, patch = fetched
+
+    def publish_repair_result(result: dict[str, Any]) -> None:
+        try:
+            _publish_result_durable(client, f"repair-{manifest['repair_id']}", result)
+        except QueueTransportError:
+            print("Repair result retained in local outbox; GitHub delivery will retry.")
+    repair_id = manifest["repair_id"]
+    processed = state.get("processed_repairs", {})
+    if not isinstance(processed, dict):
+        processed = {}
+    previous = processed.get(repair_id)
+    if isinstance(previous, dict):
+        if previous.get("manifest_sha") == manifest_sha:
+            return state
+        result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_id_reused_with_different_manifest"}
+        publish_repair_result(result)
+        processed[repair_id] = {"manifest_sha": manifest_sha, "status": "rejected"}
+        state = {**state, "processed_repairs": dict(list(processed.items())[-100:])}
+        _save_state(state)
+        return state
+
+    def record(status: str) -> dict[str, Any]:
+        updated = dict(processed)
+        updated[repair_id] = {"manifest_sha": manifest_sha, "status": status}
+        return {**state, "processed_repairs": dict(list(updated.items())[-100:])}
+
+    print(f"\nNew repair available: {repair_id}")
+    print(f"Target base commit: {manifest['base_commit_sha']}")
+    print("Patch paths are restricted to local_agent/, tests/, docs/, scripts/, and approved root files.")
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, timeout=15, check=False, shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        result = {"task_id": f"repair-{repair_id}", "status": "error", "reason": "could_not_check_local_base", "error_type": type(exc).__name__}
+        publish_repair_result(result)
+        state = record("error")
+        _save_state(state)
+        return state
+    actual_base = head.stdout.strip() if head.returncode == 0 else ""
+    if actual_base != manifest["base_commit_sha"]:
+        result = {
+            "task_id": f"repair-{repair_id}", "status": "rejected",
+            "reason": "base_commit_mismatch", "expected_base_commit": manifest["base_commit_sha"],
+            "actual_base_commit": actual_base or None,
+        }
+        publish_repair_result(result)
+        state = record("rejected")
+        _save_state(state)
+        print("Repair rejected: local checkout is not at the required base commit.")
+        return state
+    if not sys.stdin.isatty():
+        result = {"task_id": f"repair-{repair_id}", "status": "blocked", "reason": "local_console_approval_required"}
+        publish_repair_result(result)
+        state = record("blocked")
+        _save_state(state)
+        return state
+    answer = input("Apply this repair in a separate Git worktree and run tests? Type YES: ").strip()
+    if answer != "YES":
+        result = {"task_id": f"repair-{repair_id}", "status": "declined", "reason": "local_user_declined"}
+        publish_repair_result(result)
+        state = record("declined")
+        _save_state(state)
+        return state
+
+    # Re-fetch after approval to prevent replacing the repair while the prompt is open.
+    try:
+        latest = fetch_repair(client)
+        if latest is None or latest[1] != manifest_sha or latest[0] != manifest or latest[2] != patch:
+            result = {"task_id": f"repair-{repair_id}", "status": "superseded", "reason": "repair_changed_after_approval"}
+        elif not _not_expired(type("RepairExpiry", (), {"expires_at": manifest["expires_at"], "created_at": manifest["created_at"]})()):
+            result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_expired_while_waiting_for_approval"}
+        else:
+            details = _apply_patch(patch, f"repair-{repair_id}", expected_base_sha=manifest["base_commit_sha"])
+            result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
+            if details.get("status") == "completed" and details.get("repair_commit"):
+                try:
+                    diff = subprocess.run(
+                        ["git", "diff", "--no-ext-diff", "--unified=3",
+                         manifest["base_commit_sha"], details["repair_commit"]],
+                        cwd=Path(details["worktree"]), capture_output=True,
+                        text=True, timeout=30, check=False, shell=False,
+                    )
+                    if diff.returncode != 0 or not diff.stdout.startswith("diff --git "):
+                        raise RuntimeError("could_not_build_tested_repair_diff")
+                    if any(marker in diff.stdout for marker in (
+                        "GIT binary patch", "Binary files ", "new file mode 120000",
+                        "old mode 120000", "160000",
+                    )):
+                        raise RuntimeError("tested_repair_diff_contains_binary_or_special_files")
+                    _validate_patch_paths(diff.stdout)
+                    artifact = client.publish_repair_artifact(repair_id, diff.stdout)
+                    result["tested_patch_artifact"] = artifact
+                except Exception as exc:
+                    result["status"] = "completed_local_only"
+                    result["tested_patch_artifact"] = {
+                        "status": "publish_failed",
+                        "error_type": type(exc).__name__,
+                    }
+    except Exception as exc:
+        result = {"task_id": f"repair-{repair_id}", "status": "error", "error_type": type(exc).__name__}
+    publish_repair_result(result)
+    state = record(str(result.get("status", "unknown")))
+    _save_state(state)
+    print(f"Repair {repair_id}: {result.get('status')}. Active checkout was not modified.")
+    return state
+
+
 def _acquire_instance_lock(path: Path):
     """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -754,6 +945,7 @@ def main() -> int:
                         last_sha = manifest_sha
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
+                state = _poll_repair_once(client, state)
                 backoff = interval
                 time.sleep(interval)
             except KeyboardInterrupt:

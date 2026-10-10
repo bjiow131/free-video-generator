@@ -6,6 +6,7 @@ JSON. It does not execute tasks and does not store credentials on disk.
 from __future__ import annotations
 
 import base64
+import hashlib
 from dataclasses import dataclass
 import json
 import os
@@ -173,3 +174,68 @@ class GitHubQueueClient:
             return str(response.json()["commit"]["sha"])
         except (ValueError, KeyError, TypeError) as exc:
             raise QueueTransportError("GitHub accepted result but returned an unexpected response.") from exc
+
+    def publish_repair_artifact(self, repair_id: str, patch: str) -> dict[str, Any]:
+        """Publish a bounded, immutable tested patch back to the private mailbox."""
+        if not isinstance(repair_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,59}", repair_id):
+            raise QueueConfigurationError("Invalid repair ID for artifact path.")
+        if not isinstance(patch, str) or not patch.startswith("diff --git "):
+            raise QueueConfigurationError("Repair artifact must be a text unified Git diff.")
+        try:
+            from local_agent.repair_channel import _validate_patch_paths, RepairProtocolError
+            _validate_patch_paths(patch)
+        except RepairProtocolError as exc:
+            raise QueueConfigurationError("Repair artifact contains a disallowed patch path.") from exc
+        if any(marker in patch for marker in (
+            "GIT binary patch", "Binary files ", "new file mode 120000",
+            "old mode 120000", "160000",
+        )):
+            raise QueueConfigurationError("Binary, symlink, and submodule repair artifacts are prohibited.")
+        encoded_bytes = patch.encode("utf-8")
+        if len(encoded_bytes) > 40_000:
+            raise QueueConfigurationError("Repair artifact exceeds the 40 KB limit.")
+        digest = hashlib.sha256(encoded_bytes).hexdigest()
+        path = f"queue/repair_results/{repair_id}.patch"
+        api_path = f"contents/{quote(path, safe='/')}"
+        self._require_private_repo()
+        url = f"{API_ROOT}/repos/{self.config.repository}/{api_path}"
+        try:
+            existing = self.session.get(
+                url, headers=self.session.headers,
+                params={"ref": self.config.ref}, timeout=self.config.timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            raise QueueTransportError(f"GitHub request failed: {type(exc).__name__}") from exc
+        if existing.status_code == 200:
+            try:
+                item = existing.json()
+                existing_bytes = base64.b64decode("".join(item["content"].split()), validate=True)
+                existing_digest = hashlib.sha256(existing_bytes).hexdigest()
+                existing_sha = str(item["sha"])
+            except (ValueError, KeyError, TypeError) as exc:
+                raise QueueTransportError("Could not verify existing repair artifact.") from exc
+            if existing_digest != digest:
+                raise QueueConfigurationError("Repair artifact ID already exists with different content.")
+            return {"path": path, "sha256": digest, "content_sha": existing_sha, "already_present": True}
+        if existing.status_code != 404:
+            if existing.status_code in (401, 403, 429):
+                raise QueueTransportError("GitHub access denied or rate limit reached while publishing repair artifact.")
+            raise QueueTransportError(f"GitHub API returned HTTP {existing.status_code} while checking repair artifact.")
+        body = {
+            "message": f"agent: tested repair artifact {repair_id}",
+            "content": base64.b64encode(encoded_bytes).decode("ascii"),
+            "branch": self.config.ref,
+        }
+        response = self._request("PUT", api_path, json=body)
+        try:
+            data = response.json()
+            return {
+                "path": path,
+                "sha256": digest,
+                "content_sha": str(data["content"]["sha"]),
+                "commit_sha": str(data["commit"]["sha"]),
+                "already_present": False,
+            }
+        except (ValueError, KeyError, TypeError) as exc:
+            raise QueueTransportError("GitHub accepted repair artifact but returned an unexpected response.") from exc
+
