@@ -167,28 +167,42 @@ class FFmpegMediaTools:
         if any(Path(path).resolve() == resolved_target for path in video_paths):
             raise MediaError("Assembly output path must not overwrite a source clip")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Keep list file beside target so paths with spaces and non-ASCII characters
-        # are handled consistently by FFmpeg on Windows.
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", newline="\n", suffix=".ffconcat",
-            prefix="concat_", dir=target.parent, delete=False,
-        ) as listing:
-            list_path = Path(listing.name)
-            for path in video_paths:
-                absolute = str(Path(path).resolve()).replace("\\", "/")
-                escaped = absolute.replace("'", "'\\''")
-                listing.write(f"file '{escaped}'\n")
+        # Render to a fresh sibling file so a stale existing target cannot make
+        # a no-output or failed FFmpeg invocation appear successful.
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="concat_output_", suffix=target.suffix or ".mp4", dir=str(target.parent)
+        )
+        os.close(descriptor)
+        temporary_output = Path(temporary_name)
+        list_path: Path | None = None
         try:
+            # Keep list file beside target so paths with spaces and non-ASCII
+            # characters are handled consistently by FFmpeg on Windows.
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n", suffix=".ffconcat",
+                prefix="concat_", dir=target.parent, delete=False,
+            ) as listing:
+                list_path = Path(listing.name)
+                for path in video_paths:
+                    absolute = str(Path(path).resolve()).replace("\\", "/")
+                    escaped = absolute.replace("'", "'\\''")
+                    listing.write(f"file '{escaped}'\n")
             self._run([
                 self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "concat", "-safe", "0", "-i", str(list_path),
-                "-c", "copy", str(target),
+                "-c", "copy", str(temporary_output),
             ])
+            if not temporary_output.is_file() or temporary_output.stat().st_size == 0:
+                raise MediaError("FFmpeg did not produce the assembled video")
+            os.replace(temporary_output, target)
+            return str(target)
         finally:
+            if list_path is not None:
+                try:
+                    list_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             try:
-                list_path.unlink(missing_ok=True)
+                temporary_output.unlink(missing_ok=True)
             except OSError:
                 pass
-        if not target.is_file() or target.stat().st_size == 0:
-            raise MediaError("FFmpeg did not produce the assembled video")
-        return str(target)
