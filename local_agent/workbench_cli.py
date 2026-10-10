@@ -23,6 +23,7 @@ from local_agent.blender_workflow import (
     open_mia_project,
 )
 from local_agent.scene_compiler import StoryCompileError, compile_project_story
+from local_agent.scene_request import SceneRequestError, create_scene_from_prompt
 from local_agent.story_plan import StoryPlanError, save_story_plan
 
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -127,6 +128,15 @@ def run_menu_choice(choice: str) -> dict[str, Any] | None:
             return {"status": "cancelled"}
         return search_knowledge(query)
 
+    if choice == "10":
+        project = _project_name()
+        prompt = input("Опиши сцену по-русски (например: три красных куба и синяя сфера, вертикально 9:16): ").strip()
+        if not prompt:
+            raise ValueError("A scene description is required.")
+        if not _confirm("translate the description into a limited primitive scene, open Blender, save .blend and render a preview"):
+            return {"status": "cancelled"}
+        return create_scene_from_prompt(prompt, project)
+
     return {"status": "invalid_choice", "choice": choice}
 
 
@@ -141,6 +151,7 @@ def main() -> int:
         ("7", "Validate and save a story-plan JSON file"),
         ("8", "Compile a saved story plan (planning only, no animation execution)"),
         ("9", "Search built-in Blender knowledge"),
+        ("10", "Create a simple scene from a Russian text description (prototype)"),
         ("0", "Exit"),
     )
     while True:
@@ -161,7 +172,7 @@ def main() -> int:
                 return 0
         except (
             OSError, ValueError, RuntimeError, json.JSONDecodeError,
-            BlenderBridgeError, BlenderWorkflowError, StoryPlanError, StoryCompileError,
+            BlenderBridgeError, BlenderWorkflowError, StoryPlanError, StoryCompileError, SceneRequestError,
         ) as exc:
             print(f"Operation failed safely: {type(exc).__name__}: {exc}")
         input("\nPress Enter to return to the menu...")
