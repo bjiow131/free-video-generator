@@ -45,7 +45,7 @@ def _validate_one_path(raw_path: str) -> None:
         return
     if path.startswith(("a/", "b/")):
         path = path[2:]
-    if (not path or path.startswith("/") or "\\\\" in path or ":" in path
+    if (not path or path.startswith("/") or "\\" in path or ":" in path
             or ".." in path.split("/") or path == ".git" or path.startswith(".git/")):
         raise RepairProtocolError("patch contains an unsafe path")
     if not (path.startswith(_ALLOWED_PREFIXES) or path in _ALLOWED_ROOT_FILES):
