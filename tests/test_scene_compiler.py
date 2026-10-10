@@ -13,6 +13,10 @@ def test_compiler_marks_missing_capabilities_instead_of_claiming_execution():
     compiled=compile_story_plan(sample_plan())
     assert compiled["readiness"]=="planning_only"
     assert compiled["scene_count"]==1
+    assert compiled["timeline"]["fps"] == 24
+    assert compiled["timeline"]["clips"][0]["start_frame"] == 1
+    assert compiled["timeline"]["clips"][0]["end_frame"] == 240
+    assert compiled["timeline"]["readiness"] == "planning_only"
     assert compiled["scenes"][0]["action_steps"][0]["execution_status"]=="not_executable_yet"
     assert "character_rig_required" in compiled["requirements_not_implemented"]
     assert "asset_registry_required" in compiled["requirements_not_implemented"]
@@ -24,6 +28,8 @@ def test_compiles_saved_story_plan_without_overwrite(tmp_path:Path):
     assert result["status"]=="completed" and output.is_file()
     data=json.loads(output.read_text(encoding="utf-8"))
     assert data["scenes"][0]["action_steps"][1]["action"]=="camera_push_in"
+    assert data["timeline"]["scene_count"] == 1
+    assert data["timeline"]["total_frames"] == 240
     with pytest.raises(StoryCompileError,match="refusing to overwrite"):
         compile_project_story(tmp_path,"mia_snail")
 
