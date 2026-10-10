@@ -463,6 +463,11 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
     print("Supported work: local diagnostics and tests, plus allowlisted Blender workflows. Every task requires approval on this computer.")
+    if getattr(task, "requires_local_approval", True) is not True:
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_disabled"}
+        commit_sha = _publish_result_durable(client, task.task_id, result)
+        print(f"Remote approval is disabled. Result commit: {commit_sha}")
+        return
     if not sys.stdin.isatty():
         result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
         commit_sha = _publish_result_durable(client, task.task_id, result)
