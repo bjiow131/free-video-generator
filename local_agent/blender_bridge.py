@@ -57,7 +57,7 @@ def _png_dimensions(path: Path) -> tuple[int, int]:
             header = stream.read(24)
     except OSError as exc:
         raise BlenderBridgeError("Preview PNG could not be read.") from exc
-    if len(header) < 24 or header[:8] != b"\\x89PNG\\r\\n\\x1a\\n" or header[12:16] != b"IHDR":
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
         raise BlenderBridgeError("Preview output is not a valid PNG header.")
     width, height = struct.unpack(">II", header[16:24])
     if width <= 0 or height <= 0:
