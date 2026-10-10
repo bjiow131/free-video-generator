@@ -485,6 +485,7 @@ class BlenderAgentApp(tk.Tk):
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
+        ttk.Button(actions, text="Назвать позу…", command=lambda cid=card_id: self._label_reference_pose(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
         setattr(frame, "reference_tree", tree)
         self._refresh_reference_tab(card)
@@ -499,10 +500,41 @@ class BlenderAgentApp(tk.Tk):
             return
         for iid in tree.get_children():
             tree.delete(iid)
+        labels = card.get("reference_labels", {})
+        if not isinstance(labels, dict):
+            labels = {}
         for index, path in enumerate(card.get("references", [])):
             p = Path(path)
-            label = p.stem.split("_", 1)[1] if "_" in p.stem else p.stem
+            label = labels.get(str(path)) or (p.stem.split("_", 1)[1] if "_" in p.stem else p.stem)
             tree.insert("", "end", iid=str(index), values=(label, str(p)))
+
+    def _label_reference_pose(self, card_id: str) -> None:
+        frame = self.reference_tabs.get(card_id)
+        tree = getattr(frame, "reference_tree", None) if frame is not None else None
+        selected = tree.selection() if tree is not None else ()
+        if not selected:
+            messagebox.showinfo("Выберите референс", "Выберите изображение, для которого нужно задать название позы.", parent=self)
+            return
+        data = self._load_characters()
+        card = next((item for item in data if item.get("id") == card_id), None)
+        if not card:
+            return
+        try:
+            path = str(card.get("references", [])[int(selected[0])])
+        except (IndexError, ValueError, TypeError):
+            return
+        current = card.get("reference_labels", {}).get(path, Path(path).stem)
+        label = simpledialog.askstring("Название позы", "Например: Фронт, Профиль слева, Вид сзади, Бег, Едет на самокате:", initialvalue=current, parent=self)
+        if label is None:
+            return
+        label = label.strip()[:80]
+        if not label:
+            messagebox.showwarning("Пустое название", "Название позы не может быть пустым.", parent=self)
+            return
+        card.setdefault("reference_labels", {})[path] = label
+        self._save_characters(data)
+        self._refresh_reference_tab(card)
+        self._refresh_characters(card_id)
 
     def _select_card_in_library(self, card_id: str) -> None:
         self.tabs.select(self.library_tab)
