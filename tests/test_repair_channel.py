@@ -91,7 +91,7 @@ def test_patch_rejects_unapproved_path_in_unified_headers():
 ])
 def test_patch_rejects_noncanonical_diff_path_prefixes(header):
     with pytest.raises(RepairProtocolError, match="malformed git diff header"):
-        _validate_patch_paths(header + "\\n")
+        _validate_patch_paths(header + "\n")
 
 
 class FakeResponse:
@@ -128,12 +128,12 @@ def encoded_file(content, sha):
 
 def test_fetch_repair_verifies_manifest_and_patch_digest():
     patch = (
-        "diff --git a/local_agent/example.py b/local_agent/example.py\\n"
-        "--- a/local_agent/example.py\\n"
-        "+++ b/local_agent/example.py\\n"
-        "@@ -1 +1 @@\\n"
-        "-old\\n"
-        "+new\\n"
+        "diff --git a/local_agent/example.py b/local_agent/example.py\n"
+        "--- a/local_agent/example.py\n"
+        "+++ b/local_agent/example.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
     ).encode()
     now = datetime.now(timezone.utc)
     data = {
@@ -159,9 +159,9 @@ def test_fetch_repair_verifies_manifest_and_patch_digest():
 
 def test_fetch_repair_rejects_digest_mismatch():
     patch = (
-        "diff --git a/local_agent/example.py b/local_agent/example.py\\n"
-        "--- a/local_agent/example.py\\n"
-        "+++ b/local_agent/example.py\\n"
+        "diff --git a/local_agent/example.py b/local_agent/example.py\n"
+        "--- a/local_agent/example.py\n"
+        "+++ b/local_agent/example.py\n"
     ).encode()
     now = datetime.now(timezone.utc)
     data = {
@@ -197,20 +197,20 @@ def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, 
     git("init", "-b", "main")
     git("config", "user.name", "Repair Test")
     git("config", "user.email", "repair-test@example.invalid")
-    (project / "README.md").write_text("base\\n", encoding="utf-8")
+    (project / "README.md").write_text("base\n", encoding="utf-8")
     git("add", "README.md")
     git("commit", "-m", "base")
     base = git("rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(poller, "ROOT", project)
 
     patch = (
-        "diff --git a/tests/test_smoke_repair.py b/tests/test_smoke_repair.py\\n"
-        "new file mode 100644\\n"
-        "--- /dev/null\\n"
-        "+++ b/tests/test_smoke_repair.py\\n"
-        "@@ -0,0 +1,2 @@\\n"
-        "+def test_smoke_repair():\\n"
-        "+    assert True\\n"
+        "diff --git a/tests/test_smoke_repair.py b/tests/test_smoke_repair.py\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/tests/test_smoke_repair.py\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+def test_smoke_repair():\n"
+        "+    assert True\n"
     )
     result = poller._apply_patch(patch, "repair-smoke-01", expected_base_sha=base)
     assert result["status"] == "completed", result
