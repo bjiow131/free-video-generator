@@ -131,3 +131,14 @@ def test_explicitly_excluded_objects_are_not_added():
     assert [item["primitive"] for item in plan["objects"]] == ["cube"]
     with pytest.raises(SceneRequestError, match="исключены"):
         compile_prompt("Создай лес без деревьев")
+
+
+def test_explicit_resolution_presets_are_respected():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    full_hd = compile_prompt("Создай красный куб, Full HD, 16:9")
+    vertical_4k = compile_prompt("Создай ракету, 4K, вертикально 9:16")
+    assert full_hd["resolution"] == [1920, 1080]
+    assert full_hd["render_percentage"] == 100
+    assert vertical_4k["resolution"] == [2160, 3840]
+    assert vertical_4k["render_percentage"] == 100
