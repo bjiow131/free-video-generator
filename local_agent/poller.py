@@ -48,6 +48,12 @@ def _result_outbox() -> ResultOutbox:
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
     """Persist each result before publishing it; retain it if the network fails."""
     return _result_outbox().publish(client, task_id, result)
+
+def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
+    """Distinguish a published result from one safely queued for later delivery."""
+    return "pending_delivery" if task_id in pending_task_ids else "processed"
+
+
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
     "preflight": preflight,
@@ -687,13 +693,33 @@ def main() -> int:
                         _save_state(state)
                         _run_one(client, task, manifest_sha)
                         last_seen, last_sha = task.task_id, manifest_sha
+                        delivery_status = _task_delivery_status(
+                            task.task_id, result_outbox.pending_task_ids()
+                        )
                         state = _remember_manifest(
-                            state, last_seen, last_sha, status="processed"
+                            state, last_seen, last_sha, status=delivery_status
                         )
                         _save_state(state)
+                        if delivery_status == "pending_delivery":
+                            print(
+                                f"Task {task.task_id} finished, but result delivery is pending; "
+                                "the task will not be rerun while its result is retried."
+                            )
                     elif decision == "same":
                         record = state.get("processed_tasks", {}).get(task.task_id, {})
-                        if isinstance(record, dict) and record.get("status") == "in_progress":
+                        if isinstance(record, dict) and record.get("status") == "pending_delivery":
+                            if task.task_id in result_outbox.pending_task_ids():
+                                print(
+                                    f"Task {task.task_id} result is still awaiting delivery; "
+                                    "preserving the result and not rerunning the task."
+                                )
+                            else:
+                                state = _remember_manifest(
+                                    state, task.task_id, manifest_sha, status="processed"
+                                )
+                                _save_state(state)
+                                print(f"Task {task.task_id} result delivery confirmed; marked processed.")
+                        elif isinstance(record, dict) and record.get("status") == "in_progress":
                             # A durable result may have been written just before a crash.
                             # Never overwrite it with a synthetic interrupted result.
                             if task.task_id in pending_before_flush:
