@@ -114,7 +114,15 @@ def apply_mouth_motion(project_name: str) -> dict[str, Any]:
     project = (workspace / project_name).resolve()
     if not project.is_relative_to(workspace) or project == workspace or project.is_symlink():
         raise ValueError("Project path must remain inside workspace and not be a symlink.")
-    source = project / "mia_blockout.blend"
+    preferred_sources = [project / "mia_blockout.blend", project / "project.blend", project / "scene.blend"]
+    existing_sources = [p for p in preferred_sources if p.is_file() and not p.is_symlink()]
+    if not existing_sources:
+        existing_sources = [p for p in project.glob("*.blend") if p.is_file() and not p.is_symlink() and p.name != "mouth_motion.blend"]
+    if len(existing_sources) != 1:
+        return {"status": "blocked", "reason": "source_blend_missing_or_ambiguous",
+                "candidates": [p.name for p in existing_sources[:20]],
+                "hint": "Keep one source .blend in the project folder or use mia_blockout.blend, project.blend, or scene.blend."}
+    source = existing_sources[0]
     manifest = project / "storyboard_compile.json"
     output = project / "mouth_motion.blend"
     report = project / "mouth_motion_result.json"
