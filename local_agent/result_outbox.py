@@ -103,6 +103,15 @@ class ResultOutbox:
         path.unlink()
         return commit_sha
 
+    def pending_task_ids(self) -> set[str]:
+        """Return task IDs with durable entries, including entries needing manual repair."""
+        pending: set[str] = set()
+        for path in self.root.glob("*.json"):
+            task_id = path.stem
+            if _SAFE_TASK_ID.fullmatch(task_id) and (path.exists() or path.is_symlink()):
+                pending.add(task_id)
+        return pending
+
     def flush(self, client: Any) -> dict[str, int]:
         """Retry queued results. Invalid entries and network failures remain on disk."""
         published = deferred = invalid = 0
