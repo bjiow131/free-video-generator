@@ -20,9 +20,10 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from local_agent.blender_workflow import discover_blender
 from local_agent.scene_request import SceneRequestError, create_scene_from_prompt
 from local_agent.scene_edit import SceneEditError, edit_existing_scene
+from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 APP_TITLE = "Blender Work Agent"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -114,6 +115,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(row, textvariable=self.project_label_var, background="#ffffff").pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="Открыть готовый проект…", command=self._open_project).pack(side="right")
         ttk.Button(row, text="Сбросить проект", command=self._clear_project).pack(side="right", padx=(0, 8))
+        ttk.Button(row, text="Экспортировать видео…", command=self._export_video).pack(side="right", padx=(0, 8))
 
         prompt_panel = ttk.Frame(self.task_tab, style="Panel.TFrame", padding=14)
         prompt_panel.pack(fill="both", expand=True)
