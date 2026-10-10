@@ -83,3 +83,11 @@ def test_patch_rejects_unapproved_path_in_unified_headers():
     )
     with pytest.raises(RepairProtocolError, match="allowlist"):
         _validate_patch_paths(patch)
+
+@pytest.mark.parametrize("header", [
+    "diff --git local_agent/example.py b/local_agent/example.py",
+    "diff --git a/local_agent/example.py local_agent/example.py",
+])
+def test_patch_rejects_noncanonical_diff_path_prefixes(header):
+    with pytest.raises(RepairProtocolError, match="malformed git diff header"):
+        _validate_patch_paths(header + "\\n")
