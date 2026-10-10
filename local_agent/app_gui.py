@@ -241,7 +241,7 @@ class BlenderAgentApp(tk.Tk):
             if existing:
                 result = edit_existing_scene(prompt, existing, blender_info["path"], self.workspace)
             else:
-                staging_name = f"agent_draft_{time.strftime('%Y%m%d_%H%M%S')}"
+                staging_name = f"agent_draft_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}"
                 result = create_scene_from_prompt(prompt, staging_name)
             self.after(0, lambda: self._task_success(result, prompt, existing))
         except Exception as exc:
@@ -407,7 +407,7 @@ class BlenderAgentApp(tk.Tk):
         if not messagebox.askyesno("Установить обновление", "Будут заменены только перечисленные файлы агента. Перед заменой создаются резервные копии. Продолжить?", parent=self): return
         try:
             result = apply_update_folder(Path(folder), Path(__file__).resolve().parents[1])
-        except UpdateError as exc:
+        except (UpdateError, OSError) as exc:
             messagebox.showerror("Обновление отклонено", str(exc), parent=self); return
         messagebox.showinfo("Обновление установлено", f"Файлов обновлено: {result['updated_count']}\nРезервные копии: {result['backup_dir']}\nПерезапустите агент.", parent=self)
 
