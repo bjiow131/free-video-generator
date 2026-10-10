@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import zlib
 from typing import Any
 
 
@@ -150,6 +151,59 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 '''
 
 
+
+def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str, list[int] | None]:
+    """Validate PNG chunk boundaries, CRCs, required chunks, and expected dimensions."""
+    try:
+        with path.open("rb") as stream:
+            if stream.read(8) != b"\x89PNG\r\n\x1a\n":
+                return False, "preview_is_not_png", None
+            dimensions: list[int] | None = None
+            saw_idat = False
+            while True:
+                raw_length = stream.read(4)
+                if len(raw_length) != 4:
+                    return False, "png_chunk_length_truncated", dimensions
+                length = struct.unpack(">I", raw_length)[0]
+                if length > 128 * 1024 * 1024:
+                    return False, "png_chunk_exceeds_safety_limit", dimensions
+                chunk_type = stream.read(4)
+                if len(chunk_type) != 4:
+                    return False, "png_chunk_type_truncated", dimensions
+                payload = stream.read(length)
+                raw_crc = stream.read(4)
+                if len(payload) != length or len(raw_crc) != 4:
+                    return False, "png_chunk_truncated", dimensions
+                expected_crc = struct.unpack(">I", raw_crc)[0]
+                actual_crc = zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
+                if actual_crc != expected_crc:
+                    return False, "png_chunk_crc_mismatch", dimensions
+                if chunk_type == b"IHDR":
+                    if dimensions is not None or length != 13:
+                        return False, "png_ihdr_invalid", dimensions
+                    width, height, bit_depth, color_type, compression, filtering, interlace = struct.unpack(">IIBBBBB", payload)
+                    if width < 1 or height < 1 or bit_depth not in {1, 2, 4, 8, 16} or color_type not in {0, 2, 3, 4, 6} or compression != 0 or filtering != 0 or interlace not in {0, 1}:
+                        return False, "png_ihdr_fields_invalid", None
+                    dimensions = [width, height]
+                elif chunk_type == b"IDAT":
+                    if dimensions is None:
+                        return False, "png_idat_order_invalid", dimensions
+                    saw_idat = True
+                elif chunk_type == b"IEND":
+                    if length != 0 or not saw_idat or dimensions is None:
+                        return False, "png_iend_invalid", dimensions
+                    if stream.read(1):
+                        return False, "png_trailing_data", dimensions
+                    break
+                elif not (chunk_type[0] & 0x20) and chunk_type not in {b"IHDR", b"PLTE"}:
+                    return False, "png_unknown_critical_chunk", dimensions
+            if dimensions != list(expected_size):
+                return False, "png_dimensions_mismatch", dimensions
+            return True, "ok", dimensions
+    except OSError:
+        return False, "preview_unreadable", None
+
+
 def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[str, Any]:
     """Create a fixed Mia character/prop blockout, save .blend, and validate preview."""
     if not isinstance(project_name, str) or not project_name or len(project_name) > 48:
@@ -211,15 +265,13 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
         return {"status": "failed", "reason": "expected_outputs_missing_or_empty", "project_dir": str(project)}
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
-        with preview.open("rb") as f:
-            header = f.read(24)
     except (OSError, ValueError):
-        return {"status": "failed", "reason": "output_manifest_or_preview_unreadable", "project_dir": str(project)}
-    if header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
-        return {"status": "failed", "reason": "preview_is_not_png", "project_dir": str(project)}
-    dimensions = list(struct.unpack(">II", header[16:24]))
-    if data.get("status") != "completed" or data.get("stage") != "blockout" or dimensions != [360, 640]:
-        return {"status": "failed", "reason": "output_validation_failed", "project_dir": str(project)}
+        return {"status": "failed", "reason": "output_manifest_unreadable", "project_dir": str(project)}
+    png_ok, png_reason, dimensions = _validate_png(preview, (360, 640))
+    if not png_ok:
+        return {"status": "failed", "reason": png_reason, "project_dir": str(project)}
+    if data.get("status") != "completed" or data.get("stage") != "blockout":
+        return {"status": "failed", "reason": "output_manifest_validation_failed", "project_dir": str(project)}
     return {"status": "completed", "task": "blender_mia_blockout", "stage": "blockout",
             "project_dir": str(project), "blend_path": str(blend), "preview_path": str(preview),
             "resolution": dimensions, "object_count": data.get("object_count"),
