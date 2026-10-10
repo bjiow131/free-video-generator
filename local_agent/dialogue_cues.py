@@ -49,7 +49,7 @@ def validate_dialogue_cue(
         raise DialogueCueError("text must be a non-empty string of at most 700 characters.")
 
     timing_status = data.get("timing_status")
-    if timing_status not in _TIMING_STATUSES:
+    if not isinstance(timing_status, str) or timing_status not in _TIMING_STATUSES:
         raise DialogueCueError("timing_status must be estimated_until_voiceover or confirmed_from_audio.")
 
     raw_events = data.get("events")
@@ -70,7 +70,7 @@ def validate_dialogue_cue(
             raise DialogueCueError(f"Event {index} frame is outside the shot range.")
         if previous_frame is not None and frame <= previous_frame:
             raise DialogueCueError("Event frames must be strictly increasing.")
-        if state not in _STATES:
+        if not isinstance(state, str) or state not in _STATES:
             raise DialogueCueError(f"Event {index} mouth_state must be open or closed.")
         if state == previous_state:
             raise DialogueCueError("Adjacent duplicate mouth states must be collapsed.")
