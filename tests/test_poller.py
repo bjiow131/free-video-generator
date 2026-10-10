@@ -233,7 +233,7 @@ def test_run_one_rejects_same_envelope_when_manifest_revision_changes(monkeypatc
     assert client.published[1]["reason"] == "desired_task_changed_after_approval"
 
 
-def test_remote_approved_allowlisted_task_runs_without_console_prompt(monkeypatch):
+def test_remote_approval_is_blocked_even_with_local_opt_in(monkeypatch):
     from local_agent import poller
     future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
     task = SimpleNamespace(
@@ -256,8 +256,9 @@ def test_remote_approved_allowlisted_task_runs_without_console_prompt(monkeypatc
     ran = []
     monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args) or {"status": "completed"})
     poller._run_one(client, task, expected_manifest_sha="manifest-sha")
-    assert ran == [{"project_name": "mia_remote"}]
-    assert client.published[1]["status"] == "completed"
+    assert ran == []
+    assert client.published[1]["status"] == "blocked"
+    assert client.published[1]["reason"] == "remote_approval_disabled"
 
 
 def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
@@ -282,7 +283,7 @@ def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
     poller._run_one(client, task)
     assert ran == []
     assert client.published[1]["status"] == "blocked"
-    assert client.published[1]["reason"] == "remote_approval_not_enabled_or_operation_not_allowlisted"
+    assert client.published[1]["reason"] == "remote_approval_disabled"
 
 
 def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch):
