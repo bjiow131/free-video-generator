@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene01_snail_path",
+  "title": "Улитка на тропинке",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "characters": [
+    {
+      "id": "mia",
+      "role": "protagonist",
+      "required": true,
+      "visual_identity_source": "approved_mia_reference_set"
+    },
+    {
+      "id": "snail",
+      "role": "small_animal",
+      "required": true,
+      "visual_identity_source": "approved_snail_reference_set"
+    },
+    {
+      "id": "companion",
+      "role": "supporting_character",
+      "required": true,
+      "design_pending": true,
+      "visual_identity_source": "approved_companion_reference_set"
+    }
+  ],
+  "beats": [
+    {
+      "start": 0,
+      "end": 1.5,
+      "action": "Mia enters from right, notices snail near path edge.",
+      "camera": "wide vertical, camera gently lowers to child's eye level"
+    },
+    {
+      "start": 1.5,
+      "end": 3,
+      "action": "Mia stops, crouches and points without touching the snail.",
+      "camera": "slow push-in; gaze and finger target the snail"
+    },
+    {
+      "start": 3,
+      "end": 5.5,
+      "action": "Mia turns her head toward companion and says: Смотри, улитка!",
+      "camera": "medium shot, snail in foreground",
+      "dialogue": [
+        {
+          "character": "mia",
+          "text": "Смотри, улитка!",
+          "start": 3.2,
+          "end": 4.1,
+          "animation_mode": "coarse_open_close_only"
+        }
+      ]
+    },
+    {
+      "start": 5.5,
+      "end": 7,
+      "action": "Companion leans slightly, nods and smiles; snail slowly moves its tentacles.",
+      "camera": "short reaction shot, keep faces visible"
+    },
+    {
+      "start": 7,
+      "end": 8,
+      "action": "Mia looks back at snail and smiles; hold final composition.",
+      "camera": "stable composition for edit"
+    }
+  ],
+  "safety_gates": [
+    "Require approved references before locking character design.",
+    "Require a real supported mouth-open shape key or explicit control mapping before mouth animation.",
+    "Never overwrite source blend files or source reference images.",
+    "Stop on missing or ambiguous character controls.",
+    "Audio/music are added separately; no audio generation."
+  ]
+}
