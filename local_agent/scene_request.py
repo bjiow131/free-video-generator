@@ -567,6 +567,7 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
         "aspect_ratio": cfg["aspect_ratio"],
         "environment": cfg.get("environment", "auto"),
         "style": cfg.get("style", "balanced"),
+        "visual_mode": cfg.get("visual_mode", "Свободный стиль"),
         "lighting": cfg.get("lighting", "soft"),
         "animation_enabled": bool(cfg.get("animation", {}).get("enabled")),
     }, stream, ensure_ascii=False)
@@ -680,9 +681,13 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
 
 
 def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT,
-                            character_cards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Create a scene from a bounded prompt and explicitly selected character cards."""
+                            character_cards: list[dict[str, Any]] | None = None,
+                            visual_mode: str = "Свободный стиль") -> dict[str, Any]:
+    """Create a scene from a bounded prompt and selected generic character cards."""
     plan = _append_character_cards(parse_scene_request(prompt), character_cards, prompt)
+    if visual_mode not in {"Стилизованная 3D-сцена", "Реалистичная сцена", "Свободный стиль"}:
+        visual_mode = "Свободный стиль"
+    plan["visual_mode"] = visual_mode
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise SceneRequestError("Project name must use 1-48 letters, digits, underscores, or hyphens.")
     blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
