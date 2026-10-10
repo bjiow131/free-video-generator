@@ -302,6 +302,21 @@ def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_blender_camera_control(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Apply a validated camera preset/move to an existing local Blender project."""
+    from local_agent.blender_camera import control_camera
+    try:
+        return control_camera(
+            arguments["project_name"],
+            preset=arguments["preset"],
+            move=arguments.get("move", "static"),
+            frames=arguments.get("frames", 48),
+            create_camera_if_missing=arguments.get("create_camera_if_missing", True),
+        )
+    except (ValueError, OSError) as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+
+
 def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
     """Build a fixed skeleton prototype for an existing local Mia blockout."""
     from local_agent.blender_rigging import create_mia_skeleton
@@ -453,7 +468,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -540,6 +555,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "blender_camera_control":
+                details = _run_blender_camera_control(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
