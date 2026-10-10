@@ -431,7 +431,10 @@ elif environment == "fantasy":
 
 total = max(1, len(cfg["objects"]))
 camera_distance = max(10.0, total * (1.6 if cfg["aspect_ratio"] != "9:16" else 0.75))
-if cfg["aspect_ratio"] == "9:16":
+if cfg.get("camera_angle") == "top":
+    camera_location = (0.01, -0.01, max(12.0, total * 3.0))
+    target = Vector((0.0, 0.0, 0.5))
+elif cfg["aspect_ratio"] == "9:16":
     target_height = (total - 1) * 1.15 + 1.0
     camera_location = (camera_distance * 0.45, -camera_distance, target_height + 3.0)
     target = Vector((0.0, 0.0, target_height))
@@ -444,6 +447,20 @@ camera.name = "Camera | generated scene"
 camera.rotation_euler = (target - camera.location).to_track_quat("-Z", "Y").to_euler()
 camera.data.lens = 50
 scene.camera = camera
+
+# Optional quoted title, parsed as inert text; it is not interpreted as code.
+label_text = cfg.get("text_content", "")
+if label_text:
+    text_curve = bpy.data.curves.new("Agent | title text", type="FONT")
+    text_curve.body = label_text[:100]
+    text_curve.align_x = "CENTER"
+    text_curve.size = 0.65
+    text_curve.extrude = 0.006
+    text_obj = bpy.data.objects.new("Agent | title text", text_curve)
+    scene.collection.objects.link(text_obj)
+    text_obj.rotation_euler = camera.rotation_euler.copy()
+    text_obj.location = camera.location + camera.rotation_euler.to_matrix() @ Vector((0.0, 0.0, -6.0))
+    text_curve.materials.append(material_for("title text", (0.96, 0.78, 0.28, 1.0)))
 
 bpy.ops.object.light_add(type="AREA", location=(-4.0, -4.0, 8.0))
 key = bpy.context.object
