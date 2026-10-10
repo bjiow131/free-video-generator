@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene07_wait_and_watch",
+  "title": "Немного терпения",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "continuity_from": "scene06_snail_trail_detail",
+  "characters": [
+    {
+      "id": "mia",
+      "required": true,
+      "visual_identity_source": "approved_mia_reference_set"
+    },
+    {
+      "id": "stepa",
+      "required": true,
+      "visual_identity_source": "approved_stepa_reference_set"
+    },
+    {
+      "id": "snail",
+      "required": true,
+      "visual_identity_source": "approved_snail_reference_set"
+    }
+  ],
+  "beats": [
+    {
+      "start": 0,
+      "end": 2,
+      "action": "The children settle quietly beside the path, leaving the snail space to move.",
+      "camera": "wide shot, calm forest background"
+    },
+    {
+      "start": 2,
+      "end": 4,
+      "action": "They watch without reaching toward the snail.",
+      "camera": "medium two-shot, hands resting on knees"
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "action": "Stepa notices the snail's tentacles move and quietly signals Mia to keep watching.",
+      "camera": "close-up on Stepa, then rack focus toward snail"
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "action": "Both children remain still and curious.",
+      "camera": "locked medium shot"
+    }
+  ],
+  "dialogue": [
+    {
+      "speaker": "Стёпа",
+      "text": "Подождём и посмотрим.",
+      "start": 2.1,
+      "end": 4.3,
+      "animation_mode": "coarse_open_close_only"
+    }
+  ],
+  "safety_gates": [
+    "No touching, picking up, chasing, or blocking the snail.",
+    "Keep children on the marked path and avoid implying that the animal must perform."
+  ]
+}

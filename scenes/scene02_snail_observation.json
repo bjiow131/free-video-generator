@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene02_snail_observation",
+  "title": "Улитка продолжает путь",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "continuity_from": "scene01_snail_path",
+  "characters": [
+    {"id": "mia", "required": true, "visual_identity_source": "approved_mia_reference_set"},
+    {"id": "stepa", "required": true, "visual_identity_source": "approved_stepa_reference_set"},
+    {"id": "snail", "required": true, "visual_identity_source": "approved_snail_reference_set"}
+  ],
+  "beats": [
+    {"start": 0, "end": 2, "action": "Hold on the same path and lighting; Mia and Stepa watch the snail from a respectful distance.", "camera": "vertical medium-wide, preserve screen direction"},
+    {"start": 2, "end": 4, "action": "Mia notices the faint shiny trail on the ground and points without touching it.", "camera": "gentle tilt to the trail, keep Mia's hand visible"},
+    {"start": 4, "end": 6, "action": "Stepa leans slightly to see better but stays on the path.", "camera": "two-shot with the trail in foreground"},
+    {"start": 6, "end": 8, "action": "Both children pause and observe; snail continues slowly on its own.", "camera": "stable ending composition"}
+  ],
+  "dialogue": [
+    {"speaker": "Мия", "text": "Смотри, за ней блестящая дорожка.", "start": 2.2, "end": 3.8, "animation_mode": "coarse_open_close_only"}
+  ],
+  "safety_gates": [
+    "No touching, lifting, or moving the snail.",
+    "Keep character designs and screen direction consistent with scene01_snail_path.",
+    "Use explicit local_agent_character_id tags for any animated mouth control.",
+    "Audio and music remain separate and are added after all video scenes are complete."
+  ]
+}

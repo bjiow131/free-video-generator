@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene03_snail_gentle_observation",
+  "title": "Не мешать улитке",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "continuity_from": "scene02_snail_observation",
+  "characters": [
+    {"id": "mia", "required": true, "visual_identity_source": "approved_mia_reference_set"},
+    {"id": "stepa", "required": true, "visual_identity_source": "approved_stepa_reference_set"},
+    {"id": "snail", "required": true, "visual_identity_source": "approved_snail_reference_set"}
+  ],
+  "beats": [
+    {"start": 0, "end": 2, "action": "Mia keeps her hands close to herself and watches the snail crawl.", "camera": "child eye-level medium shot"},
+    {"start": 2, "end": 4, "action": "Stepa starts to reach forward, then stops before touching the snail.", "camera": "hands remain clearly away from the animal"},
+    {"start": 4, "end": 6, "action": "Mia gestures gently toward the path, reminding him to give the snail space.", "camera": "two-shot, calm expressions"},
+    {"start": 6, "end": 8, "action": "Both children watch quietly as the snail continues by itself.", "camera": "stable shot, snail remains natural-sized"}
+  ],
+  "dialogue": [
+    {"speaker": "Мия", "text": "Давай просто посмотрим.", "start": 4.1, "end": 5.4, "animation_mode": "coarse_open_close_only"}
+  ],
+  "safety_gates": [
+    "Children never touch or lift the snail.",
+    "No exaggerated animal expressions or human-like gestures.",
+    "Use approved character references and preserve wardrobe and proportions.",
+    "Voice and music are separate tracks; no audio is generated here."
+  ]
+}

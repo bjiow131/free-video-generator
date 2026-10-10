@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene05_snail_discovery_note",
+  "title": "Первое маленькое открытие",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "continuity_from": "scene04_snail_question",
+  "characters": [
+    {"id": "mia", "required": true, "visual_identity_source": "approved_mia_reference_set"},
+    {"id": "stepa", "required": true, "visual_identity_source": "approved_stepa_reference_set"},
+    {"id": "snail", "required": true, "visual_identity_source": "approved_snail_reference_set"}
+  ],
+  "beats": [
+    {"start": 0, "end": 2, "action": "Mia takes out the small discovery notebook while remaining on the path.", "camera": "medium shot, notebook visible"},
+    {"start": 2, "end": 4, "action": "She draws a simple spiral and a short trail instead of collecting anything.", "camera": "insert of drawing, readable page"},
+    {"start": 4, "end": 6, "action": "Stepa points to the drawing and nods; the snail remains in the background.", "camera": "over-shoulder, preserve scene geography"},
+    {"start": 6, "end": 8, "action": "Mia closes the notebook and both children look back at the snail.", "camera": "quiet ending frame for transition"}
+  ],
+  "dialogue": [
+    {"speaker": "Мия", "text": "Запишем, что заметили.", "start": 2.2, "end": 4.2, "animation_mode": "coarse_open_close_only"}
+  ],
+  "safety_gates": [
+    "Use drawings rather than collecting a wild specimen.",
+    "Keep notebook and clothing consistent in later shots.",
+    "Dialogue timing remains estimated until voiceover; no phoneme alignment."
+  ]
+}

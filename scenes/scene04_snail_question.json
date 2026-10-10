@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scene_id": "scene04_snail_question",
+  "title": "Почему она не спешит?",
+  "duration_seconds": 8,
+  "fps": 24,
+  "frame_start": 1,
+  "frame_end": 192,
+  "format": "9:16",
+  "continuity_from": "scene03_snail_gentle_observation",
+  "characters": [
+    {"id": "mia", "required": true, "visual_identity_source": "approved_mia_reference_set"},
+    {"id": "stepa", "required": true, "visual_identity_source": "approved_stepa_reference_set"},
+    {"id": "snail", "required": true, "visual_identity_source": "approved_snail_reference_set"}
+  ],
+  "beats": [
+    {"start": 0, "end": 2, "action": "Stepa watches the snail move slowly and tilts his head with curiosity.", "camera": "medium two-shot"},
+    {"start": 2, "end": 4, "action": "Mia looks from the snail to Stepa, thinking rather than claiming an answer.", "camera": "gentle close-up on Mia"},
+    {"start": 4, "end": 6, "action": "The children compare the snail's movement with the still path around it.", "camera": "low angle, natural scale"},
+    {"start": 6, "end": 8, "action": "They decide to keep watching quietly.", "camera": "return to the two-shot"}
+  ],
+  "dialogue": [
+    {"speaker": "Стёпа", "text": "Она всегда так медленно ползёт?", "start": 2.1, "end": 3.8, "animation_mode": "coarse_open_close_only"}
+  ],
+  "safety_gates": [
+    "Do not state unsupported facts about the snail.",
+    "Keep lighting, path layout, and character positions continuous.",
+    "Dialogue timing is metadata only; no audio is created."
+  ]
+}

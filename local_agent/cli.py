@@ -191,11 +191,12 @@ def run_tests() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local-first AI Studio diagnostic agent")
-    parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test", "face-rig-check"))
+    parser.add_argument("operation", choices=("doctor", "preflight", "status", "logs", "test", "face-rig-check", "character-passport"))
     parser.add_argument("--report-dir", default=str(DEFAULT_REPORT_DIR))
     parser.add_argument("--log-lines", type=int, default=200)
     parser.add_argument("--project", help="Local project folder name for face-rig-check")
     parser.add_argument("--blend-file", help="Optional .blend filename inside the project folder")
+    parser.add_argument("--character", help="Character ID for character-passport")
     args = parser.parse_args()
 
     if args.operation == "doctor":
@@ -212,6 +213,12 @@ def main() -> int:
         else:
             from local_agent.blender_face_rig_check import check_face_rig
             details = check_face_rig(args.project, args.blend_file)
+    elif args.operation == "character-passport":
+        if not args.project or not args.character:
+            details = {"status": "blocked", "reason": "character_passport_requires_project_and_character"}
+        else:
+            from local_agent.character_passport import create_or_update_passport
+            details = create_or_update_passport(args.project, args.character, args.blend_file)
     else:
         details = run_tests()
 

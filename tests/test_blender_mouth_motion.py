@@ -31,4 +31,17 @@ def test_speech_animation_requires_a_fresh_face_rig_preflight():
 def test_face_rig_preflight_uses_supported_mouth_open_names():
     script = _blender_script()
     assert "mouth_shape_key_not_found" in script
-    assert "mouth_open" in script
+    assert "mouth.?open" in script
+
+
+def test_blender_adapter_requires_explicit_stable_character_id():
+    script = _blender_script()
+    assert "stable_character_id(speaker)" in script
+    assert 'pair[0].get("local_agent_character_id")==wanted' in script
+    assert "close_enough" not in script
+    assert "if not matched and len(speakers)==1" not in script
+
+def test_blender_adapter_closes_mouth_after_each_speakers_final_cue():
+    script = _blender_script()
+    assert "Always return each speaking character's mouth to closed after its final cue." in script
+    assert 'key.keyframe_insert(data_path="value",frame=final_frame+1,group="Agent Mouth Motion")' in script

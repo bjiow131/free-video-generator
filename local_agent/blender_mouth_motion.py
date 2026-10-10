@@ -24,9 +24,17 @@ def report(data):
         json.dump(data,stream,ensure_ascii=False)
 def norm(value):
     return re.sub(r"[^a-zа-яё0-9]", "", value.casefold())
-def close_enough(a,b):
-    a,b=norm(a),norm(b)
-    return bool(a and b and (a==b or a in b or b in a))
+def stable_character_id(speaker):
+    value=norm(speaker)
+    known={
+        "mia":"char.mia.master", "мия":"char.mia.master",
+        "stepa":"char.stepa.master", "степа":"char.stepa.master", "стёпа":"char.stepa.master",
+        "мама":"char.mama.master", "mama":"char.mama.master",
+        "папа":"char.papa.master", "papa":"char.papa.master",
+        "бабушкааня":"char.grandma_anya.master",
+        "лев":"char.lev.master", "lev":"char.lev.master",
+    }
+    return known.get(value)
 try:
     bpy.ops.wm.open_mainfile(filepath=cfg["source"], load_ui=False)
     cues=cfg["cues"]
@@ -48,9 +56,9 @@ try:
         used=set()
         ambiguous={}
         for speaker in speakers:
-            matched=[pair for pair in candidates if close_enough(speaker,pair[0].name)]
-            if not matched and len(speakers)==1 and len(candidates)==1:
-                matched=candidates[:]
+            wanted=stable_character_id(speaker)
+            matched=[pair for pair in candidates
+                     if wanted and pair[0].get("local_agent_character_id")==wanted]
             if len(matched)!=1 or id(matched[0][1]) in used:
                 ambiguous[speaker]=[{"object":o.name,"shape_key":k.name} for o,k in matched]
             else:
@@ -80,6 +88,12 @@ try:
                     key.value=value
                     key.keyframe_insert(data_path="value",frame=end,group="Agent Mouth Motion")
                     applied+=1
+                # Always return each speaking character's mouth to closed after its final cue.
+                for speaker,(obj,key) in assignment.items():
+                    speaker_cues=[c for c in cues if c.get("speaker","").strip()==speaker]
+                    final_frame=max(int(c["frame_end"]) for c in speaker_cues)
+                    key.value=0.0
+                    key.keyframe_insert(data_path="value",frame=final_frame+1,group="Agent Mouth Motion")
                 for obj,key in assignment.values():
                     ad=key.id_data.animation_data
                     if ad and ad.action:
