@@ -105,7 +105,7 @@ def _append_passport(registry: Path, character_id: str, passport: dict[str, Any]
                                          prefix=".character-passports-", suffix=".tmp", delete=False) as stream:
             temp_path = Path(stream.name)
             json.dump(data, stream, ensure_ascii=False, indent=2)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp_path, registry)
