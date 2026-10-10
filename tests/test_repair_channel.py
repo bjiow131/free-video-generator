@@ -74,3 +74,12 @@ def test_patch_paths_accept_local_agent_and_tests():
         "diff --git a/local_agent/example.py b/local_agent/example.py\n"
         "diff --git a/tests/test_example.py b/tests/test_example.py\n"
     )
+
+def test_patch_rejects_unapproved_path_in_unified_headers():
+    patch = (
+        "diff --git a/local_agent/example.py b/local_agent/example.py\n"
+        "--- a/local_agent/example.py\n"
+        "+++ b/unknown_area/payload.py\n"
+    )
+    with pytest.raises(RepairProtocolError, match="allowlist"):
+        _validate_patch_paths(patch)
