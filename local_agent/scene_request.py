@@ -640,7 +640,8 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "name": name,
             "character_card_id": card_id,
             "character_description": description,
-            "character_references": references,\n            "character_reference_labels": reference_labels,
+            "character_references": references,
+            "character_reference_labels": reference_labels,
         }
         existing_mia = next((obj for obj in plan["objects"] if is_mia and obj.get("primitive") == "mia"), None)
         if existing_mia is not None:
