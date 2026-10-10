@@ -383,9 +383,9 @@ class BlenderAgentApp(tk.Tk):
         self._busy = True
         self.create_btn.configure(state="disabled")
         self._set_status("Выполняю локальную задачу в Blender…")
-        threading.Thread(target=self._run_task, args=(prompt, self.active_project, selected_characters), daemon=True).start()
+        threading.Thread(target=self._run_task, args=(prompt, self.active_project, selected_characters, visual_mode), daemon=True).start()
 
-    def _run_task(self, prompt: str, existing: Path | None, character_cards: list[dict] | None = None) -> None:
+    def _run_task(self, prompt: str, existing: Path | None, character_cards: list[dict] | None = None, visual_mode: str = "Свободный стиль") -> None:
         try:
             blender_info = discover_blender()
             if not blender_info.get("available"):
@@ -394,7 +394,7 @@ class BlenderAgentApp(tk.Tk):
                 result = edit_existing_scene(prompt, existing, blender_info["path"], self.workspace)
             else:
                 staging_name = f"agent_draft_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}"
-                result = create_scene_from_prompt(prompt, staging_name, character_cards=character_cards)
+                result = create_scene_from_prompt(prompt, staging_name, character_cards=character_cards, visual_mode=visual_mode)
             self.after(0, lambda: self._task_success(result, prompt, existing))
         except Exception as exc:
             details = f"{type(exc).__name__}: {exc}"
