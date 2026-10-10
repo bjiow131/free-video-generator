@@ -252,7 +252,8 @@ def test_scene_plan_describes_coastal_bicycle_action_and_camera_limitations():
     assert plan["action_steps"][0]["action"] == "ride_vehicle"
     assert plan["action_steps"][0]["status"] == "partial_blockout"
     assert plan["camera"]["motion"] == "follow_actor"
-    assert "current camera remains fixed" in plan["camera"]["limitation"]
+    assert plan["camera"]["status"] == "basic_linear_follow"
+    assert "linear X-axis" in plan["camera"]["limitation"]
 
 
 def test_scene_plan_is_generic_and_keeps_character_identity_from_card():
