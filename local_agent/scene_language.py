@@ -114,7 +114,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     selected: list[tuple[int, int, str, str]] = []
     for item in found:
         preceding = masked[max(0, item[0] - 55):item[0]]
-        if re.search(r"(?:без|не\\s+(?:добавляй|добавить|создавай|создать|делай|делать))\\s+(?:[а-яё-]+\\s+){0,2}$", preceding):
+        if re.search(r"(?:без|не\s+(?:добавляй|добавить|создавай|создать|делай|делать))\s+(?:[а-яё-]+\s+){0,2}$", preceding):
             continue
         if selected and item[0] < selected[-1][1]:
             continue
