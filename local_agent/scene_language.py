@@ -99,6 +99,8 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
         raise SceneRequestError(f"Задание должно содержать от 1 до {MAX_PROMPT_CHARS} символов.")
     text = re.sub(r"\s+", " ", prompt.casefold()).strip()
+    quoted = re.search(r'[«"]([^»"]{1,100})[»"]', prompt)
+    text_content = quoted.group(1).strip() if quoted else ""
     masked = re.sub(r"\d+\s*:\s*\d+", lambda m: " " * len(m.group(0)), text)
     masked = SIZE_RE.sub(lambda m: " " * len(m.group(0)), masked)
 
@@ -129,6 +131,8 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
             default_kind = "swing"
         elif _has(text, "фэнтези", "сказоч", "волшебный мир"):
             default_kind = "castle"
+        elif text_content or _has(text, "надпись", "логотип", "текст"):
+            default_kind = "cube"
         elif _has(text, "город", "улица", "городской"):
             default_kind = "house"
         elif _has(text, "космос", "галактик", "звёздное небо", "звездное небо"):
@@ -275,7 +279,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         layout = "circle"
     elif _has(text, "сеткой", "по сетке", "таблицей"):
         layout = "grid"
-    elif _has(text, "в ряд", "в линию", "по прямой", "рядом"):
+    elif _has(text, "в ряд", "в линию", "по прямой", "рядом", "слева направо"):
         layout = "line"
     else:
         layout = "auto"
@@ -293,4 +297,6 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "ground": not _has(text, "без пола", "без земли", "без подставки", "прозрачный фон"),
         "transparent_background": _has(text, "прозрачный фон", "альфа-канал"),
         "world_color": [0.008, 0.012, 0.025, 1.0] if lighting == "night" else [0.055, 0.055, 0.055, 1.0],
+        "text_content": text_content,
+        "camera_angle": "top" if _has(text, "вид сверху", "камера сверху", "сверху вниз") else "auto",
     }
