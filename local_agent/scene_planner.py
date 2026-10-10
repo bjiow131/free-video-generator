@@ -54,8 +54,8 @@ def build_scene_plan(prompt: str, objects: list[dict[str, Any]], environment: st
     if vehicle and actor and actions or any(word in text for word in ("камера следует", "камера сопровождает", "tracking shot")):
         camera = {"shot": "tracking", "motion": "follow_actor",
                   "target_actor_id": actor["id"] if actor else None,
-                  "status": "planned_not_executed",
-                  "limitation": "Camera tracking is planned; current camera remains fixed."}
+                  "status": "basic_linear_follow",
+                  "limitation": "Only linear X-axis tracking is implemented; no adaptive framing or obstacle avoidance."}
     elif any(word in text for word in ("крупный план", "приближение", "наезд камеры", "close-up")):
         camera = {"shot": "close_up", "motion": "push_in", "status": "planned_not_executed"}
     elif any(word in text for word in ("панорама", "камера поворачивается")):
