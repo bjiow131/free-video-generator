@@ -41,6 +41,27 @@ This backlog extends the Blender skill roadmap into a practical, local-first ani
 - Compare rendered shots against approved references where possible, while reporting uncertainty rather than inventing a likeness score.
 - Keep private character references and model assets outside the public Git repository.
 
+## Immediate next milestone — Camera control (before multi-scene timeline)
+
+The first implementation should improve an already-openable/saved scene rather than redesign the application or build the timeline first.
+
+### Camera control adapter — planned, not implemented yet
+
+- Operate only on an existing, validated local `.blend` project inside the configured workspace. Never accept script text, executable paths, arbitrary object names, or output paths from a remote task.
+- Provide a small typed preset set: `establishing_wide`, `medium_shot`, `close_up`, `portrait_vertical`, `low_angle`, and `high_angle`. Each preset defines a bounded camera distance, target height, lens range, and safe framing behavior.
+- Add bounded shot moves: `static`, `push_in`, `pull_out`, `pan_left`, `pan_right`, and `orbit`. Movement is represented as Blender camera keyframes over a validated frame range; no arbitrary Python or expressions.
+- Prefer a dedicated camera target/empty and named camera object. If the scene has no active camera, report a blocker unless a safe preset is explicitly allowed to create one. Do not silently overwrite an existing camera's animation.
+- Preserve the source `.blend`: write a versioned copy and preview to a new output path; refuse collisions rather than deleting approved work. Record camera parameters, frame range, output paths, and validation results in a JSON report.
+- Run structural checks before rendering: active camera exists, lens and transforms are finite/in bounds, keyframes fit the scene range, render resolution remains unchanged unless explicitly requested, and the output file is non-empty. Render a low-cost preview for visual review.
+- Add unit tests for schema rejection, traversal/collision protection, existing-animation preservation, valid keyframe bounds, missing-camera blockers, and mocked Blender subprocess failures. Then perform a real Blender smoke test on Windows before calling this feature complete.
+
+### Acceptance gate
+
+1. A camera-only change can be applied to an existing project without rebuilding its geometry or character assets.
+2. The original project remains untouched and a new versioned project/preview/report are produced.
+3. Tests pass; the Blender smoke test and manual preview review are recorded separately. Mocked tests alone do not establish rendering correctness.
+4. Only after this adapter works should `camera_push_in` and `camera_pan` in `story_plan.json` be upgraded from planning-only to executable actions. The multi-scene timeline follows after camera behavior is reliable.
+
 ## Priority 2 — Animation production
 
 ### G. Shot and storyboard planner
