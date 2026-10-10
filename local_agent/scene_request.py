@@ -79,6 +79,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
 
     # Mask aspect ratios without changing offsets, so 9:16 is never an object count.
     count_text = re.sub(r"\d+\s*:\s*\d+", lambda match: " " * len(match.group(0)), text)
+    count_text = _SIZE.sub(lambda match: " " * len(match.group(0)), count_text)
     global_count = None
     leading_count = re.match(r"^\s*(" + _COUNT_TOKEN + r")\b", count_text)
     if leading_count:
