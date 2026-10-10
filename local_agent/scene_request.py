@@ -355,9 +355,25 @@ def _grid_location(index, total, aspect, layout):
     return ((index % columns - (columns - 1) / 2) * 2.7,
             ((index // columns) - (rows - 1) / 2) * 2.7, 0.8)
 
+made_by_item = []
+riding = bool(cfg.get("relationships", {}).get("mia_riding_scooter"))
 for index, item in enumerate(cfg["objects"]):
-    loc = _grid_location(index, len(cfg["objects"]), cfg["aspect_ratio"], cfg.get("layout", "auto"))
-    make_item(item, loc, index)
+    if riding and item["primitive"] == "mia":
+        loc = (-0.15, -0.05, 0.18)
+    elif riding and item["primitive"] == "scooter":
+        loc = (-0.10, 0.0, 0.0)
+    elif riding and item["primitive"] == "snail":
+        loc = (1.45, 0.15, 0.0)
+    else:
+        loc = _grid_location(index, len(cfg["objects"]), cfg["aspect_ratio"], cfg.get("layout", "auto"))
+    made = make_item(item, loc, index)
+    root = bpy.data.objects.new("Agent Root | " + item["name"], None)
+    scene.collection.objects.link(root)
+    root.location = loc
+    for obj in made:
+        obj.parent = root
+        obj.matrix_parent_inverse = root.matrix_world.inverted()
+    made_by_item.append((item, root))
 
 # Build a simple environment from the prompt without external assets.
 environment = cfg.get("environment", "auto")
@@ -516,7 +532,7 @@ animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
     scene.frame_end = max(24, min(240, int(animation.get("frames", 120))))
-    animated = [obj for obj in scene.objects if obj.name.startswith(tuple(item["name"] for item in cfg["objects"]))]
+    animated = [root for _item, root in made_by_item]
     for obj in animated:
         obj.location = obj.location.copy()
         obj.keyframe_insert(data_path="location", frame=scene.frame_start)
@@ -525,8 +541,7 @@ if animation.get("enabled"):
         if animation.get("kind") == "rotate":
             obj.rotation_euler.z += math.tau
         elif animation.get("kind") == "move":
-            obj.location.x += 2.0
-            obj.location.z += 0.7
+            obj.location.x += 4.0 if riding else 2.0
         else:
             obj.location.z += 1.5
         obj.keyframe_insert(data_path="location", frame=scene.frame_end)
