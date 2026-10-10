@@ -2,8 +2,7 @@
 
 Run from the repository root:
     python scripts/prepare_season1_library.py
-The script downloads only the three explicitly catalogued CC0 photo references;
-it does not download/extract third-party 3D model archives automatically.
+The script imports metadata only; it never downloads third-party visual assets.
 """
 from __future__ import annotations
 
@@ -49,7 +48,6 @@ def main() -> int:
 
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
-    pack = None  # Third-party reference downloads disabled: original assets only.
     cards = json.loads(database.read_text(encoding="utf-8")) if database.exists() else []
     if not isinstance(cards, list):
         raise RuntimeError("characters.json has an unsupported format; no changes were applied.")
@@ -80,56 +78,6 @@ def main() -> int:
 
     cards = json.loads(database.read_text(encoding="utf-8")) if database.exists() else []
     by_id = {str(card.get("id")): card for card in cards if isinstance(card, dict)}
-    pack_dir = library / 'original_references_pending'
-    snail_card = by_id.get("snail-spiral")
-    if snail_card:
-        refs = list(snail_card.get("references", []))
-        labels = dict(snail_card.get("reference_labels", {}))
-        for filename, label in (
-            ("snail_moss_cc0.jpg", "Анатомия улитки — на мху"),
-            ("garden_snail_wood_cc0.jpg", "Ракушка и боковой вид"),
-        ):
-            candidate = pack_dir / filename
-            if candidate.is_file():
-                resolved = str(candidate.resolve())
-                if resolved not in refs:
-                    refs.append(resolved)
-                labels[resolved] = label
-        snail_card["references"] = refs
-        snail_card["reference_labels"] = labels
-        snail_card["reference_sources"] = json.loads(
-            (PASSPORT_DIR / "snail-spiral.json").read_text(encoding="utf-8")
-        ).get("reference_sources", [])
-
-    path_card = by_id.get("scene01_path_refs")
-    if not path_card:
-        path_card = {
-            "id": "scene01_path_refs",
-            "name": "Лесная тропинка — референсы сезона 1",
-            "kind": "Окружение",
-            "profile_type": "Объект / предмет",
-            "visual_style": "Фотореференс",
-            "description": "CC0-фотографии для композиции окружения; это не готовые 3D-модели.",
-            "references": [],
-            "reference_labels": {},
-            "season": 1,
-        }
-        cards.append(path_card)
-        by_id["scene01_path_refs"] = path_card
-    refs = list(path_card.get("references", []))
-    labels = dict(path_card.get("reference_labels", {}))
-    path_image = pack_dir / "woodland_path_cc0.jpg"
-    if path_image.is_file():
-        resolved = str(path_image.resolve())
-        if resolved not in refs:
-            refs.append(resolved)
-        labels[resolved] = "Лесная тропинка — композиция окружения"
-    path_card["references"] = refs
-    path_card["reference_labels"] = labels
-    path_card["reference_sources"] = [
-        item for item in catalog["source_packs"] if item["id"] in {"forest_path_photo", "trees", "wilderness"}
-    ]
-
     atomic_write(database, cards)
     manifest = {
         "schema_version": 1,
@@ -151,8 +99,6 @@ def main() -> int:
     print(f"Season 1 library ready: {len(inventory['character_ids'])} passports; imported={len(imported)}, unchanged={len(skipped)}")
     print(f"Local library: {library}")
     print(f"Manifest: {library / 'season1_manifest.json'}")
-    if pack and pack.get("failures"):
-        print(f"Reference download failures: {len(pack['failures'])}; see pack manifest.")
     return 0
 
 
