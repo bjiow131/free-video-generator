@@ -109,17 +109,31 @@ class FFmpegMediaTools:
         if target.resolve() == Path(video_path).resolve():
             raise MediaError("Frame output path must not overwrite the source video")
         target.parent.mkdir(parents=True, exist_ok=True)
-        self._run([
-            self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-            "-sseof", "-1", "-i", str(video_path), "-map", "0:v:0",
-            # Seek into the final second, then reverse that buffered segment so
-            # the first emitted frame is the actual final decoded frame.
-            "-vf", "reverse", "-frames:v", "1", "-f", "image2", str(target),
-        ])
-        if not target.is_file() or target.stat().st_size == 0:
-            raise MediaError("FFmpeg did not produce the final-frame image")
-        self.validate_image(str(target))
-        return str(target)
+        # Never let an old frame make a failed FFmpeg run appear successful.
+        # Generate beside the target and replace it only after validation passes.
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="frame_", suffix=target.suffix or ".png", dir=str(target.parent)
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            self._run([
+                self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                "-sseof", "-1", "-i", str(video_path), "-map", "0:v:0",
+                # Seek into the final second, then reverse that buffered segment so
+                # the first emitted frame is the actual final decoded frame.
+                "-vf", "reverse", "-frames:v", "1", "-f", "image2", str(temporary),
+            ])
+            if not temporary.is_file() or temporary.stat().st_size == 0:
+                raise MediaError("FFmpeg did not produce the final-frame image")
+            self.validate_image(str(temporary))
+            os.replace(temporary, target)
+            return str(target)
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @staticmethod
     def _stream_signature(data: dict[str, Any]) -> tuple[Any, ...]:
