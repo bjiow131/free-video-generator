@@ -11,17 +11,18 @@ set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.
 set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
 
 echo.
-echo ==========================================
+echo ==========================================================
 echo   BLENDER WORK AGENT - LOCAL ONLY
-echo ==========================================
+echo ==========================================================
 echo.
 echo Blender: %BLENDER_EXECUTABLE%
 echo Workspace: %LOCAL_AGENT_WORKSPACE%
 echo Remote task queue: DISABLED
 echo ChatGPT connection: NONE
+echo Browser / other-app control: NONE
 echo.
-echo This agent is limited to the local Blender bridge.
-echo The current prototype task is a deterministic forest preview.
+echo The menu offers only allowlisted Blender operations.
+echo Each operation that changes files asks for confirmation.
 echo.
 
 if not exist "%AGENT_VENV%\Scripts\python.exe" (
@@ -55,31 +56,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/2] Blender will open in its visible GUI for the task.
-choice /C YN /N /M "Create the current Blender forest preview now? [Y/N] "
-if errorlevel 2 goto done
-
-set /p "PROJECT_NAME=Project folder name (default mia_forest): "
-if not defined PROJECT_NAME set "PROJECT_NAME=mia_forest"
-
-echo.
-echo Launching Blender locally...
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.blender_cli --project "%PROJECT_NAME%"
+echo [2/2] Starting the local Blender workbench...
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.workbench_cli
 set "RESULT=%ERRORLEVEL%"
 echo.
-if "%RESULT%"=="0" (
-  echo Blender task completed. Check %LOCAL_AGENT_WORKSPACE%\%PROJECT_NAME%
-) else (
-  echo Blender task returned error code %RESULT%.
-)
-goto finish
-
-:done
-echo No Blender scene was created. Preflight only.
-set "RESULT=0"
-
-:finish
-echo.
-echo Agent session ended with code %RESULT%.
+echo Blender Work Agent ended with code %RESULT%.
 pause
 exit /b %RESULT%
