@@ -378,11 +378,27 @@ def test_report_survives_github_publication_failure(monkeypatch, tmp_path):
     monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "failed", "reason": "test_failure"})
     monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: report)
     monkeypatch.setattr(poller, "notify_user", lambda **kwargs: True)
+    from local_agent.result_outbox import ResultOutbox
+    monkeypatch.setattr(poller, "_result_outbox", lambda: ResultOutbox(tmp_path / "outbox"))
 
     poller._run_one(FakeClient(), task, "manifest-sha")
 
-    # The local report was generated before the network publication attempt.
+    # Both the local report and the unpublished task result survive the outage.
     assert report.parent == tmp_path
+    pending = tmp_path / "outbox" / f"{task.task_id}.json"
+    assert pending.is_file()
+
+    class OnlineClient:
+        published = []
+
+        def publish_result(self, task_id, result):
+            self.published.append((task_id, result))
+            return "recovered-result-commit"
+
+    online = OnlineClient()
+    assert poller._result_outbox().flush(online)["published"] == 1
+    assert online.published[0][0] == task.task_id
+    assert not pending.exists()
 
 
 def test_apply_patch_uses_isolated_worktree_and_never_changes_active_checkout(monkeypatch, tmp_path):
