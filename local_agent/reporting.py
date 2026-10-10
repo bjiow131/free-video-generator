@@ -12,6 +12,8 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|password|passwd|secret|client[_-]?secret)(\s*[=:]\s*)[^\s,;]+"),
     re.compile(r"(?i)(authorization\s*[=:]\s*)(?:bearer\s+)?[^\s,;]+"),
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/-]+=*"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
 )
 _SENSITIVE_KEY = re.compile(
     r"(?i)(^|[_-])(api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|token|password|passwd|secret|credential|authorization|private[_-]?key)([_-]|$)"
