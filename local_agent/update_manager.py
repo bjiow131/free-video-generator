@@ -7,7 +7,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import tempfile
 import time
+import zipfile
 from typing import Any
 
 
@@ -130,3 +132,59 @@ def apply_update_folder(update_dir: Path, install_root: Path) -> dict[str, Any]:
     return {"status": "completed", "updated_count": len(installed),
             "files": [path.relative_to(install_root).as_posix() for path in installed],
             "backup_dir": str(backup_root) if backup_root.exists() else "No existing files needed backup"}
+
+
+
+def apply_update_archive(archive_path: Path, install_root: Path) -> dict[str, Any]:
+    """Safely unpack and apply an assistant-provided ZIP update package."""
+    archive_path = archive_path.expanduser().resolve()
+    if not archive_path.is_file() or archive_path.is_symlink():
+        raise UpdateError("Update ZIP is missing or is a symlink.")
+    if archive_path.stat().st_size > 20 * 1024 * 1024:
+        raise UpdateError("Update ZIP exceeds the 20 MB limit.")
+    try:
+        with zipfile.ZipFile(archive_path, "r") as archive:
+            entries = archive.infolist()
+            if not entries or len(entries) > 150:
+                raise UpdateError("Update ZIP must contain between 1 and 150 entries.")
+            total_size = sum(item.file_size for item in entries)
+            if total_size > 20 * 1024 * 1024:
+                raise UpdateError("Uncompressed update exceeds the 20 MB limit.")
+            seen: set[str] = set()
+            for item in entries:
+                name = item.filename
+                if not name or "\\\\" in name or name.startswith("/"):
+                    raise UpdateError("Update ZIP contains an invalid path.")
+                pure = PurePosixPath(name)
+                if any(part in ("", ".", "..") for part in pure.parts):
+                    raise UpdateError("Update ZIP path traversal is not allowed.")
+                if name in seen:
+                    raise UpdateError("Update ZIP contains duplicate paths.")
+                seen.add(name)
+                mode = (item.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    raise UpdateError("Update ZIP symlinks are not allowed.")
+                if not (name == "update_manifest.json" or name.startswith("payload/")):
+                    # ZIPs may contain the conventional top-level folder created by archive tools.
+                    if name.rstrip("/") not in ("agent-update",):
+                        raise UpdateError("ZIP must contain only update_manifest.json and payload/.")
+            manifest_names = [name for name in seen if name.endswith("update_manifest.json")]
+            if len(manifest_names) != 1 or manifest_names[0] != "update_manifest.json":
+                raise UpdateError("ZIP must place update_manifest.json at its root.")
+            with tempfile.TemporaryDirectory(prefix="blender-agent-update-") as temp:
+                root = Path(temp)
+                for item in entries:
+                    if item.is_dir():
+                        continue
+                    destination = root.joinpath(*PurePosixPath(item.filename).parts)
+                    if not destination.resolve().is_relative_to(root):
+                        raise UpdateError("Update ZIP path escapes its extraction folder.")
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(item, "r") as src, destination.open("xb") as dst:
+                        shutil.copyfileobj(src, dst)
+                result = apply_update_folder(root, install_root)
+                return result
+    except zipfile.BadZipFile as exc:
+        raise UpdateError("Selected file is not a valid update ZIP.") from exc
+    except OSError as exc:
+        raise UpdateError(f"Could not read/apply update ZIP ({type(exc).__name__}).") from exc
