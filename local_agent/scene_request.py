@@ -611,9 +611,31 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
 '''
 
 
-def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT) -> dict[str, Any]:
-    """Create a simple scene in the visible Blender GUI from a bounded Russian prompt."""
+def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT,
+                            character_cards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Create a scene from a bounded prompt and explicitly selected character cards."""
     plan = parse_scene_request(prompt)
+    selected_characters: list[dict[str, str]] = []
+    for card in (character_cards or [])[:8]:
+        if not isinstance(card, dict):
+            continue
+        name = str(card.get("name", "")).strip()[:80]
+        card_id = str(card.get("id", "")).strip()[:100]
+        description = str(card.get("description", "")).strip()[:1200]
+        if not name or not card_id:
+            continue
+        is_mia = "mia" in name.casefold() or "мия" in name.casefold() or "mia" in description.casefold() or "мия" in description.casefold()
+        plan["objects"].append({
+            "primitive": "mia" if is_mia else "person",
+            "color_name": "turquoise" if is_mia else "blue",
+            "color": [0.025, 0.56, 0.56, 1.0] if is_mia else [0.025, 0.18, 0.85, 1.0],
+            "scale": 1.0,
+            "name": name,
+            "character_card_id": card_id,
+            "character_description": description,
+        })
+        selected_characters.append({"id": card_id, "name": name, "description": description})
+    plan["selected_characters"] = selected_characters
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise SceneRequestError("Project name must use 1-48 letters, digits, underscores, or hyphens.")
     blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
