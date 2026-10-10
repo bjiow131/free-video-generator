@@ -39,7 +39,7 @@ def test_reference_manifest_tracks_source_and_license(tmp_path: Path, monkeypatc
     manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
     assert all(item["source_page"].startswith("https://") for item in manifest["assets"])
     assert all(item["license"] for item in manifest["assets"])
-    assert all(item["kind"] != "archive" for item in ASSETS if item["id"] not in {a["id"] for a in manifest["assets"]})
+    assert "stylized_character_pack" not in {item["id"] for item in manifest["assets"]}
 
 
 def test_reference_pack_rejects_symlinked_pack_folder(tmp_path: Path):
