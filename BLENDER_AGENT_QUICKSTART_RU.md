@@ -1,34 +1,40 @@
-# Быстрый запуск Blender Work Agent на Windows
+# Быстрый запуск локального Blender Work Agent
 
-Это локальный агент для Blender. Он не запускает веб-приложение и не является готовым генератором мультфильмов. Перед каждой задачей агент попросит подтверждение в консоли Windows: нужно вручную ввести `YES`.
+## Назначение и границы
+
+Это локальный помощник только для Blender. Он не подключается к ChatGPT, не получает удалённые задания, не опрашивает GitHub mailbox и не управляет браузером или другими приложениями.
+
+**Текущая реализация ограничена одной демонстрационной задачей:** создать в Blender сцену лесной тропы, сохранить файл .blend и при подтверждении отрендерить PNG. Это пока не универсальный агент, который умеет выполнять любые текстовые инструкции; новые типы Blender-действий нужно добавлять отдельно и безопасно.
 
 ## Что должно быть установлено
 
 - Windows 10/11.
-- Python 3.11 с Python Launcher (`py`).
-- Blender 5.2, установленный по пути `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`.
-- Доступ в интернет к GitHub.
-- Доступ к приватному репозиторию `bjiow131/local-agent-mailbox`.
+- Python 3.11 и Python Launcher (py).
+- Blender 5.2 по умолчанию: C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe.
 
-Если Blender установлен в другом месте, измените `BLENDER_EXECUTABLE` в обоих BAT-файлах: `setup_blender_agent.bat` и `run_blender_agent.bat`.
+Если Blender установлен в другом месте, измените BLENDER_EXECUTABLE в setup_blender_agent.bat и run_blender_agent.bat.
 
 ## Установка
 
-1. Откройте [ветку blender-agent-repair](https://github.com/bjiow131/free-video-generator/tree/blender-agent-repair) и нажмите **Code → Download ZIP**. Также можно скачать архив напрямую: [ZIP этой ветки](https://github.com/bjiow131/free-video-generator/archive/refs/heads/blender-agent-repair.zip).
-2. Распакуйте архив, например, в `C:\AI-Agent\free-video-generator`. Внутри этой папки должны лежать `setup_blender_agent.bat`, `run_blender_agent.bat`, папка `local_agent` и файл `requirements-local-agent.txt`.
-3. Дважды щёлкните `setup_blender_agent.bat`. Он создаст отдельное Python-окружение в `%LOCALAPPDATA%\BlenderWorkAgent\venv` и установит минимальные зависимости. Скрипт не удаляет существующие файлы проекта.
-4. Создайте fine-grained GitHub token только для приватного репозитория `bjiow131/local-agent-mailbox`. Дайте ему **Contents: Read and write**; **Metadata: Read-only** требуется GitHub автоматически. Не включайте доступ ко всем репозиториям и не присылайте токен в чат.
-5. После установки скрипт покажет состояние токена и предложит настроить его. Нажмите `Y`, затем вставьте токен дважды в скрытое приглашение. Токен сохраняется в Windows Credential Manager, не в файле проекта. Если пропустили этот шаг, откройте CMD в папке проекта и выполните:
+1. Скачайте [ZIP ветки blender-agent-repair](https://github.com/bjiow131/free-video-generator/archive/refs/heads/blender-agent-repair.zip).
+2. Распакуйте, например, в C:\\AI-Agent\\free-video-generator. В папке должны быть BAT-файлы, local_agent и requirements-local-agent.txt.
+3. Запустите setup_blender_agent.bat. Он создаст отдельное Python-окружение в %LOCALAPPDATA%\\BlenderWorkAgent\\venv и установит зависимости. **GitHub-токен не нужен.**
+4. Запустите run_blender_agent.bat. Сначала выполнится локальная проверка Python, Blender и рабочей папки. Сцена не создаётся без отдельного подтверждения Y.
+5. Если подтвердили создание сцены, введите имя проекта (по умолчанию mia_forest).
 
-   ```bat
-   "%LOCALAPPDATA%\BlenderWorkAgent\venv\Scripts\python.exe" -m local_agent.credentials_cli set
-   ```
-6. Дважды щёлкните `run_blender_agent.bat`. Окно должно остаться открытым и сообщить, что агент опрашивает приватный mailbox каждые 10 секунд.
+## Результаты
 
-## Остановка и безопасность
+По умолчанию файлы будут в C:\\AI-Agent-Workspace\\mia_forest\\:
 
-- Для остановки нажмите `Ctrl+C` в окне агента.
-- Агент не должен выполнять задачу, если консоль неинтерактивна или пользователь не ввёл ровно `YES`.
-- Если GitHub token был показан в чате, записан в файл или случайно опубликован, отзовите его в GitHub и создайте новый.
-- Пока не проверены тесты на вашем компьютере, считайте это предварительной установкой. Сначала выполните безопасную задачу `blender_preflight`; не начинайте с генерации сцены.
-- Рабочая папка по умолчанию: `C:\AI-Agent-Workspace`. Результаты и проекты создаются локально на этом компьютере.
+- forest_starter.blend — проект Blender;
+- forest_preview.png — предварительный рендер;
+- blender_result.json — сведения о результате;
+- локальные логи Blender.
+
+Имя папки проекта может содержать только латинские буквы, цифры, подчёркивания и дефисы. Для остановки долгой задачи используйте Ctrl+C в окне запуска.
+
+## Как будем передавать задачи
+
+Ты описываешь задачу в ChatGPT. Я готовлю конкретную команду для локального Blender-помощника; ты запускаешь её на компьютере и возвращаешь сюда результат. Агент не получает от меня команды напрямую.
+
+Пока доступна только демонстрационная задача forest-preview. Не вставляй в агент произвольный Python-код и не считай, что он уже умеет автоматически создавать любые сцены. Следующий этап — расширять набор типизированных Blender-команд и проверять каждую локальными тестами.
