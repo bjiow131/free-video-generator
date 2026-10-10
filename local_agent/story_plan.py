@@ -3,6 +3,7 @@ from __future__ import annotations
 import json, os, re
 from pathlib import Path
 from typing import Any
+from local_agent.prompt_dialogue import extract_quoted_dialogue
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 _SCENE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 MAX_SCENES, MAX_PLAN_BYTES, MAX_TEXT = 80, 48_000, 4_000
@@ -39,6 +40,9 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
         seen.add(scene_id); seconds=scene.get("duration_seconds",5)
         if isinstance(seconds,bool) or not isinstance(seconds,int) or not 1<=seconds<=120: raise StoryPlanError(f"Scene {index} duration_seconds must be an integer from 1 to 120.")
         total+=seconds; dialogue=scene.get("dialogue",[])
+        if dialogue == []:
+            prompt_text = " ".join(str(scene.get(key, "")) for key in ("action", "visual_prompt"))
+            dialogue = extract_quoted_dialogue(prompt_text)
         if not isinstance(dialogue,list) or len(dialogue)>30: raise StoryPlanError(f"Scene {index} dialogue must be a list of at most 30 lines.")
         clean_dialogue=[]
         for line_no,line in enumerate(dialogue,1):
