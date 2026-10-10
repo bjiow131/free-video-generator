@@ -32,3 +32,11 @@ def test_face_rig_preflight_uses_supported_mouth_open_names():
     script = _blender_script()
     assert "mouth_shape_key_not_found" in script
     assert "mouth.?open" in script
+
+
+def test_blender_adapter_requires_explicit_stable_character_id():
+    script = _blender_script()
+    assert "stable_character_id(speaker)" in script
+    assert 'pair[0].get("local_agent_character_id")==wanted' in script
+    assert "close_enough" not in script
+    assert "if not matched and len(speakers)==1" not in script
