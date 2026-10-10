@@ -163,11 +163,13 @@ def test_selected_character_cards_are_added_once_and_keep_reference_paths():
         "name": "Мия",
         "description": "Бирюзовый комбинезон и розовый рюкзак",
         "references": ["C:/BlenderAgentLibrary/mia-card/01_front.png", "C:/BlenderAgentLibrary/mia-card/02_side.jpg"],
+        "reference_labels": {"C:/BlenderAgentLibrary/mia-card/01_front.png": "Фронт", "C:/BlenderAgentLibrary/mia-card/02_side.jpg": "Профиль справа"},
     }
     result = _append_character_cards(plan, [card])
     assert len([obj for obj in result["objects"] if obj["primitive"] == "mia"]) == 1
     assert result["selected_characters"][0]["id"] == "mia-card"
     assert result["selected_characters"][0]["references"] == card["references"]
+    assert result["selected_characters"][0]["reference_labels"] == card["reference_labels"]
 
 
 def test_multiple_selected_characters_are_added_as_separate_scene_objects():
