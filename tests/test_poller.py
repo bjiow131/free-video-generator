@@ -563,3 +563,56 @@ def test_not_expired_rejects_task_created_too_far_in_the_future():
     future_created = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     future_expiry = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
     assert not _not_expired(SimpleNamespace(created_at=future_created, expires_at=future_expiry))
+
+
+def test_load_state_rejects_symlink_to_external_file(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    state_path = tmp_path / "poller_state.json"
+    try:
+        state_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._load_state()
+    assert outside.read_text(encoding="utf-8") == "{}"
+
+
+def test_save_state_refuses_symlink_target(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("preserve", encoding="utf-8")
+    state_path = tmp_path / "poller_state.json"
+    try:
+        state_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._save_state({"processed_tasks": {}})
+    assert outside.read_text(encoding="utf-8") == "preserve"
+
+
+def test_poller_lock_refuses_symlink_target(tmp_path):
+    import pytest
+    from local_agent.poller import _acquire_instance_lock
+
+    outside = tmp_path / "outside.lock"
+    outside.write_text("preserve", encoding="utf-8")
+    lock_path = tmp_path / "poller.lock"
+    try:
+        lock_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        _acquire_instance_lock(lock_path)
+    assert outside.read_text(encoding="utf-8") == "preserve"
