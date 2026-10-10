@@ -323,6 +323,15 @@ def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
     return create_mia_skeleton(arguments["project_name"])
 
 
+
+def _run_blender_mouth_motion(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Apply compiled, bounded mouth cues to a discovered local Blender shape key."""
+    from local_agent.blender_mouth_motion import apply_mouth_motion
+    try:
+        return apply_mouth_motion(arguments["project_name"])
+    except (ValueError, OSError) as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+
 def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     """Search the bundled read-only Blender knowledge base; never executes code."""
     from local_agent.blender_knowledge import search_knowledge
@@ -468,7 +477,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -557,6 +566,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_mia_skeleton(task.arguments)
             elif task.operation == "blender_camera_control":
                 details = _run_blender_camera_control(task.arguments)
+            elif task.operation == "blender_mouth_motion":
+                details = _run_blender_mouth_motion(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
