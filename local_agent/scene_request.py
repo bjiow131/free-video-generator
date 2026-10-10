@@ -611,10 +611,8 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
 '''
 
 
-def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT,
-                            character_cards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Create a scene from a bounded prompt and explicitly selected character cards."""
-    plan = parse_scene_request(prompt)
+def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Add selected character cards as safe data, never executable code, to a scene plan."""
     selected_characters: list[dict[str, str]] = []
     for card in (character_cards or [])[:8]:
         if not isinstance(card, dict):
@@ -636,6 +634,13 @@ def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds:
         })
         selected_characters.append({"id": card_id, "name": name, "description": description})
     plan["selected_characters"] = selected_characters
+    return plan
+
+
+def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds: int = _DEFAULT_TIMEOUT,
+                            character_cards: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Create a scene from a bounded prompt and explicitly selected character cards."""
+    plan = _append_character_cards(parse_scene_request(prompt), character_cards)
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise SceneRequestError("Project name must use 1-48 letters, digits, underscores, or hyphens.")
     blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
