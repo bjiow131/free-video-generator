@@ -622,7 +622,8 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         description = str(card.get("description", "")).strip()[:1200]
         if not name or not card_id:
             continue
-        is_mia = "mia" in name.casefold() or "мия" in name.casefold() or "mia" in description.casefold() or "мия" in description.casefold()
+        first_name = name.casefold().replace("—", " ").replace("-", " ").split()[0] if name else ""
+        is_mia = first_name in {"mia", "мия"}
         raw_references = card.get("references", [])
         if not isinstance(raw_references, list):
             raw_references = []
