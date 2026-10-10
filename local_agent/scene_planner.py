@@ -51,7 +51,9 @@ def build_scene_plan(prompt: str, objects: list[dict[str, Any]], environment: st
         actions.append({"action": str(animation.get("kind", "move")),
                         "actor_id": actor["id"] if actor else None,
                         "duration_seconds": seconds, "status": "basic_keyframes"})
-    if vehicle and actor and actions or any(word in text for word in ("камера следует", "камера сопровождает", "tracking shot")):
+    if (vehicle and actor and any(step.get("action") == "ride_vehicle" for step in actions)) or any(
+        word in text for word in ("камера следует", "камера сопровождает", "tracking shot")
+    ):
         camera = {"shot": "tracking", "motion": "follow_actor",
                   "target_actor_id": actor["id"] if actor else None,
                   "status": "basic_linear_follow",
