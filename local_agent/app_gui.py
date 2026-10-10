@@ -413,6 +413,146 @@ class BlenderAgentApp(tk.Tk):
             self.character_tree.focus(select_id)
             self._select_character()
 
+    def _refresh_character_choices(self) -> None:
+        if not hasattr(self, "character_selection_list"):
+            return
+        selected_ids = {self._character_choice_ids[i] for i in self.character_selection_list.curselection()
+                        if i < len(getattr(self, "_character_choice_ids", []))}
+        cards = [card for card in self._load_characters() if card.get("kind", "Персонаж") != "Референс"]
+        self._character_choice_ids = []
+        self.character_selection_list.delete(0, "end")
+        for card in cards:
+            self._character_choice_ids.append(card["id"])
+            self.character_selection_list.insert("end", card.get("name", "Без имени"))
+        for index, card_id in enumerate(self._character_choice_ids):
+            if card_id in selected_ids:
+                self.character_selection_list.selection_set(index)
+
+    def _selected_character_cards(self) -> list[dict]:
+        ids = [self._character_choice_ids[i] for i in self.character_selection_list.curselection()
+               if i < len(self._character_choice_ids)]
+        by_id = {card.get("id"): card for card in self._load_characters()}
+        return [by_id[card_id] for card_id in ids if card_id in by_id][:8]
+
+    def _open_selected_character_card(self, _event=None) -> None:
+        cards = self._selected_character_cards()
+        if not cards:
+            return
+        self.tabs.select(self.library_tab)
+        self._refresh_characters(cards[0]["id"])
+        if len(cards) == 1:
+            self._open_character_references()
+
+    def _open_character_references(self, _event=None) -> None:
+        card = self._selected_card()
+        if not card:
+            return
+        card_id = card["id"]
+        existing = self.reference_tabs.get(card_id)
+        if existing is not None and existing.winfo_exists():
+            self.tabs.select(existing)
+            self._refresh_reference_tab(card)
+            return
+        frame = ttk.Frame(self.tabs, padding=18)
+        self.reference_tabs[card_id] = frame
+        self.tabs.add(frame, text=f"Референсы: {card.get('name', 'Персонаж')}"[:32])
+        heading = ttk.Frame(frame)
+        heading.pack(fill="x", pady=(0, 10))
+        ttk.Label(heading, text=f"Референсы персонажа «{card.get('name', '')}»", style="Title.TLabel").pack(side="left")
+        ttk.Button(heading, text="Добавить референсы…", command=lambda cid=card_id: self._add_reference_to_card(cid)).pack(side="right")
+        tree = ttk.Treeview(frame, columns=("pose", "path"), show="headings", selectmode="browse")
+        tree.heading("pose", text="Поза / вид")
+        tree.heading("path", text="Файл")
+        tree.column("pose", width=220, stretch=False)
+        tree.column("path", width=650)
+        tree.pack(fill="both", expand=True)
+        tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_from_tab(cid))
+        actions = ttk.Frame(frame)
+        actions.pack(fill="x", pady=(10, 0))
+        ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
+        ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
+        setattr(frame, "reference_tree", tree)
+        self._refresh_reference_tab(card)
+        self.tabs.select(frame)
+
+    def _refresh_reference_tab(self, card: dict) -> None:
+        frame = self.reference_tabs.get(card["id"])
+        if frame is None or not frame.winfo_exists():
+            return
+        tree = getattr(frame, "reference_tree", None)
+        if tree is None:
+            return
+        for iid in tree.get_children():
+            tree.delete(iid)
+        for index, path in enumerate(card.get("references", [])):
+            p = Path(path)
+            label = p.stem.split("_", 1)[1] if "_" in p.stem else p.stem
+            tree.insert("", "end", iid=str(index), values=(label, str(p)))
+
+    def _select_card_in_library(self, card_id: str) -> None:
+        self.tabs.select(self.library_tab)
+        self._refresh_characters(card_id)
+
+    def _add_reference_to_card(self, card_id: str) -> None:
+        card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if not card:
+            return
+        paths = filedialog.askopenfilenames(title=f"Добавить референсы для «{card['name']}»",
+            filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff")], parent=self)
+        if not paths:
+            return
+        allowed = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+        folder = CHARACTER_DIR / card_id
+        folder.mkdir(parents=True, exist_ok=True)
+        added = []
+        for raw in paths:
+            src = Path(raw)
+            try:
+                if src.suffix.lower() not in allowed or src.stat().st_size > 30 * 1024 * 1024:
+                    continue
+                index = len(card.get("references", [])) + len(added) + 1
+                destination = folder / f"{index:02d}_{src.name}"
+                if destination.exists():
+                    destination = folder / f"{index:02d}_{int(time.time())}_{src.name}"
+                shutil.copy2(src, destination)
+                added.append(str(destination))
+            except OSError:
+                continue
+        if not added:
+            messagebox.showwarning("Нет добавленных файлов", "Не удалось добавить изображения. Поддерживаются изображения до 30 МБ.", parent=self)
+            return
+        data = self._load_characters()
+        for item in data:
+            if item.get("id") == card_id:
+                item.setdefault("references", []).extend(added)
+        self._save_characters(data)
+        updated = next(item for item in data if item.get("id") == card_id)
+        self._refresh_reference_tab(updated)
+        self._refresh_characters(card_id)
+        self._set_status(f"Добавлено референсов: {len(added)} для {card['name']}.")
+
+    def _open_reference_from_tab(self, card_id: str) -> None:
+        frame = self.reference_tabs.get(card_id)
+        tree = getattr(frame, "reference_tree", None) if frame is not None else None
+        selected = tree.selection() if tree is not None else ()
+        if not selected:
+            messagebox.showinfo("Выберите референс", "Сначала выберите изображение в списке.", parent=self)
+            return
+        card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        try:
+            path = Path(card["references"][int(selected[0])]) if card else None
+        except (IndexError, ValueError, TypeError):
+            path = None
+        if path is None or not path.is_file():
+            messagebox.showerror("Файл не найден", "Изображение референса отсутствует на диске.", parent=self)
+            return
+        try:
+            if sys.platform == "win32": os.startfile(str(path))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin": subprocess.Popen(["open", str(path)], shell=False)
+            else: subprocess.Popen(["xdg-open", str(path)], shell=False)
+        except OSError as exc:
+            messagebox.showerror("Не удалось открыть изображение", str(exc), parent=self)
+
     def _selected_card(self) -> dict | None:
         selected = self.character_tree.selection()
         if not selected:
