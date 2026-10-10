@@ -268,3 +268,19 @@ def test_scene_plan_is_generic_and_keeps_character_identity_from_card():
     assert plan["actors"][0]["id"] == "bobik-card"
     assert plan["location"]["environment_id"] == "forest"
     assert plan["camera"]["motion"] == "static"
+
+def test_unrelated_animation_does_not_enable_vehicle_follow_camera():
+    from local_agent.scene_planner import build_scene_plan
+
+    plan = build_scene_plan(
+        "Персонаж машет рукой рядом с велосипедом",
+        [
+            {"name": "Персонаж", "primitive": "person", "character_card_id": "actor-card"},
+            {"name": "Велосипед", "primitive": "bicycle"},
+        ],
+        "auto", {"enabled": True, "kind": "move", "frames": 150}, {},
+    )
+    assert plan["action_steps"][0]["action"] == "move"
+    assert plan["camera"]["motion"] == "static"
+    assert plan["camera"]["status"] == "static_camera"
+
