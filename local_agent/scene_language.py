@@ -304,8 +304,11 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "kind": "rotate" if _has(text, "вращается", "вращающ", "крутится", "крутящ", "вращение") else "move" if _has(text, "движется", "движение", "движущ", "летит", "летящ", "едет", "едущ", "идёт", "идет") else "bounce",
         "frames": 96 if _has(text, "4 секунды", "4 сек") else 144 if _has(text, "6 секунд", "6 сек") else 120,
     }
+    kinds = {item["primitive"] for item in objects}
+    ride_scooter = "mia" in kinds and "scooter" in kinds and _has(text, "на самокате", "едет на самокате", "катается на самокате")
     return {
-        "schema_version": 2, "objects": objects, "resolution": resolution, "aspect_ratio": aspect,
+        "schema_version": 3, "objects": objects, "resolution": resolution, "aspect_ratio": aspect,
+        "relationships": {"mia_riding_scooter": ride_scooter},
         "render_percentage": render_percentage, "prompt_summary": prompt.strip(), "environment": environment,
         "style": style, "lighting": lighting, "layout": layout, "animation": animation,
         "ground": not _has(text, "без пола", "без земли", "без подставки", "прозрачный фон"),
