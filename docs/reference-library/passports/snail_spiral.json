@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "char.snail_spiral",
+  "name": "Спираль",
+  "description": "Улитка из истории Мии; форму раковины, окраску и размер необходимо утвердить по сценарию и эталону.",
+  "status": "draft",
+  "model_asset_id": null,
+  "references": [
+    {
+      "id": "snail_spiral.front",
+      "view": "front",
+      "status": "planned"
+    },
+    {
+      "id": "snail_spiral.left",
+      "view": "left",
+      "status": "planned"
+    },
+    {
+      "id": "snail_spiral.back",
+      "view": "back",
+      "status": "planned"
+    },
+    {
+      "id": "snail_spiral.right",
+      "view": "right",
+      "status": "planned"
+    },
+    {
+      "id": "snail_spiral.three_quarter",
+      "view": "three_quarter",
+      "status": "planned"
+    },
+    {
+      "id": "snail_spiral.face",
+      "view": "face",
+      "status": "planned"
+    }
+  ]
+}
