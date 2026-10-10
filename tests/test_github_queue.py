@@ -155,7 +155,7 @@ def test_free_text_github_tokens_are_redacted():
 
 
 def test_publish_repair_artifact_creates_immutable_patch():
-    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\\n"
+    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\n"
     session = FakeSession([
         FakeResponse(data={"private": True}),
         FakeResponse(status_code=404),
@@ -172,7 +172,7 @@ def test_publish_repair_artifact_creates_immutable_patch():
 
 
 def test_publish_repair_artifact_is_idempotent_for_same_content():
-    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\\n"
+    patch = "diff --git a/local_agent/fix.py b/local_agent/fix.py\n"
     encoded = base64.b64encode(patch.encode()).decode()
     session = FakeSession([
         FakeResponse(data={"private": True}),
@@ -184,8 +184,8 @@ def test_publish_repair_artifact_is_idempotent_for_same_content():
 
 
 def test_publish_repair_artifact_refuses_different_content_for_existing_id():
-    existing_patch = "diff --git a/local_agent/old.py b/local_agent/old.py\\n"
-    requested_patch = "diff --git a/local_agent/new.py b/local_agent/new.py\\n"
+    existing_patch = "diff --git a/local_agent/old.py b/local_agent/old.py\n"
+    requested_patch = "diff --git a/local_agent/new.py b/local_agent/new.py\n"
     encoded = base64.b64encode(existing_patch.encode()).decode()
     session = FakeSession([
         FakeResponse(data={"private": True}),
