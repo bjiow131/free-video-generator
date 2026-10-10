@@ -368,12 +368,16 @@ def _grid_location(index, total, aspect, layout):
             ((index // columns) - (rows - 1) / 2) * 2.7, 0.8)
 
 made_by_item = []
-rider_id = cfg.get("relationships", {}).get("character_riding_scooter")
+rider_id = (cfg.get("relationships", {}).get("character_riding_bicycle") or
+            cfg.get("relationships", {}).get("character_riding_scooter"))
+vehicle_kind = "bicycle" if cfg.get("relationships", {}).get("character_riding_bicycle") else "scooter"
 for index, item in enumerate(cfg["objects"]):
     if rider_id and item.get("character_card_id") == rider_id:
         loc = (-0.15, -0.05, 0.18)
-    elif rider_id and item["primitive"] == "scooter":
-        loc = (-0.10, 0.0, 0.0)
+    elif rider_id and item["primitive"] == vehicle_kind:
+        loc = (0.0, 0.0, 0.0)
+    elif cfg.get("environment") == "coast" and item["primitive"] == "road":
+        continue
     else:
         loc = _grid_location(index, len(cfg["objects"]), cfg["aspect_ratio"], cfg.get("layout", "auto"))
     made = make_item(item, loc, index)
@@ -392,7 +396,7 @@ style = cfg.get("style", "balanced")
 lighting = cfg.get("lighting", "soft")
 floor_color = (0.12, 0.14, 0.17, 1.0)
 if environment == "forest": floor_color = (0.055, 0.20, 0.065, 1.0)
-elif environment == "island": floor_color = (0.78, 0.62, 0.32, 1.0)
+elif environment in ("island", "coast"): floor_color = (0.78, 0.62, 0.32, 1.0)
 elif environment == "mountains": floor_color = (0.18, 0.22, 0.19, 1.0)
 elif environment == "underwater": floor_color = (0.025, 0.20, 0.34, 1.0)
 elif environment == "desert": floor_color = (0.72, 0.48, 0.23, 1.0)
@@ -437,6 +441,38 @@ elif environment == "island":
     bpy.ops.mesh.primitive_plane_add(size=45, location=(0,0,-0.20))
     bpy.context.object.name = "Environment | ocean"
     bpy.context.object.data.materials.append(water)
+elif environment == "coast":
+    sand = material_for("coastal sand", (0.78, 0.64, 0.40, 1.0), 0.82)
+    asphalt = material_for("cycling path", (0.20, 0.23, 0.24, 1.0), 0.9)
+    marking = material_for("path edge", (0.88, 0.84, 0.68, 1.0), 0.8)
+    water = material_for("ocean", (0.018, 0.24, 0.38, 1.0), 0.24, 0.08)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 1.6, -0.06))
+    beach = bpy.context.object
+    beach.name = "Environment | coastal sand strip"
+    beach.scale = (46, 9, 0.12)
+    beach.data.materials.append(sand)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, -1.3, 0.005))
+    path = bpy.context.object
+    path.name = "Environment | cycling path"
+    path.scale = (46, 2.6, 0.10)
+    path.data.materials.append(asphalt)
+    for y in (-2.58, -0.02):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, y, 0.06))
+        edge = bpy.context.object
+        edge.name = "Environment | path edge"
+        edge.scale = (46, 0.055, 0.025)
+        edge.data.materials.append(marking)
+    bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 22.0, -0.12))
+    ocean = bpy.context.object
+    ocean.name = "Environment | ocean"
+    ocean.data.materials.append(water)
+    foam = material_for("shore foam", (0.72, 0.87, 0.90, 1.0), 0.55)
+    for j, y in enumerate((4.1, 4.45, 4.8)):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, y, -0.005 + j * 0.004))
+        wave = bpy.context.object
+        wave.name = "Environment | shoreline wave %02d" % j
+        wave.scale = (39, 0.035, 0.012)
+        wave.data.materials.append(foam)
 elif environment == "mountains":
     for j, (x,y,h) in enumerate([(-7,5,4),(-4,7,5),(4,7,4),(7,4,6),(-8,-1,3),(8,-2,4)]):
         add_prim("cone",(x,y,h/2),(2.6,2.4,h),material_for("distant mountain", (0.20,0.25,0.27,1.0)),"Environment | mountain %02d" % j)
@@ -543,7 +579,7 @@ animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
     scene.frame_end = max(24, min(240, int(animation.get("frames", 120))))
-    animated = [root for item, root in made_by_item if not rider_id or item.get("character_card_id") == rider_id or item["primitive"] == "scooter"]
+    animated = [root for item, root in made_by_item if not rider_id or item.get("character_card_id") == rider_id or item["primitive"] == vehicle_kind]
     for obj in animated:
         obj.location = obj.location.copy()
         obj.keyframe_insert(data_path="location", frame=scene.frame_start)
@@ -558,10 +594,10 @@ if animation.get("enabled"):
         obj.keyframe_insert(data_path="location", frame=scene.frame_end)
         obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
     if rider_id:
-        scooter_item = next((item for item in cfg["objects"] if item["primitive"] == "scooter"), None)
-        if scooter_item:
+        vehicle_item = next((item for item in cfg["objects"] if item["primitive"] == vehicle_kind), None)
+        if vehicle_item:
             for wheel in scene.objects:
-                if wheel.name.startswith(scooter_item["name"] + " |") and "wheel" in wheel.name.casefold():
+                if wheel.name.startswith(vehicle_item["name"] + " |") and "wheel" in wheel.name.casefold():
                     wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_start)
                     wheel.rotation_euler.y += math.tau * 2
                     wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
@@ -584,6 +620,7 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
         "visual_mode": cfg.get("visual_mode", "Свободный стиль"),
         "lighting": cfg.get("lighting", "soft"),
         "animation_enabled": bool(cfg.get("animation", {}).get("enabled")),
+        "scene_plan": cfg.get("scene_plan", {}),
     }, stream, ensure_ascii=False)
 '''
 
@@ -692,12 +729,19 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "reference_indices": [index + 1 for index in requested_indices],
         })
     plan["selected_characters"] = selected_characters
-    if selected_characters and plan.get("relationships", {}).get("character_riding_scooter"):
-        # The first explicitly selected/mentioned card is the rider unless a future
-        # scene planner supplies a more specific role assignment.
-        plan["relationships"]["character_riding_scooter"] = selected_characters[0]["id"]
+    riding_key = next((key for key in ("character_riding_bicycle", "character_riding_scooter")
+                       if plan.get("relationships", {}).get(key)), None)
+    if selected_characters and riding_key:
+        plan["relationships"][riding_key] = selected_characters[0]["id"]
     else:
         plan.setdefault("relationships", {}).pop("character_riding_scooter", None)
+        plan.setdefault("relationships", {}).pop("character_riding_bicycle", None)
+    from local_agent.scene_planner import build_scene_plan
+    plan["scene_plan"] = build_scene_plan(
+        prompt, plan["objects"], plan.get("environment", "auto"),
+        plan.get("animation", {}), plan.get("relationships", {}),
+        plan.get("camera_angle", "auto"),
+    )
     return plan
 
 
