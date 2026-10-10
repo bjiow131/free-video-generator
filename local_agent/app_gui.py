@@ -23,8 +23,9 @@ from local_agent.scene_request import SceneRequestError, create_scene_from_promp
 from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
+from local_agent.character_library import CharacterPassportImportError, import_character_passport
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -207,6 +208,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
@@ -237,7 +239,8 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.pack(fill="both", expand=True)
         actions = ttk.Frame(right)
         actions.pack(fill="x", pady=(10, 0))
-        ttk.Button(actions, text="Добавить изображение-референс…", command=self._add_reference).pack(side="left")
+        ttk.Button(actions, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="left")
+        ttk.Button(actions, text="Добавить изображение-референс…", command=self._add_reference).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть изображение", command=self._open_reference).pack(side="left", padx=8)
         ttk.Button(actions, text="Изменить описание", command=self._edit_character).pack(side="left")
         ttk.Button(actions, text="Удалить карточку", command=self._delete_character).pack(side="right")
@@ -784,6 +787,104 @@ class BlenderAgentApp(tk.Tk):
                 f"ПОСТОЯННЫЕ ОСОБЕННОСТИ\n{card.get('description','') or 'Описание пока не заполнено.'}\n\n"
                 f"БИБЛИОТЕКА РЕФЕРЕНСОВ · НУМЕРАЦИЯ СОХРАНЯЕТСЯ\n{refs}\n")
         self.character_detail.configure(state="disabled")
+
+    def _import_character_passport(self) -> None:
+        """Import a JSON passport into the existing character library without executing it."""
+        selected = filedialog.askopenfilename(
+            title="Импортировать паспорт персонажа",
+            filetypes=[("Паспорт персонажа (JSON)", "*.json"), ("Все файлы", "*.*")],
+            parent=self,
+        )
+        if not selected:
+            return
+        passport_file = Path(selected)
+        try:
+            if passport_file.is_symlink() or not passport_file.is_file() or passport_file.stat().st_size > 2 * 1024 * 1024:
+                raise CharacterPassportImportError("Выберите обычный JSON-файл размером не более 2 МБ.")
+            payload = json.loads(passport_file.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, json.JSONDecodeError, CharacterPassportImportError) as exc:
+            messagebox.showerror("Паспорт не прочитан", str(exc), parent=self)
+            return
+
+        character_id = None
+        if isinstance(payload, dict) and isinstance(payload.get("characters"), dict):
+            ids = list(payload["characters"])
+            if len(ids) > 1:
+                character_id = simpledialog.askstring(
+                    "Выбрать персонажа из реестра",
+                    "В JSON несколько персонажей. Введи ID нужного персонажа:\n" + ", ".join(map(str, ids[:30])),
+                    parent=self,
+                )
+                if not character_id:
+                    return
+
+        default_name = ""
+        if isinstance(payload, dict):
+            passport = payload
+            if isinstance(payload.get("characters"), dict) and character_id:
+                entry = payload["characters"].get(character_id, {})
+                history = entry.get("history", []) if isinstance(entry, dict) else []
+                passport = history[-1] if history and isinstance(history[-1], dict) else {}
+            default_name = str(passport.get("display_name") or passport.get("name") or passport.get("character_id") or character_id or "")
+        display_name = simpledialog.askstring(
+            "Имя в библиотеке",
+            "Как отображать имя персонажа? Оставь текущее значение или измени его:",
+            initialvalue=default_name,
+            parent=self,
+        )
+        if display_name is None:
+            return
+
+        blend_path = None
+        if messagebox.askyesno("Модель Blender", "Прикрепить к паспорту файл модели .blend сейчас?", parent=self):
+            blend_path = filedialog.askopenfilename(
+                title="Выбрать модель персонажа",
+                filetypes=[("Blender project", "*.blend")],
+                parent=self,
+            )
+            if not blend_path:
+                return
+
+        reference_paths = ()
+        if messagebox.askyesno("Референсы", "Добавить изображения-референсы к этому персонажу сейчас?", parent=self):
+            reference_paths = filedialog.askopenfilenames(
+                title="Выбрать изображения персонажа",
+                filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff")],
+                parent=self,
+            )
+            if not reference_paths:
+                reference_paths = ()
+
+        try:
+            result = import_character_passport(
+                passport_file,
+                CHARACTER_DIR,
+                character_id=character_id,
+                display_name=display_name.strip() or default_name,
+                reference_paths=reference_paths,
+                blend_path=blend_path,
+            )
+        except (CharacterPassportImportError, OSError, ValueError) as exc:
+            messagebox.showerror("Импорт паспорта не выполнен", str(exc), parent=self)
+            self._set_status("Паспорт не импортирован; проверь JSON и выбранные файлы.")
+            return
+
+        self._refresh_characters(result["character_id"])
+        self._set_status(
+            f"Паспорт «{result['name']}» импортирован · версия {result['passport_version']} · "
+            f"референсов добавлено: {result['references_added']}."
+        )
+        model_text = f"\nМодель: {result['blend_file']}" if result.get("blend_file") else ""
+        messagebox.showinfo(
+            "Паспорт обновлён",
+            f"Персонаж: {result['name']}\nID: {result['character_id']}\n"
+            f"Версия паспорта: {result['passport_version']}\n"
+            f"Статус проверки: {result['status']}\n"
+            f"Референсов добавлено: {result['references_added']}\n"
+            f"Файл паспорта: {result['passport_path']}{model_text}\n\n"
+            "Карточка библиотеки обновлена автоматически. Исходный JSON не изменён.",
+            parent=self,
+        )
 
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)
