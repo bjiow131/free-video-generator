@@ -109,10 +109,6 @@ def preflight() -> dict[str, Any]:
         "checks": checks, "python": {"version": sys.version.split()[0]},
         "workspace": workspace_check, "disk_free_bytes": disk_free_bytes,
         "blender": blender_check,
-        "git": _tool_version(["git", "--version"]),
-        "ffmpeg": _tool_version(["ffmpeg", "-version"]),
-        "ffprobe": _tool_version(["ffprobe", "-version"]),
-        "nvidia_smi": _tool_version(["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]),
         "network_request_performed": False, "blender_scene_created": False,
         "render_started": False, "secret_values_returned": False,
     }
