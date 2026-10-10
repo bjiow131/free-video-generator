@@ -232,6 +232,14 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     else:
         aspect, resolution = "16:9", [1280, 720]
 
+    # Explicit pixel presets override only resolution; framing ratio remains the user's choice.
+    if _has(text, "4k", "3840"):
+        resolution = {"9:16": [2160, 3840], "1:1": [2160, 2160], "4:3": [2880, 2160], "3:2": [3240, 2160]}.get(aspect, [3840, 2160])
+    elif _has(text, "1080p", "full hd", "1920"):
+        resolution = {"9:16": [1080, 1920], "1:1": [1080, 1080], "4:3": [1440, 1080], "3:2": [1620, 1080]}.get(aspect, [1920, 1080])
+    elif _has(text, "720p"):
+        resolution = {"9:16": [720, 1280], "1:1": [720, 720], "4:3": [960, 720], "3:2": [1080, 720]}.get(aspect, [1280, 720])
+
     if _has(text, "лес", "лесной", "лесная", "роща"):
         environment = "forest"
     elif _has(text, "комнат", "интерьер", "внутри дома", "гостиная"):
@@ -261,7 +269,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     else:
         environment = "auto"
 
-    if _has(text, "low poly", "лоу-поли", "лоуполи", "низкополигон"):
+    if _has(text, "low poly", "low-poly", "лоу-поли", "лоуполи", "низкополигон"):
         style = "low_poly"
     elif _has(text, "мультяш", "мультфильм", "cartoon", "для детей"):
         style = "cartoon"
@@ -290,7 +298,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     else:
         layout = "auto"
 
-    render_percentage = 100 if _has(text, "максимальное качество", "100%", "финальный рендер") else 75 if _has(text, "высокое качество", "детально", "4k", "8k") else 50
+    render_percentage = 100 if _has(text, "максимальное качество", "100%", "финальный рендер", "4k", "3840", "1080p", "full hd", "1920") else 75 if _has(text, "высокое качество", "детально") else 50
     animation = {
         "enabled": _has(text, "анимируй", "анимация", "движется", "движение", "вращается", "вращающ", "крутится", "крутящ", "прыгает", "летит", "едет", "идёт", "идет"),
         "kind": "rotate" if _has(text, "вращается", "вращающ", "крутится", "крутящ", "вращение") else "move" if _has(text, "движется", "движение", "летит", "едет", "идёт", "идет") else "bounce",
