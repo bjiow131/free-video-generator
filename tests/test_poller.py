@@ -3,6 +3,15 @@ from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 
 from local_agent.poller import _not_expired
+import sys
+import pytest
+from types import SimpleNamespace
+
+
+@pytest.fixture(autouse=True)
+def _agent_interactive_console_for_tests(monkeypatch):
+    # Simulate an interactive local terminal for approval-path unit tests.
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: True))
 
 
 def test_not_expired_accepts_future_utc_timestamp():
