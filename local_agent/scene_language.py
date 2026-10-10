@@ -119,6 +119,8 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         if selected and item[0] < selected[-1][1]:
             continue
         selected.append(item)
+    if not selected and found:
+        raise SceneRequestError("Все распознанные объекты исключены формулировкой «без/не добавляй». Укажи хотя бы один объект, который нужно создать.")
     if not selected:
         # Scene-only prompts are useful too: infer a small starter composition.
         if _has(text, "лес", "роща", "лесной"):
