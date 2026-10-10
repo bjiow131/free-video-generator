@@ -44,7 +44,7 @@ def verify_original_reference(manifest_path: str | Path, asset_root: str | Path)
     if payload.get("view") not in _ALLOWED_VIEWS:
         raise OriginalReferenceError("Invalid view")
     relative = payload.get("file")
-    if not isinstance(relative, str) or not relative or "\\\\" in relative or "\\x00" in relative:
+    if not isinstance(relative, str) or not relative or chr(92) in relative or chr(0) in relative:
         raise OriginalReferenceError("Invalid filename")
     candidate = Path(relative)
     if candidate.is_absolute() or ".." in candidate.parts or candidate.suffix.lower() not in _ALLOWED_EXT:
