@@ -83,3 +83,65 @@ def test_rejects_invalid_cue_before_touching_rig():
             malformed, character_objects=[obj], frame_start=1, frame_end=240
         )
     assert key.inserted == []
+
+
+
+def test_dialogue_cues_route_only_to_the_declared_speaker():
+    from local_agent.blender_dialogue import apply_dialogue_cues
+
+    mia_key = FakeShapeKey("Mouth_Open")
+    stepa_key = FakeShapeKey("Mouth_Open")
+    mia = SimpleNamespace(name="Mia | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[mia_key])
+    ))
+    stepa = SimpleNamespace(name="Stepa | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[stepa_key])
+    ))
+    result = apply_dialogue_cues(
+        [cue()],
+        character_objects_by_speaker={
+            "char.mia.master": [mia],
+            "char.stepa.master": [stepa],
+        },
+        frame_start=1,
+        frame_end=240,
+    )
+    assert result["status"] == "applied"
+    assert result["results"][0]["object"] == "Mia | Head"
+    assert mia_key.inserted
+    assert stepa_key.inserted == []
+
+
+def test_missing_speaker_mapping_never_falls_back_to_another_character():
+    from local_agent.blender_dialogue import apply_dialogue_cues
+
+    unrelated_key = FakeShapeKey("Mouth_Open")
+    unrelated = SimpleNamespace(name="Stepa | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[unrelated_key])
+    ))
+    result = apply_dialogue_cues(
+        [cue()],
+        character_objects_by_speaker={"char.stepa.master": [unrelated]},
+        frame_start=1,
+        frame_end=240,
+    )
+    assert result["status"] == "unsupported"
+    assert result["results"][0]["status"] == "speaker_asset_not_found"
+    assert unrelated_key.inserted == []
+
+
+def test_dialogue_cue_batch_rejects_duplicate_line_ids():
+    from local_agent.blender_dialogue import apply_dialogue_cues
+
+    key = FakeShapeKey("Mouth_Open")
+    mia = SimpleNamespace(name="Mia | Head", data=SimpleNamespace(
+        shape_keys=SimpleNamespace(key_blocks=[key])
+    ))
+    result = apply_dialogue_cues(
+        [cue(), cue()],
+        character_objects_by_speaker={"char.mia.master": [mia]},
+        frame_start=1,
+        frame_end=240,
+    )
+    assert result["status"] == "rejected"
+    assert result["reason"] == "duplicate_line_id"
