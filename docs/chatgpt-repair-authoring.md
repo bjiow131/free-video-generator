@@ -8,7 +8,7 @@ This document is for the person or assistant preparing a reviewed fix for the lo
 2. Prepare a normal text unified diff based on that exact commit. Keep it minimal. The agent's allowlist is limited to \`local_agent/\`, \`tests/\`, \`docs/\`, \`scripts/\`, \`README.md\`, and \`requirements-github-mailbox.txt\`.
 3. Do not include binary files, symlinks, submodules, generated artifacts, credentials, tokens, arbitrary shell scripts, or unrelated changes.
 4. Choose a new immutable ID such as \`repair-2026-10-11-001\`. Never reuse an ID for different content.
-5. Compute SHA-256 over the exact UTF-8 bytes of the patch. For example, save the exact patch as \`repair.patch\` and run \`python -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('repair.patch').read_bytes().hexdigest())"\`. Do not compute the digest from a reformatted or copied variant.
+5. Compute SHA-256 over the exact UTF-8 bytes of the patch. For example, save the exact patch as \`repair.patch\` and run \`python -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('repair.patch').read_bytes()).hexdigest()"\`. Do not compute the digest from a reformatted or copied variant.
 
 ## Publish order
 
