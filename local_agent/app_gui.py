@@ -695,17 +695,69 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.configure(state="normal")
 
     def _add_character(self) -> None:
-        name = simpledialog.askstring("Новая карточка", "Имя персонажа или референса:", parent=self)
-        if not name:
-            return
-        name = name.strip()
-        if len(name) > 80:
-            messagebox.showerror("Слишком длинное имя", "Максимум 80 символов.", parent=self); return
-        description = simpledialog.askstring("Описание", "Описание внешности, одежды, особенностей и постоянных деталей:", parent=self) or ""
-        kind = simpledialog.askstring("Тип карточки", "Введите «Персонаж» или «Референс»:", initialvalue="Персонаж", parent=self) or "Персонаж"
-        kind = "Референс" if kind.casefold().startswith("реф") else "Персонаж"
-        card = {"id": f"card_{int(time.time() * 1000)}", "name": name, "kind": kind, "description": description, "references": [], "created_at": time.strftime("%Y-%m-%d %H:%M:%S")}
-        data = self._load_characters(); data.append(card); self._save_characters(data); self._refresh_characters(card["id"])
+        dialog = tk.Toplevel(self)
+        dialog.title("Новая карточка персонажа")
+        dialog.transient(self)
+        dialog.configure(bg=self.colors["canvas"])
+        dialog.resizable(False, False)
+        frame = ttk.Frame(dialog, padding=24, style="Panel.TFrame")
+        frame.pack(fill="both", expand=True, padx=14, pady=14)
+        ttk.Label(frame, text="БИБЛИОТЕКА ПЕРСОНАЖЕЙ", style="Eyebrow.TLabel").pack(anchor="w")
+        ttk.Label(frame, text="Новая карточка", style="Title.TLabel").pack(anchor="w", pady=(4, 5))
+        ttk.Label(frame, text="Карточка не привязана к конкретному мультфильму. Создавай любых героев и меняй состав проекта.", background=self.colors["surface"], foreground=self.colors["muted"], wraplength=440).pack(anchor="w", pady=(0, 18))
+
+        fields = ttk.Frame(frame, style="Panel.TFrame")
+        fields.pack(fill="x")
+        ttk.Label(fields, text="Имя персонажа", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 5))
+        name_var = tk.StringVar()
+        name_entry = ttk.Entry(fields, textvariable=name_var, width=52)
+        name_entry.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        ttk.Label(fields, text="Категория", style="PanelTitle.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 5))
+        type_var = tk.StringVar(value="Человек")
+        ttk.Combobox(fields, textvariable=type_var, state="readonly", width=49,
+            values=("Человек", "Животное", "Фантастическое существо", "Объект / предмет")).grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        ttk.Label(fields, text="Визуальный стиль", style="PanelTitle.TLabel").grid(row=4, column=0, sticky="w", pady=(0, 5))
+        style_var = tk.StringVar(value="Стилизованный 3D")
+        ttk.Combobox(fields, textvariable=style_var, state="readonly", width=49,
+            values=("Стилизованный 3D", "Реалистичный", "По референсам / смешанный")).grid(row=5, column=0, sticky="ew", pady=(0, 12))
+        ttk.Label(fields, text="Постоянные особенности внешности", style="PanelTitle.TLabel").grid(row=6, column=0, sticky="w", pady=(0, 5))
+        description = tk.Text(fields, height=5, width=52, wrap="word", font=("Segoe UI", 10),
+            relief="flat", bd=0, padx=10, pady=9, highlightthickness=1,
+            highlightbackground=self.colors["line"], highlightcolor=self.colors["accent"],
+            bg=self.colors["surface_alt"], fg=self.colors["ink"], insertbackground=self.colors["accent"])
+        description.grid(row=7, column=0, sticky="ew", pady=(0, 14))
+        ttk.Label(fields, text="Добавь референсы после создания карточки. Их номера и подписи будут использоваться в заданиях.", background=self.colors["surface"], foreground=self.colors["muted"], wraplength=440).grid(row=8, column=0, sticky="w", pady=(0, 16))
+
+        buttons = ttk.Frame(frame, style="Panel.TFrame")
+        buttons.pack(fill="x")
+        def save_card() -> None:
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showwarning("Нужно имя", "Введи имя персонажа.", parent=dialog)
+                name_entry.focus_set()
+                return
+            if len(name) > 80:
+                messagebox.showerror("Слишком длинное имя", "Максимум 80 символов.", parent=dialog)
+                return
+            card = {
+                "id": f"card_{int(time.time() * 1000)}", "name": name, "kind": "Персонаж",
+                "profile_type": type_var.get(), "visual_style": style_var.get(),
+                "description": description.get("1.0", "end-1c").strip()[:2400],
+                "references": [], "reference_labels": {},
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            data = self._load_characters()
+            data.append(card)
+            self._save_characters(data)
+            self._refresh_characters(card["id"])
+            dialog.destroy()
+            self._set_status(f"Карточка «{name}» добавлена в библиотеку.")
+        ttk.Button(buttons, text="Отмена", command=dialog.destroy).pack(side="right")
+        ttk.Button(buttons, text="Создать карточку", style="Accent.TButton", command=save_card).pack(side="right", padx=(0, 8))
+        dialog.update_idletasks()
+        dialog.geometry(f"+{self.winfo_rootx() + max(20, (self.winfo_width()-dialog.winfo_width())//2)}+{self.winfo_rooty() + max(20, (self.winfo_height()-dialog.winfo_height())//2)}")
+        dialog.grab_set()
+        name_entry.focus_set()
 
     def _edit_character(self) -> None:
         card = self._selected_card()
