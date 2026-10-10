@@ -122,7 +122,7 @@ class GitHubQueueClient:
             item = response.json()
             if item.get("type") != "file" or item.get("encoding") != "base64":
                 raise QueueTransportError("Task manifest must be a regular base64-encoded file.")
-            raw_bytes = base64.b64decode(item["content"], validate=False)
+            raw_bytes = base64.b64decode(item["content"], validate=True)
             if len(raw_bytes) > MAX_MANIFEST_BYTES:
                 raise QueueTransportError("Task manifest exceeds the size limit.")
             raw = raw_bytes.decode("utf-8")
