@@ -528,7 +528,7 @@ class BlenderAgentApp(tk.Tk):
                 name_pattern = r"(?<![\w])(?:" + re.escape(name) + r"|" + re.escape(name[:-1]) + r"[а-яё]{0,3})(?![\w])"
             if re.search(name_pattern, normalized_prompt):
                 chosen[card.get("id")] = card
-        return list(chosen.values())[:8]
+        return list(chosen.values())
 
     def _open_selected_character_card(self, _event=None) -> None:
         cards = self._selected_character_cards()
