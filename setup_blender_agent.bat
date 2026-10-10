@@ -46,10 +46,9 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
   if errorlevel 1 goto failed
 )
 
-echo Installing the local agent test/runtime dependencies...
-"%AGENT_VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements-local-agent.txt
-if errorlevel 1 goto failed
-
+echo.
+echo This Blender launcher uses Python standard-library modules only.
+echo No pip packages or API credentials are required.
 echo.
 echo Setup completed. No credentials are needed.
 echo Next: launch run_blender_agent.bat.
