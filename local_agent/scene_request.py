@@ -567,7 +567,7 @@ animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
     scene.frame_end = max(24, min(240, int(animation.get("frames", 120))))
-    animated = [root for _item, root in made_by_item]
+    animated = [root for item, root in made_by_item if not riding or item["primitive"] in ("mia", "scooter")]
     for obj in animated:
         obj.location = obj.location.copy()
         obj.keyframe_insert(data_path="location", frame=scene.frame_start)
