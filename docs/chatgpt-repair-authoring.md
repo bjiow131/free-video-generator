@@ -51,10 +51,10 @@ The example hashes are placeholders and must never be used as a real repair.
 
 ## Expected agent outcomes
 
-The agent records one of these states in `queue/results/repair-<repair_id>.json`:
+The agent records the outcome in `queue/results/repair-<repair_id>.json`. After a successful test and local commit, it also attempts to publish the exact tested diff to `queue/repair_results/<repair_id>.patch`; the result JSON includes that path and SHA-256 digest. This lets ChatGPT inspect the exact artifact that passed the agent's tests.
 
-- `completed`: patch passed local tests and was committed to a separate local branch; inspect the reported commit and worktree before any merge.
+- `completed`: patch passed local tests and was committed to a separate local branch; inspect the reported commit and worktree before any merge. The tested diff should also be available in the mailbox artifact path.
 - `failed_rolled_back` or `rejected`: the disposable worktree was removed after a failed check, when cleanup was verified.
 - `blocked`, `declined`, `superseded`, or `failed_needs_user`: a human decision or cleanup is needed.
 
-A successful result does **not** mean the patch was pushed to the source repository or merged. Current code deliberately does neither. ChatGPT should inspect the reported outcome and prepare any follow-up fix as a new repair ID, never by overwriting the previous repair.
+A successful result does **not** mean the patch was pushed to the source repository or merged. The tested diff is returned to the private mailbox only; source-repository publication and merging remain a separate reviewed step. ChatGPT should inspect the reported outcome and prepare any follow-up fix as a new repair ID, never by overwriting the previous repair.
