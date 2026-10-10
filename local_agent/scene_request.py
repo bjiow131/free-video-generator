@@ -552,12 +552,12 @@ if animation.get("enabled"):
         if animation.get("kind") == "rotate":
             obj.rotation_euler.z += math.tau
         elif animation.get("kind") == "move":
-            obj.location.x += 4.0 if riding else 2.0
+            obj.location.x += 4.0 if rider_id else 2.0
         else:
             obj.location.z += 1.5
         obj.keyframe_insert(data_path="location", frame=scene.frame_end)
         obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
-    if riding:
+    if rider_id:
         scooter_item = next((item for item in cfg["objects"] if item["primitive"] == "scooter"), None)
         if scooter_item:
             for wheel in scene.objects:
