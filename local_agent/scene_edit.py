@@ -64,7 +64,10 @@ action=cfg["action"]
 target=cfg.get("target","").casefold().strip()
 replacement=cfg.get("replacement","")
 def matches():
-    return [o for o in bpy.data.objects if target and target in o.name.casefold()]
+    aliases={"дерево":"tree","деревья":"tree","куб":"cube","сфера":"sphere","шар":"sphere"}
+    terms={target}
+    if target in aliases: terms.add(aliases[target])
+    return [o for o in bpy.data.objects if any(term in o.name.casefold() for term in terms)]
 def mat(name, color):
     m=bpy.data.materials.new(name); m.diffuse_color=(*color,1)
     m.use_nodes=True
@@ -181,6 +184,17 @@ def edit_existing_scene(prompt: str, source_project: str | Path, blender_executa
                 code = proc.poll()
                 if code is not None:
                     break
+                # A Blender GUI can stay alive after a script error. Detect known
+                # task errors from its redirected log rather than waiting 20 minutes.
+                try:
+                    log_tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-6000:]
+                except OSError:
+                    log_tail = ""
+                if "TARGET_MATCH_COUNT:" in log_tail:
+                    details = log_tail.split("TARGET_MATCH_COUNT:", 1)[1].splitlines()[0]
+                    raise SceneEditError("Не удалось однозначно определить объект. Уточните его имя. Совпадения: " + details[:1000])
+                if "Traceback (most recent call last)" in log_tail or "Error: Python" in log_tail:
+                    raise SceneEditError("Blender сообщил об ошибке выполнения сценария. Исходный проект не перезаписан. Последние строки журнала:\\n" + log_tail[-2500:])
                 time.sleep(0.25)
             else:
                 # The visible Blender GUI can stay open after the operation completed.
