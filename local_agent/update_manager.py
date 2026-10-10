@@ -165,9 +165,7 @@ def apply_update_archive(archive_path: Path, install_root: Path) -> dict[str, An
                 if mode == 0o120000:
                     raise UpdateError("Update ZIP symlinks are not allowed.")
                 if not (name == "update_manifest.json" or name.startswith("payload/")):
-                    # ZIPs may contain the conventional top-level folder created by archive tools.
-                    if name.rstrip("/") not in ("agent-update",):
-                        raise UpdateError("ZIP must contain only update_manifest.json and payload/.")
+                    raise UpdateError("ZIP must contain only root-level update_manifest.json and payload/.")
             manifest_names = [name for name in seen if name.endswith("update_manifest.json")]
             if len(manifest_names) != 1 or manifest_names[0] != "update_manifest.json":
                 raise UpdateError("ZIP must place update_manifest.json at its root.")
