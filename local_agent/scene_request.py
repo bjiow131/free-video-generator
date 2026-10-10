@@ -623,7 +623,9 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         if not name or not card_id:
             continue
         is_mia = "mia" in name.casefold() or "мия" in name.casefold() or "mia" in description.casefold() or "мия" in description.casefold()
-        plan["objects"].append({
+        references = [str(p)[:1000] for p in card.get("references", [])[:16]
+                      if isinstance(p, str) and Path(p).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}]
+        character_object = {
             "primitive": "mia" if is_mia else "person",
             "color_name": "turquoise" if is_mia else "blue",
             "color": [0.025, 0.56, 0.56, 1.0] if is_mia else [0.025, 0.18, 0.85, 1.0],
@@ -631,8 +633,14 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "name": name,
             "character_card_id": card_id,
             "character_description": description,
-        })
-        selected_characters.append({"id": card_id, "name": name, "description": description})
+            "character_references": references,
+        }
+        existing_mia = next((obj for obj in plan["objects"] if is_mia and obj.get("primitive") == "mia"), None)
+        if existing_mia is not None:
+            existing_mia.update(character_object)
+        else:
+            plan["objects"].append(character_object)
+        selected_characters.append({"id": card_id, "name": name, "description": description, "references": references})
     plan["selected_characters"] = selected_characters
     return plan
 
@@ -733,4 +741,9 @@ def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds:
     manifest["project_name"] = project_name
     manifest["prompt_summary"] = prompt.strip()
     manifest["preview_dimensions"] = dimensions
+    manifest["selected_characters"] = plan.get("selected_characters", [])
+    manifest["character_reference_paths"] = {
+        item["id"]: item.get("references", []) for item in plan.get("selected_characters", [])
+    }
+    (project / "scene_result.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
     return manifest
