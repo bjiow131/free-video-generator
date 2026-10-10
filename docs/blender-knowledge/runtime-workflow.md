@@ -1,9 +1,16 @@
 # Blender runtime workflow
 
-Two typed operations are available to the local agent:
+## Available typed operations
 
-- `blender_preflight` locates Blender from the locally configured executable path or PATH and queries its version. It does not create a scene.
-- `blender_inspect_mia_project` opens the saved project in background mode with Blender auto-execution disabled, then reports object/mesh/camera/light/material counts, render settings, and missing image files. This is structural inspection, not visual-quality analysis.\n- `blender_open_mia_project` opens an existing generated Mia `.blend` project in the Blender GUI by launching Blender with the validated local file path; it does not click the Open dialog.\n- `blender_mia_blockout` runs a bundled fixed Blender Python script to create an editable starter scene with a simple Mia figure, brown hair, teal outfit, yellow scooter, and snail companion. It saves a `.blend` project and a PNG preview, then validates the outputs.
+- `blender_preflight`: locate Blender from the locally configured executable path or PATH and query its version. It does not create a scene.
+- `blender_mia_blockout`: run a bundled, fixed Blender Python script to create an editable starter scene with a simple Mia figure, brown hair, teal outfit, yellow scooter, and snail companion. Save a `.blend` project and a PNG preview.
+- `blender_open_mia_project`: open an existing generated Mia `.blend` project in the Blender GUI by launching Blender with the validated local file path; it does not click the Open dialog.
+- `blender_inspect_mia_project`: open the saved project in background mode with Blender auto-execution disabled, then report object/mesh/camera/light/material counts, render settings, and missing image files. This is structural inspection, not visual-quality analysis.
+- `blender_knowledge_search`: search the bundled read-only Blender knowledge base; results are guidance, not executable code.
+
+## Output validation
+
+The blockout operation checks that the manifest and non-empty `.blend` file exist, then validates the PNG preview's signature, chunk boundaries, CRC checksums, end marker, and expected 360×640 pixel dimensions. This catches many truncated or corrupted output files; it does not judge composition, character likeness, or visual quality.
 
 ## Limits and safety
 
@@ -22,4 +29,4 @@ Two typed operations are available to the local agent:
 3. Set `LOCAL_AGENT_WORKSPACE` to a dedicated output folder.
 4. Run `blender_preflight`.
 5. If Blender is ready, run `blender_mia_blockout` with a new project name, for example `mia_character_v001`.
-6. Open the resulting `.blend` file and inspect the render before proceeding.
+6. Check that the result reports a validated preview, then open the `.blend` file and inspect the render manually before proceeding.
