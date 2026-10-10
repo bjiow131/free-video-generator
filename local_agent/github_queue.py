@@ -181,6 +181,16 @@ class GitHubQueueClient:
             raise QueueConfigurationError("Invalid repair ID for artifact path.")
         if not isinstance(patch, str) or not patch.startswith("diff --git "):
             raise QueueConfigurationError("Repair artifact must be a text unified Git diff.")
+        try:
+            from local_agent.repair_channel import _validate_patch_paths, RepairProtocolError
+            _validate_patch_paths(patch)
+        except RepairProtocolError as exc:
+            raise QueueConfigurationError("Repair artifact contains a disallowed patch path.") from exc
+        if any(marker in patch for marker in (
+            "GIT binary patch", "Binary files ", "new file mode 120000",
+            "old mode 120000", "160000",
+        )):
+            raise QueueConfigurationError("Binary, symlink, and submodule repair artifacts are prohibited.")
         encoded_bytes = patch.encode("utf-8")
         if len(encoded_bytes) > 40_000:
             raise QueueConfigurationError("Repair artifact exceeds the 40 KB limit.")
