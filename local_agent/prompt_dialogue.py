@@ -5,13 +5,13 @@ from typing import Any
 
 _SPEECH = re.compile(
     r"\b(?:говорит|сказать|сказал(?:а|и)?|произносит|произнести|начинает\s+(?:говорить|произносить|петь)|"
-    r"начинает\s+говорить|по[её]т|петь|говорит|says|say|speaks|speak|starts\s+speaking|begins\s+to\s+speak|sings|sing)\b",
+    r"начинает\s+говорить|по[её]т|петь|говорит|says|say|speaks|speak|starts\s+speaking|begins\s+to\s+speak|starts\s+singing|begins\s+singing|sings|sing)\b",
     re.IGNORECASE,
 )
 _QUOTES = re.compile(r"[«“\"](.*?)[»”\"]", re.DOTALL)
 _SPEAKER_BEFORE = re.compile(
     r"([A-ZА-ЯЁ][\w-]{1,39})(?:\s+[\w-]+){0,5}?\s+"
-    r"(?:ид[её]т.{0,35}?и\s+)?(?:начинает\s+(?:говорить|произносить|петь)|говорит|произносит|по[её]т|says|speaks|sings)\b",
+    r"(?:ид[её]т.{0,35}?и\s+)?(?:начинает\s+(?:говорить|произносить|петь)|говорит|произносит|по[её]т|says|speaks|starts\s+singing|begins\s+singing|sings)\b",
     re.IGNORECASE,
 )
 
