@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import traceback
+import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -641,12 +642,23 @@ class BlenderAgentApp(tk.Tk):
         tree.column("path", width=650)
         tree.pack(fill="both", expand=True)
         tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_from_tab(cid))
+        ttk.Label(frame, text="ОТКРЫТЫЕ ИСТОЧНИКИ И ЛИЦЕНЗИИ", style="Eyebrow.TLabel").pack(anchor="w", pady=(12, 5))
+        source_tree = ttk.Treeview(frame, columns=("title", "license", "url"), show="headings", selectmode="browse", height=4)
+        source_tree.heading("title", text="Источник")
+        source_tree.heading("license", text="Лицензия")
+        source_tree.heading("url", text="Ссылка")
+        source_tree.column("title", width=260, stretch=True)
+        source_tree.column("license", width=170, stretch=False)
+        source_tree.column("url", width=420, stretch=True)
+        source_tree.pack(fill="x", expand=False)
+        source_tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_source_from_tab(cid))
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
         ttk.Button(actions, text="Назвать позу…", command=lambda cid=card_id: self._label_reference_pose(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
         setattr(frame, "reference_tree", tree)
+        setattr(frame, "reference_source_tree", source_tree)
         self._refresh_reference_tab(card)
         self.tabs.select(frame)
 
@@ -666,6 +678,43 @@ class BlenderAgentApp(tk.Tk):
             p = Path(path)
             label = labels.get(str(path)) or (p.stem.split("_", 1)[1] if "_" in p.stem else p.stem)
             tree.insert("", "end", iid=str(index), values=(label, str(p)))
+        source_tree = getattr(frame, "reference_source_tree", None)
+        if source_tree is not None:
+            for iid in source_tree.get_children():
+                source_tree.delete(iid)
+            for index, source in enumerate(card.get("reference_sources", [])):
+                if not isinstance(source, dict):
+                    continue
+                source_tree.insert("", "end", iid=str(index), values=(
+                    str(source.get("title", "Open reference"))[:180],
+                    str(source.get("license", "License not recorded"))[:100],
+                    str(source.get("url", ""))[:500],
+                ))
+
+    def _open_reference_source_from_tab(self, card_id: str) -> None:
+        frame = self.reference_tabs.get(card_id)
+        source_tree = getattr(frame, "reference_source_tree", None) if frame is not None else None
+        selected = source_tree.selection() if source_tree is not None else ()
+        if not selected:
+            messagebox.showinfo("Выберите источник", "Выберите строку в таблице открытых источников.", parent=self)
+            return
+        card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if not card:
+            return
+        sources = [item for item in card.get("reference_sources", []) if isinstance(item, dict)]
+        try:
+            source = sources[int(selected[0])]
+            url = str(source.get("url", "")).strip()
+        except (IndexError, ValueError, TypeError):
+            return
+        # Imported passport data is untrusted: open HTTPS pages only, never local files or script schemes.
+        if not url.startswith("https://") or len(url) > 2000:
+            messagebox.showerror("Небезопасная ссылка", "Разрешены только HTTPS-ссылки на страницы источников.", parent=self)
+            return
+        try:
+            webbrowser.open(url, new=2)
+        except Exception as exc:
+            messagebox.showerror("Не удалось открыть источник", str(exc), parent=self)
 
     def _label_reference_pose(self, card_id: str) -> None:
         frame = self.reference_tabs.get(card_id)
