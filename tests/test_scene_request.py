@@ -107,3 +107,12 @@ def test_thematic_scene_catalog_includes_additional_families():
     underwater = compile_prompt("Создай подводный мир с рыбами, кораллами и подлодкой")
     assert underwater["environment"] == "underwater"
     assert [item["primitive"] for item in underwater["objects"]] == ["fish", "coral", "submarine"]
+
+
+def test_quoted_title_and_top_down_camera_are_parsed_without_extra_fields():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    plan = compile_prompt('Создай надпись «Привет, мир» на синем кубе, вид сверху')
+    assert plan["text_content"] == "Привет, мир"
+    assert plan["camera_angle"] == "top"
+    assert plan["objects"][0]["primitive"] == "cube"
