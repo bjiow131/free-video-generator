@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - feature/local-video-agent
+      - feature/local-first-migration
+      - blender-agent-repair
     paths:
       - "local_agent/**"
       - "tests/test_blender_bridge.py"
@@ -23,6 +25,8 @@ on:
       - "tests/test_notifications.py"
       - "requirements-local-agent.txt"
       - "scripts/windows/**"
+      - "setup_blender_agent.bat"
+      - "run_blender_agent.bat"
       - ".github/workflows/local-agent-tests.yml"
   push:
     branches:
