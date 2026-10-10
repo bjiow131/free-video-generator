@@ -77,6 +77,76 @@
       "url": "https://commons.wikimedia.org/wiki/File:Forest_path_along_wall.jpg",
       "license": "CC0 1.0",
       "use": "environment composition reference"
+    },
+    {
+      "id": "snail_3d",
+      "title": "Snail 3D Model",
+      "url": "https://opengameart.org/content/snail-3d-model",
+      "license": "CC0",
+      "use": "shell photogrammetry reference; not a complete character"
+    },
+    {
+      "id": "bird_basemesh",
+      "title": "Bird basemesh",
+      "url": "https://opengameart.org/content/bird-basemesh",
+      "license": "CC0",
+      "use": "generic bird model; not game-ready"
+    },
+    {
+      "id": "bird_rigged",
+      "title": "Bird rigged and animated",
+      "url": "https://opengameart.org/content/bird",
+      "license": "CC0",
+      "use": "technical bird rig reference"
+    },
+    {
+      "id": "squirrel_2d",
+      "title": "Squirrels",
+      "url": "https://opengameart.org/content/squirrels",
+      "license": "CC0",
+      "use": "2D visual reference only; not a 3D model"
+    },
+    {
+      "id": "hedgehog_photo",
+      "title": "Hedgehog on unkempt lawn",
+      "url": "https://commons.wikimedia.org/wiki/File:Hedgehog_on_unkempt_lawn.jpg",
+      "license": "CC0 1.0",
+      "use": "hedgehog anatomy photo"
+    },
+    {
+      "id": "frog_3d",
+      "title": "Frog low poly animated 3D model",
+      "url": "https://opengameart.org/content/frog-low-poly-animated-3d-model",
+      "license": "CC0",
+      "use": "rigged/animated model candidate"
+    },
+    {
+      "id": "butterfly_3d",
+      "title": "Butterfly (animated)",
+      "url": "https://opengameart.org/content/butterfly-animated",
+      "license": "CC0",
+      "use": "rigged low-poly model candidate"
+    },
+    {
+      "id": "deer_rigged",
+      "title": "Deer Low Poly (rigged)",
+      "url": "https://opengameart.org/content/deer-low-poly-rigged",
+      "license": "CC0",
+      "use": "simple rigged deer candidate"
+    },
+    {
+      "id": "deer_female",
+      "title": "Deer Female",
+      "url": "https://opengameart.org/content/deer-female",
+      "license": "CC0",
+      "use": "rigged/animated deer candidate"
+    },
+    {
+      "id": "dog_rigged",
+      "title": "Dog Low Poly (Rigged)",
+      "url": "https://opengameart.org/content/dog-low-poly-rigged",
+      "license": "CC0 collection listing; verify exact asset page",
+      "use": "dog model candidate; validate exact file license and rig before adoption"
     }
   ],
   "asset_rules": [
