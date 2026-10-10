@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "character_id": "stepa",
+  "status": "design_ready_model_not_built",
+  "display_name": "Стёпа",
+  "category": "human",
+  "role": "Постоянный друг и напарник",
+  "age_or_species": "около 5 лет",
+  "visual_identity": "Мальчик дошкольного возраста, чуть выше Мии; контрастная одежда с устойчивым цветовым акцентом, отличающийся силуэт и причёска.",
+  "personality": [
+    "изобретательный",
+    "энергичный",
+    "иногда торопится"
+  ],
+  "animation_requirements": "бег, прыжки, указание, наклон, передача предмета; простая лицевая анимация и рот для речи",
+  "voice_and_mouth_sync": "живой детский голос, ясная артикуляция",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "pelvis",
+      "spine",
+      "head",
+      "eyes",
+      "jaw_or_mouth_open",
+      "left_arm",
+      "right_arm",
+      "left_leg",
+      "right_leg"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "Human rig/style base (CC0, adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Female character style/rig reference (adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Оригинальный детский дизайн; взрослые референсы не переносить на пропорции лица/тела."
+}

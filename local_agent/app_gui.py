@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import traceback
+import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -26,7 +27,7 @@ from local_agent.update_manager import apply_update_archive, UpdateError
 from local_agent.character_library import CharacterPassportImportError, import_character_passport
 from local_agent.scene01_reference_pack import ReferencePackError, download_scene01_reference_pack
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -209,6 +210,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="Подготовить библиотеку сезона 1…", command=self._prepare_season1_library).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
@@ -640,12 +642,24 @@ class BlenderAgentApp(tk.Tk):
         tree.column("path", width=650)
         tree.pack(fill="both", expand=True)
         tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_from_tab(cid))
+        ttk.Label(frame, text="ОТКРЫТЫЕ ИСТОЧНИКИ И ЛИЦЕНЗИИ", style="Eyebrow.TLabel").pack(anchor="w", pady=(12, 5))
+        source_tree = ttk.Treeview(frame, columns=("title", "license", "url"), show="headings", selectmode="browse", height=4)
+        source_tree.heading("title", text="Источник")
+        source_tree.heading("license", text="Лицензия")
+        source_tree.heading("url", text="Ссылка")
+        source_tree.column("title", width=260, stretch=True)
+        source_tree.column("license", width=170, stretch=False)
+        source_tree.column("url", width=420, stretch=True)
+        source_tree.pack(fill="x", expand=False)
+        source_tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_source_from_tab(cid))
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
+        ttk.Button(actions, text="Открыть источник", command=lambda cid=card_id: self._open_reference_source_from_tab(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Назвать позу…", command=lambda cid=card_id: self._label_reference_pose(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
         setattr(frame, "reference_tree", tree)
+        setattr(frame, "reference_source_tree", source_tree)
         self._refresh_reference_tab(card)
         self.tabs.select(frame)
 
@@ -665,6 +679,43 @@ class BlenderAgentApp(tk.Tk):
             p = Path(path)
             label = labels.get(str(path)) or (p.stem.split("_", 1)[1] if "_" in p.stem else p.stem)
             tree.insert("", "end", iid=str(index), values=(label, str(p)))
+        source_tree = getattr(frame, "reference_source_tree", None)
+        if source_tree is not None:
+            for iid in source_tree.get_children():
+                source_tree.delete(iid)
+            for index, source in enumerate(card.get("reference_sources", [])):
+                if not isinstance(source, dict):
+                    continue
+                source_tree.insert("", "end", iid=str(index), values=(
+                    str(source.get("title", "Open reference"))[:180],
+                    str(source.get("license", "License not recorded"))[:100],
+                    str(source.get("url", ""))[:500],
+                ))
+
+    def _open_reference_source_from_tab(self, card_id: str) -> None:
+        frame = self.reference_tabs.get(card_id)
+        source_tree = getattr(frame, "reference_source_tree", None) if frame is not None else None
+        selected = source_tree.selection() if source_tree is not None else ()
+        if not selected:
+            messagebox.showinfo("Выберите источник", "Выберите строку в таблице открытых источников.", parent=self)
+            return
+        card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if not card:
+            return
+        sources = [item for item in card.get("reference_sources", []) if isinstance(item, dict)]
+        try:
+            source = sources[int(selected[0])]
+            url = str(source.get("url", "")).strip()
+        except (IndexError, ValueError, TypeError):
+            return
+        # Imported passport data is untrusted: open HTTPS pages only, never local files or script schemes.
+        if not url.startswith("https://") or len(url) > 2000:
+            messagebox.showerror("Небезопасная ссылка", "Разрешены только HTTPS-ссылки на страницы источников.", parent=self)
+            return
+        try:
+            webbrowser.open(url, new=2)
+        except Exception as exc:
+            messagebox.showerror("Не удалось открыть источник", str(exc), parent=self)
 
     def _label_reference_pose(self, card_id: str) -> None:
         frame = self.reference_tabs.get(card_id)
@@ -994,6 +1045,59 @@ class BlenderAgentApp(tk.Tk):
             "Карточка библиотеки обновлена автоматически. Исходный JSON не изменён.",
             parent=self,
         )
+
+    def _prepare_season1_library(self) -> None:
+        """Install the versioned Season 1 passport set without blocking the GUI."""
+        script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_season1_library.py"
+        if not script.is_file():
+            messagebox.showerror("Не найден установщик", f"Файл не найден: {script}", parent=self)
+            return
+        if not messagebox.askyesno(
+            "Подготовить библиотеку сезона 1",
+            "Будут добавлены 14 паспортов, скачаны три CC0-фотореференса и создан манифест сезона. "
+            "Неизменённые паспорта повторно импортироваться не будут. 3D-модели автоматически не скачиваются. Продолжить?",
+            parent=self,
+        ):
+            return
+        self._set_status("Подготовка библиотеки сезона 1…")
+        self._busy = True
+
+        def worker() -> None:
+            import subprocess
+            env = os.environ.copy()
+            env["LOCAL_AGENT_CHARACTER_LIBRARY"] = str(CHARACTER_DIR)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script)],
+                    cwd=str(script.parents[1]),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+                output = (result.stdout or "").strip()
+                errors = (result.stderr or "").strip()
+                self.after(0, lambda: self._finish_season1_library(result.returncode, output, errors))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                error_text = str(exc)
+                self.after(0, lambda message=error_text: self._finish_season1_library(1, "", message))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_season1_library(self, code: int, output: str, errors: str) -> None:
+        self._busy = False
+        if code == 0:
+            self._refresh_characters()
+            self._set_status("Библиотека сезона 1 подготовлена.")
+            messagebox.showinfo("Библиотека сезона 1 готова", output or "Паспорта и манифест сохранены.", parent=self)
+        else:
+            self._set_status("Подготовка библиотеки сезона 1 завершилась с ошибкой.")
+            messagebox.showerror(
+                "Не удалось подготовить библиотеку",
+                (errors or output or f"Код завершения: {code}")[-5000:],
+                parent=self,
+            )
 
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)

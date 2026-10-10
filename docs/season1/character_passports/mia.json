@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "character_id": "mia",
+  "status": "design_ready_model_not_built",
+  "display_name": "Мия",
+  "category": "human",
+  "role": "Главная героиня",
+  "age_or_species": "4 года",
+  "visual_identity": "Маленькая девочка; мягкие детские пропорции, выразительные глаза, узнаваемый силуэт; базовая одежда и палитра фиксируются после утверждения исходного референса. Любит улиток, жёлтый самокат и велосипед.",
+  "personality": [
+    "любопытная",
+    "заботливая",
+    "настойчивая"
+  ],
+  "animation_requirements": "ходьба короткими шагами, бег, приседание на корточки, осторожное касание, езда на самокате и велосипеде; отдельные контролы рта для реплик",
+  "voice_and_mouth_sync": "детский тембр, естественная речь без карикатурного писка",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "pelvis",
+      "spine",
+      "head",
+      "eyes",
+      "jaw_or_mouth_open",
+      "left_arm",
+      "right_arm",
+      "left_leg",
+      "right_leg"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "Human rig/style base (CC0, adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Female character style/rig reference (adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Albino snail on moss, photo reference",
+      "url": "https://commons.wikimedia.org/wiki/File:Albino_snail_walking_on_green_moss.jpg",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Forest snail photo reference",
+      "url": "https://commons.wikimedia.org/wiki/File:Forest_Snail_(227081443).jpeg",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Найденные взрослые CC0-модели — только технический ориентир для рига/стиля. Не использовать их лицо/внешность как образ Мии. Сходство держать по утверждённому пользовательскому референсу."
+}

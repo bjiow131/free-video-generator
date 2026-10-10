@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "character_id": "mama",
+  "status": "design_ready_model_not_built",
+  "display_name": "Мама Мии",
+  "category": "human",
+  "role": "Заботливый взрослый, эпизодические появления",
+  "age_or_species": "взрослая",
+  "visual_identity": "Спокойный тёплый дизайн, мягкие формы, практичная одежда; палитра не должна сливаться с Мией.",
+  "personality": [
+    "внимательная",
+    "спокойная",
+    "поддерживающая"
+  ],
+  "animation_requirements": "естественная ходьба, наклон на уровень ребёнка, жесты объяснения",
+  "voice_and_mouth_sync": "тёплый взрослый голос",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "pelvis",
+      "spine",
+      "head",
+      "eyes",
+      "jaw_or_mouth_open",
+      "left_arm",
+      "right_arm",
+      "left_leg",
+      "right_leg"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "Female character style/rig reference (adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Фоновый второстепенный персонаж; не требует сложного лицевого рига в первом проходе."
+}

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "character_id": "baba-anya",
+  "status": "design_ready_model_not_built",
+  "display_name": "Бабушка Аня",
+  "category": "human",
+  "role": "Знает сад и лесные растения",
+  "age_or_species": "пожилая взрослая",
+  "visual_identity": "Добрая округлая пластика, узнаваемая шляпа/платок и садовый фартук; без мелких деталей, мешающих ригу.",
+  "personality": [
+    "мудрая",
+    "наблюдательная",
+    "с юмором"
+  ],
+  "animation_requirements": "медленная ходьба, указание на растения, работа с лейкой и корзинкой",
+  "voice_and_mouth_sync": "мягкий уверенный голос",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "pelvis",
+      "spine",
+      "head",
+      "eyes",
+      "jaw_or_mouth_open",
+      "left_arm",
+      "right_arm",
+      "left_leg",
+      "right_leg"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [
+    {
+      "title": "Human rig/style base (CC0, adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Female character style/rig reference (adult proportions; not a child likeness)",
+      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
+      "license": "CC0 1.0",
+      "usage": "visual_or_technical_reference_only"
+    }
+  ],
+  "notes": "Стилизованный оригинальный дизайн; модели из наборов использовать только как технический блок-аут."
+}

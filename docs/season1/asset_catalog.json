@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "series": "Мия и тропинка открытий",
+  "license_policy": "Prefer CC0/verified public-domain assets. Store source page, exact license, author, retrieval date, file hash and modifications in manifest. A source page is not proof that a specific downloadable file is compatible with the intended rig.",
+  "source_packs": [
+    {
+      "id": "human_men",
+      "title": "Ultimate Modular Men Pack",
+      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
+      "license": "CC0 1.0",
+      "formats": [
+        "FBX",
+        "OBJ",
+        "Blend",
+        "glTF"
+      ],
+      "use": "technical adult-human rig/style references only; not a child likeness"
+    },
+    {
+      "id": "human_women",
+      "title": "Ultimate Modular Women Pack",
+      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
+      "license": "CC0 1.0",
+      "formats": [
+        "FBX",
+        "OBJ",
+        "Blend",
+        "glTF"
+      ],
+      "use": "technical adult-human rig/style references only; not a child likeness"
+    },
+    {
+      "id": "animal_cc0",
+      "title": "CC0 3D Animals / Creatures",
+      "url": "https://opengameart.org/content/cc0-3d-animals-creatures",
+      "license": "CC0 collection; verify individual entries",
+      "use": "animal model candidates; inspect each model and rig before adoption"
+    },
+    {
+      "id": "animated_animals",
+      "title": "Animated Animales Low Poly",
+      "url": "https://opengameart.org/content/animated-animales-low-poly",
+      "license": "CC0",
+      "use": "dog/bird and locomotion candidates; not guaranteed species coverage"
+    },
+    {
+      "id": "trees",
+      "title": "Tree Toon Stylized",
+      "url": "https://opengameart.org/content/tree-toon-stylized",
+      "license": "CC0",
+      "use": "stylized forest tree candidates"
+    },
+    {
+      "id": "wilderness",
+      "title": "Low-poly Wilderness",
+      "url": "https://opengameart.org/content/low-poly-wilderness",
+      "license": "CC0; inspect archive before use",
+      "use": "forest blockout, rocks, vegetation"
+    },
+    {
+      "id": "snail_moss_photo",
+      "title": "Albino snail on green moss",
+      "url": "https://commons.wikimedia.org/wiki/File:Albino_snail_walking_on_green_moss.jpg",
+      "license": "CC0 1.0",
+      "use": "snail anatomy and contact reference"
+    },
+    {
+      "id": "snail_forest_photo",
+      "title": "Forest Snail photo",
+      "url": "https://commons.wikimedia.org/wiki/File:Forest_Snail_(227081443).jpeg",
+      "license": "CC0 1.0",
+      "use": "snail shell and body reference"
+    },
+    {
+      "id": "forest_path_photo",
+      "title": "Forest path along wall",
+      "url": "https://commons.wikimedia.org/wiki/File:Forest_path_along_wall.jpg",
+      "license": "CC0 1.0",
+      "use": "environment composition reference"
+    },
+    {
+      "id": "snail_3d",
+      "title": "Snail 3D Model",
+      "url": "https://opengameart.org/content/snail-3d-model",
+      "license": "CC0",
+      "use": "shell photogrammetry reference; not a complete character"
+    },
+    {
+      "id": "bird_basemesh",
+      "title": "Bird basemesh",
+      "url": "https://opengameart.org/content/bird-basemesh",
+      "license": "CC0",
+      "use": "generic bird model; not game-ready"
+    },
+    {
+      "id": "bird_rigged",
+      "title": "Bird rigged and animated",
+      "url": "https://opengameart.org/content/bird",
+      "license": "CC0",
+      "use": "technical bird rig reference"
+    },
+    {
+      "id": "squirrel_2d",
+      "title": "Squirrels",
+      "url": "https://opengameart.org/content/squirrels",
+      "license": "CC0",
+      "use": "2D visual reference only; not a 3D model"
+    },
+    {
+      "id": "hedgehog_photo",
+      "title": "Hedgehog on unkempt lawn",
+      "url": "https://commons.wikimedia.org/wiki/File:Hedgehog_on_unkempt_lawn.jpg",
+      "license": "CC0 1.0",
+      "use": "hedgehog anatomy photo"
+    },
+    {
+      "id": "frog_3d",
+      "title": "Frog low poly animated 3D model",
+      "url": "https://opengameart.org/content/frog-low-poly-animated-3d-model",
+      "license": "CC0",
+      "use": "rigged/animated model candidate"
+    },
+    {
+      "id": "butterfly_3d",
+      "title": "Butterfly (animated)",
+      "url": "https://opengameart.org/content/butterfly-animated",
+      "license": "CC0",
+      "use": "rigged low-poly model candidate"
+    },
+    {
+      "id": "deer_rigged",
+      "title": "Deer Low Poly (rigged)",
+      "url": "https://opengameart.org/content/deer-low-poly-rigged",
+      "license": "CC0",
+      "use": "simple rigged deer candidate"
+    },
+    {
+      "id": "deer_female",
+      "title": "Deer Female",
+      "url": "https://opengameart.org/content/deer-female",
+      "license": "CC0",
+      "use": "rigged/animated deer candidate"
+    },
+    {
+      "id": "dog_rigged",
+      "title": "Dog Low Poly (Rigged)",
+      "url": "https://opengameart.org/content/dog-low-poly-rigged",
+      "license": "CC0 collection listing; verify exact asset page",
+      "use": "dog model candidate; validate exact file license and rig before adoption"
+    }
+  ],
+  "asset_rules": [
+    "No binary model is considered production-ready until opened in Blender and checked for missing textures, scale, origin, rig, animation clips and license.",
+    "Photos and 3D models must be stored as different asset types.",
+    "Human character packs are adult-proportioned; never use as a visual likeness for Mia or Stepa.",
+    "All imported files require SHA-256 and source/license metadata.",
+    "Character cards reference local files only; URLs remain in reference_sources and the asset manifest until the user downloads the assets."
+  ]
+}
