@@ -331,14 +331,22 @@ scene.camera = camera
 bpy.ops.object.light_add(type="AREA", location=(-4.0, -4.0, 8.0))
 key = bpy.context.object
 key.name = "Light | key"
-key.data.energy = 1250
+if lighting == "night":
+    key.data.energy, key.data.color = 850, (0.42, 0.55, 1.0)
+elif lighting == "sunset":
+    key.data.energy, key.data.color = 1500, (1.0, 0.48, 0.22)
+elif lighting == "cinematic":
+    key.data.energy, key.data.color = 1750, (0.72, 0.82, 1.0)
+else:
+    key.data.energy, key.data.color = 1250, (1.0, 0.93, 0.82)
 key.data.shape = "DISK"
 key.data.size = 6
 key.rotation_euler = (Vector((0, 0, 0.5)) - key.location).to_track_quat("-Z", "Y").to_euler()
 bpy.ops.object.light_add(type="AREA", location=(5.0, 3.0, 5.0))
 fill = bpy.context.object
 fill.name = "Light | fill"
-fill.data.energy = 650
+fill.data.energy = 260 if lighting == "night" else 380 if lighting == "cinematic" else 650
+fill.data.color = (0.30, 0.42, 1.0) if lighting == "night" else (1.0, 0.58, 0.30) if lighting == "sunset" else (0.78, 0.86, 1.0)
 fill.data.size = 5
 fill.rotation_euler = (Vector((0, 0, 0.5)) - fill.location).to_track_quat("-Z", "Y").to_euler()
 
@@ -355,6 +363,15 @@ scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_mode = "RGBA"
 scene.render.filepath = os.path.join(out_dir, "scene_preview.png")
 scene.world.color = tuple(cfg.get("world_color", [0.055, 0.055, 0.055, 1.0])[:3])
+scene.world.use_nodes = True
+background = scene.world.node_tree.nodes.get("Background") if scene.world.node_tree else None
+if background:
+    background.inputs["Color"].default_value = tuple(cfg.get("world_color", [0.055, 0.055, 0.055, 1.0]))
+    background.inputs["Strength"].default_value = 0.18 if lighting == "night" else 0.45
+scene.render.film_transparent = bool(cfg.get("transparent_background", False))
+if hasattr(scene, "eevee") and hasattr(scene.eevee, "taa_render_samples"):
+    scene.eevee.taa_render_samples = 64 if cfg["render_percentage"] >= 75 else 32
+scene.render.fps = 24
 animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
