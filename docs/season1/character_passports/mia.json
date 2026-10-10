@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "character_id": "mia",
-  "status": "design_ready_model_not_built",
+  "status": "awaiting_original_references",
   "display_name": "Мия",
   "category": "human",
   "role": "Главная героиня",
@@ -35,31 +35,6 @@
     "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
     "Не считать внешний референс готовой моделью или подтверждённым ригом."
   ],
-  "reference_sources": [
-    {
-      "title": "Human rig/style base (CC0, adult proportions; not a child likeness)",
-      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
-      "license": "CC0 1.0",
-      "usage": "visual_or_technical_reference_only"
-    },
-    {
-      "title": "Female character style/rig reference (adult proportions; not a child likeness)",
-      "url": "https://quaternius.com/packs/ultimatemodularwomen.html",
-      "license": "CC0 1.0",
-      "usage": "visual_or_technical_reference_only"
-    },
-    {
-      "title": "Albino snail on moss, photo reference",
-      "url": "https://commons.wikimedia.org/wiki/File:Albino_snail_walking_on_green_moss.jpg",
-      "license": "CC0 1.0",
-      "usage": "visual_or_technical_reference_only"
-    },
-    {
-      "title": "Forest snail photo reference",
-      "url": "https://commons.wikimedia.org/wiki/File:Forest_Snail_(227081443).jpeg",
-      "license": "CC0 1.0",
-      "usage": "visual_or_technical_reference_only"
-    }
-  ],
-  "notes": "Найденные взрослые CC0-модели — только технический ориентир для рига/стиля. Не использовать их лицо/внешность как образ Мии. Сходство держать по утверждённому пользовательскому референсу."
+  "reference_sources": [],
+  "notes": "Найденные взрослые CC0-модели — только технический ориентир для рига/стиля. Не использовать их лицо/внешность как образ Мии. Сходство держать по утверждённому пользовательскому референсу. Original project-specific references required; external source links removed."
 }
