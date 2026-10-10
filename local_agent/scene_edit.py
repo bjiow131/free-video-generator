@@ -52,10 +52,18 @@ def _parse(prompt: str) -> dict[str, Any]:
 
 
 _SCRIPT = r'''
-import bpy, json, os, sys, math
+import bpy, json, os, sys, math, traceback
 from mathutils import Vector
 args=sys.argv[sys.argv.index("--")+1:]
 with open(args[0],"r",encoding="utf-8") as f: cfg=json.load(f)
+def _agent_excepthook(exc_type, exc, tb):
+    try:
+        with open(cfg["result"],"w",encoding="utf-8") as stream:
+            json.dump({"status":"failed","error":str(exc),"error_type":getattr(exc_type,"__name__","Exception")},stream,ensure_ascii=False)
+    except Exception:
+        pass
+    traceback.print_exception(exc_type,exc,tb)
+sys.excepthook=_agent_excepthook
 source=os.path.realpath(cfg["source"])
 destination=os.path.realpath(cfg["destination"])
 bpy.ops.wm.open_mainfile(filepath=source)
@@ -181,6 +189,8 @@ def edit_existing_scene(prompt: str, source_project: str | Path, blender_executa
                         result = {}
                     if result.get("status") == "completed":
                         break
+                    if result.get("status") == "failed":
+                        raise SceneEditError("Blender отклонил изменение: " + str(result.get("error", "неизвестная ошибка"))[:1800])
                 code = proc.poll()
                 if code is not None:
                     break
