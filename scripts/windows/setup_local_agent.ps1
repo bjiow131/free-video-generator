@@ -112,7 +112,7 @@ Write-Step "Run safe local diagnostics"
 if ($LASTEXITCODE -ne 0) { Write-Warn "Diagnostics returned a non-zero exit code." }
 
 Write-Step "Run focused agent tests"
-& $VenvPython -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_result_outbox.py tests/test_checkpoint_schema.py tests/test_ffmpeg_media.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py tests/test_notifications.py
+& $VenvPython -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_result_outbox.py tests/test_local_project_runner.py tests/test_checkpoint_schema.py tests/test_ffmpeg_media.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py tests/test_notifications.py
 if ($LASTEXITCODE -ne 0) { throw "Focused safety tests failed. Setup is stopping; do not start mailbox polling until the failure is fixed." }
 
 if (-not $SkipCredentialPrompt) {
