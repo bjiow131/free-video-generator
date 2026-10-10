@@ -294,11 +294,28 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_state() -> dict[str, Any]:
-    try:
-        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    """Load replay-protection state; fail closed if an existing file is unreadable."""
+    if not STATE_PATH.exists():
         return {}
+    try:
+        raw = STATE_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError("poller state exists but cannot be read; refusing to run tasks") from exc
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeError) as exc:
+        raise RuntimeError("poller state is invalid JSON; refusing to run tasks") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("poller state must be a JSON object; refusing to run tasks")
+    processed = data.get("processed_tasks", {})
+    if not isinstance(processed, dict):
+        raise RuntimeError("poller replay history is invalid; refusing to run tasks")
+    for task_id, record in processed.items():
+        if not isinstance(task_id, str) or not isinstance(record, dict):
+            raise RuntimeError("poller replay history is invalid; refusing to run tasks")
+        if not isinstance(record.get("manifest_sha"), str):
+            raise RuntimeError("poller replay history is incomplete; refusing to run tasks")
+    return data
 
 
 def _save_state(data: dict[str, Any]) -> None:
@@ -573,9 +590,15 @@ def main() -> int:
         print(f"Cannot start poller: {exc}")
         return 2
 
+    try:
+        state = _load_state()
+    except RuntimeError as exc:
+        lock_handle.close()
+        print(f"Cannot load poller replay state: {exc}")
+        return 2
+
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
-    state = _load_state()
     last_seen = state.get("last_task_id")
     last_sha = state.get("manifest_sha")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
