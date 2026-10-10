@@ -817,6 +817,14 @@ class BlenderAgentApp(tk.Tk):
         if result is None:
             self._set_status("Загрузка референсов не вернула результат.")
             return
+        try:
+            self._register_scene01_reference_cards(result)
+        except (OSError, ValueError, TypeError) as exc:
+            messagebox.showwarning(
+                "Референсы скачаны, но карточки не обновлены",
+                f"Файлы сохранены, однако их не удалось добавить в библиотеку: {exc}",
+                parent=self,
+            )
         downloaded = sum(item["status"] == "downloaded" for item in result["assets"])
         already = sum(item["status"] == "already_present" for item in result["assets"])
         failed = len(result["failures"])
@@ -834,6 +842,60 @@ class BlenderAgentApp(tk.Tk):
         self._set_status(
             f"Набор референсов сцены 01: новых файлов {downloaded}, уже были {already}, ошибок {failed}."
         )
+
+    def _register_scene01_reference_cards(self, result: dict) -> None:
+        """Expose downloaded photos as reusable asset cards in the existing library."""
+        files_by_id = {
+            item["id"]: str(Path(result["pack_dir"]) / item["filename"])
+            for item in result["assets"]
+            if item.get("id") in {"snail_moss", "snail_wood", "woodland_path"}
+            and item.get("status") in {"downloaded", "already_present"}
+        }
+        definitions = (
+            {
+                "id": "scene01_snail_refs",
+                "name": "Улитка — референсы сцены 01",
+                "kind": "Объект",
+                "profile_type": "Животное",
+                "visual_style": "Фотореференс",
+                "description": "Открытые CC0-фотореференсы улитки для формы тела и раковины. Это фотографии, не готовая 3D-модель.",
+                "asset_ids": ("snail_moss", "snail_wood"),
+            },
+            {
+                "id": "scene01_path_refs",
+                "name": "Лесная тропинка — сцена 01",
+                "kind": "Окружение",
+                "profile_type": "Объект / предмет",
+                "visual_style": "Фотореференс",
+                "description": "Открытый CC0-фотореференс лесной тропинки для композиции и окружения вертикального кадра.",
+                "asset_ids": ("woodland_path",),
+            },
+        )
+        data = self._load_characters()
+        for definition in definitions:
+            paths = [files_by_id[key] for key in definition["asset_ids"] if key in files_by_id]
+            if not paths:
+                continue
+            card = next((item for item in data if item.get("id") == definition["id"]), None)
+            if card is None:
+                card = {
+                    "id": definition["id"],
+                    "name": definition["name"],
+                    "kind": definition["kind"],
+                    "profile_type": definition["profile_type"],
+                    "visual_style": definition["visual_style"],
+                    "description": definition["description"],
+                    "references": [],
+                    "reference_labels": {},
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                data.append(card)
+            refs = card.setdefault("references", [])
+            for path in paths:
+                if path not in refs:
+                    refs.append(path)
+        self._save_characters(data)
+        self._refresh_characters("scene01_snail_refs")
 
     def _import_character_passport(self) -> None:
         """Import a JSON passport into the existing character library without executing it."""
