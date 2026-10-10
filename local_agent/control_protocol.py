@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_camera_control"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_camera_control", "blender_camera_control"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
