@@ -18,6 +18,8 @@ import time
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
+from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
+from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
@@ -639,8 +641,11 @@ def _acquire_instance_lock(path: Path):
 
 
 def main() -> int:
-    print("Remote mailbox polling is disabled. Use run_blender_agent.bat for local Blender-only operation.")
-    return 2
+    # Remote task intake is deliberately opt-in; the normal local Blender launcher
+    # never starts a GitHub polling loop by accident.
+    if os.environ.get("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX") != "1":
+        print("GitHub mailbox polling is disabled. Use run_github_mailbox_agent.bat or set LOCAL_AGENT_ENABLE_GITHUB_MAILBOX=1 explicitly.")
+        return 2
 
     try:
         config = QueueConfig.from_environment()
