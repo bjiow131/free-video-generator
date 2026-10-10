@@ -164,7 +164,7 @@ class BlenderAgentApp(tk.Tk):
         panel = ttk.Frame(self.update_tab, style="Panel.TFrame", padding=18)
         panel.pack(fill="x", anchor="n")
         ttk.Label(panel, text="Обновление отдельными файлами", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(panel, text="Обновление устанавливается из локальной папки: агент создаёт резервные копии изменяемых файлов, проверяет пути и не удаляет проекты. После обновления приложение нужно перезапустить.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(8, 12))
+        ttk.Label(panel, text="Обновление устанавливается из ZIP-пакета: агент проверяет хеши и пути, создаёт резервные копии и не удаляет проекты. После обновления приложение нужно перезапустить.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(8, 12))
         ttk.Label(panel, text=f"Версия интерфейса: {APP_VERSION}", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(panel, text="Выбери ZIP-пакет обновления с update_manifest.json и файлами внутри payload/. В манифесте перечислены только новые или заменяемые файлы.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(6, 12))
         ttk.Button(panel, text="Установить обновление из папки…", command=self._apply_update).pack(anchor="w")
@@ -402,8 +402,8 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.delete("1.0", "end")
 
     def _apply_update(self) -> None:
-        folder = filedialog.askdirectory(title="Выберите папку с update_manifest.json", parent=self)
-        if not folder: return
+        archive = filedialog.askopenfilename(title="Выберите ZIP-пакет обновления", filetypes=[("Agent update ZIP", "*.zip")], parent=self)
+        if not archive: return
         if not messagebox.askyesno("Установить обновление", "Будут заменены только перечисленные файлы агента. Перед заменой создаются резервные копии. Продолжить?", parent=self): return
         try:
             result = apply_update_archive(Path(archive), Path(__file__).resolve().parents[1])
