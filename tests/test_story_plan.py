@@ -24,3 +24,12 @@ def test_rejects_project_symlink_escape(tmp_path:Path):
     try: (tmp_path/"mia_snail").symlink_to(outside,target_is_directory=True)
     except (OSError,NotImplementedError): pytest.skip("Symlink creation is unavailable on this platform")
     with pytest.raises(StoryPlanError,match="symlink"): save_story_plan(tmp_path,sample_plan())
+
+
+def test_extracts_quoted_dialogue_from_prompt_when_dialogue_is_omitted():
+    plan = sample_plan()
+    plan["scenes"][0]["dialogue"] = []
+    plan["scenes"][0]["action"] = 'Мия идет по тропинке и начинает говорить: «Смотри, улитка!»'
+    result = validate_story_plan(plan)
+    assert result["scenes"][0]["dialogue"][0]["text"] == "Смотри, улитка!"
+    assert result["scenes"][0]["dialogue"][0]["speaker"] == "Мия"
