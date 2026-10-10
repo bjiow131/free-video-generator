@@ -42,9 +42,14 @@ _COLORS: tuple[tuple[str, tuple[str, ...], tuple[float, float, float, float]], .
     ("gray", ("серый", "серая", "серое", "серые"), (0.32, 0.35, 0.38, 1.0)),
 )
 _COLOR_DEFAULT = (0.22, 0.42, 0.68, 1.0)
-_NUMBER = re.compile(r"(?<!\w)(\d{1,2})(?!\w)")
+_COUNT_WORDS = {
+    "один": 1, "одна": 1, "одно": 1, "два": 2, "две": 2, "три": 3,
+    "четыре": 4, "пять": 5, "шесть": 6, "семь": 7, "восемь": 8,
+    "девять": 9, "десять": 10,
+}
+_COUNT_TOKEN = r"(?:\d{1,2}|" + "|".join(_COUNT_WORDS) + r")"
+_LOCAL_COUNT = re.compile(r"(?<![а-яё\w])(" + _COUNT_TOKEN + r")(?![а-яё\w])(?:\s+[а-яё-]+){0,3}\s*$")
 _SIZE = re.compile(r"(?:размер(?:ом)?|масштаб(?:ом)?)\s*(?:=\s*)?(\d+(?:[.,]\d+)?)")
-
 
 class SceneRequestError(ValueError):
     """A natural-language scene request is unsupported or unsafe."""
@@ -72,8 +77,10 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
             "Не удалось распознать объект. Поддерживаются куб, сфера/шар, цилиндр, конус, тор и обезьяна (Suzanne)."
         )
 
+    # Mask aspect ratios without changing offsets, so 9:16 is never an object count.
+    count_text = re.sub(r"\d+\s*:\s*\d+", lambda match: " " * len(match.group(0)), text)
     global_count = None
-    leading_count = re.match(r"^\\s*(" + _COUNT_TOKEN + r")\\b", text)
+    leading_count = re.match(r"^\s*(" + _COUNT_TOKEN + r")\b", count_text)
     if leading_count:
         token = leading_count.group(1)
         value = int(token) if token.isdigit() else _COUNT_WORDS[token]
