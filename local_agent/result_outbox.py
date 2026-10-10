@@ -78,9 +78,13 @@ class ResultOutbox:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ResultOutboxError("Outbox entry is unreadable or malformed.") from exc
-        if (not isinstance(data, dict) or data.get("schema_version") != 1
-                or data.get("task_id") != expected_task_id or not isinstance(data.get("result"), dict)):
+        if (not isinstance(data, dict) or isinstance(data.get("schema_version"), bool)
+                or data.get("schema_version") != 1 or data.get("task_id") != expected_task_id
+                or not isinstance(data.get("result"), dict)):
             raise ResultOutboxError("Outbox entry has an invalid schema or task ID.")
+        result_bytes = json.dumps(data["result"], ensure_ascii=False, indent=2).encode("utf-8")
+        if len(result_bytes) > MAX_RESULT_BYTES:
+            raise ResultOutboxError("Outbox result exceeds the publication size limit.")
         return data
 
     def publish(self, client: Any, task_id: str, result: dict[str, Any]) -> str:
