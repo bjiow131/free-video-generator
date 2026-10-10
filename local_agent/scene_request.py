@@ -573,7 +573,8 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
 '''
 
 
-def _reference_indices_for_character(card: dict[str, Any], prompt: str) -> list[int]:
+def _reference_indices_for_character(card: dict[str, Any], prompt: str,
+                                       all_character_names: list[str] | None = None) -> list[int]:
     """Resolve explicitly requested reference numbers/pose labels near this character's name."""
     references = card.get("references", [])
     if not isinstance(references, list) or not references:
@@ -581,10 +582,28 @@ def _reference_indices_for_character(card: dict[str, Any], prompt: str) -> list[
     name = str(card.get("name", "")).strip()
     text = prompt.casefold()
     name_at = text.find(name.casefold()) if name else -1
-    # Keep reference-number parsing local to the character mention, so one hero's pose
-    # numbers are not accidentally applied to every other hero in the scene.
+    if name_at < 0 and len(name) >= 5:
+        name_at = text.find(name.casefold()[:-1])
+    # Bound this character's reference request by neighboring named characters.
+    mentions: list[tuple[int, int, str]] = []
+    for other in (all_character_names or [name]):
+        other = str(other).strip().casefold()
+        if not other:
+            continue
+        candidates = [other]
+        if len(other) >= 5:
+            candidates.append(other[:-1])
+        for candidate in candidates:
+            for found in re.finditer(r"(?<![\w])" + re.escape(candidate) + r"(?![\w])", text):
+                mentions.append((found.start(), found.end(), other))
+    mentions.sort()
     if name_at >= 0:
-        window = text[max(0, name_at - 100): min(len(text), name_at + len(name) + 180)]
+        own_end = name_at + len(name.casefold())
+        previous_ends = [end for start, end, other in mentions if end <= name_at and other != name.casefold()]
+        next_starts = [start for start, end, other in mentions if start > name_at and other != name.casefold()]
+        window_start = max(previous_ends) if previous_ends else max(0, name_at - 80)
+        window_end = min(next_starts) if next_starts else min(len(text), own_end + 140)
+        window = text[window_start:window_end]
     else:
         window = text
     requested: list[int] = []
@@ -626,7 +645,8 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             raw_labels = {}
         all_labels = {path: str(raw_labels.get(path, Path(path).stem))[:80] for path in valid_references}
         requested_indices = _reference_indices_for_character(
-            {"name": name, "references": valid_references, "reference_labels": all_labels}, prompt
+            {"name": name, "references": valid_references, "reference_labels": all_labels},
+            prompt, [str(item.get("name", "")) for item in (character_cards or []) if isinstance(item, dict)]
         )
         references = [valid_references[index] for index in requested_indices if index < len(valid_references)]
         reference_labels = {path: all_labels[path] for path in references}
