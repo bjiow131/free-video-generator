@@ -21,8 +21,8 @@ _MAX_OBJECTS = 40
 _DEFAULT_TIMEOUT = 900
 
 _PRIMITIVES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("cube", ("куб", "куба", "кубик", "кубики", "кубов")),
-    ("uv_sphere", ("сфера", "сферу", "шар", "шара", "шары")),
+    ("cube", ("куб", "куба", "кубом", "кубе", "кубы", "кубами", "кубик", "кубики", "кубов")),
+    ("uv_sphere", ("сфера", "сферу", "сферы", "сфер", "сферой", "шара", "шар", "шары", "шаром", "шарами")),
     ("cylinder", ("цилиндр", "цилиндра", "цилиндры")),
     ("cone", ("конус", "конуса", "конусы")),
     ("torus", ("тор", "кольцо", "кольца", "кольцо")),
@@ -59,7 +59,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
     """Compile a small Russian request into an inert, bounded scene plan."""
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
         raise SceneRequestError(f"Prompt must contain 1-{_MAX_PROMPT_CHARS} characters.")
-    text = prompt.casefold().replace("ё", "ё")
+    text = prompt.casefold()
     matches: list[tuple[int, str, str, int]] = []
     for primitive, aliases in _PRIMITIVES:
         for alias in aliases:
