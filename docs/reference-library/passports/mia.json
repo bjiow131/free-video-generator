@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "char.mia",
+  "name": "Мия",
+  "description": "4 года; карие глаза, веснушки, каштановые волосы в двух косичках, жёлтая заколка-улитка, белая футболка, бирюзовый комбинезон, жёлтые кеды, розовый рюкзак с улиткой. Основной образ; альтернативную одежду хранить отдельно.",
+  "status": "draft",
+  "model_asset_id": null,
+  "references": [
+    {
+      "id": "mia.front",
+      "view": "front",
+      "status": "planned"
+    },
+    {
+      "id": "mia.left",
+      "view": "left",
+      "status": "planned"
+    },
+    {
+      "id": "mia.back",
+      "view": "back",
+      "status": "planned"
+    },
+    {
+      "id": "mia.right",
+      "view": "right",
+      "status": "planned"
+    },
+    {
+      "id": "mia.three_quarter",
+      "view": "three_quarter",
+      "status": "planned"
+    },
+    {
+      "id": "mia.face",
+      "view": "face",
+      "status": "planned"
+    }
+  ]
+}
