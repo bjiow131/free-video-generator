@@ -244,3 +244,26 @@ def test_accepts_blender_inspect_mia_project_task():
 def test_rejects_unsafe_blender_inspect_mia_project_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("blender_inspect_mia_project", arguments))
+
+
+
+def test_accepts_blender_mia_skeleton_task():
+    task = parse_task(_task("blender_mia_skeleton", {"project_name": "mia_character"}))
+    assert task.operation == "blender_mia_skeleton"
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"project_name": "../outside"},
+    {"project_name": "mia", "script": "print(1)"},
+])
+def test_rejects_unsafe_blender_mia_skeleton_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_skeleton", arguments))
+
+
+def test_blender_mia_skeleton_can_use_explicit_remote_approval():
+    value = json.loads(_task("blender_mia_skeleton", {"project_name": "mia_character"}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.requires_local_approval is False
