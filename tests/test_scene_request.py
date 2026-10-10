@@ -41,3 +41,9 @@ def test_rejects_empty_unsupported_or_oversized_prompt(prompt: str):
 def test_rejects_excessive_object_count():
     with pytest.raises(SceneRequestError, match="limited to"):
         parse_scene_request("Создай 41 куб")
+
+
+def test_scale_number_is_not_mistaken_for_object_count():
+    plan = parse_scene_request("Куб размером 2 и сфера")
+    assert len(plan["objects"]) == 2
+    assert all(item["scale"] == 2.0 for item in plan["objects"])
