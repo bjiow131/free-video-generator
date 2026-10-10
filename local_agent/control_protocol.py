@@ -13,14 +13,6 @@ import re
 
 PROTOCOL_VERSION = 1
 ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
-# These typed operations may be remotely authorized only when the local owner
-# explicitly enables remote approval in the Windows environment. Code changes
-# and generic test execution remain local-approval-only.
-REMOTE_APPROVABLE_OPERATIONS = frozenset({
-    "status", "doctor", "preflight", "logs", "blender_forest_preview",
-    "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search",
-    "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton",
-})
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
@@ -78,8 +70,8 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("Task lifetime may not exceed 24 hours.")
     if not isinstance(value["requires_local_approval"], bool):
         raise ProtocolError("requires_local_approval must be a boolean.")
-    if value["requires_local_approval"] is False and value["operation"] not in REMOTE_APPROVABLE_OPERATIONS:
-        raise ProtocolError("This operation cannot use remote approval; local approval is mandatory.")
+    if value["requires_local_approval"] is False:
+        raise ProtocolError("Task must require local approval; remote approval is disabled.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
     if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup"} and value["arguments"]:
