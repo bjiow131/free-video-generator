@@ -116,3 +116,9 @@ def test_quoted_title_and_top_down_camera_are_parsed_without_extra_fields():
     assert plan["text_content"] == "Привет, мир"
     assert plan["camera_angle"] == "top"
     assert plan["objects"][0]["primitive"] == "cube"
+
+
+def test_generated_blender_script_is_valid_python_syntax():
+    from local_agent.scene_request import _BLENDER_SCRIPT
+
+    compile(_BLENDER_SCRIPT, "generated_scene_builder.py", "exec")
