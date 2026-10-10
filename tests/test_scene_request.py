@@ -232,3 +232,38 @@ def test_character_profile_category_selects_generic_animal_blockout():
     assert bobik["primitive"] == "animal"
     assert bobik["profile_type"] == "Животное"
     assert plan["selected_characters"][0]["reference_indices"] == [1]
+
+
+def test_scene_plan_describes_coastal_bicycle_action_and_camera_limitations():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+    from local_agent.scene_request import _append_character_cards
+
+    prompt = "Мия едет на велосипеде по дорожке возле моря, 8 секунд, вертикально 9:16"
+    parsed = compile_prompt(prompt)
+    assert parsed["environment"] == "coast"
+    assert parsed["relationships"]["character_riding_bicycle"] is True
+    assert parsed["animation"]["enabled"] is True
+    plan = _append_character_cards(parsed, [
+        {"id": "mia-card", "name": "Мия", "description": "Девочка", "references": []},
+    ], prompt)["scene_plan"]
+    assert plan["duration_seconds"] == 8
+    assert "ocean_surface" in plan["location"]["environment_assets"]
+    assert "cycling_path" in plan["location"]["environment_assets"]
+    assert plan["action_steps"][0]["action"] == "ride_vehicle"
+    assert plan["action_steps"][0]["status"] == "partial_blockout"
+    assert plan["camera"]["motion"] == "follow_actor"
+    assert "current camera remains fixed" in plan["camera"]["limitation"]
+
+
+def test_scene_plan_is_generic_and_keeps_character_identity_from_card():
+    from local_agent.scene_planner import build_scene_plan
+
+    plan = build_scene_plan(
+        "Бобик идёт по лесной тропе",
+        [{"name": "Бобик", "primitive": "animal", "character_card_id": "bobik-card",
+          "profile_type": "Животное"}],
+        "forest", {"enabled": True, "kind": "move", "frames": 150}, {},
+    )
+    assert plan["actors"][0]["id"] == "bobik-card"
+    assert plan["location"]["environment_id"] == "forest"
+    assert plan["camera"]["motion"] == "static"
