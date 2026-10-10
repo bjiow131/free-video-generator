@@ -7,7 +7,7 @@ Service start/stop/backup operations are not implemented.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -384,10 +384,20 @@ def _remember_manifest(
 
 def _not_expired(task: Any) -> bool:
     try:
+        now = datetime.now(timezone.utc)
         expiry = datetime.fromisoformat(task.expires_at.replace("Z", "+00:00"))
         if expiry.tzinfo is None:
             return False
-        return expiry > datetime.now(timezone.utc)
+        # Real protocol envelopes include created_at. Allow small clock skew,
+        # but reject tasks that claim to have been created materially in the future.
+        created_raw = getattr(task, "created_at", None)
+        if created_raw is not None:
+            if not isinstance(created_raw, str):
+                return False
+            created = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+            if created.tzinfo is None or created > now + timedelta(minutes=5):
+                return False
+        return expiry > now
     except (ValueError, TypeError):
         return False
 
