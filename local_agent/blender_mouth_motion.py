@@ -1,4 +1,4 @@
-"""Apply coarse dialogue mouth cues to an existing Blender shape key, saving a copy."""
+"""Apply coarse dialogue mouth cues to discovered Blender mouth shape keys, saving a copy."""
 from __future__ import annotations
 
 import json
@@ -14,63 +14,85 @@ _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 
 def _blender_script() -> str:
     return r'''
-import bpy, json, os, re, sys
-from pathlib import Path
+import bpy, json, re, sys
 args=sys.argv[sys.argv.index("--")+1:]
-cfg=json.load(open(args[0],encoding="utf-8"))
+with open(args[0],encoding="utf-8") as stream:
+    cfg=json.load(stream)
 report_path=cfg["report"]
 def report(data):
-    with open(report_path,"w",encoding="utf-8") as f: json.dump(data,f,ensure_ascii=False)
+    with open(report_path,"w",encoding="utf-8") as stream:
+        json.dump(data,stream,ensure_ascii=False)
+def norm(value):
+    return re.sub(r"[^a-zа-яё0-9]", "", value.casefold())
+def close_enough(a,b):
+    a,b=norm(a),norm(b)
+    return bool(a and b and (a==b or a in b or b in a))
 try:
     bpy.ops.wm.open_mainfile(filepath=cfg["source"], load_ui=False)
     cues=cfg["cues"]
-    # Keep the first prototype deliberately simple: one existing open/close shape key.
     key_pattern=re.compile(r"(mouth.?open|open.?mouth|jaw.?open|рот.?открыт|открыт.?рот|челюсть.?откр)",re.I)
-    def norm(value):
-        return re.sub(r"[^a-zа-яё0-9]", "", value.casefold())
-    speakers={norm(c.get("speaker","")) for c in cues if c.get("speaker")}
     candidates=[]
     for obj in bpy.data.objects:
         if obj.type != "MESH" or not obj.data.shape_keys:
             continue
-        blocks=obj.data.shape_keys.key_blocks
-        for key in list(blocks)[1:]:
+        for key in list(obj.data.shape_keys.key_blocks)[1:]:
             if key_pattern.search(key.name):
                 candidates.append((obj,key))
-    if speakers:
-        matched=[pair for pair in candidates if any(s and (s in norm(pair[0].name) or norm(pair[0].name) in s) for s in speakers)]
-        if matched:
-            candidates=matched
-    # A unique candidate is a safe fallback when prompt speaker naming differs
-    # from the Blender object's name (e.g. Cyrillic vs Latin).
-    if len(candidates) != 1:
-        report({"status":"blocked","reason":"mouth_shape_key_not_found_or_ambiguous",
-                "candidate_count":len(candidates),"candidate_objects":[o.name for o,k in candidates],
-                "required_shape_key_names":["mouth_open","jaw_open","рот_открыт"]})
+    if not candidates:
+        report({"status":"blocked","reason":"mouth_shape_key_not_found",
+                "candidate_count":0,"candidate_objects":[],
+                "hint":"Add or rename an existing mouth-open shape key (e.g. mouth_open or рот_открыт)."})
     else:
-        obj,key=candidates[0]
-        if key.id_data.animation_data and key.id_data.animation_data.action:
-            report({"status":"blocked","reason":"shape_key_animation_already_exists",
-                    "object":obj.name,"shape_key":key.name})
+        speakers=sorted({c.get("speaker","").strip() for c in cues if c.get("speaker","").strip()})
+        assignment={}
+        used=set()
+        ambiguous={}
+        for speaker in speakers:
+            matched=[pair for pair in candidates if close_enough(speaker,pair[0].name)]
+            if not matched and len(speakers)==1 and len(candidates)==1:
+                matched=candidates[:]
+            if len(matched)!=1 or id(matched[0][1]) in used:
+                ambiguous[speaker]=[{"object":o.name,"shape_key":k.name} for o,k in matched]
+            else:
+                assignment[speaker]=matched[0]
+                used.add(id(matched[0][1]))
+        if ambiguous:
+            report({"status":"blocked","reason":"mouth_control_missing_or_ambiguous_for_speaker",
+                    "speakers":speakers,"ambiguous":ambiguous,
+                    "candidates":[{"object":o.name,"shape_key":k.name} for o,k in candidates]})
         else:
-            for cue in cues:
-                start=int(cue["frame_start"]); end=int(cue["frame_end"])
-                value=1.0 if cue["mouth"]=="open" else 0.0
-                key.value=value
-                key.keyframe_insert(data_path="value",frame=start,group="Agent Mouth Motion")
-                key.value=value
-                key.keyframe_insert(data_path="value",frame=end,group="Agent Mouth Motion")
-            if key.id_data.animation_data and key.id_data.animation_data.action:
-                for fc in key.id_data.animation_data.action.fcurves:
-                    for point in fc.keyframe_points:
-                        point.interpolation="CONSTANT"
-            scene=bpy.context.scene
-            scene.frame_end=max(scene.frame_end,max(int(c["frame_end"]) for c in cues))
-            scene.frame_set(scene.frame_start)
-            bpy.ops.wm.save_as_mainfile(filepath=cfg["output"])
-            report({"status":"completed","source":cfg["source"],"output":cfg["output"],
-                    "object":obj.name,"shape_key":key.name,"cue_count":len(cues),
-                    "method":"coarse_open_close","audio_required":False})
+            blocked=[]
+            for speaker,(obj,key) in assignment.items():
+                ad=key.id_data.animation_data
+                if ad and ad.action:
+                    blocked.append({"speaker":speaker,"object":obj.name,"shape_key":key.name})
+            if blocked:
+                report({"status":"blocked","reason":"shape_key_animation_already_exists","controls":blocked})
+            else:
+                applied=0
+                for cue in cues:
+                    speaker=cue.get("speaker","").strip()
+                    obj,key=assignment[speaker]
+                    start=int(cue["frame_start"]); end=int(cue["frame_end"])
+                    value=1.0 if cue["mouth"]=="open" else 0.0
+                    key.value=value
+                    key.keyframe_insert(data_path="value",frame=start,group="Agent Mouth Motion")
+                    key.value=value
+                    key.keyframe_insert(data_path="value",frame=end,group="Agent Mouth Motion")
+                    applied+=1
+                for obj,key in assignment.values():
+                    ad=key.id_data.animation_data
+                    if ad and ad.action:
+                        for fc in ad.action.fcurves:
+                            for point in fc.keyframe_points:
+                                point.interpolation="CONSTANT"
+                scene=bpy.context.scene
+                scene.frame_end=max(scene.frame_end,max(int(c["frame_end"]) for c in cues))
+                scene.frame_set(scene.frame_start)
+                bpy.ops.wm.save_as_mainfile(filepath=cfg["output"])
+                report({"status":"completed","source":cfg["source"],"output":cfg["output"],
+                        "controls":[{"speaker":s,"object":o.name,"shape_key":k.name} for s,(o,k) in assignment.items()],
+                        "cue_count":applied,"method":"coarse_open_close","audio_required":False})
 except Exception as exc:
     report({"status":"failed","reason":"blender_script_error","error_type":type(exc).__name__})
     raise
@@ -78,7 +100,7 @@ except Exception as exc:
 
 
 def apply_mouth_motion(project_name: str) -> dict[str, Any]:
-    """Read the compiled storyboard and animate a discovered mouth-open shape key."""
+    """Discover matching existing mouth shape keys and animate them in a safe project copy."""
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise ValueError("Invalid project_name.")
     executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
@@ -113,7 +135,8 @@ def apply_mouth_motion(project_name: str) -> dict[str, Any]:
     if len(cues) > 20_000:
         return {"status": "blocked", "reason": "mouth_motion_cue_limit_exceeded"}
     for cue in cues:
-        if (not isinstance(cue, dict) or cue.get("mouth") not in {"open", "closed"}
+        if (not isinstance(cue, dict) or not isinstance(cue.get("speaker"), str)
+                or cue.get("mouth") not in {"open", "closed"}
                 or isinstance(cue.get("frame_start"), bool) or not isinstance(cue.get("frame_start"), int)
                 or isinstance(cue.get("frame_end"), bool) or not isinstance(cue.get("frame_end"), int)
                 or cue["frame_start"] < 1 or cue["frame_end"] < cue["frame_start"]):
@@ -144,5 +167,5 @@ def apply_mouth_motion(project_name: str) -> dict[str, Any]:
     if proc.returncode != 0 or not output.is_file() or output.stat().st_size == 0:
         return {"status": "failed", "reason": "mouth_motion_output_missing_or_blender_failed"}
     return {"status": "completed", "task": "blender_mouth_motion", "output_path": str(output),
-            "object": data["object"], "shape_key": data["shape_key"], "cue_count": data["cue_count"],
+            "controls": data["controls"], "cue_count": data["cue_count"],
             "note": "Original project preserved. Inspect the resulting animation in Blender before production use."}
