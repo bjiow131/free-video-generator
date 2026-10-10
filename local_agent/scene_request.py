@@ -628,6 +628,10 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             raw_references = []
         references = [str(p)[:1000] for p in raw_references[:16]
                       if isinstance(p, str) and Path(p).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}]
+        raw_labels = card.get("reference_labels", {})
+        if not isinstance(raw_labels, dict):
+            raw_labels = {}
+        reference_labels = {path: str(raw_labels.get(path, Path(path).stem))[:80] for path in references}
         character_object = {
             "primitive": "mia" if is_mia else "person",
             "color_name": "turquoise" if is_mia else "blue",
@@ -636,7 +640,7 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             "name": name,
             "character_card_id": card_id,
             "character_description": description,
-            "character_references": references,
+            "character_references": references,\n            "character_reference_labels": reference_labels,
         }
         existing_mia = next((obj for obj in plan["objects"] if is_mia and obj.get("primitive") == "mia"), None)
         if existing_mia is not None:
@@ -645,7 +649,7 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
             if len(plan["objects"]) >= _MAX_OBJECTS:
                 raise SceneRequestError(f"Сцена не может содержать больше {_MAX_OBJECTS} объектов вместе с выбранными персонажами.")
             plan["objects"].append(character_object)
-        selected_characters.append({"id": card_id, "name": name, "description": description, "references": references})
+        selected_characters.append({"id": card_id, "name": name, "description": description, "references": references, "reference_labels": reference_labels})
     plan["selected_characters"] = selected_characters
     source_text = str(plan.get("prompt_summary", "")).casefold()
     has_selected_mia = any("мия" in item["name"].casefold() or "mia" in item["name"].casefold() for item in selected_characters)
