@@ -15,7 +15,7 @@ if (Test-Path -LiteralPath $blender) { $shortcut.IconLocation = $blender + ',0' 
 $shortcut.Save()
 Write-Host ''
 Write-Host 'Autostart installed for the current Windows user.'
-Write-Host 'At sign-in, the agent console will open and ask before creating a scene.'
+Write-Host 'At sign-in, the desktop agent window will open. A Blender task still requires confirmation.'
 Write-Host 'Blender GUI opens when you confirm a Blender task.'
 Write-Host ('Shortcut: ' + $shortcutPath)
 if ($env:BLENDER_AGENT_AUTOSTART_SILENT -ne '1') { Read-Host 'Press Enter to close' }

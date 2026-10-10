@@ -59,7 +59,7 @@ if exist "%~dp0install_blender_agent_autostart.ps1" (
     echo [WARNING] Agent setup succeeded, but automatic startup could not be installed.
     echo Run install_blender_agent_autostart.bat manually later.
   ) else (
-    echo Automatic startup installed. The agent console will open when you sign in.
+    echo Automatic startup installed. The desktop agent window will open when you sign in.
   )
 ) else (
   echo [WARNING] Autostart installer was not found in this folder.
