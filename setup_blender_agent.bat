@@ -53,12 +53,20 @@ echo The fine-grained token must have access to bjiow131/local-agent-mailbox.
 echo Required repository permission: Contents - Read and write.
 echo Repository Metadata read access is also required by GitHub.
 "%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli status
+if errorlevel 1 goto failed
+echo.
+echo If no token is stored, create a fine-grained token for ONLY:
+echo   bjiow131/local-agent-mailbox
+echo Give it Contents: Read and write (Metadata: Read-only is required).
+echo.
+choice /C YN /N /M "Configure or replace the stored token now? [Y/N] "
+if errorlevel 2 goto setup_done
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli set
+if errorlevel 1 goto failed
+:setup_done
 echo.
 echo Setup completed.
-echo If the credential check says no token is stored, run:
-echo   "%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli set
-echo The token prompt is hidden and stores it in Windows Credential Manager.
-echo Then launch run_blender_agent.bat.
+echo Next: launch run_blender_agent.bat.
 echo.
 pause
 exit /b 0
