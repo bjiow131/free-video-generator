@@ -117,13 +117,26 @@ else:
 os.makedirs(os.path.dirname(destination),exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=destination)
 preview=os.path.splitext(destination)[0]+"_preview.png"
-if scene.camera:
-    scene.render.filepath=preview
-    scene.render.image_settings.file_format="PNG"
-    scene.render.resolution_percentage=min(scene.render.resolution_percentage or 50,50)
-    try: bpy.ops.render.render(write_still=True)
-    except Exception: preview=""
-else: preview=""
+if scene.camera is None:
+    bpy.ops.object.camera_add(location=(8,-10,7))
+    camera=bpy.context.object
+    camera.name="Agent | generated preview camera"
+    camera.rotation_euler=(Vector((0,0,0.5))-camera.location).to_track_quat("-Z","Y").to_euler()
+    scene.camera=camera
+if not any(o.type=="LIGHT" for o in scene.objects):
+    bpy.ops.object.light_add(type="AREA", location=(-4,-4,7))
+    light=bpy.context.object
+    light.name="Agent | generated preview light"
+    light.data.energy=1200
+    light.data.shape="DISK"
+    light.data.size=6
+    light.rotation_euler=(Vector((0,0,0.5))-light.location).to_track_quat("-Z","Y").to_euler()
+scene.render.filepath=preview
+scene.render.image_settings.file_format="PNG"
+scene.render.resolution_percentage=min(scene.render.resolution_percentage or 50,50)
+try: bpy.ops.render.render(write_still=True)
+except Exception as exc:
+    raise RuntimeError("PREVIEW_RENDER_FAILED:"+str(exc))
 with open(cfg["result"],"w",encoding="utf-8") as f:
     json.dump({"status":"completed","blend_path":destination,"preview_path":preview,"action":action,"object_count":len(bpy.data.objects)},f,ensure_ascii=False)
 '''
@@ -156,9 +169,21 @@ def edit_existing_scene(prompt: str, source_project: str | Path, blender_executa
             proc = subprocess.Popen([str(blender), str(source), "--python", str(script_path), "--", str(config_path)],
                                     cwd=str(staging), stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
                                     shell=False, close_fds=True)
-            try:
-                code = proc.wait(timeout=max(30, min(int(timeout_seconds), 7200)))
-            except subprocess.TimeoutExpired:
+            deadline = time.monotonic() + max(30, min(int(timeout_seconds), 7200))
+            while time.monotonic() < deadline:
+                if result_path.is_file() and result_path.stat().st_size > 0:
+                    try:
+                        result = json.loads(result_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        result = {}
+                    if result.get("status") == "completed":
+                        break
+                code = proc.poll()
+                if code is not None:
+                    break
+                time.sleep(0.25)
+            else:
+                # The visible Blender GUI can stay open after the operation completed.
                 proc.terminate()
                 try: proc.wait(timeout=10)
                 except subprocess.TimeoutExpired: proc.kill()
@@ -168,10 +193,12 @@ def edit_existing_scene(prompt: str, source_project: str | Path, blender_executa
             if "TARGET_MATCH_COUNT:" in tail:
                 details = tail.split("TARGET_MATCH_COUNT:", 1)[1].splitlines()[0]
                 raise SceneEditError("Не удалось однозначно определить объект для изменения. Уточните его имя в задании. Найденные совпадения: " + details[:1000])
-            raise SceneEditError(f"Blender не создал отчёт об изменении (код {code}). {tail}")
+            raise SceneEditError(f"Blender не создал отчёт об изменении (код {proc.poll()}). {tail}")
         result = json.loads(result_path.read_text(encoding="utf-8"))
         if result.get("status") != "completed" or not destination.is_file() or destination.stat().st_size == 0:
             raise SceneEditError("Blender не подтвердил успешное сохранение изменённой сцены.")
+        if not result.get("preview_path") or not Path(result["preview_path"]).is_file():
+            raise SceneEditError("Сцена изменена, но предпросмотр PNG не создан.")
         result["source_project"] = str(source)
         result["prompt_summary"] = prompt.strip()
         return result
