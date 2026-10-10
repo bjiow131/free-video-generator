@@ -69,7 +69,6 @@ OBJECTS = (
     ("coral", ("коралл", "кораллы", "кораллами")),
     ("swing", ("качели", "качель", "качелями")),
     ("slide", ("горка", "горку", "горки", "горкой")),
-    ("mia", ("мия",)),
     ("person", ("девочка", "девочку", "девочки", "девушка", "девушку", "девушки", "девочкой", "девушкой")),
 
 )
@@ -211,7 +210,6 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
                 "coral": ("pink", (0.95, 0.12, 0.42, 1.0)),
                 "swing": ("blue", (0.025, 0.18, 0.85, 1.0)),
                 "slide": ("red", (0.80, 0.035, 0.025, 1.0)),
-                "mia": ("orange", (0.85, 0.25, 0.08, 1.0)),
             }
             color_name, rgba = defaults.get(kind, (color_name, rgba))
         for _ in range(count):
@@ -305,10 +303,10 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "frames": 120 if _has(text, "4 секунды", "4 сек") else 180 if _has(text, "6 секунд", "6 сек") else 150,
     }
     kinds = {item["primitive"] for item in objects}
-    ride_scooter = "mia" in kinds and "scooter" in kinds and "самокате" in text and _has(text, "едет", "катается", "на самокате")
+    ride_scooter = "scooter" in kinds and "самокате" in text and _has(text, "едет", "катается", "на самокате")
     return {
         "schema_version": 3, "objects": objects, "resolution": resolution, "aspect_ratio": aspect,
-        "relationships": {"mia_riding_scooter": ride_scooter},
+        "relationships": {"character_riding_scooter": ride_scooter},
         "render_percentage": render_percentage, "prompt_summary": prompt.strip(), "environment": environment,
         "style": style, "lighting": lighting, "layout": layout, "animation": animation,
         "ground": not _has(text, "без пола", "без земли", "без подставки", "прозрачный фон"),
