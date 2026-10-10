@@ -191,14 +191,14 @@ def test_multiple_selected_characters_are_added_as_separate_scene_objects():
     assert fox["primitive"] == "person"
 
 
-def test_selected_mia_card_is_linked_to_scooter_action_without_name_in_prompt():
+def test_manually_selected_character_is_linked_to_scooter_action_without_name_in_prompt():
     from local_agent.scene_language import parse_scene_request
     from local_agent.scene_request import _append_character_cards
 
     plan = _append_character_cards(parse_scene_request("Едет на самокате по лесу, вертикально 9:16"), [
-        {"id": "mia", "name": "Мия", "description": "Постоянный герой", "references": []},
-    ])
-    assert plan["relationships"]["mia_riding_scooter"] is True
+        {"id": "bobik-card", "name": "Бобик", "description": "Собака", "references": []},
+    ], "Едет на самокате по лесу, вертикально 9:16")
+    assert plan["relationships"]["character_riding_scooter"] == "bobik-card"
 
 
 def test_reference_numbers_are_selected_per_character_card():
