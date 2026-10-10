@@ -3,7 +3,7 @@ name: Server Test
 # Keep one verification run per PR/ref. New commits must not interrupt a run
 # that has already started; GitHub may keep only the newest pending run queued.
 concurrency:
-  group: server-test-${{ github.event.pull_request.number || github.ref }}
+  group: server-test-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 on:
