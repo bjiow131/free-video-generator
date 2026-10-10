@@ -93,3 +93,70 @@ def apply_mouth_cue(
         "timing_status": normalized["timing_status"],
         "control": "shape_key",
     }
+
+
+def apply_dialogue_cues(
+    cues: Any,
+    *,
+    character_objects_by_speaker: dict[str, Iterable[Any]],
+    frame_start: int,
+    frame_end: int,
+) -> dict[str, Any]:
+    """Apply each cue only to the explicitly mapped speaker's character objects.
+
+    A missing speaker mapping is reported rather than falling back to another
+    character in the scene. The mapping must be built from trusted project asset
+    IDs, not from free-form prompt text.
+    """
+    if not isinstance(cues, list):
+        return {"status": "rejected", "reason": "cues_must_be_a_list", "results": []}
+    if not isinstance(character_objects_by_speaker, dict):
+        return {
+            "status": "rejected",
+            "reason": "speaker_object_mapping_required",
+            "results": [],
+        }
+
+    results: list[dict[str, Any]] = []
+    seen_line_ids: set[str] = set()
+    for cue in cues:
+        # Validate before resolving objects so malformed cues cannot touch a rig.
+        normalized = validate_dialogue_cue(
+            cue, frame_start=frame_start, frame_end=frame_end
+        )
+        line_id = normalized["line_id"]
+        if line_id in seen_line_ids:
+            return {
+                "status": "rejected",
+                "reason": "duplicate_line_id",
+                "line_id": line_id,
+                "results": results,
+            }
+        seen_line_ids.add(line_id)
+        speaker_id = normalized["speaker_id"]
+        if speaker_id not in character_objects_by_speaker:
+            results.append({
+                "status": "speaker_asset_not_found",
+                "speaker_id": speaker_id,
+                "line_id": line_id,
+                "applied_events": 0,
+            })
+            continue
+        result = apply_mouth_cue(
+            normalized,
+            character_objects=character_objects_by_speaker[speaker_id],
+            frame_start=frame_start,
+            frame_end=frame_end,
+        )
+        results.append(result)
+
+    statuses = {item["status"] for item in results}
+    if not results:
+        status = "no_cues"
+    elif statuses == {"applied"}:
+        status = "applied"
+    elif "applied" in statuses:
+        status = "partial"
+    else:
+        status = "unsupported"
+    return {"status": status, "results": results}
