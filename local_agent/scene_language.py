@@ -100,8 +100,25 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
             continue
         selected.append(item)
     if not selected:
-        supported = ", ".join(kind for kind, _aliases in OBJECTS)
-        raise SceneRequestError("Не распознан ни один объект. Добавь в описание понятный объект из каталога: " + supported + ".")
+        # Scene-only prompts are useful too: infer a small starter composition.
+        if _has(text, "лес", "роща", "лесной"):
+            default_kind = "tree"
+        elif _has(text, "город", "улица", "городской"):
+            default_kind = "house"
+        elif _has(text, "космос", "галактик", "звёздное небо", "звездное небо"):
+            default_kind = "rocket"
+        elif _has(text, "горы", "горный пейзаж", "долина", "скалы"):
+            default_kind = "mountain"
+        elif _has(text, "остров", "пляж", "море", "океан"):
+            default_kind = "tree"
+        elif _has(text, "комнат", "интерьер", "гостиная"):
+            default_kind = "table"
+        elif _has(text, "студия", "предметная съёмка", "предметная съемка"):
+            default_kind = "uv_sphere"
+        else:
+            supported = ", ".join(kind for kind, _aliases in OBJECTS)
+            raise SceneRequestError("Не распознан объект или тип сцены. Добавь понятный объект либо опиши лес, город, космос, горы, остров, комнату или студию. Каталог объектов: " + supported + ".")
+        selected = [(0, 0, default_kind, default_kind)]
 
     size_match = SIZE_RE.search(text)
     scale = float(size_match.group(1).replace(",", ".")) if size_match else (1.7 if _has(text, "больш") else 0.6 if _has(text, "малень") else 1.0)
