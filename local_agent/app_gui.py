@@ -174,7 +174,6 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(right, text=f"Файлы хранятся локально: {CHARACTER_DIR}", wraplength=650).pack(anchor="w", pady=(8, 0))
         self.reference_tabs: dict[str, ttk.Frame] = {}
         self._refresh_characters()
-        self._refresh_character_choices()
 
     def _build_update_tab(self) -> None:
         panel = ttk.Frame(self.update_tab, style="Panel.TFrame", padding=18)
