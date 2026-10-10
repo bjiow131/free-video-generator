@@ -5,27 +5,23 @@ set "PYTHONIOENCODING=utf-8"
 chcp 65001 >nul
 cd /d "%~dp0"
 
-title Blender Work Agent
+title Blender Work Agent - Local Only
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\venv"
 set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
 set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
-set "LOCAL_AGENT_GITHUB_REPO=bjiow131/local-agent-mailbox"
-set "LOCAL_AGENT_GITHUB_REF=main"
-set "LOCAL_AGENT_GITHUB_MANIFEST=queue/desired_task.json"
-set "LOCAL_AGENT_POLL_SECONDS=10"
 
 echo.
 echo ==========================================
-echo   BLENDER WORK AGENT
+echo   BLENDER WORK AGENT - LOCAL ONLY
 echo ==========================================
 echo.
 echo Blender: %BLENDER_EXECUTABLE%
 echo Workspace: %LOCAL_AGENT_WORKSPACE%
-echo Mailbox: %LOCAL_AGENT_GITHUB_REPO%
+echo Remote task queue: DISABLED
+echo ChatGPT connection: NONE
 echo.
-echo This agent does not launch the web application.
-echo Each task must be approved in this local console.
-echo Press Ctrl+C to stop polling.
+echo This agent is limited to the local Blender bridge.
+echo The current prototype task is a deterministic forest preview.
 echo.
 
 if not exist "%AGENT_VENV%\Scripts\python.exe" (
@@ -50,9 +46,40 @@ if not exist "%LOCAL_AGENT_WORKSPACE%" (
   exit /b 1
 )
 
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.poller
+echo [1/2] Checking local prerequisites...
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.cli preflight
+if errorlevel 1 (
+  echo [ERROR] Preflight failed. Read the report above before continuing.
+  pause
+  exit /b 1
+)
+
+echo.
+echo [2/2] No scene will be created without your confirmation.
+choice /C YN /N /M "Create the current Blender forest preview now? [Y/N] "
+if errorlevel 2 goto done
+
+set /p "PROJECT_NAME=Project folder name (default mia_forest): "
+if not defined PROJECT_NAME set "PROJECT_NAME=mia_forest"
+
+echo.
+echo Launching Blender locally...
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.blender_cli --project "%PROJECT_NAME%"
 set "RESULT=%ERRORLEVEL%"
 echo.
-echo Blender Work Agent stopped with code %RESULT%.
+if "%RESULT%"=="0" (
+  echo Blender task completed. Check %LOCAL_AGENT_WORKSPACE%\%PROJECT_NAME%
+) else (
+  echo Blender task returned error code %RESULT%.
+)
+goto finish
+
+:done
+echo No Blender scene was created. Preflight only.
+set "RESULT=0"
+
+:finish
+echo.
+echo Agent session ended with code %RESULT%.
 pause
 exit /b %RESULT%
