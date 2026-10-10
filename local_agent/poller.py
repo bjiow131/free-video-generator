@@ -565,7 +565,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     # is unavailable, the report still exists for diagnosis on this computer.
     try:
         report_path = write_report(
-            ROOT / ".local_agent" / "reports",
+            _ensure_agent_dir() / "reports",
             kind="task",
             status=str(result.get("status", "unknown")),
             details={
@@ -576,7 +576,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             },
         )
         result["local_report_path"] = str(report_path)
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         report_path = None
         print(f"Could not write local task report: {type(exc).__name__}")
 
