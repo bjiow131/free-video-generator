@@ -39,9 +39,9 @@ def _parse_time(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _validate_one_path(raw_path: str) -> None:
+def _validate_one_path(raw_path: str, *, allow_null: bool = False) -> None:
     path = raw_path.strip()
-    if path in {"/dev/null", "dev/null"}:
+    if allow_null and path in {"/dev/null", "dev/null"}:
         return
     if path.startswith(("a/", "b/")):
         path = path[2:]
@@ -64,7 +64,7 @@ def _validate_patch_paths(patch: str) -> None:
             _validate_one_path(parts[2])
             _validate_one_path(parts[3])
         elif line.startswith(("--- ", "+++ ")):
-            _validate_one_path(line[4:])
+            _validate_one_path(line[4:], allow_null=True)
         elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
             _validate_one_path(line.split(" ", 2)[2])
 
@@ -146,6 +146,8 @@ def fetch_repair(client: Any) -> tuple[dict[str, Any], str, str] | None:
     if hashlib.sha256(patch_bytes).hexdigest() != manifest["patch_sha256"]:
         raise RepairProtocolError("repair patch SHA-256 does not match the manifest")
     _validate_patch_paths(patch)
+    if any(marker in patch for marker in ("GIT binary patch", "new file mode 120000", "old mode 120000", "160000")):
+        raise RepairProtocolError("binary, symlink, and submodule patches are prohibited")
     if not patch.startswith("diff --git "):
         raise RepairProtocolError("repair patch is not a unified Git diff")
     return manifest, manifest_sha, patch
