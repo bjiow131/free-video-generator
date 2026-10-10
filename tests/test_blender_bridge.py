@@ -119,3 +119,26 @@ def test_rejects_preview_with_wrong_dimensions(tmp_path: Path) -> None:
         bridge.run_task("forest_preview", project_name="wrong_size")
     assert (workspace / "wrong_size" / "blender_stdout.log").read_text(encoding="utf-8") == "stdout sample"
     assert (workspace / "wrong_size" / "blender_stderr.log").read_text(encoding="utf-8") == "stderr sample"
+
+
+def test_failed_overwrite_restores_previous_blend_and_keeps_failure_logs(tmp_path: Path) -> None:
+    def fake_run(command, **kwargs):
+        project_dir = Path(kwargs["cwd"])
+        (project_dir / "forest_starter.blend").write_bytes(b"partial replacement")
+        return SimpleNamespace(returncode=1, stdout="failed stdout", stderr="simulated render failure")
+
+    bridge, workspace = _bridge(tmp_path, fake_run)
+    project_dir = workspace / "mia"
+    project_dir.mkdir(parents=True)
+    original = project_dir / "forest_starter.blend"
+    original.write_bytes(b"important previous blend")
+
+    with pytest.raises(BlenderBridgeError, match="exited with code 1"):
+        bridge.run_task("forest_preview", project_name="mia", overwrite=True)
+
+    assert original.read_bytes() == b"important previous blend"
+    assert (project_dir / "blender_stdout.log").read_text(encoding="utf-8") == "failed stdout"
+    assert (project_dir / "blender_stderr.log").read_text(encoding="utf-8") == "simulated render failure"
+    backups = list(workspace.glob(".blender-backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "forest_starter.blend").read_bytes() == b"important previous blend"
