@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any
 
@@ -28,8 +29,20 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
 
 
+def _ensure_agent_dir() -> Path:
+    """Create the private state directory only if it remains inside the source root."""
+    candidate = ROOT / ".local_agent"
+    if candidate.is_symlink() or getattr(candidate, "is_junction", lambda: False)():
+        raise RuntimeError("Local agent state directory must not be a symlink or junction")
+    candidate.mkdir(parents=True, exist_ok=True)
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(ROOT.resolve()):
+        raise RuntimeError("Local agent state directory resolves outside the source root")
+    return resolved
+
+
 def _result_outbox() -> ResultOutbox:
-    return ResultOutbox(ROOT / ".local_agent" / "pending_results")
+    return ResultOutbox(_ensure_agent_dir() / "pending_results")
 
 
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
@@ -305,6 +318,10 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def _load_state() -> dict[str, Any]:
     """Load replay-protection state; fail closed if an existing file is unreadable."""
+    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+        raise RuntimeError("poller state must not be a symlink or junction; refusing to run tasks")
+    if STATE_PATH.parent == ROOT / ".local_agent":
+        _ensure_agent_dir()
     try:
         raw = STATE_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -329,14 +346,35 @@ def _load_state() -> dict[str, Any]:
 
 
 def _save_state(data: dict[str, Any]) -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp = STATE_PATH.with_suffix(".tmp")
-    temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+        raise RuntimeError("poller state must not be a symlink or junction")
+    if STATE_PATH.parent == ROOT / ".local_agent":
+        parent = _ensure_agent_dir()
+    else:
+        parent = STATE_PATH.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+            raise RuntimeError("poller state directory must not be a symlink or junction")
+    descriptor, temp_name = tempfile.mkstemp(prefix="poller_state.", suffix=".tmp", dir=str(parent))
+    temp = Path(temp_name)
     try:
-        os.chmod(temp, 0o600)
-    except OSError:
-        pass
-    temp.replace(STATE_PATH)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.chmod(temp, 0o600)
+        except OSError:
+            pass
+        if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+            raise RuntimeError("poller state became a symlink during save")
+        os.replace(temp, STATE_PATH)
+    except BaseException:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 
@@ -566,6 +604,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
 
 def _acquire_instance_lock(path: Path):
     """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise RuntimeError("poller lock file must not be a symlink or junction")
+    if path.parent.is_symlink() or getattr(path.parent, "is_junction", lambda: False)():
+        raise RuntimeError("poller lock directory must not be a symlink or junction")
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b")
     try:
