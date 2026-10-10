@@ -97,9 +97,9 @@ def main() -> int:
                 labels[resolved] = label
         snail_card["references"] = refs
         snail_card["reference_labels"] = labels
-        snail_card["reference_sources"] = next(
-            (json.loads((PASSPORT_DIR / "snail-spiral.json").read_text(encoding="utf-8")).get("reference_sources", [])), []
-        )
+        snail_card["reference_sources"] = json.loads(
+            (PASSPORT_DIR / "snail-spiral.json").read_text(encoding="utf-8")
+        ).get("reference_sources", [])
 
     path_card = by_id.get("scene01_path_refs")
     if not path_card:
