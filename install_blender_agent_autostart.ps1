@@ -18,4 +18,4 @@ Write-Host 'Autostart installed for the current Windows user.'
 Write-Host 'At sign-in, the agent console will open and ask before creating a scene.'
 Write-Host 'Blender GUI opens when you confirm a Blender task.'
 Write-Host ('Shortcut: ' + $shortcutPath)
-Read-Host 'Press Enter to close'
+if ($env:BLENDER_AGENT_AUTOSTART_SILENT -ne '1') { Read-Host 'Press Enter to close' }
