@@ -305,7 +305,7 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "frames": 120 if _has(text, "4 секунды", "4 сек") else 180 if _has(text, "6 секунд", "6 сек") else 150,
     }
     kinds = {item["primitive"] for item in objects}
-    ride_scooter = "mia" in kinds and "scooter" in kinds and _has(text, "на самокате", "едет на самокате", "катается на самокате")
+    ride_scooter = "mia" in kinds and "scooter" in kinds and "самокате" in text and _has(text, "едет", "катается", "на самокате")
     return {
         "schema_version": 3, "objects": objects, "resolution": resolution, "aspect_ratio": aspect,
         "relationships": {"mia_riding_scooter": ride_scooter},
