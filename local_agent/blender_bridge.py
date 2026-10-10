@@ -277,7 +277,7 @@ class BlenderBridge:
                 backup = backup_dir / path.name
                 try:
                     if path.exists() or path.is_symlink():
-                        if path.name in log_names and path.is_file():
+                        if path.name in log_names and path.is_file() and not path.is_symlink():
                             # Keep the new failure log visible; the previous log
                             # remains in the retained backup directory.
                             continue
