@@ -88,6 +88,12 @@ try:
                     key.value=value
                     key.keyframe_insert(data_path="value",frame=end,group="Agent Mouth Motion")
                     applied+=1
+                # Always return each speaking character's mouth to closed after its final cue.
+                for speaker,(obj,key) in assignment.items():
+                    speaker_cues=[c for c in cues if c.get("speaker","").strip()==speaker]
+                    final_frame=max(int(c["frame_end"]) for c in speaker_cues)
+                    key.value=0.0
+                    key.keyframe_insert(data_path="value",frame=final_frame+1,group="Agent Mouth Motion")
                 for obj,key in assignment.values():
                     ad=key.id_data.animation_data
                     if ad and ad.action:
