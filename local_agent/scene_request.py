@@ -687,6 +687,7 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         plan["objects"].append(character_object)
         selected_characters.append({
             "id": card_id, "name": name, "description": description,
+            "profile_type": profile_type, "visual_style": visual_style,
             "references": references, "reference_labels": reference_labels,
             "reference_indices": [index + 1 for index in requested_indices],
         })
