@@ -581,6 +581,14 @@ if animation.get("enabled"):
             obj.location.z += 1.5
         obj.keyframe_insert(data_path="location", frame=scene.frame_end)
         obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
+    if riding:
+        scooter_item = next((item for item in cfg["objects"] if item["primitive"] == "scooter"), None)
+        if scooter_item:
+            for wheel in scene.objects:
+                if wheel.name.startswith(scooter_item["name"] + " |") and "wheel" in wheel.name.casefold():
+                    wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_start)
+                    wheel.rotation_euler.y += math.tau * 2
+                    wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
     scene.frame_set(1)
 blend_path = os.path.join(out_dir, "scene.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend_path)
