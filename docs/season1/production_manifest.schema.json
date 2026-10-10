@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/season1-production-manifest.schema.json",
+  "title": "Season 1 Production Manifest",
+  "description": "Local-first manifest for provenance, Blender validation, shot continuity, and word-level mouth markers. A source URL alone is not a verified asset.",
+  "type": "object",
+  "required": ["schema_version", "series", "assets", "episodes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "series": {"type": "string", "minLength": 1},
+    "generated_at": {"type": ["string", "null"], "format": "date-time"},
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset_id", "asset_type", "status", "source_url", "license_status", "blender_validation"],
+        "properties": {
+          "asset_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+          "asset_type": {"enum": ["character", "animal", "location", "prop", "effect", "photo_reference", "model_candidate"]},
+          "status": {"enum": ["planned", "source_found", "downloaded", "imported", "tested", "production_ready", "blocked"]},
+          "source_url": {"type": ["string", "null"], "format": "uri"},
+          "exact_asset_url": {"type": ["string", "null"], "format": "uri"},
+          "license_status": {"enum": ["unreviewed", "source_page_checked", "exact_file_verified", "restricted", "unknown"]},
+          "license_text": {"type": ["string", "null"]},
+          "author": {"type": ["string", "null"]},
+          "retrieved_at": {"type": ["string", "null"], "format": "date-time"},
+          "local_path": {"type": ["string", "null"]},
+          "sha256": {"type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$"},
+          "modifications": {"type": "array", "items": {"type": "string"}},
+          "blender_validation": {
+            "type": "object",
+            "required": ["import_status", "textures_status", "scale_status", "rig_status", "animation_status", "test_render_status"],
+            "properties": {
+              "import_status": {"enum": ["not_started", "passed", "failed"]},
+              "textures_status": {"enum": ["not_started", "passed", "failed", "not_applicable"]},
+              "scale_status": {"enum": ["not_started", "passed", "failed"]},
+              "rig_status": {"enum": ["not_started", "passed", "failed", "not_applicable"]},
+              "animation_status": {"enum": ["not_started", "passed", "failed", "not_applicable"]},
+              "test_render_status": {"enum": ["not_started", "passed", "failed"]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["episode_number", "status", "target_runtime_seconds", "scenes"],
+        "properties": {
+          "episode_number": {"type": "integer", "minimum": 1, "maximum": 30},
+          "status": {"enum": ["outline", "scripted", "shot_planned", "animatic", "rendered", "approved", "blocked"]},
+          "target_runtime_seconds": {"type": "integer", "minimum": 300, "maximum": 600},
+          "scenes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["scene_id", "location_id", "shots"],
+              "properties": {
+                "scene_id": {"type": "string"},
+                "location_id": {"type": "string"},
+                "shots": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["shot_id", "duration_seconds", "camera_type", "asset_ids", "dialogue_markers"],
+                    "properties": {
+                      "shot_id": {"type": "string"},
+                      "duration_seconds": {"type": "number", "exclusiveMinimum": 0},
+                      "camera_type": {"enum": ["wide", "medium", "close_up", "insert", "tracking"]},
+                      "camera_target": {"type": ["string", "null"]},
+                      "aspect_ratio": {"enum": ["9:16", "16:9", "1:1"]},
+                      "asset_ids": {"type": "array", "items": {"type": "string"}},
+                      "dialogue_markers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["speaker_id", "text", "start_seconds", "end_seconds", "mouth_action", "source"],
+                          "properties": {
+                            "speaker_id": {"type": "string"},
+                            "text": {"type": "string"},
+                            "start_seconds": {"type": "number", "minimum": 0},
+                            "end_seconds": {"type": "number", "exclusiveMinimum": 0},
+                            "mouth_action": {"enum": ["open", "close"]},
+                            "source": {"enum": ["script_estimate", "audio_aligned", "manually_verified"]}
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
