@@ -82,6 +82,7 @@ class BlenderAgentApp(tk.Tk):
         style.configure("Title.TLabel", font=("Segoe UI Semibold", 22), foreground=palette["ink"])
         style.configure("Subtitle.TLabel", font=("Segoe UI", 9), foreground=palette["muted"])
         style.configure("PanelTitle.TLabel", background=palette["surface"], font=("Segoe UI Semibold", 11), foreground=palette["ink"])
+        style.configure("PanelHero.TLabel", background=palette["surface"], font=("Segoe UI Semibold", 18), foreground=palette["ink"])
         style.configure("Eyebrow.TLabel", background=palette["surface"], foreground=palette["accent"], font=("Segoe UI Semibold", 9))
         style.configure("Header.TFrame", background=palette["header"])
         style.configure("HeaderTitle.TLabel", background=palette["header"], foreground="#FFFFFF", font=("Segoe UI Semibold", 19))
@@ -151,7 +152,7 @@ class BlenderAgentApp(tk.Tk):
         prompt_heading = ttk.Frame(prompt_panel, style="Panel.TFrame")
         prompt_heading.pack(fill="x")
         ttk.Label(prompt_heading, text="СОЗДАНИЕ СЦЕНЫ", style="Eyebrow.TLabel").pack(anchor="w")
-        ttk.Label(prompt_heading, text="Опиши, что должно произойти", style="Title.TLabel").pack(anchor="w", pady=(4, 2))
+        ttk.Label(prompt_heading, text="Опиши, что должно произойти", style="PanelHero.TLabel").pack(anchor="w", pady=(4, 2))
         ttk.Label(prompt_heading, text="Укажи действие, окружение, стиль, движение камеры и нужные референсы персонажей.", background=self.colors["surface"], foreground=self.colors["muted"], wraplength=920).pack(anchor="w", pady=(0, 12))
 
         settings_row = ttk.Frame(prompt_panel, style="Panel.TFrame")
