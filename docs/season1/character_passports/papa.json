@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "character_id": "papa",
-  "status": "design_ready_model_not_built",
+  "status": "awaiting_original_references",
   "display_name": "Папа Мии",
   "category": "human",
   "role": "Взрослый помощник",
@@ -35,13 +35,6 @@
     "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
     "Не считать внешний референс готовой моделью или подтверждённым ригом."
   ],
-  "reference_sources": [
-    {
-      "title": "Human rig/style base (CC0, adult proportions; not a child likeness)",
-      "url": "https://quaternius.com/packs/ultimatemodularcharacters.html",
-      "license": "CC0 1.0",
-      "usage": "visual_or_technical_reference_only"
-    }
-  ],
-  "notes": "Достаточно универсального тела и небольшого набора жестов."
+  "reference_sources": [],
+  "notes": "Достаточно универсального тела и небольшого набора жестов. Original project-specific references required; external source links removed."
 }
