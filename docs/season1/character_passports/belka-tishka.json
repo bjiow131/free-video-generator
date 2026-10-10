@@ -43,6 +43,18 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "CC0 3D Animals / Creatures (includes Flying Squirrel)",
+      "url": "https://opengameart.org/content/cc0-3d-animals-creatures",
+      "license": "CC0 collection; verify the individual model page",
+      "usage": "flying squirrel candidate; silhouette differs from a typical tree squirrel"
+    },
+    {
+      "title": "Squirrels (2D visual reference)",
+      "url": "https://opengameart.org/content/squirrels",
+      "license": "CC0",
+      "usage": "shape and markings only; 2D art, not a 3D model"
     }
   ],
   "notes": "Проверить, есть ли в выбранном CC0-наборе белка с подходящим ригом; иначе сделать оригинальную модель."

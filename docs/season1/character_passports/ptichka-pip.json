@@ -43,6 +43,18 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Bird basemesh (CC0)",
+      "url": "https://opengameart.org/content/bird-basemesh",
+      "license": "CC0",
+      "usage": "generic bird mesh; not game-ready, requires inspection and stylization"
+    },
+    {
+      "title": "Bird rigged and animated (CC0)",
+      "url": "https://opengameart.org/content/bird",
+      "license": "CC0",
+      "usage": "technical rig/action reference"
     }
   ],
   "notes": "В первом сезоне избегать сложной реалистичной перьевой симуляции; использовать простые формы."

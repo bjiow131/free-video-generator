@@ -43,6 +43,12 @@
       "url": "https://commons.wikimedia.org/wiki/File:Forest_Snail_(227081443).jpeg",
       "license": "CC0 1.0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Snail 3D Model (CC0; shell photogrammetry, not a complete character)",
+      "url": "https://opengameart.org/content/snail-3d-model",
+      "license": "CC0",
+      "usage": "shell and surface detail reference; inspect topology and source archive before adoption"
     }
   ],
   "notes": "Фотографии — анатомические референсы. Требуется отдельная стилизованная 3D-модель; не копировать альбиносную окраску как обязательную."
