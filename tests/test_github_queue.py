@@ -139,3 +139,15 @@ def test_fetch_accepts_whitespace_wrapped_base64():
     task, sha = client.fetch_desired_task()
     assert task.task_id == "task-wrapped"
     assert sha == "file-sha"
+
+
+def test_free_text_github_tokens_are_redacted():
+    from local_agent.reporting import _redact_value
+    values = _redact_value({
+        "traceback": "failed ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        "message": "bad github_pat_abcdefghijklmnopqrstuvwxyz0123456789",
+    })
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in values["traceback"]
+    assert "github_pat_abcdefghijklmnopqrstuvwxyz0123456789" not in values["message"]
+    assert "[REDACTED]" in values["traceback"]
+    assert "[REDACTED]" in values["message"]

@@ -516,3 +516,8 @@ Local diagnostics:
 The poller command is `python -m local_agent.poller`. It expects a **dedicated private mailbox repository**, a manifest at `queue/desired_task.json`, and a token stored with `python -m local_agent.credentials_cli set`. Do not use the public application repository as the mailbox.
 
 **Important:** the communication channel is implemented in code but is not yet connected to the user's Windows computer. The private mailbox repository, token configuration, Windows preflight, and live request/result round-trip still need to be completed and verified. No successful Windows or Blender runtime test is claimed.
+
+
+## GitHub mailbox on Windows
+
+See [docs/github-mailbox-windows.md](docs/github-mailbox-windows.md). Remote polling is opt-in and uses a separate launcher; the standard local Blender launcher remains local-only.
