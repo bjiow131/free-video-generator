@@ -509,3 +509,35 @@ def test_load_state_fails_closed_on_corrupt_replay_history(tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match="replay history"):
         poller._load_state()
 
+
+
+def test_run_one_redacts_sensitive_arguments_from_console(monkeypatch, capsys, tmp_path):
+    from local_agent import poller
+    from types import SimpleNamespace
+    from datetime import datetime, timedelta, timezone
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="doctor-redaction-001",
+        operation="doctor",
+        expires_at=future,
+        arguments={"github_token": "ghp_test_secret_do_not_log"},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            return "result-commit"
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "completed"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: tmp_path / "report.json")
+
+    poller._run_one(FakeClient(), task, "manifest-sha")
+
+    output = capsys.readouterr().out
+    assert "ghp_test_secret_do_not_log" not in output
+    assert "[REDACTED]" in output
