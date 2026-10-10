@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -364,14 +365,18 @@ class BlenderAgentApp(tk.Tk):
         if len(prompt) > PROMPT_LIMIT:
             messagebox.showwarning("Слишком длинное задание", f"Максимум {PROMPT_LIMIT} символов в этой версии.", parent=self)
             return
-        selected_characters = self._selected_character_cards() if not self.active_project else []
+        selected_characters = self._resolve_character_cards_from_prompt(prompt)
+        mentioned = [card["name"] for card in selected_characters]
         if len(selected_characters) > 8:
-            messagebox.showwarning("Слишком много персонажей", "Для одной сцены пока можно выбрать не более 8 персонажей.", parent=self)
+            messagebox.showwarning("Слишком много персонажей", "Для одной сцены пока можно использовать не более 8 персонажей.", parent=self)
             return
         character_summary = ""
         if selected_characters:
-            character_summary = "\n\nПерсонажи из карточек: " + ", ".join(card["name"] for card in selected_characters)
-        mode = "доработка открытого проекта" if self.active_project else "создание нового проекта"
+            character_summary = "\n\nПерсонажи из карточек: " + ", ".join(mentioned)
+        visual_mode = self.visual_mode_var.get() if not self.active_project and hasattr(self, "visual_mode_var") else "Свободный стиль"
+        mode = "доработка открытого проекта" if self.active_project else f"создание новой сцены · {visual_mode}"
+        if not self.active_project:
+            prompt = prompt + f"\n\nВизуальный режим проекта: {visual_mode}."
         if not self._ask_confirm(f"Режим: {mode}{character_summary}\n\n{prompt}"):
             self._set_status("Задание отменено.")
             return
@@ -500,6 +505,26 @@ class BlenderAgentApp(tk.Tk):
                if i < len(self._character_choice_ids)]
         by_id = {card.get("id"): card for card in self._load_characters()}
         return [by_id[card_id] for card_id in ids if card_id in by_id]
+
+    def _resolve_character_cards_from_prompt(self, prompt: str) -> list[dict]:
+        """Use card names mentioned in the task, plus explicit manual selections."""
+        if self.active_project:
+            return []
+        chosen = {card.get("id"): card for card in self._selected_character_cards()}
+        normalized_prompt = prompt.casefold()
+        for card in self._load_characters():
+            if card.get("kind", "Персонаж") == "Референс":
+                continue
+            name = str(card.get("name", "")).strip().casefold()
+            if not name:
+                continue
+            candidates = {name}
+            if len(name) >= 5:
+                candidates.add(name[:-1])  # common Russian case endings, e.g. Степа -> Степы/Степе
+            if any(candidate and re.search(r"(?<![\w])" + re.escape(candidate) + r"(?![\w])", normalized_prompt)
+                   for candidate in candidates):
+                chosen[card.get("id")] = card
+        return list(chosen.values())[:8]
 
     def _open_selected_character_card(self, _event=None) -> None:
         cards = self._selected_character_cards()
