@@ -616,3 +616,21 @@ def test_poller_lock_refuses_symlink_target(tmp_path):
     with pytest.raises(RuntimeError, match="must not be a symlink"):
         _acquire_instance_lock(lock_path)
     assert outside.read_text(encoding="utf-8") == "preserve"
+
+
+def test_agent_state_directory_rejects_symlink_escape(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (root / ".local_agent").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "ROOT", root)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._ensure_agent_dir()
