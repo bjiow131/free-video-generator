@@ -790,23 +790,33 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.configure(state="disabled")
 
     def _download_scene01_references(self) -> None:
-        """Fetch the selected open-license references after explicit user confirmation."""
+        """Fetch selected open-license references without blocking the GUI."""
         include_characters = messagebox.askyesno(
             "Набор референсов сцены 01",
             "Скачать референсы улитки и лесной тропинки, а также дополнительный CC0-пак персонажей?\n\n"
             "Пак персонажей общий и не гарантирует подходящий образ четырёхлетней Мии; его содержимое нужно проверить отдельно.",
             parent=self,
         )
-        try:
-            result = download_scene01_reference_pack(
-                CHARACTER_DIR,
-                include_character_pack=include_characters,
-            )
-        except (ReferencePackError, OSError, ValueError) as exc:
-            messagebox.showerror("Не удалось подготовить референсы", str(exc), parent=self)
+        self._set_status("Загружаю референсы сцены 01…")
+        def worker() -> None:
+            try:
+                result = download_scene01_reference_pack(
+                    CHARACTER_DIR,
+                    include_character_pack=include_characters,
+                )
+                self.after(0, lambda: self._finish_scene01_reference_download(result, None))
+            except (ReferencePackError, OSError, ValueError) as exc:
+                self.after(0, lambda error=exc: self._finish_scene01_reference_download(None, error))
+        threading.Thread(target=worker, name="scene01-reference-download", daemon=True).start()
+
+    def _finish_scene01_reference_download(self, result: dict | None, error: Exception | None) -> None:
+        if error is not None:
+            messagebox.showerror("Не удалось подготовить референсы", str(error), parent=self)
             self._set_status("Загрузка референсов завершилась ошибкой.")
             return
-
+        if result is None:
+            self._set_status("Загрузка референсов не вернула результат.")
+            return
         downloaded = sum(item["status"] == "downloaded" for item in result["assets"])
         already = sum(item["status"] == "already_present" for item in result["assets"])
         failed = len(result["failures"])
