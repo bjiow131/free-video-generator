@@ -76,6 +76,11 @@ def apply_update_folder(update_dir: Path, install_root: Path) -> dict[str, Any]:
         if not isinstance(expected_hash, str) or not _SHA256.fullmatch(expected_hash):
             raise UpdateError(f"Missing or invalid SHA-256 for {normalized}")
         source = payload.joinpath(*PurePosixPath(normalized).parts)
+        cursor = payload
+        for part in PurePosixPath(normalized).parts:
+            cursor = cursor / part
+            if cursor.is_symlink() or getattr(cursor, "is_junction", lambda: False)():
+                raise UpdateError(f"Update payload contains a symlink or junction: {normalized}")
         if source.is_symlink() or not source.is_file():
             raise UpdateError(f"Update file is missing or is a symlink: {normalized}")
         if source.stat().st_size > _MAX_FILE_BYTES:
