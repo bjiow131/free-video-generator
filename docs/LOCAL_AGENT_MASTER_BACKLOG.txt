@@ -1,0 +1,170 @@
+LOCAL VIDEO AGENT — MASTER BACKLOG
+Repository: bjiow131/free-video-generator
+Branch: feature/local-video-agent
+Last updated: 2026-10-09
+Purpose: One persistent checklist for findings, fixes, runner tasks, verification evidence, and follow-up work.
+
+WORKING RULES
+- This is the canonical rolling checklist. Update this same file; do not create a new backlog file for every audit.
+- Keep GitHub Issues as task trackers, but record new findings and final outcomes here too.
+- Labels: FOUND = confirmed by static review; FIXED = code changed; VERIFIED = executed and evidence recorded; PLAN = task/test remains; BLOCKED = requires unavailable computer/backend; NOT RUN = no evidence yet.
+- Never claim a test passed without actual command output.
+- Preserve max_attempts across resume; do not silently reset attempt budgets.
+- Do not merge to main or deploy Render without explicit user approval.
+- Windows, real FFmpeg/media, and actual-generator tests remain unverified until run on the computer.
+
+STATUS SUMMARY (2026-10-09)
+- 100 audit points recorded below.
+- Confirmed static findings are marked FOUND.
+- All test-only and machine-dependent work remains PLAN / NOT RUN unless explicitly changed later.
+- No code fix or runtime verification was performed as part of creating this backlog file.
+
+RELATED GITHUB TASKS
+Master checklist: https://github.com/bjiow131/free-video-generator/issues/10
+Existing task — cancellation/pause/resume/reuse: https://github.com/bjiow131/free-video-generator/issues/11
+Existing task — checkpoint mismatch/recovery: https://github.com/bjiow131/free-video-generator/issues/12
+Existing task — FFmpeg adapter/real media: https://github.com/bjiow131/free-video-generator/issues/13
+Existing task — paths/symlinks/locks: https://github.com/bjiow131/free-video-generator/issues/14
+Existing task — Windows/end-to-end: https://github.com/bjiow131/free-video-generator/issues/15
+Existing task — docs/final report: https://github.com/bjiow131/free-video-generator/issues/16
+Audit 01 — runner lifecycle: https://github.com/bjiow131/free-video-generator/issues/17
+Audit 02 — checkpoint: https://github.com/bjiow131/free-video-generator/issues/18
+Audit 03 — manifest/limits: https://github.com/bjiow131/free-video-generator/issues/19
+Audit 04 — FFmpeg/media: https://github.com/bjiow131/free-video-generator/issues/20
+Audit 05 — filesystem security: https://github.com/bjiow131/free-video-generator/issues/21
+Audit 06 — backend integration: https://github.com/bjiow131/free-video-generator/issues/22
+Audit 07 — scene chain/artifacts: https://github.com/bjiow131/free-video-generator/issues/23
+Audit 08 — Windows/local environment: https://github.com/bjiow131/free-video-generator/issues/24
+Audit 09 — tests/CI: https://github.com/bjiow131/free-video-generator/issues/25
+Audit 10 — observability/release: https://github.com/bjiow131/free-video-generator/issues/26
+
+============================================================
+100-POINT AUDIT CHECKLIST
+============================================================
+
+SECTION 1 — RUNNER LIFECYCLE, CANCEL AND PAUSE (1–10)
+[FOUND] 01. Cancel event may remain set when the same runner object is reused; define safe reset semantics.
+[FOUND] 02. Cancellation may leave non-active scenes in running/retry_wait states; normalize nonterminal states.
+[FOUND] 03. Cancellation/pause state transitions are spread across branches; establish and test a transition matrix.
+[PLAN] 04. Test cancel while paused before the first scene.
+[PLAN] 05. Test cancel during retry backoff.
+[PLAN] 06. Test cancel between scenes after a completed scene.
+[PLAN] 07. Test cancel during final assembly; partial output must never be reported completed.
+[PLAN] 08. Test pause during retry wait and resume without consuming an attempt.
+[PLAN] 09. Test pause/resume/cancel before, during and after run lifecycle.
+[PLAN] 10. Assert terminal project state is consistent with all scene states.
+
+SECTION 2 — CHECKPOINT DURABILITY AND RECOVERY (11–20)
+[FOUND] 11. Manifest initialization errors may flow into generic failure persistence and mutate an existing checkpoint; distinguish pre-init failures from post-init failures.
+[FOUND] 12. Checkpoint validation does not enforce every semantic cross-field invariant.
+[PLAN] 13. Malformed JSON must not silently overwrite or destroy the prior checkpoint.
+[PLAN] 14. Test unsupported schema versions and document non-destructive recovery.
+[PLAN] 15. Fault-inject before/after temp-file fsync and around atomic replace.
+[PLAN] 16. Define safe handling of stale checkpoint.*.tmp files.
+[PLAN] 17. Test two CheckpointStore instances writing within one process.
+[PLAN] 18. Test independent processes and checkpoint/event consistency under locks.
+[PLAN] 19. Verify directory flush/durability behavior and platform differences.
+[PLAN] 20. Define behavior when checkpoint save succeeds but event append fails, and vice versa.
+
+SECTION 3 — MANIFEST VALIDATION AND RESOURCE LIMITS (21–30)
+[FOUND] 21. metadata has no explicit size/depth limit and can inflate checkpoint or cause serialization/resource issues.
+[FOUND] 22. Default scene limit is 1000; evaluate a safer configurable product limit.
+[FOUND] 23. initial_image is type-checked in manifest, while trusted local-path/asset semantics are deferred.
+[PLAN] 24. Test malformed scene entries, blank prompts and prompt-length boundaries.
+[PLAN] 25. Test bool/float/string durations and bool-as-int edge cases for numeric settings.
+[PLAN] 26. Test duplicate, invalid, padded, Unicode and overlong project/scene IDs.
+[PLAN] 27. Test Windows reserved device filenames (CON, NUL, COM1, LPT1, etc.).
+[PLAN] 28. Test output filename extension, trailing spaces/dots and control characters.
+[PLAN] 29. Confirm only 9:16, 16:9 and 1:1 are accepted before filesystem work.
+[PLAN] 30. Bound aggregate prompt/metadata size, not only individual prompt length.
+
+SECTION 4 — FFMPEG PROCESS SAFETY AND MEDIA VALIDATION (31–40)
+[FOUND] 31. max_probe_bytes is checked after ffprobe stdout has already been captured in memory.
+[FOUND] 32. subprocess capture_output buffers stdout/stderr without an explicit output bound.
+[FOUND] 33. validate_video accepts multiple video streams and does not enforce a full stream policy.
+[PLAN] 34. Test missing FFmpeg, invalid executable path, permissions and Unicode paths.
+[PLAN] 35. Test timeout cleanup, child process termination and absence of orphan processes.
+[PLAN] 36. Test zero-byte, truncated, corrupt, wrong-container and audio-only files.
+[PLAN] 37. Test malformed probe JSON and missing/negative/non-finite/unreasonable durations.
+[PLAN] 38. Validate codecs, dimensions, frame rate, pixel format, audio and multi-stream behavior.
+[PLAN] 39. Verify last-frame extraction on short clips, variable frame rate and damaged tails.
+[PLAN] 40. Define resource limits for very large files, resolution, FPS and duration.
+
+SECTION 5 — FILESYSTEM BOUNDARIES, SYMLINKS AND RACES (41–50)
+[FOUND] 41. Symlink check and file use have a TOCTOU gap; harden with platform-appropriate safe opens where practical.
+[FOUND] 42. Resolve-then-use path validation can race with later filesystem changes.
+[FOUND] 43. Lock-file symlink check and open are separate operations and need race testing/hardening.
+[PLAN] 44. Test traversal, absolute, drive-relative, UNC, alternate data stream and mixed-separator paths.
+[PLAN] 45. Test Windows junction/reparse points and POSIX symlinks at workspace/project roots.
+[PLAN] 46. Test symlink, dangling symlink, hard link and non-regular checkpoint/event files.
+[PLAN] 47. Test backend paths outside project root, wrong drive/share, relative paths and missing files.
+[PLAN] 48. Test existing output target as file, directory, symlink, read-only or locked file.
+[PLAN] 49. Test races during directory/temp/lock/final-output creation.
+[PLAN] 50. Prove cleanup never follows symlinks, deletes arbitrary files or escapes workspace.
+
+SECTION 6 — BACKEND ADAPTER AND REAL GENERATOR (51–60)
+[FOUND] 51. local_agent defines a VideoBackend Protocol but no concrete adapter is present in the package.
+[FOUND] 52. No standalone local-agent CLI entry point currently provides run/status/resume/cancel commands.
+[FOUND] 53. Installed generator version and supported API/CLI have not yet been verified on the target computer.
+[PLAN] 54. Inspect the installed program and its official supported automation interface on Windows.
+[PLAN] 55. Define adapter capability checks for I2V, ratios, duration, resolution, job IDs and cancellation.
+[PLAN] 56. Test backend timeouts, unavailable service, connection resets, malformed replies and stuck jobs.
+[PLAN] 57. Persist job identity/idempotency information to avoid duplicate generation after restart.
+[PLAN] 58. Define honest cancellation semantics when backend cannot cancel in-flight generation.
+[PLAN] 59. Validate output path, size, media, and checksum before checkpoint commit.
+[PLAN] 60. Keep credentials out of source, logs, checkpoint, exceptions and command-line arguments.
+
+SECTION 7 — SCENE CHAIN, ASSEMBLY AND ARTIFACTS (61–70)
+[FOUND] 61. Failed generation/assembly can leave partial artifacts; define conservative cleanup/validity rules.
+[FOUND] 62. Concatenation rejects incompatible stream layouts and has no transcode fallback; document and verify against actual outputs.
+[FOUND] 63. Ensure partial final output cannot be accepted as a completed artifact.
+[PLAN] 64. Verify two-scene chaining uses the exact validated final frame from scene 1.
+[PLAN] 65. Verify upstream regeneration invalidates all downstream outputs derived from an old input hash.
+[PLAN] 66. Test resume with missing videos/frames, changed or missing checksums and changed input-frame hashes.
+[PLAN] 67. Ensure scene output is validated/committed before status becomes completed.
+[PLAN] 68. Test assembly with one/many scenes, Unicode, spaces, apostrophes and long paths.
+[PLAN] 69. Test codec/resolution/FPS/audio/rotation mismatch and actionable errors.
+[PLAN] 70. Verify duration tolerance for short scenes and multi-scene totals.
+
+SECTION 8 — WINDOWS STARTUP AND LOCAL ENVIRONMENT (71–80)
+[FOUND] 71. A dedicated local-agent launcher/CLI is not implemented inside local_agent.
+[PLAN] 72. Real Windows locking behavior has not been verified; code uses msvcrt on Windows and fcntl on POSIX.
+[FOUND] 73. Current CI launcher check is textual and does not execute the batch file.
+[PLAN] 74. Verify clean Windows 10/11 setup from a path with spaces and non-ASCII characters.
+[PLAN] 75. Verify Python/venv/dependency setup and recovery from interrupted install.
+[PLAN] 76. Verify FFmpeg/ffprobe discovery, version reporting and missing-tool diagnostics.
+[PLAN] 77. Verify inter-process Windows locks, release and abrupt process death.
+[PLAN] 78. Verify Ctrl+C, console close and shutdown during generation.
+[PLAN] 79. Verify long paths, OneDrive, read-only folders and antivirus file-lock interference.
+[PLAN] 80. Verify Russian/Unicode logs, errors and filenames.
+
+SECTION 9 — TEST QUALITY, CI AND REPRODUCIBILITY (81–90)
+[FOUND] 81. Core runner tests use fake byte content and do not verify real codecs/containers.
+[FOUND] 82. CI workflow notes it does not replace Windows/real-media checks; no evidence of those checks yet.
+[FOUND] 83. Textual launcher check can pass even if runtime startup fails.
+[PLAN] 84. Test every project/scene transition and terminal-state invariant.
+[PLAN] 85. Add deterministic boundary/fuzz tests for manifest JSON, checkpoint JSON and path normalization.
+[PLAN] 86. Fault-inject durable writes, event append and external process calls.
+[PLAN] 87. Add race tests for duplicate runs, cross-process locking, pause/resume and cancellation.
+[PLAN] 88. Add small redistributable real MP4/PNG fixtures with known metadata and checksums.
+[PLAN] 89. Separate unit/static, real-media, Windows and actual-backend results.
+[PLAN] 90. CI summary must include exact failing command/output and distinguish setup failure from test failure.
+
+SECTION 10 — OBSERVABILITY, DOCUMENTATION AND RELEASE (91–100)
+[FOUND] 91. Standalone runner has no end-user progress/ETA contract; never invent numeric progress absent backend evidence.
+[PLAN] 92. Reconcile audit docs with current code and mark each issue fixed/open/unverified only with evidence.
+[FOUND] 93. No final report yet records successful Windows, real-media and actual-backend execution.
+[PLAN] 94. Add structured logs with project/scene/attempt IDs and sensitive-data redaction.
+[PLAN] 95. Bound/sanitize event and error payloads; test secret and oversized-string leakage.
+[PLAN] 96. Define truthful progress semantics: stage-based by default, numeric only when backend supplies it.
+[PLAN] 97. Document checkpoint/event backup and non-destructive recovery from corruption.
+[PLAN] 98. Document disk usage, temporary retention, event rotation and orphan cleanup.
+[PLAN] 99. Remove stale docs promising nonexistent CLI/adapter behavior or unverified capabilities.
+[PLAN] 100. Release gate: security, unit tests, real FFmpeg, Windows, two-scene real backend run, recovery, playable MP4, explicit approval before merge/deploy.
+
+============================================================
+EXECUTION LOG — APPEND A NEW ENTRY FOR EACH WORK SESSION
+============================================================
+2026-10-09 — Created this master backlog file from the first 100-point static audit.
+Result: backlog recorded; no code changes or runtime tests performed in this session.
+Next: continue static audit and prepare fixes; do not claim Windows/real-media/backend checks passed until actually run.
