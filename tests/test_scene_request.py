@@ -47,3 +47,43 @@ def test_scale_number_is_not_mistaken_for_object_count():
     plan = parse_scene_request("Куб размером 2 и сфера")
     assert len(plan["objects"]) == 2
     assert all(item["scale"] == 2.0 for item in plan["objects"])
+
+
+def test_composite_objects_environment_style_and_vertical_format():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    plan = compile_prompt("Создай деревянный дом, две ёлки и красную машину в лесу, low poly, вертикально 9:16")
+    assert [item["primitive"] for item in plan["objects"]] == ["house", "tree", "tree", "car"]
+    assert plan["environment"] == "forest"
+    assert plan["style"] == "low_poly"
+    assert plan["aspect_ratio"] == "9:16"
+    assert plan["objects"][-1]["color_name"] == "red"
+
+
+def test_scene_only_prompt_gets_a_starter_composition():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    forest = compile_prompt("Создай красивый лес на закате")
+    assert forest["objects"][0]["primitive"] == "tree"
+    assert forest["environment"] == "forest"
+    assert forest["lighting"] == "sunset"
+
+
+def test_animation_and_render_quality_are_encoded_as_data():
+    from local_agent.scene_language import parse_scene_request as compile_prompt
+
+    plan = compile_prompt("Сделай вращающуюся золотую ракету, анимация 4 секунды, высокое качество")
+    assert plan["objects"][0]["primitive"] == "rocket"
+    assert plan["objects"][0]["color_name"] == "gold"
+    assert plan["animation"]["enabled"] is True
+    assert plan["animation"]["kind"] == "rotate"
+    assert plan["render_percentage"] == 75
+
+
+def test_catalog_includes_every_supported_composite_family():
+    from local_agent.scene_language import OBJECTS
+
+    names = {name for name, _aliases in OBJECTS}
+    assert {"tree", "house", "mountain", "cloud", "person", "car", "table", "chair",
+            "lamp", "bench", "flower", "grass", "rock", "road", "fence", "bed",
+            "book", "mug", "bottle", "smartphone", "rocket", "sun", "moon", "star"} <= names
