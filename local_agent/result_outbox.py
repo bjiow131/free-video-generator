@@ -38,7 +38,8 @@ class ResultOutbox:
         target = self._path(task_id)
         envelope = {"schema_version": 1, "task_id": task_id, "result": _redact_value(result)}
         encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        if len(encoded) > MAX_RESULT_BYTES:
+        publish_bytes = json.dumps(envelope["result"], ensure_ascii=False, indent=2).encode("utf-8")
+        if len(encoded) > MAX_RESULT_BYTES or len(publish_bytes) > MAX_RESULT_BYTES:
             raise ResultOutboxError("Result exceeds the local outbox size limit.")
         if target.is_symlink():
             raise ResultOutboxError("Refusing a symlink in the result outbox.")
@@ -84,8 +85,17 @@ class ResultOutbox:
 
     def publish(self, client: Any, task_id: str, result: dict[str, Any]) -> str:
         """Persist first; remove the entry only after GitHub confirms publication."""
-        path = self.enqueue(task_id, result)
-        commit_sha = client.publish_result(task_id, _redact_value(result))
+        try:
+            path = self.enqueue(task_id, result)
+            envelope = self._read(path, expected_task_id=task_id)
+        except ResultOutboxError:
+            # If an earlier result is already durable for this immutable task ID,
+            # preserve and publish that first result rather than replacing evidence.
+            path = self._path(task_id)
+            if not path.is_file() or path.is_symlink():
+                raise
+            envelope = self._read(path, expected_task_id=task_id)
+        commit_sha = client.publish_result(task_id, envelope["result"])
         path.unlink()
         return commit_sha
 
