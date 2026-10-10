@@ -209,6 +209,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="Подготовить библиотеку сезона 1…", command=self._prepare_season1_library).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
@@ -994,6 +995,58 @@ class BlenderAgentApp(tk.Tk):
             "Карточка библиотеки обновлена автоматически. Исходный JSON не изменён.",
             parent=self,
         )
+
+    def _prepare_season1_library(self) -> None:
+        """Install the versioned Season 1 passport set without blocking the GUI."""
+        script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_season1_library.py"
+        if not script.is_file():
+            messagebox.showerror("Не найден установщик", f"Файл не найден: {script}", parent=self)
+            return
+        if not messagebox.askyesno(
+            "Подготовить библиотеку сезона 1",
+            "Будут добавлены 14 паспортов, скачаны три CC0-фотореференса и создан манифест сезона. "
+            "Неизменённые паспорта повторно импортироваться не будут. 3D-модели автоматически не скачиваются. Продолжить?",
+            parent=self,
+        ):
+            return
+        self._set_status("Подготовка библиотеки сезона 1…")
+        self._busy = True
+
+        def worker() -> None:
+            import subprocess
+            env = os.environ.copy()
+            env["LOCAL_AGENT_CHARACTER_LIBRARY"] = str(CHARACTER_DIR)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script)],
+                    cwd=str(script.parents[1]),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+                output = (result.stdout or "").strip()
+                errors = (result.stderr or "").strip()
+                self.after(0, lambda: self._finish_season1_library(result.returncode, output, errors))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                self.after(0, lambda: self._finish_season1_library(1, "", str(exc)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_season1_library(self, code: int, output: str, errors: str) -> None:
+        self._busy = False
+        if code == 0:
+            self._refresh_characters()
+            self._set_status("Библиотека сезона 1 подготовлена.")
+            messagebox.showinfo("Библиотека сезона 1 готова", output or "Паспорта и манифест сохранены.", parent=self)
+        else:
+            self._set_status("Подготовка библиотеки сезона 1 завершилась с ошибкой.")
+            messagebox.showerror(
+                "Не удалось подготовить библиотеку",
+                (errors or output or f"Код завершения: {code}")[-5000:],
+                parent=self,
+            )
 
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)
