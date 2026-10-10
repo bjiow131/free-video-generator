@@ -18,12 +18,12 @@ GitHub CLI для этого mailbox не требуется: клиент ис�
 2. Дайте минимально необходимые права Contents: Read and write. Чтение нужно для queue/desired_task.json, запись — для queue/results/<task_id>.json.
 3. В PowerShell из корня репозитория выполните:
 
-    %LOCALAPPDATA%\BlenderWorkAgent\github-venv\Scripts\python.exe -m local_agent.credentials_cli set
+    & "$env:LOCALAPPDATA\BlenderWorkAgent\github-venv\Scripts\python.exe" -m local_agent.credentials_cli set
 
 4. Введите токен дважды. Ввод скрыт; токен сохраняется в Windows Credential Manager и не печатается.
 5. Проверьте наличие учётных данных:
 
-    %LOCALAPPDATA%\BlenderWorkAgent\github-venv\Scripts\python.exe -m local_agent.credentials_cli status
+    & "$env:LOCALAPPDATA\BlenderWorkAgent\github-venv\Scripts\python.exe" -m local_agent.credentials_cli status
 
 Не помещайте токен в исходники, .env, JSON, командную строку или логи. Не обходите проверки GitHub и SMS-верификацию.
 
@@ -31,7 +31,7 @@ GitHub CLI для этого mailbox не требуется: клиент ис�
 
 Выполните:
 
-    %LOCALAPPDATA%\BlenderWorkAgent\github-venv\Scripts\python.exe scripts/check_github_connection.py
+    & "$env:LOCALAPPDATA\BlenderWorkAgent\github-venv\Scripts\python.exe" scripts/check_github_connection.py
 
 Скрипт проверяет доступ к приватному репозиторию и записывает безвредный результат проверки в queue/results/connection-check-<UTC-время>.json. Он не читает и не выполняет queue/desired_task.json. При успехе будет status=connected; при ошибке выводятся только тип ошибки и короткое сообщение.
 
