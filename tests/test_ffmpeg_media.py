@@ -256,7 +256,7 @@ def test_failed_frame_extraction_preserves_existing_target(tmp_path, monkeypatch
         return completed(returncode=1, stderr="simulated ffmpeg failure")
 
     monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
-    with pytest.raises(MediaError, match="failed (exit 1)"):
+    with pytest.raises(MediaError, match=r"failed \\(exit 1\\)"):
         FFmpegMediaTools().extract_last_frame(str(source), str(target))
 
     assert target.read_bytes() == b"previous valid frame"
