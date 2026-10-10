@@ -1,11 +1,11 @@
 """Tests for poller expiry and task supersession helpers."""
-from types import SimpleNamespace
+import sys
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+import pytest
 
 from local_agent.poller import _not_expired
-import sys
-import pytest
-from types import SimpleNamespace
 
 
 @pytest.fixture(autouse=True)
