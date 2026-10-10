@@ -79,6 +79,44 @@ def _write_registry(registry: Path, data: dict[str, Any]) -> None:
             pass
 
 
+def _append_passport(registry: Path, character_id: str, passport: dict[str, Any]) -> int:
+    """Lock, reload, append and atomically replace so concurrent refreshes do not clobber history."""
+    lock = registry.with_suffix(registry.suffix + ".lock")
+    try:
+        fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise RuntimeError("passport_registry_locked_retry_later") from exc
+    try:
+        os.close(fd)
+        if registry.exists():
+            if registry.is_symlink() or registry.stat().st_size > _MAX_REGISTRY_BYTES:
+                raise ValueError("Existing passport registry is unsafe or too large.")
+            data = json.loads(registry.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or data.get("schema_version") != 1 or not isinstance(data.get("characters"), dict):
+                raise ValueError("Existing passport registry has an unsupported format.")
+        else:
+            data = {"schema_version": 1, "characters": {}}
+        entry = data["characters"].setdefault(character_id, {"history": []})
+        if not isinstance(entry, dict) or not isinstance(entry.get("history"), list):
+            raise ValueError("Character entry in passport registry is invalid.")
+        entry["history"].append(passport)
+        entry["history"] = entry["history"][-_MAX_HISTORY:]
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=registry.parent,
+                                         prefix=".character-passports-", suffix=".tmp", delete=False) as stream:
+            temp_path = Path(stream.name)
+            json.dump(data, stream, ensure_ascii=False, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, registry)
+        return len(entry["history"])
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def create_or_update_passport(project_name: str, character_id: str, blend_file: str | None = None) -> dict[str, Any]:
     """Audit one local Blender project and append a safe versioned character passport."""
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
@@ -135,25 +173,12 @@ def create_or_update_passport(project_name: str, character_id: str, blend_file: 
             "This passport does not copy or modify the source .blend file.",
         ],
     }
-    if registry.exists():
-        if registry.is_symlink() or registry.stat().st_size > _MAX_REGISTRY_BYTES:
-            raise ValueError("Existing passport registry is unsafe or too large.")
-        data = json.loads(registry.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("schema_version") != 1 or not isinstance(data.get("characters"), dict):
-            raise ValueError("Existing passport registry has an unsupported format.")
-    else:
-        data = {"schema_version": 1, "characters": {}}
-    entry = data["characters"].setdefault(character_id, {"history": []})
-    if not isinstance(entry, dict) or not isinstance(entry.get("history"), list):
-        raise ValueError("Character entry in passport registry is invalid.")
-    entry["history"].append(passport)
-    entry["history"] = entry["history"][-_MAX_HISTORY:]
-    _write_registry(registry, data)
+    history_entries = _append_passport(registry, character_id, passport)
     return {
         "status": passport["status"],
         "character_id": character_id,
         "registry_path": str(registry),
-        "history_entries": len(entry["history"]),
+        "history_entries": history_entries,
         "audit": audit,
         "source_sha256": passport["source"]["sha256"],
     }
