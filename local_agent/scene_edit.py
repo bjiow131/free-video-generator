@@ -92,14 +92,32 @@ def create_table(location, scale=1.0, prefix="Table"):
         leg=bpy.context.object; leg.name=prefix+" | leg %02d"%(i+1); leg.dimensions=(0.12*scale,0.12*scale,0.6*scale); leg.data.materials.append(wood)
         bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
 if action=="replace":
-    found=matches()
-    if len(found)!=1:
-        raise RuntimeError("TARGET_MATCH_COUNT:"+str(len(found))+":"+json.dumps([o.name for o in found[:30]],ensure_ascii=False))
-    old=found[0]
-    loc=old.location.copy(); scale=max(0.1,max(old.dimensions))
-    old_name=old.name
-    bpy.data.objects.remove(old,do_unlink=True)
-    if replacement=="table": create_table(loc,scale,"Replaced "+old_name)
+    # Forest-preview trees are stored as a trunk plus three canopy objects.
+    # Treat a uniquely recognizable procedural tree as one logical asset and
+    # replace the central-most tree group with a table instead of deleting only
+    # one mesh part. Other ambiguous objects still require a unique name.
+    tree_group = None
+    if target in ("дерево","tree") and replacement=="table":
+        trunks=[o for o in bpy.data.objects if o.name.startswith("Tree trunk ")]
+        if trunks:
+            old=min(trunks,key=lambda o:o.location.x*o.location.x+o.location.y*o.location.y)
+            parts=old.name.split()
+            if len(parts)>=4:
+                suffix=" ".join(parts[-2:])
+                tree_group=[o for o in bpy.data.objects if o.name.startswith("Tree trunk "+suffix) or o.name.startswith("Tree canopy "+suffix+" ")]
+                loc=old.location.copy(); loc.z=0
+                for part in tree_group: bpy.data.objects.remove(part,do_unlink=True)
+                create_table(loc,1.0,"Replaced tree "+suffix)
+                tree_group=[]
+    if tree_group is None:
+        found=matches()
+        if len(found)!=1:
+            raise RuntimeError("TARGET_MATCH_COUNT:"+str(len(found))+":"+json.dumps([o.name for o in found[:30]],ensure_ascii=False))
+        old=found[0]
+        loc=old.location.copy(); scale=max(0.1,max(old.dimensions))
+        old_name=old.name
+        bpy.data.objects.remove(old,do_unlink=True)
+        if replacement=="table": create_table(loc,scale,"Replaced "+old_name)
     elif replacement=="cube":
         bpy.ops.mesh.primitive_cube_add(size=1,location=loc); obj=bpy.context.object; obj.name="Replacement cube"; obj.scale=(scale,)*3
     elif replacement=="sphere":
