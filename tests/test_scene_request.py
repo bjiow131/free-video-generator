@@ -151,3 +151,32 @@ def test_mia_riding_scooter_relationship_is_detected():
     assert plan["relationships"]["mia_riding_scooter"] is True
     assert plan["environment"] == "forest"
     assert plan["animation"]["enabled"] is True
+
+
+def test_selected_character_cards_are_added_once_and_keep_reference_paths():
+    from local_agent.scene_language import parse_scene_request
+    from local_agent.scene_request import _append_character_cards
+
+    plan = parse_scene_request("Мия едет на самокате по лесу, вертикально 9:16")
+    card = {
+        "id": "mia-card",
+        "name": "Мия",
+        "description": "Бирюзовый комбинезон и розовый рюкзак",
+        "references": ["C:/BlenderAgentLibrary/mia-card/01_front.png", "C:/BlenderAgentLibrary/mia-card/02_side.jpg"],
+    }
+    result = _append_character_cards(plan, [card])
+    assert len([obj for obj in result["objects"] if obj["primitive"] == "mia"]) == 1
+    assert result["selected_characters"][0]["id"] == "mia-card"
+    assert result["selected_characters"][0]["references"] == card["references"]
+
+
+def test_multiple_selected_characters_are_added_as_separate_scene_objects():
+    from local_agent.scene_language import parse_scene_request
+    from local_agent.scene_request import _append_character_cards
+
+    plan = _append_character_cards(parse_scene_request("Два героя в лесу"), [
+        {"id": "mia", "name": "Мия", "description": "Девочка", "references": []},
+        {"id": "fox", "name": "Лисёнок", "description": "Рыжий лисёнок", "references": []},
+    ])
+    assert [obj["name"] for obj in plan["objects"] if obj.get("character_card_id")] == ["Мия", "Лисёнок"]
+    assert [item["name"] for item in plan["selected_characters"]] == ["Мия", "Лисёнок"]
