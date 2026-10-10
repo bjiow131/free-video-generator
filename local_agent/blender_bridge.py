@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -216,6 +217,96 @@ class BlenderBridge:
         self._run = popen
 
     def run_task(
+        self,
+        task: str,
+        *,
+        project_name: str,
+        render: bool = True,
+        preview: bool = True,
+        cycles: bool = False,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        if not overwrite or not _PROJECT_NAME.fullmatch(project_name or ""):
+            return self._run_task_impl(
+                task, project_name=project_name, render=render, preview=preview,
+                cycles=cycles, overwrite=overwrite,
+            )
+
+        requested = self.workspace / project_name
+        if requested.is_symlink() or getattr(requested, "is_junction", lambda: False)():
+            raise BlenderBridgeError("Project output directory must not be a symlink or junction.")
+        project_dir = _inside(self.workspace, requested)
+        if project_dir.exists() and not project_dir.is_dir():
+            raise BlenderBridgeError("Project output path is not a directory.")
+        if not project_dir.is_dir():
+            return self._run_task_impl(
+                task, project_name=project_name, render=render, preview=preview,
+                cycles=cycles, overwrite=overwrite,
+            )
+
+        names = (
+            "forest_starter.blend", "forest_preview.png", "blender_result.json",
+            "blender_stdout.log", "blender_stderr.log",
+        )
+        known_outputs = [project_dir / name for name in names]
+        if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)() for path in known_outputs):
+            raise BlenderBridgeError("Known output paths must not be symlinks or junctions.")
+        existing = [path for path in known_outputs if path.exists()]
+        if any(not path.is_file() for path in existing):
+            raise BlenderBridgeError("Known output path exists but is not a regular file.")
+        if not existing:
+            return self._run_task_impl(
+                task, project_name=project_name, render=render, preview=preview,
+                cycles=cycles, overwrite=overwrite,
+            )
+
+        backup_dir = Path(tempfile.mkdtemp(prefix=".blender-backup-", dir=str(self.workspace)))
+        moved: list[Path] = []
+        log_names = {"blender_stdout.log", "blender_stderr.log"}
+        try:
+            for path in existing:
+                os.replace(path, backup_dir / path.name)
+                moved.append(path)
+            result = self._run_task_impl(
+                task, project_name=project_name, render=render, preview=preview,
+                cycles=cycles, overwrite=True,
+            )
+        except BaseException as exc:
+            restoration_errors: list[str] = []
+            for path in moved:
+                backup = backup_dir / path.name
+                try:
+                    if path.exists() or path.is_symlink():
+                        if path.name in log_names and path.is_file():
+                            # Keep the new failure log visible; the previous log
+                            # remains in the retained backup directory.
+                            continue
+                        if path.is_dir() and not path.is_symlink():
+                            raise OSError("new output path became a directory")
+                        path.unlink(missing_ok=True)
+                    if backup.is_file():
+                        shutil.copy2(backup, path)
+                except OSError as restore_exc:
+                    restoration_errors.append(f"{path.name}: {type(restore_exc).__name__}")
+            if restoration_errors:
+                raise BlenderBridgeError(
+                    "Blender failed and previous outputs could not all be restored; "
+                    f"preserve and inspect backup directory {backup_dir}. "
+                    f"Restore errors: {', '.join(restoration_errors)}"
+                ) from exc
+            if isinstance(exc, Exception):
+                if hasattr(exc, "add_note"):
+                    exc.add_note(
+                        "Previous outputs were restored. The backup directory was retained "
+                        f"for diagnosis: {backup_dir}"
+                    )
+                raise
+            raise
+        else:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            return result
+
+    def _run_task_impl(
         self,
         task: str,
         *,
