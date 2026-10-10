@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "project": "mia_snail",
+  "total_scenes_expected": 30,
+  "script_status": "full_script_not_recovered",
+  "confirmed_characters": [
+    "char.mia",
+    "char.stepa",
+    "char.snail_spiral"
+  ],
+  "confirmed_or_mentioned_assets": [
+    {
+      "id": "env.forest_path",
+      "type": "environment",
+      "status": "reference_needed"
+    },
+    {
+      "id": "env.sunny_garden",
+      "type": "environment",
+      "status": "reference_needed"
+    },
+    {
+      "id": "prop.yellow_scooter",
+      "type": "prop",
+      "status": "reference_needed"
+    },
+    {
+      "id": "prop.bicycle",
+      "type": "prop",
+      "status": "reference_needed"
+    },
+    {
+      "id": "prop.mia_pink_backpack",
+      "type": "prop",
+      "status": "reference_needed"
+    },
+    {
+      "id": "prop.green_leaf",
+      "type": "prop",
+      "status": "reference_needed"
+    }
+  ],
+  "scene_asset_mapping": [
+    {
+      "scene_id": "scene_001",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_002",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_003",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_004",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_005",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_006",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_007",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_008",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_009",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_010",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_011",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_012",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_013",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_014",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_015",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_016",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_017",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_018",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_019",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_020",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_021",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_022",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_023",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_024",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_025",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_026",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_027",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_028",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_029",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    },
+    {
+      "scene_id": "scene_030",
+      "status": "requires_exact_script",
+      "asset_ids": []
+    }
+  ],
+  "note": "No invented scene descriptions. Source examples include Mira, not Mia, and must not be mistaken for the approved screenplay."
+}

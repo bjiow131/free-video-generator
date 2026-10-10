@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "char.stepa",
+  "name": "Стёпа",
+  "description": "Персонаж сценария; точные возраст, одежда, внешность и утверждённый эталон требуют сверки с полным сценарием.",
+  "status": "draft",
+  "model_asset_id": null,
+  "references": [
+    {
+      "id": "stepa.front",
+      "view": "front",
+      "status": "planned"
+    },
+    {
+      "id": "stepa.left",
+      "view": "left",
+      "status": "planned"
+    },
+    {
+      "id": "stepa.back",
+      "view": "back",
+      "status": "planned"
+    },
+    {
+      "id": "stepa.right",
+      "view": "right",
+      "status": "planned"
+    },
+    {
+      "id": "stepa.three_quarter",
+      "view": "three_quarter",
+      "status": "planned"
+    },
+    {
+      "id": "stepa.face",
+      "view": "face",
+      "status": "planned"
+    }
+  ]
+}
