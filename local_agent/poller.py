@@ -23,6 +23,7 @@ from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
+from local_agent.repair_channel import fetch_repair, RepairProtocolError
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -62,7 +63,7 @@ SUPPORTED_HANDLERS = {
 }
 
 
-def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
+def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None) -> dict[str, Any]:
     """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
     import re
 
@@ -94,6 +95,8 @@ def _apply_patch(patch: str, task_id: str) -> dict[str, Any]:
         if head.returncode != 0:
             return {"status": "blocked", "reason": "could_not_resolve_base_commit"}
         base_sha = head.stdout.strip()
+        if expected_base_sha is not None and base_sha != expected_base_sha:
+            return {"status": "rejected", "reason": "base_commit_mismatch", "expected_base_commit": expected_base_sha, "actual_base_commit": base_sha}
         branch_check = run_git(["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"])
         if branch_check.returncode == 0:
             return {
@@ -420,6 +423,7 @@ def _remember_manifest(
     # Keep newest 200 IDs so state cannot grow without bound.
     processed = dict(list(processed.items())[-200:])
     return {
+        **state,
         "last_task_id": task_id,
         "manifest_sha": manifest_sha,
         "processed_tasks": processed,
@@ -604,6 +608,106 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
 
 
 
+
+def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[str, Any]:
+    """Fetch one ChatGPT-authored repair; require local approval and test in isolation."""
+    try:
+        fetched = fetch_repair(client)
+    except QueueTransportError as exc:
+        if "Mailbox item not found" not in str(exc):
+            print(f"Repair channel unavailable: {type(exc).__name__}")
+        return state
+    except RepairProtocolError as exc:
+        print(f"Repair rejected by protocol validation: {str(exc)[:240]}")
+        return state
+    except Exception as exc:
+        print(f"Repair fetch failed safely: {type(exc).__name__}")
+        return state
+    if fetched is None:
+        return state
+    manifest, manifest_sha, patch = fetched
+    repair_id = manifest["repair_id"]
+    processed = state.get("processed_repairs", {})
+    if not isinstance(processed, dict):
+        processed = {}
+    previous = processed.get(repair_id)
+    if isinstance(previous, dict):
+        if previous.get("manifest_sha") == manifest_sha:
+            return state
+        result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_id_reused_with_different_manifest"}
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+        processed[repair_id] = {"manifest_sha": manifest_sha, "status": "rejected"}
+        state = {**state, "processed_repairs": dict(list(processed.items())[-100:])}
+        _save_state(state)
+        return state
+
+    def record(status: str) -> dict[str, Any]:
+        updated = dict(processed)
+        updated[repair_id] = {"manifest_sha": manifest_sha, "status": status}
+        return {**state, "processed_repairs": dict(list(updated.items())[-100:])}
+
+    print(f"\nNew repair available: {repair_id}")
+    print(f"Target base commit: {manifest['base_commit_sha']}")
+    print("Patch paths are restricted to local_agent/, tests/, docs/, scripts/, and approved root files.")
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, timeout=15, check=False, shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        result = {"task_id": f"repair-{repair_id}", "status": "error", "reason": "could_not_check_local_base", "error_type": type(exc).__name__}
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+        state = record("error")
+        _save_state(state)
+        return state
+    actual_base = head.stdout.strip() if head.returncode == 0 else ""
+    if actual_base != manifest["base_commit_sha"]:
+        result = {
+            "task_id": f"repair-{repair_id}", "status": "rejected",
+            "reason": "base_commit_mismatch", "expected_base_commit": manifest["base_commit_sha"],
+            "actual_base_commit": actual_base or None,
+        }
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+        state = record("rejected")
+        _save_state(state)
+        print("Repair rejected: local checkout is not at the required base commit.")
+        return state
+    if not sys.stdin.isatty():
+        result = {"task_id": f"repair-{repair_id}", "status": "blocked", "reason": "local_console_approval_required"}
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+        state = record("blocked")
+        _save_state(state)
+        return state
+    answer = input("Apply this repair in a separate Git worktree and run tests? Type YES: ").strip()
+    if answer != "YES":
+        result = {"task_id": f"repair-{repair_id}", "status": "declined", "reason": "local_user_declined"}
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+        state = record("declined")
+        _save_state(state)
+        return state
+
+    # Re-fetch after approval to prevent replacing the repair while the prompt is open.
+    try:
+        latest = fetch_repair(client)
+        if latest is None or latest[1] != manifest_sha or latest[0] != manifest or latest[2] != patch:
+            result = {"task_id": f"repair-{repair_id}", "status": "superseded", "reason": "repair_changed_after_approval"}
+        elif not _not_expired(type("RepairExpiry", (), {"expires_at": manifest["expires_at"], "created_at": manifest["created_at"]})()):
+            result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_expired_while_waiting_for_approval"}
+        else:
+            details = _apply_patch(patch, f"repair-{repair_id}", expected_base_sha=manifest["base_commit_sha"])
+            result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
+    except Exception as exc:
+        result = {"task_id": f"repair-{repair_id}", "status": "error", "error_type": type(exc).__name__}
+    try:
+        _publish_result_durable(client, f"repair-{repair_id}", result)
+    except QueueTransportError:
+        print("Repair result queued locally; GitHub delivery will retry.")
+    state = record(str(result.get("status", "unknown")))
+    _save_state(state)
+    print(f"Repair {repair_id}: {result.get('status')}. Active checkout was not modified.")
+    return state
+
+
 def _acquire_instance_lock(path: Path):
     """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -754,6 +858,7 @@ def main() -> int:
                         last_sha = manifest_sha
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
+                state = _poll_repair_once(client, state)
                 backoff = interval
                 time.sleep(interval)
             except KeyboardInterrupt:
