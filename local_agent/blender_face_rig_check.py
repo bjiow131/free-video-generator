@@ -37,7 +37,7 @@ try:
     for obj in meshes:
         if obj.data.shape_keys:
             for key in list(obj.data.shape_keys.key_blocks)[1:]:
-                if looks_mouth(key.name) or looks_mouth(obj.name):
+                if looks_mouth(key.name):
                     shape_keys.append({"object": obj.name, "control": key.name,
                                        "value": float(key.value), "type": "shape_key"})
     facial_bones = []
@@ -112,7 +112,7 @@ except Exception as exc:
 '''
 
 
-def check_face_rig(project_name: str, blend_file: str | None = None) -> dict[str, Any]:
+def check_face_rig(project_name: str, blend_file: str | None = None, report_name: str = "face_rig_check_result.json") -> dict[str, Any]:
     """Audit one existing .blend file without overwriting the source."""
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise ValueError("Invalid project_name.")
@@ -144,7 +144,7 @@ def check_face_rig(project_name: str, blend_file: str | None = None) -> dict[str
             return {"status": "blocked", "reason": "source_blend_missing_or_ambiguous",
                     "candidates": sorted(p.name for p in candidates)[:30]}
         source = candidates[0]
-    report = project / "face_rig_check_result.json"
+    if (not isinstance(report_name, str) or Path(report_name).name != report_name\n            or not report_name.endswith(".json") or report_name in {"", ".", ".."}):\n        raise ValueError("report_name must be a local JSON filename.")\n    report = project / report_name
     if source.is_symlink() or not source.is_file() or source.stat().st_size == 0:
         return {"status": "blocked", "reason": "source_blend_missing_or_invalid"}
     if report.is_symlink() or getattr(report, "is_junction", lambda: False)():
