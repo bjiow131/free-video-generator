@@ -10,21 +10,21 @@
 
 - Windows 10/11.
 - Python 3.11 и Python Launcher (py).
-- Blender 5.2 по умолчанию: C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe.
+- Blender 5.2 по умолчанию: C:\Program Files\Blender Foundation\Blender 5.2\blender.exe.
 
 Если Blender установлен в другом месте, измените BLENDER_EXECUTABLE в setup_blender_agent.bat и run_blender_agent.bat.
 
 ## Установка
 
 1. Скачайте [ZIP ветки blender-agent-repair](https://github.com/bjiow131/free-video-generator/archive/refs/heads/blender-agent-repair.zip).
-2. Распакуйте, например, в C:\\AI-Agent\\free-video-generator. В папке должны быть BAT-файлы, local_agent и requirements-local-agent.txt.
-3. Запустите setup_blender_agent.bat. Он создаст отдельное Python-окружение в %LOCALAPPDATA%\\BlenderWorkAgent\\venv и установит зависимости. **GitHub-токен не нужен.**
+2. Распакуйте, например, в C:\AI-Agent\free-video-generator. В папке должны быть BAT-файлы, local_agent и requirements-local-agent.txt.
+3. Запустите setup_blender_agent.bat. Он создаст отдельное Python-окружение в %LOCALAPPDATA%\BlenderWorkAgent\venv. Зависимости через pip и GitHub-токен не нужны.
 4. Запустите run_blender_agent.bat. Сначала выполнится локальная проверка Python, Blender и рабочей папки. Сцена не создаётся без отдельного подтверждения Y.
 5. Если подтвердили создание сцены, введите имя проекта (по умолчанию mia_forest).
 
 ## Результаты
 
-По умолчанию файлы будут в C:\\AI-Agent-Workspace\\mia_forest\\:
+По умолчанию файлы будут в C:\AI-Agent-Workspace\mia_forest\:
 
 - forest_starter.blend — проект Blender;
 - forest_preview.png — предварительный рендер;
