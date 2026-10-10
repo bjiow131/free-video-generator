@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from local_agent.character_library import import_character_passport
-from local_agent.scene01_reference_pack import download_scene01_reference_pack
+# Third-party downloader intentionally not imported.
 
 PASSPORT_DIR = ROOT / "docs" / "season1" / "character_passports"
 CATALOG_PATH = ROOT / "docs" / "season1" / "asset_catalog.json"
@@ -49,7 +49,7 @@ def main() -> int:
 
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
-    pack = download_scene01_reference_pack(library, include_character_pack=False)
+    pack = None  # Third-party reference downloads disabled: original assets only.
     cards = json.loads(database.read_text(encoding="utf-8")) if database.exists() else []
     if not isinstance(cards, list):
         raise RuntimeError("characters.json has an unsupported format; no changes were applied.")
@@ -80,7 +80,7 @@ def main() -> int:
 
     cards = json.loads(database.read_text(encoding="utf-8")) if database.exists() else []
     by_id = {str(card.get("id")): card for card in cards if isinstance(card, dict)}
-    pack_dir = Path(pack["pack_dir"])
+    pack_dir = library / 'original_references_pending'
     snail_card = by_id.get("snail-spiral")
     if snail_card:
         refs = list(snail_card.get("references", []))
