@@ -143,8 +143,8 @@ def control_camera(project_name: str, *, preset: str, move: str = "static",
     # Fail closed on a missing camera unless caller explicitly allows creation.
     check_script='import bpy,json,sys; p=sys.argv[sys.argv.index("--")+1]; bpy.ops.wm.open_mainfile(filepath=p,load_ui=False); print("AGENT_CAMERA_PRESENT="+str(bpy.context.scene.camera is not None))'
     try:
-        check=subprocess.run([str(blender),"--disable-autoexec","--background",str(source),
-                              "--python-expr",check_script],capture_output=True,text=True,
+        check=subprocess.run([str(blender),"--disable-autoexec","--background",
+                              "--python-expr",check_script,"--",str(source)],capture_output=True,text=True,
                              timeout=90,check=False,shell=False,cwd=str(project))
         if check.returncode!=0:
             return {"status":"failed","reason":"source_project_preflight_failed","stderr_tail":(check.stderr or "")[-1500:]}
