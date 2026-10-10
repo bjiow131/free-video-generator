@@ -641,6 +641,9 @@ def _acquire_instance_lock(path: Path):
 
 
 def main() -> int:
+    print("Remote mailbox polling is disabled. Use run_blender_agent.bat for local Blender-only operation.")
+    return 2
+
     try:
         config = QueueConfig.from_environment()
         client = GitHubQueueClient(config)
