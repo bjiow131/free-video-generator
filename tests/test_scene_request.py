@@ -77,6 +77,7 @@ def test_animation_and_render_quality_are_encoded_as_data():
     assert plan["objects"][0]["color_name"] == "gold"
     assert plan["animation"]["enabled"] is True
     assert plan["animation"]["kind"] == "rotate"
+    assert plan["animation"]["frames"] == 120
     assert plan["render_percentage"] == 75
 
 
