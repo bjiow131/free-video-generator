@@ -30,3 +30,11 @@ The blockout operation checks that the manifest and non-empty `.blend` file exis
 4. Run `blender_preflight`.
 5. If Blender is ready, run `blender_mia_blockout` with a new project name, for example `mia_character_v001`.
 6. Check that the result reports a validated preview, then open the `.blend` file and inspect the render manually before proceeding.
+
+
+## Skeleton smoke-test prototype
+
+- `blender_mia_skeleton` reads the existing `mia_blockout.blend` and writes a separate `mia_skeleton.blend` plus a result manifest.
+- It creates a 13-bone armature and briefly rotates one forearm pose bone, then resets the pose before saving.
+- The output is intentionally separate; existing files are never overwritten.
+- **Important:** this stage only proves that Blender can create an armature and perform a basic pose update. The existing character meshes are not yet parented or weighted to the rig, so they will not deform with the bones. Skinning, joint placement refinement, and visual validation remain future work.
