@@ -18,14 +18,11 @@
 2. Распакуйте архив, например, в `C:\AI-Agent\free-video-generator`. Внутри этой папки должны лежать `setup_blender_agent.bat`, `run_blender_agent.bat`, папка `local_agent` и файл `requirements-local-agent.txt`.
 3. Дважды щёлкните `setup_blender_agent.bat`. Он создаст отдельное Python-окружение в `%LOCALAPPDATA%\BlenderWorkAgent\venv` и установит минимальные зависимости. Скрипт не удаляет существующие файлы проекта.
 4. Создайте fine-grained GitHub token только для приватного репозитория `bjiow131/local-agent-mailbox`. Дайте ему **Contents: Read and write**; **Metadata: Read-only** требуется GitHub автоматически. Не включайте доступ ко всем репозиториям и не присылайте токен в чат.
-5. Откройте командную строку Windows (CMD) и выполните, подставив фактический путь к распакованному репозиторию:
+5. После установки скрипт покажет состояние токена и предложит настроить его. Нажмите `Y`, затем вставьте токен дважды в скрытое приглашение. Токен сохраняется в Windows Credential Manager, не в файле проекта. Если пропустили этот шаг, откройте CMD в папке проекта и выполните:
 
    ```bat
-   cd /d C:\AI-Agent\free-video-generator
    "%LOCALAPPDATA%\BlenderWorkAgent\venv\Scripts\python.exe" -m local_agent.credentials_cli set
    ```
-
-   Вставьте токен дважды в скрытое приглашение. Токен сохраняется в Windows Credential Manager, не в файле проекта.
 6. Дважды щёлкните `run_blender_agent.bat`. Окно должно остаться открытым и сообщить, что агент опрашивает приватный mailbox каждые 10 секунд.
 
 ## Остановка и безопасность
