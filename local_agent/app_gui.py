@@ -312,16 +312,20 @@ class BlenderAgentApp(tk.Tk):
         if len(prompt) > PROMPT_LIMIT:
             messagebox.showwarning("Слишком длинное задание", f"Максимум {PROMPT_LIMIT} символов в этой версии.", parent=self)
             return
+        selected_characters = self._selected_character_cards() if not self.active_project else []
+        character_summary = ""
+        if selected_characters:
+            character_summary = "\n\nПерсонажи из карточек: " + ", ".join(card["name"] for card in selected_characters)
         mode = "доработка открытого проекта" if self.active_project else "создание нового проекта"
-        if not self._ask_confirm(f"Режим: {mode}\n\n{prompt}"):
+        if not self._ask_confirm(f"Режим: {mode}{character_summary}\n\n{prompt}"):
             self._set_status("Задание отменено.")
             return
         self._busy = True
         self.create_btn.configure(state="disabled")
         self._set_status("Выполняю локальную задачу в Blender…")
-        threading.Thread(target=self._run_task, args=(prompt, self.active_project), daemon=True).start()
+        threading.Thread(target=self._run_task, args=(prompt, self.active_project, selected_characters), daemon=True).start()
 
-    def _run_task(self, prompt: str, existing: Path | None) -> None:
+    def _run_task(self, prompt: str, existing: Path | None, character_cards: list[dict] | None = None) -> None:
         try:
             blender_info = discover_blender()
             if not blender_info.get("available"):
@@ -330,7 +334,7 @@ class BlenderAgentApp(tk.Tk):
                 result = edit_existing_scene(prompt, existing, blender_info["path"], self.workspace)
             else:
                 staging_name = f"agent_draft_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}"
-                result = create_scene_from_prompt(prompt, staging_name)
+                result = create_scene_from_prompt(prompt, staging_name, character_cards=character_cards)
             self.after(0, lambda: self._task_success(result, prompt, existing))
         except Exception as exc:
             details = f"{type(exc).__name__}: {exc}"
@@ -412,6 +416,7 @@ class BlenderAgentApp(tk.Tk):
             self.character_tree.selection_set(select_id)
             self.character_tree.focus(select_id)
             self._select_character()
+        self._refresh_character_choices()
 
     def _refresh_character_choices(self) -> None:
         if not hasattr(self, "character_selection_list"):
