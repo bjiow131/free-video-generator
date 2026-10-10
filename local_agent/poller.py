@@ -400,7 +400,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
     if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"}:
-        client.publish_result(task.task_id, {
+        _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
             "reason": "operation_has_no_implemented_local_handler",
@@ -413,14 +413,14 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     if getattr(task, "requires_local_approval", True) is False:
         if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
             result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
-            commit_sha = client.publish_result(task.task_id, result)
+            commit_sha = _publish_result_durable(client, task.task_id, result)
             print(f"Remote approval blocked by local policy. Result commit: {commit_sha}")
             return
         answer = "YES"  # Explicit task authorization plus local opt-in; no shell/code payloads are accepted.
     else:
         if not sys.stdin.isatty():
             result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
-            commit_sha = client.publish_result(task.task_id, result)
+            commit_sha = _publish_result_durable(client, task.task_id, result)
             print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
             return
         answer = input("Approve this local operation? Type YES to run: ").strip()
@@ -437,7 +437,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     "status": "superseded",
                     "reason": "desired_task_removed_before_execution",
                 }
-                commit_sha = client.publish_result(task.task_id, result)
+                commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task removed before execution. Result commit: {commit_sha}")
                 return
             latest_task, latest_manifest_sha = latest
@@ -451,7 +451,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     "superseded_by": latest_task.task_id,
                     "reason": "desired_task_changed_after_approval",
                 }
-                commit_sha = client.publish_result(task.task_id, result)
+                commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task changed before execution. Result commit: {commit_sha}")
                 return
             # A task can expire while the local approval prompt is open.
@@ -461,7 +461,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     "status": "rejected",
                     "reason": "expired_while_waiting_for_local_approval",
                 }
-                commit_sha = client.publish_result(task.task_id, result)
+                commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
             if task.operation == "apply_patch":
@@ -546,7 +546,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         )
 
     try:
-        commit_sha = client.publish_result(task.task_id, result)
+        commit_sha = _publish_result_durable(client, task.task_id, result)
         print(f"Result published. GitHub commit: {commit_sha}")
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
@@ -642,7 +642,7 @@ def main() -> int:
                         if isinstance(record, dict) and record.get("status") == "in_progress":
                             # Execution may have finished while result publication failed,
                             # or the process may have crashed mid-operation. Do not rerun.
-                            client.publish_result(task.task_id, {
+                            _publish_result_durable(client, task.task_id, {
                                 "task_id": task.task_id,
                                 "status": "interrupted",
                                 "reason": "outcome_uncertain_requires_local_inspection_before_retry",
@@ -654,7 +654,7 @@ def main() -> int:
                     elif decision == "reused_id":
                         # Task IDs are immutable. A changed manifest with the same ID
                         # is rejected, never silently re-executed.
-                        client.publish_result(task.task_id, {
+                        _publish_result_durable(client, task.task_id, {
                             "task_id": task.task_id,
                             "status": "rejected",
                             "reason": "task_id_reused_with_different_manifest",
