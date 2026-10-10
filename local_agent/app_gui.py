@@ -24,7 +24,7 @@ from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 APP_TITLE = "Blender Work Agent"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -122,9 +122,9 @@ class BlenderAgentApp(tk.Tk):
         self.task_tab = ttk.Frame(self.tabs, padding=18)
         self.library_tab = ttk.Frame(self.tabs, padding=18)
         self.update_tab = ttk.Frame(self.tabs, padding=18)
-        self.tabs.add(self.task_tab, text="Задание")
-        self.tabs.add(self.library_tab, text="Персонажи и референсы")
-        self.tabs.add(self.update_tab, text="Обновление")
+        self.tabs.add(self.task_tab, text="  Сцена  ")
+        self.tabs.add(self.library_tab, text="  Библиотека  ")
+        self.tabs.add(self.update_tab, text="  Обновление  ")
         self._build_task_tab()
         self._build_library_tab()
         self._build_update_tab()
@@ -132,7 +132,7 @@ class BlenderAgentApp(tk.Tk):
         footer.pack(fill="x")
         self.status_var = tk.StringVar(value="")
         ttk.Label(footer, textvariable=self.status_var, style="Subtitle.TLabel").pack(side="left", fill="x", expand=True)
-        ttk.Label(footer, text="Локально · без удалённой очереди и без передачи файлов", style="Subtitle.TLabel").pack(side="right")
+        ttk.Label(footer, text="STUDIO WORKSPACE   ·   Локальные проекты и референсы", style="Subtitle.TLabel").pack(side="right")
 
     def _build_task_tab(self) -> None:
         project = ttk.Frame(self.task_tab, style="Panel.TFrame", padding=14)
@@ -692,14 +692,25 @@ class BlenderAgentApp(tk.Tk):
 
     def _select_character(self, _event=None) -> None:
         card = self._selected_card()
+        self.character_detail.configure(state="normal")
         self.character_detail.delete("1.0", "end")
         if card:
+            labels = card.get("reference_labels", {})
+            if not isinstance(labels, dict):
+                labels = {}
             refs = "\n".join(
-                f"{index}. {card.get('reference_labels', {}).get(str(path), Path(path).stem)} — {Path(path).name}"
+                f"{index:02d}  {labels.get(str(path), Path(path).stem)}  ·  {Path(path).name}"
                 for index, path in enumerate(card.get("references", []), 1)
-            ) or "Референсы пока не добавлены. Добавь виды спереди, сбоку, сзади и ключевые позы."
-            self.character_detail.insert("1.0", f"{card.get('name','')}\n{'─' * min(44, max(12, len(card.get('name',''))))}\nКатегория: {card.get('profile_type','Человек')}\nВизуальный стиль: {card.get('visual_style','Стилизованный 3D')}\nРеференсов: {len(card.get('references', []))}\n\nПостоянные особенности\n{card.get('description','')}\n\nРеференсы по порядку\n{refs}\n")
-        self.character_detail.configure(state="normal")
+            ) or "Референсы пока не добавлены. Добавь фронтальный вид, профиль, вид сзади и ключевые позы."
+            category = card.get("profile_type", "Человек")
+            style = card.get("visual_style", "Стилизованный 3D")
+            self.character_detail.insert("1.0",
+                f"{card.get('name','')}\n{'━' * min(38, max(12, len(card.get('name',''))))}\n"
+                f"КАТЕГОРИЯ     {category}\nВИЗУАЛЬНЫЙ СТИЛЬ     {style}\n"
+                f"РЕФЕРЕНСЫ     {len(card.get('references', []))}\n\n"
+                f"ПОСТОЯННЫЕ ОСОБЕННОСТИ\n{card.get('description','') or 'Описание пока не заполнено.'}\n\n"
+                f"БИБЛИОТЕКА РЕФЕРЕНСОВ · НУМЕРАЦИЯ СОХРАНЯЕТСЯ\n{refs}\n")
+        self.character_detail.configure(state="disabled")
 
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)
