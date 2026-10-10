@@ -180,3 +180,13 @@ def test_multiple_selected_characters_are_added_as_separate_scene_objects():
     ])
     assert [obj["name"] for obj in plan["objects"] if obj.get("character_card_id")] == ["Мия", "Лисёнок"]
     assert [item["name"] for item in plan["selected_characters"]] == ["Мия", "Лисёнок"]
+
+
+def test_selected_mia_card_is_linked_to_scooter_action_without_name_in_prompt():
+    from local_agent.scene_language import parse_scene_request
+    from local_agent.scene_request import _append_character_cards
+
+    plan = _append_character_cards(parse_scene_request("Едет на самокате по лесу, вертикально 9:16"), [
+        {"id": "mia", "name": "Мия", "description": "Постоянный герой", "references": []},
+    ])
+    assert plan["relationships"]["mia_riding_scooter"] is True
