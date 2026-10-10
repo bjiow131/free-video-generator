@@ -22,7 +22,7 @@ from local_agent.scene_request import SceneRequestError, create_scene_from_promp
 from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.update_manager import apply_update_archive, UpdateError
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 APP_TITLE = "Blender Work Agent"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -129,7 +129,7 @@ class BlenderAgentApp(tk.Tk):
         self.prompt_count.pack(side="left")
         self.create_btn = ttk.Button(bottom, text="Создать / выполнить задание", style="Accent.TButton", command=self._submit_task)
         self.create_btn.pack(side="right")
-        ttk.Label(prompt_panel, text="Важно: текущий прототип понимает ограниченный набор операций. Неподдерживаемые задания не будут выданы за выполненные.", background="#ffffff", foreground="#687788", wraplength=900).pack(anchor="w", pady=(9, 0))
+        ttk.Label(prompt_panel, text="Опиши всё одним текстом: объекты и цвета, окружение, стиль, формат кадра, композицию, свет, надпись или простую анимацию. Поддерживаемые составные объекты включают дома, деревья, персонажей, транспорт, мебель, игрушки и тематические сцены. Если формулировка не распознана, агент сообщит об этом, а не заявит об успехе.", background="#ffffff", foreground="#687788", wraplength=900).pack(anchor="w", pady=(9, 0))
 
     def _build_library_tab(self) -> None:
         top = ttk.Frame(self.library_tab)
