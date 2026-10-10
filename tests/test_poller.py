@@ -466,3 +466,46 @@ def test_apply_patch_removes_temporary_worktree_when_post_patch_tests_fail(monke
     assert result["temporary_worktree_removed"] is True
     assert result["temporary_branch_removed"] is True
     assert created_worktree is not None and not created_worktree.exists()
+
+
+def test_load_state_returns_empty_only_when_state_file_is_missing(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    state_path = tmp_path / "missing.json"
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    assert poller._load_state() == {}
+
+
+def test_load_state_fails_closed_on_corrupt_json(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text("{not valid json", encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        poller._load_state()
+
+
+def test_load_state_fails_closed_on_non_object_json(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="JSON object"):
+        poller._load_state()
+
+
+def test_load_state_fails_closed_on_corrupt_replay_history(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text(json.dumps({"processed_tasks": {"task-1": {"status": "processed"}}}), encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="replay history"):
+        poller._load_state()
+
