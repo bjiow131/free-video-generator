@@ -623,7 +623,10 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         if not name or not card_id:
             continue
         is_mia = "mia" in name.casefold() or "мия" in name.casefold() or "mia" in description.casefold() or "мия" in description.casefold()
-        references = [str(p)[:1000] for p in card.get("references", [])[:16]
+        raw_references = card.get("references", [])
+        if not isinstance(raw_references, list):
+            raw_references = []
+        references = [str(p)[:1000] for p in raw_references[:16]
                       if isinstance(p, str) and Path(p).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}]
         character_object = {
             "primitive": "mia" if is_mia else "person",
@@ -639,6 +642,8 @@ def _append_character_cards(plan: dict[str, Any], character_cards: list[dict[str
         if existing_mia is not None:
             existing_mia.update(character_object)
         else:
+            if len(plan["objects"]) >= _MAX_OBJECTS:
+                raise SceneRequestError(f"Сцена не может содержать больше {_MAX_OBJECTS} объектов вместе с выбранными персонажами.")
             plan["objects"].append(character_object)
         selected_characters.append({"id": card_id, "name": name, "description": description, "references": references})
     plan["selected_characters"] = selected_characters
