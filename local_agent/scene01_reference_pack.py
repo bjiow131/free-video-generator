@@ -88,7 +88,7 @@ def _download_one(asset: dict, target_dir: Path) -> dict:
         return {
             "id": asset["id"], "filename": asset["filename"], "status": "already_present",
             "bytes": destination.stat().st_size, "sha256": _sha256(destination),
-            "source_page": asset["source_page"], "license": asset["license"],
+            "source_page": asset["source_page"], "license": asset["license"], "purpose": asset["purpose"],
         }
 
     request = urllib.request.Request(asset["url"], headers={"User-Agent": USER_AGENT})
@@ -142,7 +142,7 @@ def _download_one(asset: dict, target_dir: Path) -> dict:
     return {
         "id": asset["id"], "filename": asset["filename"], "status": "downloaded",
         "bytes": destination.stat().st_size, "sha256": _sha256(destination),
-        "source_page": asset["source_page"], "license": asset["license"],
+        "source_page": asset["source_page"], "license": asset["license"], "purpose": asset["purpose"],
     }
 
 
@@ -173,7 +173,7 @@ def download_scene01_reference_pack(library_dir: str | Path, *, include_characte
             results.append(_download_one(asset, pack_dir))
         except ReferencePackError as exc:
             failures.append({"id": asset["id"], "filename": asset["filename"], "error": str(exc),
-                             "source_page": asset["source_page"], "license": asset["license"]})
+                             "source_page": asset["source_page"], "license": asset["license"], "purpose": asset["purpose"]})
 
     manifest = {
         "schema_version": 1,
