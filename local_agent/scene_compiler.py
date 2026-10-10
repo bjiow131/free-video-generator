@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from local_agent.story_plan import StoryPlanError, validate_story_plan
 from local_agent.asset_registry import read_asset_registry
+from local_agent.timeline import TimelineError, compile_timeline
 
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 _ACTION_CAPABILITIES = {
@@ -60,6 +61,10 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
             "action_steps": steps,
             "execution_status": "planning_only",
         })
+    try:
+        timeline = compile_timeline(plan["scenes"])
+    except TimelineError as exc:
+        raise StoryCompileError(f"Timeline could not be compiled: {exc}") from exc
     return {
         "schema_version": 1,
         "compiler": "local_agent.scene_compiler",
@@ -72,6 +77,7 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
         "readiness": "planning_only",
         "requirements_not_implemented": sorted(requirements),
         "scenes": compiled_scenes,
+        "timeline": timeline,
         "safety_note": "This file is inert JSON data. It does not run Blender or execute natural-language instructions.",
     }
 
@@ -92,7 +98,7 @@ def compile_project_story(workspace: str | Path, project_name: str) -> dict[str,
     try:
         raw = json.loads(source.read_text(encoding="utf-8"))
         compiled = compile_story_plan(raw)
-    except (OSError, json.JSONDecodeError, StoryPlanError) as exc:
+    except (OSError, json.JSONDecodeError, StoryPlanError, StoryCompileError) as exc:
         raise StoryCompileError(f"Story plan could not be validated: {type(exc).__name__}") from exc
     if compiled["project_name"] != project_name:
         raise StoryCompileError("Story plan project_name does not match the requested project.")
@@ -149,6 +155,9 @@ def compile_project_story(workspace: str | Path, project_name: str) -> dict[str,
         "status": "completed",
         "project_name": project_name,
         "scene_count": compiled["scene_count"],
+        "timeline_frames": compiled["timeline"]["total_frames"],
+        "timeline_duration_seconds": compiled["timeline"]["total_duration_seconds"],
+        "timeline_warnings": compiled["timeline"]["warnings"],
         "readiness": compiled["readiness"],
         "requirements_not_implemented": compiled["requirements_not_implemented"],
         "compiled_path": str(destination),
