@@ -404,6 +404,7 @@ for index, item in enumerate(cfg["objects"]):
     root = bpy.data.objects.new("Agent Root | " + item["name"], None)
     scene.collection.objects.link(root)
     root.location = loc
+    bpy.context.view_layer.update()
     for obj in made:
         obj.parent = root
         obj.matrix_parent_inverse = root.matrix_world.inverted()
