@@ -9,8 +9,11 @@ set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.
 
 echo.
 echo ==========================================
-echo   BLENDER WORK AGENT - SETUP
+echo   BLENDER WORK AGENT - LOCAL SETUP
 echo ==========================================
+echo.
+echo This setup installs a local-only Blender helper.
+echo No GitHub token, mailbox, remote polling, or ChatGPT connection is used.
 echo.
 
 where py >nul 2>nul
@@ -43,29 +46,12 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
   if errorlevel 1 goto failed
 )
 
-echo Installing the small dependency set for the local agent...
+echo Installing the local agent test/runtime dependencies...
 "%AGENT_VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements-local-agent.txt
 if errorlevel 1 goto failed
 
 echo.
-echo Checking stored GitHub credential...
-echo The fine-grained token must have access to bjiow131/local-agent-mailbox.
-echo Required repository permission: Contents - Read and write.
-echo Repository Metadata read access is also required by GitHub.
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli status
-if errorlevel 1 goto failed
-echo.
-echo If no token is stored, create a fine-grained token for ONLY:
-echo   bjiow131/local-agent-mailbox
-echo Give it Contents: Read and write (Metadata: Read-only is required).
-echo.
-choice /C YN /N /M "Configure or replace the stored token now? [Y/N] "
-if errorlevel 2 goto setup_done
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli set
-if errorlevel 1 goto failed
-:setup_done
-echo.
-echo Setup completed.
+echo Setup completed. No credentials are needed.
 echo Next: launch run_blender_agent.bat.
 echo.
 pause
