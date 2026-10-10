@@ -31,4 +31,4 @@ def test_speech_animation_requires_a_fresh_face_rig_preflight():
 def test_face_rig_preflight_uses_supported_mouth_open_names():
     script = _blender_script()
     assert "mouth_shape_key_not_found" in script
-    assert "mouth_open" in script
+    assert "mouth.?open" in script
