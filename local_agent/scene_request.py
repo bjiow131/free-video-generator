@@ -236,6 +236,102 @@ def make_item(item, location, index):
         part("cylinder", (0, 0, 0.60), (0.38, 0.38, 1.35), primary, "body")
         part("cone", (0, 0, 1.45), (0.38, 0.38, 0.55), roof, "nose")
         for x in (-0.32, 0.32): part("cone", (x, 0, 0.12), (0.20, 0.20, 0.55), roof, "fin")
+    elif kind in ("person", "mia"):
+        skin = material_for("skin", (0.72, 0.45, 0.30, 1))
+        hair = material_for("hair", (0.18, 0.075, 0.025, 1))
+        outfit = material_for("Mia yellow outfit", (0.95, 0.58, 0.025, 1)) if kind == "mia" else primary
+        part("uv_sphere", (0, 0, 1.68), (0.30, 0.30, 0.30), skin, "head")
+        part("uv_sphere", (0, 0.03, 1.88), (0.32, 0.32, 0.20), hair, "hair")
+        part("cone", (0, 0, 1.03), (0.42, 0.42, 0.72), outfit, "body")
+        part("cylinder", (-0.16, 0, 0.35), (0.10, 0.10, 0.45), dark, "left leg")
+        part("cylinder", (0.16, 0, 0.35), (0.10, 0.10, 0.45), dark, "right leg")
+        part("cylinder", (-0.40, 0, 1.05), (0.09, 0.09, 0.42), outfit, "left arm")
+        part("cylinder", (0.40, 0, 1.05), (0.09, 0.09, 0.42), outfit, "right arm")
+    elif kind == "snail":
+        part("uv_sphere", (0, 0, 0.38), (0.62, 0.32, 0.22), leaf, "foot")
+        part("uv_sphere", (-0.10, 0, 0.66), (0.34, 0.34, 0.34), material_for("snail shell", (0.62,0.25,0.06,1)), "shell")
+        part("cylinder", (0.38, 0, 0.62), (0.10, 0.10, 0.45), leaf, "neck")
+        part("uv_sphere", (0.40, 0, 0.92), (0.20, 0.20, 0.20), primary, "head")
+        for x in (0.31, 0.49):
+            part("cylinder", (x, 0, 1.10), (0.035, 0.035, 0.20), leaf, "eye stalk")
+            part("uv_sphere", (x, -0.03, 1.20), (0.06, 0.06, 0.06), material_for("snail eyes", (0.02,0.02,0.02,1)), "eye")
+    elif kind == "scooter":
+        yellow = material_for("scooter yellow", (0.98,0.66,0.02,1))
+        for x in (-0.52, 0.52):
+            wheel = part("torus", (x, 0, 0.16), (0.16,0.16,0.07), dark, "wheel")
+            wheel.rotation_euler[0] = math.pi / 2
+        part("cube", (0, 0, 0.28), (1.15,0.14,0.10), yellow, "deck")
+        stem = part("cylinder", (0.45,0,0.68), (0.06,0.06,0.85), dark, "steering stem")
+        stem.rotation_euler[1] = -0.18
+        part("cube", (0.45,0,1.10), (0.42,0.09,0.08), yellow, "handlebar")
+    elif kind == "bicycle":
+        for x in (-0.62, 0.62):
+            wheel = part("torus", (x,0,0.45), (0.40,0.40,0.06), dark, "wheel")
+            wheel.rotation_euler[0] = math.pi / 2
+        part("cylinder", (-0.10,0,0.48), (0.06,0.06,0.70), primary, "frame diagonal")
+        part("cylinder", (0.28,0,0.48), (0.06,0.06,0.68), primary, "frame diagonal 2")
+        part("cube", (-0.10,0,0.90), (0.30,0.10,0.08), dark, "seat")
+        part("cylinder", (0.62,0,0.85), (0.05,0.05,0.50), dark, "handle stem")
+        part("cube", (0.62,0,1.10), (0.36,0.08,0.06), dark, "handlebar")
+    elif kind == "fish":
+        part("uv_sphere", (0,0,0), (0.72,0.34,0.40), primary, "body")
+        tail = part("cone", (-0.78,0,0), (0.38,0.38,0.38), material_for("fish tail",(1.0,0.45,0.08,1)), "tail")
+        tail.rotation_euler[1] = math.pi / 2
+        part("uv_sphere", (0.35,-0.29,0.10), (0.07,0.07,0.07), material_for("fish eye",(0.01,0.01,0.01,1)), "eye")
+    elif kind == "cactus":
+        part("cylinder", (0,0,0.78), (0.26,0.26,1.55), leaf, "stem")
+        part("cylinder", (-0.32,0,0.78), (0.12,0.12,0.55), leaf, "left arm")
+        part("cylinder", (-0.22,0,1.02), (0.12,0.12,0.28), leaf, "left arm tip")
+        part("cylinder", (0.32,0,0.98), (0.12,0.12,0.48), leaf, "right arm")
+        part("cylinder", (0.22,0,1.18), (0.12,0.12,0.25), leaf, "right arm tip")
+    elif kind == "snowman":
+        snow = material_for("snow", (0.90,0.94,0.98,1))
+        part("uv_sphere", (0,0,0.48), (0.52,0.52,0.52), snow, "base")
+        part("uv_sphere", (0,0,1.15), (0.38,0.38,0.38), snow, "middle")
+        part("uv_sphere", (0,0,1.66), (0.28,0.28,0.28), snow, "head")
+        nose = part("cone", (0,-0.30,1.66), (0.10,0.10,0.30), roof, "nose")
+        nose.rotation_euler[0] = math.pi/2
+        part("cylinder", (0,0,1.98), (0.36,0.36,0.12), dark, "hat brim")
+        part("cylinder", (0,0,2.16), (0.24,0.24,0.30), dark, "hat")
+        for x in (-0.10,0.10): part("uv_sphere",(x,-0.25,1.72),(0.035,0.035,0.035),dark,"eye")
+    elif kind == "castle":
+        stone = primary
+        part("cube",(0,0,0.90),(2.1,1.6,1.8),stone,"keep")
+        for x in (-0.85,0.85):
+            for y in (-0.60,0.60):
+                part("cylinder",(x,y,1.35),(0.28,0.28,2.7),stone,"tower")
+                part("cone",(x,y,2.95),(0.38,0.38,0.55),roof,"tower roof")
+        part("cube",(0,-0.82,0.50),(0.42,0.08,0.95),wood,"gate")
+    elif kind == "sofa":
+        part("cube",(0,0,0.42),(1.9,0.85,0.45),primary,"base")
+        part("cube",(0,0.36,0.92),(1.9,0.16,0.80),primary,"back")
+        for x in (-0.88,0.88): part("cube",(x,0,0.70),(0.18,0.92,0.52),primary,"arm")
+        for x in (-0.45,0.45): part("cube",(x,-0.10,0.70),(0.78,0.64,0.18),material_for("sofa cushions",(0.55,0.20,0.60,1)),"cushion")
+    elif kind == "submarine":
+        yellow = material_for("submarine yellow",(0.95,0.58,0.025,1))
+        body = part("uv_sphere",(0,0,0),(1.15,0.48,0.48),yellow,"hull")
+        part("cube",(0,0,0.48),(0.40,0.30,0.35),yellow,"conning tower")
+        for x in (-0.48,0,0.48):
+            port = part("torus",(x,-0.44,0),(0.15,0.15,0.05),glass,"porthole")
+            port.rotation_euler[0] = math.pi/2
+    elif kind == "coral":
+        coral = material_for("coral pink",(0.92,0.12,0.34,1))
+        part("cylinder",(0,0,0.45),(0.15,0.15,0.90),coral,"stem")
+        for x,z in [(-0.25,0.72),(0.25,0.85),(-0.15,1.10),(0.28,1.28)]:
+            branch = part("cylinder",(x,0,z),(0.09,0.09,0.52),coral,"branch")
+            branch.rotation_euler[1] = -0.4 if x < 0 else 0.4
+    elif kind == "swing":
+        part("cylinder",(-0.75,0,1.0),(0.08,0.08,2.0),wood,"left post")
+        part("cylinder",(0.75,0,1.0),(0.08,0.08,2.0),wood,"right post")
+        part("cylinder",(0,0,1.95),(0.08,0.08,1.65),wood,"top beam")
+        for x in (-0.32,0.32): part("cylinder",(x,0,1.0),(0.025,0.025,1.75),dark,"rope")
+        part("cube",(0,0,0.16),(0.85,0.35,0.10),primary,"seat")
+    elif kind == "slide":
+        part("cube",(0,0,0.16),(0.95,0.95,0.12),dark,"base")
+        ramp = part("cube",(0,-0.35,0.70),(0.65,1.2,0.12),primary,"sliding ramp")
+        ramp.rotation_euler[0] = -0.35
+        part("cube",(0,0.35,1.12),(0.65,0.12,1.7),primary,"platform")
+        for x in (-0.38,0.38): part("cylinder",(x,0.35,1.1),(0.05,0.05,1.65),dark,"rail")
     elif kind in ("sun", "moon", "star"):
         obj = add_prim("uv_sphere" if kind != "star" else "rock", location, (s, s, s), primary, item["name"])
         made.append(obj)
