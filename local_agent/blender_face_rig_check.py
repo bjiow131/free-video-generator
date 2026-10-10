@@ -124,11 +124,12 @@ def check_face_rig(project_name: str, blend_file: str | None = None) -> dict[str
     workspace = Path(workspace_value).expanduser().resolve()
     if not executable.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
-    project = (workspace / project_name).resolve()
+    requested_project = workspace / project_name
+    if requested_project.is_symlink() or getattr(requested_project, "is_junction", lambda: False)():
+        raise ValueError("Project directory must not be a symlink or junction.")
+    project = requested_project.resolve()
     if not project.is_relative_to(workspace) or project == workspace:
         raise ValueError("Project path must remain inside workspace.")
-    if project.is_symlink() or getattr(project, "is_junction", lambda: False)():
-        raise ValueError("Project directory must not be a symlink or junction.")
     if blend_file is not None:
         name = Path(blend_file).name
         if name != blend_file or not name.lower().endswith(".blend"):
