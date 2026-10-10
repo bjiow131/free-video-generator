@@ -1030,7 +1030,8 @@ class BlenderAgentApp(tk.Tk):
                 errors = (result.stderr or "").strip()
                 self.after(0, lambda: self._finish_season1_library(result.returncode, output, errors))
             except (OSError, subprocess.TimeoutExpired) as exc:
-                self.after(0, lambda: self._finish_season1_library(1, "", str(exc)))
+                error_text = str(exc)
+                self.after(0, lambda message=error_text: self._finish_season1_library(1, "", message))
 
         threading.Thread(target=worker, daemon=True).start()
 
