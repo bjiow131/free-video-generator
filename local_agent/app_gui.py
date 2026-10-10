@@ -23,8 +23,10 @@ from local_agent.scene_request import SceneRequestError, create_scene_from_promp
 from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
+from local_agent.character_library import CharacterPassportImportError, import_character_passport
+from local_agent.scene01_reference_pack import ReferencePackError, download_scene01_reference_pack
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.2"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -207,6 +209,8 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
+        ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
@@ -784,6 +788,212 @@ class BlenderAgentApp(tk.Tk):
                 f"ПОСТОЯННЫЕ ОСОБЕННОСТИ\n{card.get('description','') or 'Описание пока не заполнено.'}\n\n"
                 f"БИБЛИОТЕКА РЕФЕРЕНСОВ · НУМЕРАЦИЯ СОХРАНЯЕТСЯ\n{refs}\n")
         self.character_detail.configure(state="disabled")
+
+    def _download_scene01_references(self) -> None:
+        """Fetch selected open-license references without blocking the GUI."""
+        include_characters = messagebox.askyesno(
+            "Набор референсов сцены 01",
+            "Скачать референсы улитки и лесной тропинки, а также дополнительный CC0-пак персонажей?\n\n"
+            "Пак персонажей общий и не гарантирует подходящий образ четырёхлетней Мии; его содержимое нужно проверить отдельно.",
+            parent=self,
+        )
+        self._set_status("Загружаю референсы сцены 01…")
+        def worker() -> None:
+            try:
+                result = download_scene01_reference_pack(
+                    CHARACTER_DIR,
+                    include_character_pack=include_characters,
+                )
+                self.after(0, lambda: self._finish_scene01_reference_download(result, None))
+            except (ReferencePackError, OSError, ValueError) as exc:
+                self.after(0, lambda error=exc: self._finish_scene01_reference_download(None, error))
+        threading.Thread(target=worker, name="scene01-reference-download", daemon=True).start()
+
+    def _finish_scene01_reference_download(self, result: dict | None, error: Exception | None) -> None:
+        if error is not None:
+            messagebox.showerror("Не удалось подготовить референсы", str(error), parent=self)
+            self._set_status("Загрузка референсов завершилась ошибкой.")
+            return
+        if result is None:
+            self._set_status("Загрузка референсов не вернула результат.")
+            return
+        try:
+            self._register_scene01_reference_cards(result)
+        except (OSError, ValueError, TypeError) as exc:
+            messagebox.showwarning(
+                "Референсы скачаны, но карточки не обновлены",
+                f"Файлы сохранены, однако их не удалось добавить в библиотеку: {exc}",
+                parent=self,
+            )
+        downloaded = sum(item["status"] == "downloaded" for item in result["assets"])
+        already = sum(item["status"] == "already_present" for item in result["assets"])
+        failed = len(result["failures"])
+        details = [
+            f"Папка: {result['pack_dir']}",
+            f"Скачано новых файлов: {downloaded}",
+            f"Уже были на диске: {already}",
+            f"Ошибок: {failed}",
+            f"Манифест источников и лицензий: {result['manifest_path']}",
+        ]
+        if result["failures"]:
+            details.append("\nНе удалось скачать:")
+            details.extend(f"• {item['filename']}: {item['error']}" for item in result["failures"])
+        messagebox.showinfo("Референсы сцены 01", "\n".join(details), parent=self)
+        self._set_status(
+            f"Набор референсов сцены 01: новых файлов {downloaded}, уже были {already}, ошибок {failed}."
+        )
+
+    def _register_scene01_reference_cards(self, result: dict) -> None:
+        """Expose downloaded photos as reusable asset cards in the existing library."""
+        files_by_id = {
+            item["id"]: str(Path(result["pack_dir"]) / item["filename"])
+            for item in result["assets"]
+            if item.get("id") in {"snail_moss", "snail_wood", "woodland_path"}
+            and item.get("status") in {"downloaded", "already_present"}
+        }
+        definitions = (
+            {
+                "id": "scene01_snail_refs",
+                "name": "Улитка — референсы сцены 01",
+                "kind": "Объект",
+                "profile_type": "Животное",
+                "visual_style": "Фотореференс",
+                "description": "Открытые CC0-фотореференсы улитки для формы тела и раковины. Это фотографии, не готовая 3D-модель.",
+                "asset_ids": ("snail_moss", "snail_wood"),
+            },
+            {
+                "id": "scene01_path_refs",
+                "name": "Лесная тропинка — сцена 01",
+                "kind": "Окружение",
+                "profile_type": "Объект / предмет",
+                "visual_style": "Фотореференс",
+                "description": "Открытый CC0-фотореференс лесной тропинки для композиции и окружения вертикального кадра.",
+                "asset_ids": ("woodland_path",),
+            },
+        )
+        data = self._load_characters()
+        for definition in definitions:
+            paths = [files_by_id[key] for key in definition["asset_ids"] if key in files_by_id]
+            if not paths:
+                continue
+            card = next((item for item in data if item.get("id") == definition["id"]), None)
+            if card is None:
+                card = {
+                    "id": definition["id"],
+                    "name": definition["name"],
+                    "kind": definition["kind"],
+                    "profile_type": definition["profile_type"],
+                    "visual_style": definition["visual_style"],
+                    "description": definition["description"],
+                    "references": [],
+                    "reference_labels": {},
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                data.append(card)
+            refs = card.setdefault("references", [])
+            for path in paths:
+                if path not in refs:
+                    refs.append(path)
+        self._save_characters(data)
+        self._refresh_characters("scene01_snail_refs")
+
+    def _import_character_passport(self) -> None:
+        """Import a JSON passport into the existing character library without executing it."""
+        selected = filedialog.askopenfilename(
+            title="Импортировать паспорт персонажа",
+            filetypes=[("Паспорт персонажа (JSON)", "*.json"), ("Все файлы", "*.*")],
+            parent=self,
+        )
+        if not selected:
+            return
+        passport_file = Path(selected)
+        try:
+            if passport_file.is_symlink() or not passport_file.is_file() or passport_file.stat().st_size > 2 * 1024 * 1024:
+                raise CharacterPassportImportError("Выберите обычный JSON-файл размером не более 2 МБ.")
+            payload = json.loads(passport_file.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, json.JSONDecodeError, CharacterPassportImportError) as exc:
+            messagebox.showerror("Паспорт не прочитан", str(exc), parent=self)
+            return
+
+        character_id = None
+        if isinstance(payload, dict) and isinstance(payload.get("characters"), dict):
+            ids = list(payload["characters"])
+            if len(ids) > 1:
+                character_id = simpledialog.askstring(
+                    "Выбрать персонажа из реестра",
+                    "В JSON несколько персонажей. Введи ID нужного персонажа:\n" + ", ".join(map(str, ids[:30])),
+                    parent=self,
+                )
+                if not character_id:
+                    return
+
+        default_name = ""
+        if isinstance(payload, dict):
+            passport = payload
+            if isinstance(payload.get("characters"), dict) and character_id:
+                entry = payload["characters"].get(character_id, {})
+                history = entry.get("history", []) if isinstance(entry, dict) else []
+                passport = history[-1] if history and isinstance(history[-1], dict) else {}
+            default_name = str(passport.get("display_name") or passport.get("name") or passport.get("character_id") or character_id or "")
+        display_name = simpledialog.askstring(
+            "Имя в библиотеке",
+            "Как отображать имя персонажа? Оставь текущее значение или измени его:",
+            initialvalue=default_name,
+            parent=self,
+        )
+        if display_name is None:
+            return
+
+        blend_path = None
+        if messagebox.askyesno("Модель Blender", "Прикрепить к паспорту файл модели .blend сейчас?", parent=self):
+            blend_path = filedialog.askopenfilename(
+                title="Выбрать модель персонажа",
+                filetypes=[("Blender project", "*.blend")],
+                parent=self,
+            )
+            if not blend_path:
+                return
+
+        reference_paths = ()
+        if messagebox.askyesno("Референсы", "Добавить изображения-референсы к этому персонажу сейчас?", parent=self):
+            reference_paths = filedialog.askopenfilenames(
+                title="Выбрать изображения персонажа",
+                filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff")],
+                parent=self,
+            )
+            if not reference_paths:
+                reference_paths = ()
+
+        try:
+            result = import_character_passport(
+                passport_file,
+                CHARACTER_DIR,
+                character_id=character_id,
+                display_name=display_name.strip() or default_name,
+                reference_paths=reference_paths,
+                blend_path=blend_path,
+            )
+        except (CharacterPassportImportError, OSError, ValueError) as exc:
+            messagebox.showerror("Импорт паспорта не выполнен", str(exc), parent=self)
+            self._set_status("Паспорт не импортирован; проверь JSON и выбранные файлы.")
+            return
+
+        self._refresh_characters(result["character_id"])
+        self._set_status(
+            f"Паспорт «{result['name']}» импортирован · версия {result['passport_version']} · "
+            f"референсов добавлено: {result['references_added']}."
+        )
+        model_text = f"\nМодель: {result['blend_file']}" if result.get("blend_file") else ""
+        messagebox.showinfo(
+            "Паспорт обновлён",
+            f"Персонаж: {result['name']}\nID: {result['character_id']}\n"
+            f"Версия паспорта: {result['passport_version']}\n"
+            f"Статус проверки: {result['status']}\n"
+            f"Референсов добавлено: {result['references_added']}\n"
+            f"Файл паспорта: {result['passport_path']}{model_text}\n\n"
+            "Карточка библиотеки обновлена автоматически. Исходный JSON не изменён.",
+            parent=self,
+        )
 
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)
