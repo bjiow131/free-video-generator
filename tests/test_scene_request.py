@@ -90,11 +90,13 @@ def test_catalog_includes_every_supported_composite_family():
             "book", "mug", "bottle", "smartphone", "rocket", "sun", "moon", "star"} <= names
 
 
-def test_mia_scooter_snail_prompt_is_compiled_from_text_only():
-    from local_agent.scene_language import parse_scene_request as compile_prompt
+def test_character_identity_is_not_hardcoded_in_scene_language():
+    from local_agent.scene_language import OBJECTS, parse_scene_request as compile_prompt
 
-    plan = compile_prompt("Создай Мию на жёлтом самокате рядом с улиткой, мультяшный стиль, 9:16")
-    assert [item["primitive"] for item in plan["objects"]] == ["mia", "scooter", "snail"]
+    names = {name for name, _aliases in OBJECTS}
+    assert "mia" not in names
+    plan = compile_prompt("Создай жёлтый самокат рядом с улиткой, мультяшный стиль, 9:16")
+    assert [item["primitive"] for item in plan["objects"]] == ["scooter", "snail"]
     assert plan["style"] == "cartoon"
     assert plan["aspect_ratio"] == "9:16"
 
@@ -104,7 +106,7 @@ def test_thematic_scene_catalog_includes_additional_families():
 
     names = {name for name, _aliases in OBJECTS}
     assert {"snail", "scooter", "bicycle", "fish", "cactus", "snowman", "castle",
-            "sofa", "submarine", "coral", "swing", "slide", "mia"} <= names
+            "sofa", "submarine", "coral", "swing", "slide", "person"} <= names
     underwater = compile_prompt("Создай подводный мир с рыбами, кораллами и подлодкой")
     assert underwater["environment"] == "underwater"
     assert [item["primitive"] for item in underwater["objects"]] == ["fish", "coral", "submarine"]
@@ -144,11 +146,14 @@ def test_explicit_resolution_presets_are_respected():
     assert vertical_4k["resolution"] == [2160, 3840]
     assert vertical_4k["render_percentage"] == 100
 
-def test_mia_riding_scooter_relationship_is_detected():
+def test_riding_scooter_relationship_is_generic_and_bound_to_selected_card():
     from local_agent.scene_language import parse_scene_request as compile_prompt
+    from local_agent.scene_request import _append_character_cards
 
-    plan = compile_prompt("Создай Мию, которая едет на самокате по лесу, мультфильм, вертикально 9:16")
-    assert plan["relationships"]["mia_riding_scooter"] is True
+    plan = _append_character_cards(compile_prompt("Бобик едет на самокате по лесу, вертикально 9:16"), [
+        {"id": "bobik-card", "name": "Бобик", "description": "Собака", "references": []},
+    ], "Бобик едет на самокате по лесу, вертикально 9:16")
+    assert plan["relationships"]["character_riding_scooter"] == "bobik-card"
     assert plan["environment"] == "forest"
     assert plan["animation"]["enabled"] is True
 
@@ -166,7 +171,7 @@ def test_selected_character_cards_are_added_once_and_keep_reference_paths():
         "reference_labels": {"C:/BlenderAgentLibrary/mia-card/01_front.png": "Фронт", "C:/BlenderAgentLibrary/mia-card/02_side.jpg": "Профиль справа"},
     }
     result = _append_character_cards(plan, [card])
-    assert len([obj for obj in result["objects"] if obj["primitive"] == "mia"]) == 1
+    assert len([obj for obj in result["objects"] if obj.get("character_card_id") == "mia-card"]) == 1
     assert result["selected_characters"][0]["id"] == "mia-card"
     assert result["selected_characters"][0]["references"] == card["references"]
     assert result["selected_characters"][0]["reference_labels"] == card["reference_labels"]
@@ -194,3 +199,18 @@ def test_selected_mia_card_is_linked_to_scooter_action_without_name_in_prompt():
         {"id": "mia", "name": "Мия", "description": "Постоянный герой", "references": []},
     ])
     assert plan["relationships"]["mia_riding_scooter"] is True
+
+
+def test_reference_numbers_are_selected_per_character_card():
+    from local_agent.scene_language import parse_scene_request
+    from local_agent.scene_request import _append_character_cards
+
+    prompt = "Мия — референсы №2 и №3; Степа — референс №1. Они встречаются на лесной тропе."
+    cards = [
+        {"id": "mia", "name": "Мия", "description": "", "references": ["mia1.png", "mia2.png", "mia3.png"]},
+        {"id": "stepa", "name": "Степа", "description": "", "references": ["stepa1.png", "stepa2.png"]},
+    ]
+    plan = _append_character_cards(parse_scene_request("Два персонажа в лесу"), cards, prompt)
+    by_id = {item["id"]: item for item in plan["selected_characters"]}
+    assert by_id["mia"]["reference_indices"] == [2, 3]
+    assert by_id["stepa"]["reference_indices"] == [1]
