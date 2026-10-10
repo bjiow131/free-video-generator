@@ -76,6 +76,20 @@ def test_compiler_emits_estimated_dialogue_cues_with_stable_ids():
         cue["events"][index]["frame"] < cue["events"][index + 1]["frame"]
         for index in range(len(cue["events"]) - 1)
     )
+    assert cue["events"][-1]["mouth_state"] == "closed"
+
+
+def test_compiler_closes_each_speaker_window_before_the_next_line():
+    plan = sample_plan()
+    plan["scenes"][0]["duration_seconds"] = 20
+    plan["scenes"][0]["dialogue"] = [
+        {"speaker": "Мия", "text": "Да."},
+        {"speaker": "Стёпа", "text": "Давай посмотрим внимательно на эту маленькую улитку!"},
+    ]
+    cues = compile_story_plan(plan)["scenes"][0]["dialogue_cues"]
+    assert len(cues) == 2
+    assert all(cue["events"][-1]["mouth_state"] == "closed" for cue in cues)
+    assert cues[0]["events"][-1]["frame"] <= cues[1]["events"][0]["frame"]
 
 
 def test_compiler_leaves_silent_scene_without_dialogue_cues():
