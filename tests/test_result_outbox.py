@@ -53,3 +53,23 @@ def test_flush_keeps_malformed_entry_for_manual_diagnosis(tmp_path):
     summary = outbox.flush(FakeClient())
     assert summary == {"published": 0, "deferred": 0, "invalid": 1}
     assert malformed.exists()
+
+
+def test_publish_preserves_first_result_for_task_after_restart(tmp_path):
+    outbox = ResultOutbox(tmp_path)
+    outbox.enqueue("task-004", {"status": "completed", "details": {"video": "render.mp4"}})
+    client = FakeClient()
+
+    outbox.publish(client, "task-004", {"status": "interrupted"})
+
+    assert client.published == [
+        ("task-004", {"status": "completed", "details": {"video": "render.mp4"}})
+    ]
+    assert not (tmp_path / "task-004.json").exists()
+
+
+def test_pending_task_ids_includes_malformed_entries_for_recovery(tmp_path):
+    outbox = ResultOutbox(tmp_path)
+    (tmp_path / "task-005.json").write_text("{broken", encoding="utf-8")
+
+    assert outbox.pending_task_ids() == {"task-005"}
