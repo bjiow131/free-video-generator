@@ -43,6 +43,18 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Deer Low Poly (rigged)",
+      "url": "https://opengameart.org/content/deer-low-poly-rigged",
+      "license": "CC0",
+      "usage": "simple rigged deer model candidate"
+    },
+    {
+      "title": "Deer Female",
+      "url": "https://opengameart.org/content/deer-female",
+      "license": "CC0",
+      "usage": "rigged/animated deer candidate; inspect model and animation"
     }
   ],
   "notes": "Редкий эпизодический герой; сцены держать на расстоянии, не делать его постоянным спутником детей."
