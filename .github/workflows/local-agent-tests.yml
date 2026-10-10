@@ -7,6 +7,7 @@ on:
       - feature/local-first-migration
       - blender-agent-repair
       - blender-agent-capabilities
+      - feature/character-library-ui
     paths:
       - "local_agent/**"
       - "tests/test_blender_bridge.py"
@@ -27,6 +28,7 @@ on:
       - "tests/test_workbench_cli.py"
       - "tests/test_scene_request.py"
       - "tests/test_agent_desktop.py"
+      - "tests/test_character_library.py"
       - "requirements-local-agent.txt"
       - "scripts/windows/**"
       - "setup_blender_agent.bat"
@@ -35,6 +37,7 @@ on:
   push:
     branches:
       - feature/local-first-migration
+      - feature/character-library-ui
     paths:
       - "local_agent/**"
       - "tests/test_blender_bridge.py"
@@ -75,4 +78,4 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check -r requirements-local-agent.txt
       - name: Run local-agent safety tests
-        run: python -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_poller_delivery_state.py tests/test_result_outbox.py tests/test_local_project_runner.py tests/test_checkpoint_schema.py tests/test_ffmpeg_media.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py tests/test_notifications.py tests/test_workbench_cli.py tests/test_scene_request.py tests/test_agent_desktop.py
+        run: python -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_poller_delivery_state.py tests/test_result_outbox.py tests/test_local_project_runner.py tests/test_checkpoint_schema.py tests/test_ffmpeg_media.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py tests/test_notifications.py tests/test_workbench_cli.py tests/test_scene_request.py tests/test_agent_desktop.py tests/test_character_library.py
