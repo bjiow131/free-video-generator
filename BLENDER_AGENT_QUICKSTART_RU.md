@@ -81,14 +81,13 @@
 
 ## Формат отдельного обновления
 
-Структура пакета:
+Структура пакета (в корне ZIP, без дополнительной папки-обёртки):
 ```
-agent-update/
-  update_manifest.json
-  payload/
-    local_agent/
-      app_gui.py
-      ...
+update_manifest.json
+payload/
+  local_agent/
+    app_gui.py
+    ...
 ```
 Манифест версии 1:
 ```json
