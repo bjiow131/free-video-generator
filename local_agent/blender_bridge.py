@@ -359,7 +359,7 @@ class BlenderBridge:
             script_path.write_text(_scene_script(), encoding="utf-8")
             config_path.write_text(json.dumps(config), encoding="utf-8")
             command = [
-                str(self.executable), "--background", "--factory-startup",
+                str(self.executable), "--factory-startup",
                 "--python", str(script_path), "--", str(config_path),
             ]
             try:
