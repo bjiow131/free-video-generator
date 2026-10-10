@@ -46,7 +46,7 @@ OBJECTS = (
     ("flower", ("цветок", "цветы", "цветка", "цветов", "цветами")),
     ("grass", ("трава", "траву", "пучок травы")),
     ("rock", ("камень", "камни", "камня", "камней", "валун", "валуны")),
-    ("road", ("дорога", "дорогу", "дорогой", "шоссе", "трасса")),
+    ("road", ("дорожка", "дорожку", "дорожке", "дорожкой", "велодорожка", "велодорожке", "дорога", "дорогу", "дорогой", "шоссе", "трасса")),
     ("fence", ("забор", "забором", "ограда", "изгородь")),
     ("bed", ("кровать", "кровати", "кроватью")),
     ("book", ("книга", "книгу", "книги", "книгой")),
@@ -246,6 +246,8 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         environment = "city"
     elif _has(text, "космос", "космический", "галактик", "звёздное небо", "звездное небо"):
         environment = "space"
+    elif _has(text, "набережн", "у моря", "возле моря", "вдоль моря", "береговая дорожка", "морской берег", "побережье"):
+        environment = "coast"
     elif _has(text, "остров", "пляж", "море", "океан"):
         environment = "island"
     elif _has(text, "горы", "горный пейзаж", "долина", "пейзаж", "природа"):
@@ -303,10 +305,15 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "frames": 120 if _has(text, "4 секунды", "4 сек") else 180 if _has(text, "6 секунд", "6 сек") else 150,
     }
     kinds = {item["primitive"] for item in objects}
-    ride_scooter = "scooter" in kinds and "самокате" in text and _has(text, "едет", "катается", "на самокате")
+    ride_scooter = "scooter" in kinds and _has(text, "едет", "катается", "на самокате")
+    ride_bicycle = "bicycle" in kinds and _has(text, "едет", "катается", "на велосипеде", "крутит педали")
+    relationships = {"character_riding_scooter": ride_scooter, "character_riding_bicycle": ride_bicycle}
+    from local_agent.scene_planner import build_scene_plan
+    scene_plan = build_scene_plan(prompt, objects, environment, animation, relationships,
+                                  "top" if _has(text, "вид сверху", "камера сверху", "сверху вниз") else "auto")
     return {
         "schema_version": 3, "objects": objects, "resolution": resolution, "aspect_ratio": aspect,
-        "relationships": {"character_riding_scooter": ride_scooter},
+        "relationships": relationships,
         "render_percentage": render_percentage, "prompt_summary": prompt.strip(), "environment": environment,
         "style": style, "lighting": lighting, "layout": layout, "animation": animation,
         "ground": not _has(text, "без пола", "без земли", "без подставки", "прозрачный фон"),
@@ -314,4 +321,5 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         "world_color": [0.008, 0.012, 0.025, 1.0] if lighting == "night" else [0.055, 0.055, 0.055, 1.0],
         "text_content": text_content,
         "camera_angle": "top" if _has(text, "вид сверху", "камера сверху", "сверху вниз") else "auto",
+        "scene_plan": scene_plan,
     }
