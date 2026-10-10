@@ -1,0 +1,3233 @@
+{
+  "schema_version": 1,
+  "visibility": "internal-development-branch",
+  "series": "Мия и тропинка открытий",
+  "episode_count": 30,
+  "production_format": {
+    "target_runtime_minutes": [
+      5,
+      10
+    ],
+    "planned_scenes_per_episode": 5,
+    "planned_total_scene_beats": 150
+  },
+  "continuity_rules": [
+    "Reuse hero rigs and the eight canonical sets.",
+    "Mia's yellow scooter and bicycle keep the same design and colors.",
+    "No touching unknown wildlife, plants, or fungi; observe from a safe distance.",
+    "Dialogue/music are separate audio tracks; speech drives only word-level mouth open/close markers.",
+    "The outlines are story blueprints, not locked dialogue or final edit timing."
+  ],
+  "episodes": [
+    {
+      "episode": 1,
+      "title": "Улитка на тропинке",
+      "synopsis": "Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+          "estimated_seconds": 75,
+          "location_id": "family_home",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Мия учится притормозить и дать улитке безопасно пересечь тропу.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 2,
+      "title": "Куда пропал след?",
+      "synopsis": "После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+          "estimated_seconds": 75,
+          "location_id": "forest_gate",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: После дождя друзья сравнивают след улитки на влажной и сухой поверхности.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 3,
+      "title": "Самокат и шлем",
+      "synopsis": "Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+          "estimated_seconds": 75,
+          "location_id": "meadow_path",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Безопасный маршрут и проверка самоката превращают спешку в маленькое достижение.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 4,
+      "title": "Орех Тишки",
+      "synopsis": "Белка теряет один орех, а дети учатся не трогать природные запасы.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Белка теряет один орех, а дети учатся не трогать природные запасы.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Белка теряет один орех, а дети учатся не трогать природные запасы.",
+          "estimated_seconds": 75,
+          "location_id": "grandma_garden",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Белка теряет один орех, а дети учатся не трогать природные запасы.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Белка теряет один орех, а дети учатся не трогать природные запасы.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Белка теряет один орех, а дети учатся не трогать природные запасы.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 5,
+      "title": "Пип видит сверху",
+      "synopsis": "Птичий сигнал не заменяет карту и ориентиры.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Птичий сигнал не заменяет карту и ориентиры.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Птичий сигнал не заменяет карту и ориентиры.",
+          "estimated_seconds": 75,
+          "location_id": "pond",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Птичий сигнал не заменяет карту и ориентиры.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Птичий сигнал не заменяет карту и ориентиры.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Птичий сигнал не заменяет карту и ориентиры.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 6,
+      "title": "Маленькая лужа Квы",
+      "synopsis": "Лягушка показывает прыжок, а дети берегут край пруда.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Лягушка показывает прыжок, а дети берегут край пруда.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Лягушка показывает прыжок, а дети берегут край пруда.",
+          "estimated_seconds": 75,
+          "location_id": "tree_hollow",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Лягушка показывает прыжок, а дети берегут край пруда.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Лягушка показывает прыжок, а дети берегут край пруда.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Лягушка показывает прыжок, а дети берегут край пруда.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 7,
+      "title": "Цветок для Луны",
+      "synopsis": "Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+          "estimated_seconds": 75,
+          "location_id": "forest_clearing",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Друзья наблюдают бабочку, не срывая цветок и не преследуя её.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 8,
+      "title": "Колины иголки",
+      "synopsis": "Ёж и листик учат детей не брать дикое животное на руки.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Ёж и листик учат детей не брать дикое животное на руки.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Ёж и листик учат детей не брать дикое животное на руки.",
+          "estimated_seconds": 75,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Ёж и листик учат детей не брать дикое животное на руки.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Ёж и листик учат детей не брать дикое животное на руки.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Ёж и листик учат детей не брать дикое животное на руки.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 9,
+      "title": "Велосипедный звонок",
+      "synopsis": "Группа договаривается о тихой зоне для наблюдения за животными.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Группа договаривается о тихой зоне для наблюдения за животными.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Группа договаривается о тихой зоне для наблюдения за животными.",
+          "estimated_seconds": 75,
+          "location_id": "family_home",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Группа договаривается о тихой зоне для наблюдения за животными.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Группа договаривается о тихой зоне для наблюдения за животными.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Группа договаривается о тихой зоне для наблюдения за животными.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 10,
+      "title": "Карта из листьев",
+      "synopsis": "После ветра маршрут восстанавливают по устойчивым ориентирам.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "После ветра маршрут восстанавливают по устойчивым ориентирам.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: После ветра маршрут восстанавливают по устойчивым ориентирам.",
+          "estimated_seconds": 75,
+          "location_id": "forest_gate",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: После ветра маршрут восстанавливают по устойчивым ориентирам.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: После ветра маршрут восстанавливают по устойчивым ориентирам.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: После ветра маршрут восстанавливают по устойчивым ориентирам.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 11,
+      "title": "День дождевых капель",
+      "synopsis": "Дети наблюдают дождь и сток воды из безопасного места.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Дети наблюдают дождь и сток воды из безопасного места.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Дети наблюдают дождь и сток воды из безопасного места.",
+          "estimated_seconds": 75,
+          "location_id": "meadow_path",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Дети наблюдают дождь и сток воды из безопасного места.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Дети наблюдают дождь и сток воды из безопасного места.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Дети наблюдают дождь и сток воды из безопасного места.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 12,
+      "title": "Гриб, который не трогают",
+      "synopsis": "Неизвестный гриб изучают глазами и зарисовкой.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Неизвестный гриб изучают глазами и зарисовкой.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Неизвестный гриб изучают глазами и зарисовкой.",
+          "estimated_seconds": 75,
+          "location_id": "grandma_garden",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Неизвестный гриб изучают глазами и зарисовкой.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Неизвестный гриб изучают глазами и зарисовкой.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Неизвестный гриб изучают глазами и зарисовкой.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 13,
+      "title": "Бублик и потерянная перчатка",
+      "synopsis": "Собака находит чужую вещь; дети возвращают её владельцу.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Собака находит чужую вещь; дети возвращают её владельцу.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Собака находит чужую вещь; дети возвращают её владельцу.",
+          "estimated_seconds": 75,
+          "location_id": "pond",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Собака находит чужую вещь; дети возвращают её владельцу.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Собака находит чужую вещь; дети возвращают её владельцу.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Собака находит чужую вещь; дети возвращают её владельцу.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 14,
+      "title": "Большое дерево",
+      "synopsis": "Звук из дупла оказывается сочетанием ветра и птицы.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Звук из дупла оказывается сочетанием ветра и птицы.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Звук из дупла оказывается сочетанием ветра и птицы.",
+          "estimated_seconds": 75,
+          "location_id": "tree_hollow",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Звук из дупла оказывается сочетанием ветра и птицы.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Звук из дупла оказывается сочетанием ветра и птицы.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Звук из дупла оказывается сочетанием ветра и птицы.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 15,
+      "title": "Кто оставил дорожку?",
+      "synopsis": "Друзья изучают следы и учатся не делать поспешных выводов.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Друзья изучают следы и учатся не делать поспешных выводов.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Друзья изучают следы и учатся не делать поспешных выводов.",
+          "estimated_seconds": 75,
+          "location_id": "forest_clearing",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Друзья изучают следы и учатся не делать поспешных выводов.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Друзья изучают следы и учатся не делать поспешных выводов.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Друзья изучают следы и учатся не делать поспешных выводов.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 16,
+      "title": "Бабушкин огород",
+      "synopsis": "Мия учится проверять почву перед поливом.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Мия учится проверять почву перед поливом.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Мия учится проверять почву перед поливом.",
+          "estimated_seconds": 75,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Мия учится проверять почву перед поливом.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Мия учится проверять почву перед поливом.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Мия учится проверять почву перед поливом.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 17,
+      "title": "Мостик из веточек",
+      "synopsis": "Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+          "estimated_seconds": 75,
+          "location_id": "family_home",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Игрушечный мост строят на сухой площадке, не меняя среду обитания.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 18,
+      "title": "Тень на поляне",
+      "synopsis": "Меняющиеся тени приводят к простому наблюдению за солнцем.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Меняющиеся тени приводят к простому наблюдению за солнцем.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Меняющиеся тени приводят к простому наблюдению за солнцем.",
+          "estimated_seconds": 75,
+          "location_id": "forest_gate",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Меняющиеся тени приводят к простому наблюдению за солнцем.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Меняющиеся тени приводят к простому наблюдению за солнцем.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Меняющиеся тени приводят к простому наблюдению за солнцем.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 19,
+      "title": "Секрет раковины",
+      "synopsis": "Спираль улитки становится поводом изучить форму и защиту раковины.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Спираль улитки становится поводом изучить форму и защиту раковины.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Спираль улитки становится поводом изучить форму и защиту раковины.",
+          "estimated_seconds": 75,
+          "location_id": "meadow_path",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Спираль улитки становится поводом изучить форму и защиту раковины.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Спираль улитки становится поводом изучить форму и защиту раковины.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Спираль улитки становится поводом изучить форму и защиту раковины.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 20,
+      "title": "Пруд без мусора",
+      "synopsis": "С взрослыми дети безопасно убирают мусор с берега.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "С взрослыми дети безопасно убирают мусор с берега.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: С взрослыми дети безопасно убирают мусор с берега.",
+          "estimated_seconds": 75,
+          "location_id": "grandma_garden",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: С взрослыми дети безопасно убирают мусор с берега.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: С взрослыми дети безопасно убирают мусор с берега.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: С взрослыми дети безопасно убирают мусор с берега.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 21,
+      "title": "Рогач на расстоянии",
+      "synopsis": "Появление молодого оленя учит тихо наблюдать на расстоянии.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Появление молодого оленя учит тихо наблюдать на расстоянии.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Появление молодого оленя учит тихо наблюдать на расстоянии.",
+          "estimated_seconds": 75,
+          "location_id": "pond",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Появление молодого оленя учит тихо наблюдать на расстоянии.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Появление молодого оленя учит тихо наблюдать на расстоянии.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Появление молодого оленя учит тихо наблюдать на расстоянии.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 22,
+      "title": "Шишка-почтальон",
+      "synopsis": "Воображаемая игра не должна нарушать норы и укрытия животных.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Воображаемая игра не должна нарушать норы и укрытия животных.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Воображаемая игра не должна нарушать норы и укрытия животных.",
+          "estimated_seconds": 75,
+          "location_id": "tree_hollow",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Воображаемая игра не должна нарушать норы и укрытия животных.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Воображаемая игра не должна нарушать норы и укрытия животных.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Воображаемая игра не должна нарушать норы и укрытия животных.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 23,
+      "title": "Тихий час леса",
+      "synopsis": "Группа учится останавливаться и слушать маленькие звуки.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Группа учится останавливаться и слушать маленькие звуки.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Группа учится останавливаться и слушать маленькие звуки.",
+          "estimated_seconds": 75,
+          "location_id": "forest_clearing",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Группа учится останавливаться и слушать маленькие звуки.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Группа учится останавливаться и слушать маленькие звуки.",
+          "estimated_seconds": 90,
+          "location_id": "forest_clearing",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Группа учится останавливаться и слушать маленькие звуки.",
+          "estimated_seconds": 60,
+          "location_id": "forest_clearing",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 24,
+      "title": "Куда едет вода?",
+      "synopsis": "Домашний опыт помогает понять наблюдения о воде в природе.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Домашний опыт помогает понять наблюдения о воде в природе.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Домашний опыт помогает понять наблюдения о воде в природе.",
+          "estimated_seconds": 75,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Домашний опыт помогает понять наблюдения о воде в природе.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Домашний опыт помогает понять наблюдения о воде в природе.",
+          "estimated_seconds": 90,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Домашний опыт помогает понять наблюдения о воде в природе.",
+          "estimated_seconds": 60,
+          "location_id": "hill_viewpoint",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 25,
+      "title": "Праздник маленьких открытий",
+      "synopsis": "Вместо реальных находок дети показывают рисунки и фотографии.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Вместо реальных находок дети показывают рисунки и фотографии.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Вместо реальных находок дети показывают рисунки и фотографии.",
+          "estimated_seconds": 75,
+          "location_id": "family_home",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Вместо реальных находок дети показывают рисунки и фотографии.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Вместо реальных находок дети показывают рисунки и фотографии.",
+          "estimated_seconds": 90,
+          "location_id": "family_home",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Вместо реальных находок дети показывают рисунки и фотографии.",
+          "estimated_seconds": 60,
+          "location_id": "family_home",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 26,
+      "title": "Потерянная страница",
+      "synopsis": "Команда вместе восстанавливает заметку по памяти.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Команда вместе восстанавливает заметку по памяти.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Команда вместе восстанавливает заметку по памяти.",
+          "estimated_seconds": 75,
+          "location_id": "forest_gate",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Команда вместе восстанавливает заметку по памяти.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Команда вместе восстанавливает заметку по памяти.",
+          "estimated_seconds": 90,
+          "location_id": "forest_gate",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Команда вместе восстанавливает заметку по памяти.",
+          "estimated_seconds": 60,
+          "location_id": "forest_gate",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 27,
+      "title": "День без спешки",
+      "synopsis": "Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+          "estimated_seconds": 75,
+          "location_id": "meadow_path",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+          "estimated_seconds": 90,
+          "location_id": "meadow_path",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Одна спокойная прогулка приносит больше наблюдений, чем длинный список дел.",
+          "estimated_seconds": 60,
+          "location_id": "meadow_path",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 28,
+      "title": "Новая тропинка?",
+      "synopsis": "Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+          "estimated_seconds": 75,
+          "location_id": "grandma_garden",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+          "estimated_seconds": 90,
+          "location_id": "grandma_garden",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Дети выбирают обозначенную тропу вместо опасного короткого пути.",
+          "estimated_seconds": 60,
+          "location_id": "grandma_garden",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 29,
+      "title": "Книга открытий",
+      "synopsis": "Герои сортируют заметки и находят связи между наблюдениями.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Герои сортируют заметки и находят связи между наблюдениями.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Герои сортируют заметки и находят связи между наблюдениями.",
+          "estimated_seconds": 75,
+          "location_id": "pond",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Герои сортируют заметки и находят связи между наблюдениями.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Герои сортируют заметки и находят связи между наблюдениями.",
+          "estimated_seconds": 90,
+          "location_id": "pond",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Герои сортируют заметки и находят связи между наблюдениями.",
+          "estimated_seconds": 60,
+          "location_id": "pond",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    },
+    {
+      "episode": 30,
+      "title": "Тропа продолжается",
+      "synopsis": "Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+      "target_runtime_minutes": [
+        5,
+        10
+      ],
+      "scene_count": 5,
+      "scene_beats": [
+        {
+          "scene": 1,
+          "beat": "setup",
+          "heading": "Завязка",
+          "dramatic_function": "Показать обычную цель героев и место действия.",
+          "action": "Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "establishing wide shot; establish geography",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 2,
+          "beat": "obstacle",
+          "heading": "Препятствие",
+          "dramatic_function": "Возникновение конкретной проблемы, недоразумения или поспешного решения.",
+          "action": "План героев осложняется: Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+          "estimated_seconds": 75,
+          "location_id": "tree_hollow",
+          "camera_intent": "medium two-shot; show disagreement clearly",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 3,
+          "beat": "attempt",
+          "heading": "Попытка",
+          "dramatic_function": "Герои предлагают варианты и проверяют один безопасный способ.",
+          "action": "Мия и Стёпа проверяют идею без риска для себя и природы: Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "prop insert and reaction close-ups",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 4,
+          "beat": "discovery",
+          "heading": "Открытие",
+          "dramatic_function": "Наблюдение или объяснение меняет понимание ситуации.",
+          "action": "Наблюдение помогает отличить факт от догадки: Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+          "estimated_seconds": 90,
+          "location_id": "tree_hollow",
+          "camera_intent": "quiet close-up; focus on the discovery",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        },
+        {
+          "scene": 5,
+          "beat": "resolution",
+          "heading": "Решение",
+          "dramatic_function": "Совместное решение, эмоциональный payoff и короткая запись в книге открытий.",
+          "action": "Герои применяют открытие и добавляют его в книгу наблюдений: Семья смотрит книгу открытий; герои показывают, как научились останавливаться и замечать.",
+          "estimated_seconds": 60,
+          "location_id": "tree_hollow",
+          "camera_intent": "wide payoff; finish on a memorable image",
+          "dialogue": {
+            "speaker_ids": [
+              "mia",
+              "stepa"
+            ],
+            "audio_track_separate": true,
+            "word_level_mouth_markers": true,
+            "phoneme_sync": false
+          }
+        }
+      ]
+    }
+  ]
+}
