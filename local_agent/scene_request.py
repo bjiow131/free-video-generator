@@ -73,9 +73,11 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
         )
 
     global_count = None
-    for number in _NUMBER.finditer(text):
-        value = int(number.group(1))
-        if 1 <= value <= _MAX_OBJECTS and number.end() <= selected[0][0]:
+    leading_count = re.match(r"^\\s*(" + _COUNT_TOKEN + r")\\b", text)
+    if leading_count:
+        token = leading_count.group(1)
+        value = int(token) if token.isdigit() else _COUNT_WORDS[token]
+        if 1 <= value <= _MAX_OBJECTS:
             global_count = value
     size = 1.0
     size_match = _SIZE.search(text)
@@ -98,29 +100,35 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
             break
 
     objects: list[dict[str, Any]] = []
+    previous_end = 0
     for pos, primitive, alias, end in selected:
-        # A number immediately before the primitive controls its count. If there
-        # is no local count, only the first recognized primitive inherits the
-        # leading global count; this avoids multiplying every object by mistake.
-        prefix = text[max(0, pos - 28):pos]
-        local_numbers = list(_NUMBER.finditer(prefix))
+        # Match a count immediately before the primitive, allowing up to three adjectives.
+        prefix = text[max(previous_end, pos - 64):pos]
+        local_count = _LOCAL_COUNT.search(prefix)
         count = 1
-        if local_numbers:
-            candidate_count = int(local_numbers[-1].group(1))
+        if local_count:
+            token = local_count.group(1)
+            candidate_count = int(token) if token.isdigit() else _COUNT_WORDS[token]
             if 1 <= candidate_count <= _MAX_OBJECTS:
                 count = candidate_count
         elif not objects and global_count is not None:
             count = global_count
         if len(objects) + count > _MAX_OBJECTS:
             raise SceneRequestError(f"Scene is limited to {_MAX_OBJECTS} objects.")
+        color_segment = text[previous_end:pos]
+        object_color_name, object_color = color_name, color
+        for candidate, aliases, rgba in _COLORS:
+            if any(re.search(r"(?<![а-яё])" + re.escape(word) + r"(?![а-яё])", color_segment) for word in aliases):
+                object_color_name, object_color = candidate, rgba
         for _ in range(count):
             objects.append({
                 "primitive": primitive,
-                "color_name": color_name,
-                "color": list(color),
+                "color_name": object_color_name,
+                "color": list(object_color),
                 "scale": size,
                 "name": f"{primitive.replace('_', ' ').title()} {len(objects) + 1:02d}",
             })
+        previous_end = end
 
     if "9:16" in text or "вертикаль" in text or "портрет" in text:
         resolution = [720, 1280]
