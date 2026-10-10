@@ -69,8 +69,9 @@ class ReferencePackError(ValueError):
 
 def _safe_archive_members(archive: zipfile.ZipFile) -> None:
     for member in archive.infolist():
-        path = Path(member.filename)
-        if path.is_absolute() or ".." in path.parts:
+        normalized_name = member.filename.replace(chr(92), "/")
+        path = Path(normalized_name)
+        if path.is_absolute() or ".." in path.parts or (len(normalized_name) > 1 and normalized_name[1] == ":"):
             raise ReferencePackError("Архив содержит небезопасный путь; распаковка запрещена.")
         if member.file_size > 512 * 1024 * 1024:
             raise ReferencePackError("В архиве найден слишком большой файл.")
@@ -81,6 +82,8 @@ def _safe_archive_members(archive: zipfile.ZipFile) -> None:
 
 def _download_one(asset: dict, target_dir: Path) -> dict:
     destination = target_dir / asset["filename"]
+    if destination.is_symlink():
+        raise ReferencePackError(f"Путь назначения является символической ссылкой: {asset['filename']}.")
     if destination.exists() and destination.is_file() and destination.stat().st_size > 0:
         return {
             "id": asset["id"], "filename": asset["filename"], "status": "already_present",
