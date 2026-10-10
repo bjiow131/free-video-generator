@@ -32,14 +32,14 @@ def test_parses_numeric_count_without_treating_aspect_ratio_as_object_count():
     assert plan["aspect_ratio"] == "9:16"
 
 
-@pytest.mark.parametrize("prompt", ["", "   ", "создай красивый пейзаж", "x" * 1201])
+@pytest.mark.parametrize("prompt", ["", "   ", "создай абстрактное настроение", "x" * 1201])
 def test_rejects_empty_unsupported_or_oversized_prompt(prompt: str):
     with pytest.raises(SceneRequestError):
         parse_scene_request(prompt)
 
 
 def test_rejects_excessive_object_count():
-    with pytest.raises(SceneRequestError, match="limited to"):
+    with pytest.raises(SceneRequestError, match="не более"):
         parse_scene_request("Создай 41 куб")
 
 
