@@ -74,9 +74,18 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
         return {"status": "blocked", "reason": "invalid_task_id_for_isolated_worktree"}
 
     branch = f"agent/task-{safe_id}"
+    parent_root = ROOT.parent.resolve()
     worktree_root = ROOT.parent / ".local_agent_worktrees"
+    if worktree_root.is_symlink() or getattr(worktree_root, "is_junction", lambda: False)():
+        return {"status": "blocked", "reason": "worktree_root_must_not_be_symlink_or_junction"}
+    try:
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        if worktree_root.resolve().parent != parent_root:
+            return {"status": "blocked", "reason": "worktree_root_resolves_outside_expected_parent"}
+    except OSError as exc:
+        return {"status": "error", "reason": "could_not_prepare_worktree_root", "error_type": type(exc).__name__}
     worktree = worktree_root / f"task-{safe_id}"
-    if worktree.exists():
+    if worktree.exists() or worktree.is_symlink() or getattr(worktree, "is_junction", lambda: False)():
         return {
             "status": "blocked",
             "reason": "task_worktree_already_exists; inspect it before retrying",
@@ -105,7 +114,6 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 "branch": branch,
             }
 
-        worktree_root.mkdir(parents=True, exist_ok=True)
         created = run_git(["worktree", "add", "-b", branch, str(worktree), base_sha], timeout=120)
         if created.returncode != 0:
             return {
@@ -160,15 +168,67 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 },
             )
 
+        whitespace = run_git(["diff", "--check"], cwd=worktree, timeout=60)
+        if whitespace.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "git_diff_check_failed",
+                 "stderr_tail": [line[:500] for line in whitespace.stderr.splitlines()[-20:]]},
+            )
+
+        # Stage only paths named in the validated patch; never stage the whole worktree.
+        patch_paths = []
+        for line in patch.splitlines():
+            if line.startswith("diff --git "):
+                parts = line.split()
+                if len(parts) != 4:
+                    return _discard_failed_worktree(
+                        run_git, worktree, branch,
+                        {"status": "rejected", "reason": "malformed_patch_header_after_validation"},
+                    )
+                for raw_path in parts[2:]:
+                    patch_paths.append(raw_path[2:])
+        patch_paths = sorted(set(patch_paths))
+        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
+        if staged.returncode != 0:
+            return {
+                "status": "completed_needs_review",
+                "reason": "tests_passed_but_patch_paths_could_not_be_staged",
+                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
+                "stderr_tail": [line[:500] for line in staged.stderr.splitlines()[-20:]],
+                "active_checkout_modified": False,
+            }
+        staged_diff = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
+        if staged_diff.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "staged_diff_check_failed"},
+            )
+        commit = run_git([
+            "-c", "user.name=Blender Work Agent",
+            "-c", "user.email=blender-work-agent@users.noreply.github.com",
+            "commit", "-m", f"Apply reviewed repair {safe_id}",
+        ], cwd=worktree, timeout=120)
+        if commit.returncode != 0:
+            return {
+                "status": "completed_needs_review",
+                "reason": "tests_passed_but_local_repair_commit_failed",
+                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
+                "stderr_tail": [line[:500] for line in commit.stderr.splitlines()[-20:]],
+                "active_checkout_modified": False,
+            }
+        commit_sha = run_git(["rev-parse", "--verify", "HEAD"], cwd=worktree, timeout=15)
         return {
             "status": "completed",
-            "reason": "patch_applied_and_tests_passed_in_isolated_worktree",
+            "reason": "patch_applied_tested_and_committed_in_isolated_worktree",
             "base_commit": base_sha,
+            "repair_commit": commit_sha.stdout.strip() if commit_sha.returncode == 0 else None,
             "branch": branch,
             "worktree": str(worktree),
             "test_return_code": tests.returncode,
             "requires_review_before_merge": True,
             "active_checkout_modified": False,
+            "pushed_to_remote": False,
         }
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "git_operation_timed_out"}
