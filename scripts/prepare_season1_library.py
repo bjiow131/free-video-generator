@@ -138,20 +138,20 @@ def main() -> int:
         "character_ids": inventory["character_ids"],
         "imported_this_run": imported,
         "skipped_unchanged": skipped,
-        "reference_pack_manifest": str(Path(pack["manifest_path"]).resolve()),
+        "reference_pack_manifest": None,
         "catalog_path": str(CATALOG_PATH.resolve()),
         "inventory_path": str(INVENTORY_PATH.resolve()),
         "notes": [
             "Passports describe intended designs; no character model or rig is asserted to exist.",
-            "Open each source page and verify exact license and file compatibility before adopting 3D assets.",
-            "Only CC0 photo references are downloaded automatically. Model archives are intentionally not extracted or imported."
+            "Do not import third-party visual assets into the production library.",
+            "No external images or models are downloaded; import original project-specific references separately."
         ]
     }
     atomic_write(library / "season1_manifest.json", manifest)
     print(f"Season 1 library ready: {len(inventory['character_ids'])} passports; imported={len(imported)}, unchanged={len(skipped)}")
     print(f"Local library: {library}")
     print(f"Manifest: {library / 'season1_manifest.json'}")
-    if pack.get("failures"):
+    if pack and pack.get("failures"):
         print(f"Reference download failures: {len(pack['failures'])}; see pack manifest.")
     return 0
 
