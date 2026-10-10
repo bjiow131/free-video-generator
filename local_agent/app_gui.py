@@ -47,7 +47,7 @@ class BlenderAgentApp(tk.Tk):
         self.title(f"{APP_TITLE} · {APP_VERSION}")
         self.geometry("1180x820")
         self.minsize(940, 700)
-        self.configure(bg="#eef1f4")
+        self.configure(bg="#F3F5FA")
         self.workspace = DEFAULT_WORKSPACE.expanduser()
         self.workspace.mkdir(parents=True, exist_ok=True)
         CHARACTER_DIR.mkdir(parents=True, exist_ok=True)
@@ -266,7 +266,7 @@ class BlenderAgentApp(tk.Tk):
         if len(value) > PROMPT_LIMIT:
             self.prompt_count.configure(foreground="#b42318")
         else:
-            self.prompt_count.configure(foreground="#617080")
+            self.prompt_count.configure(foreground=self.colors["muted"])
 
     def _ask_confirm(self, operation: str) -> bool:
         return messagebox.askyesno("Подтверждение задания", f"Перед запуском проверьте задачу:\n\n{operation}\n\nПродолжить?", parent=self)
@@ -901,7 +901,6 @@ class BlenderAgentApp(tk.Tk):
             self.tabs.forget(frame)
             frame.destroy()
         self._refresh_characters()
-        self.character_detail.delete("1.0", "end")
 
     def _apply_update(self) -> None:
         archive = filedialog.askopenfilename(title="Выберите ZIP-пакет обновления", filetypes=[("Agent update ZIP", "*.zip")], parent=self)
