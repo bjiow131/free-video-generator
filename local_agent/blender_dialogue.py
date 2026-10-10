@@ -117,22 +117,27 @@ def apply_dialogue_cues(
             "results": [],
         }
 
-    results: list[dict[str, Any]] = []
+    # Validate the complete batch before touching any rig. A malformed later
+    # cue must not leave earlier characters partially animated.
+    normalized_cues = [
+        validate_dialogue_cue(cue, frame_start=frame_start, frame_end=frame_end)
+        for cue in cues
+    ]
     seen_line_ids: set[str] = set()
-    for cue in cues:
-        # Validate before resolving objects so malformed cues cannot touch a rig.
-        normalized = validate_dialogue_cue(
-            cue, frame_start=frame_start, frame_end=frame_end
-        )
+    for normalized in normalized_cues:
         line_id = normalized["line_id"]
         if line_id in seen_line_ids:
             return {
                 "status": "rejected",
                 "reason": "duplicate_line_id",
                 "line_id": line_id,
-                "results": results,
+                "results": [],
             }
         seen_line_ids.add(line_id)
+
+    results: list[dict[str, Any]] = []
+    for normalized in normalized_cues:
+        line_id = normalized["line_id"]
         speaker_id = normalized["speaker_id"]
         if speaker_id not in character_objects_by_speaker:
             results.append({
