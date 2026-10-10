@@ -89,12 +89,21 @@ def _estimated_dialogue_cues(
             events.append({"frame": frame, "mouth_state": state})
             state = "closed" if state == "open" else "open"
             frame += 4
+        if not events:
+            events = [{"frame": start, "mouth_state": "open"}]
+        # End every estimated speaking window with a closed mouth so a line
+        # cannot leave the character visibly speaking during the next silence.
+        if events[-1]["mouth_state"] == "open":
+            if events[-1]["frame"] < end:
+                events.append({"frame": end, "mouth_state": "closed"})
+            else:
+                events[-1]["mouth_state"] = "closed"
         cues.append({
             "speaker_id": _speaker_id(speaker),
             "line_id": f"{scene_id}_L{index + 1:03d}",
             "text": text.strip(),
             "timing_status": "estimated_until_voiceover",
-            "events": events or [{"frame": start, "mouth_state": "open"}],
+            "events": events,
         })
     return cues
 
