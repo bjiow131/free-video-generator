@@ -295,10 +295,10 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def _load_state() -> dict[str, Any]:
     """Load replay-protection state; fail closed if an existing file is unreadable."""
-    if not STATE_PATH.exists():
-        return {}
     try:
         raw = STATE_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
     except OSError as exc:
         raise RuntimeError("poller state exists but cannot be read; refusing to run tasks") from exc
     try:
