@@ -92,3 +92,26 @@ def test_public_mailbox_repository_is_refused():
     ]))
     with pytest.raises(QueueTransportError, match="not confirmed private"):
         client.fetch_desired_task()
+
+
+def test_fetch_rejects_manifest_with_malformed_base64():
+    raw = json.dumps({
+        "protocol_version": 1,
+        "task_id": "task-malformed",
+        "operation": "doctor",
+        "created_at": "2026-10-09T10:00:00Z",
+        "expires_at": "2026-10-09T10:05:00Z",
+        "requires_local_approval": True,
+        "arguments": {},
+    }).encode()
+    malformed = base64.b64encode(raw).decode() + "!!!!"
+    client = GitHubQueueClient(cfg(), session=FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={
+            "type": "file", "encoding": "base64",
+            "content": malformed, "sha": "file-sha",
+        }),
+    ]))
+    with pytest.raises(QueueTransportError, match="Task manifest rejected"):
+        client.fetch_desired_task()
+
