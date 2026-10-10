@@ -178,10 +178,12 @@ def test_multiple_selected_characters_are_added_as_separate_scene_objects():
 
     plan = _append_character_cards(parse_scene_request("Два героя в лесу"), [
         {"id": "mia", "name": "Мия", "description": "Девочка", "references": []},
-        {"id": "fox", "name": "Лисёнок", "description": "Рыжий лисёнок", "references": []},
+        {"id": "fox", "name": "Лисёнок", "description": "Рыжий лисёнок, друг Мии", "references": []},
     ])
     assert [obj["name"] for obj in plan["objects"] if obj.get("character_card_id")] == ["Мия", "Лисёнок"]
     assert [item["name"] for item in plan["selected_characters"]] == ["Мия", "Лисёнок"]
+    fox = next(obj for obj in plan["objects"] if obj.get("character_card_id") == "fox")
+    assert fox["primitive"] == "person"
 
 
 def test_selected_mia_card_is_linked_to_scooter_action_without_name_in_prompt():
