@@ -56,105 +56,12 @@ class SceneRequestError(ValueError):
 
 
 def parse_scene_request(prompt: str) -> dict[str, Any]:
-    """Compile a small Russian request into an inert, bounded scene plan."""
-    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
-        raise SceneRequestError(f"Prompt must contain 1-{_MAX_PROMPT_CHARS} characters.")
-    text = prompt.casefold()
-    matches: list[tuple[int, str, str, int]] = []
-    for primitive, aliases in _PRIMITIVES:
-        for alias in aliases:
-            for found in re.finditer(r"(?<![а-яё])" + re.escape(alias) + r"(?![а-яё])", text):
-                matches.append((found.start(), primitive, alias, found.end()))
-    matches.sort(key=lambda item: (item[0], -(item[3] - item[0])))
-    # Keep only the longest non-overlapping primitive match at each position.
-    selected: list[tuple[int, str, str, int]] = []
-    for item in matches:
-        if selected and item[0] < selected[-1][3]:
-            continue
-        selected.append(item)
-    if not selected:
-        raise SceneRequestError(
-            "Не удалось распознать объект. Поддерживаются куб, сфера/шар, цилиндр, конус, тор и обезьяна (Suzanne)."
-        )
-
-    # Mask aspect ratios without changing offsets, so 9:16 is never an object count.
-    count_text = re.sub(r"\d+\s*:\s*\d+", lambda match: " " * len(match.group(0)), text)
-    count_text = _SIZE.sub(lambda match: " " * len(match.group(0)), count_text)
-    global_count = None
-    leading_count = re.match(r"^\s*(" + _COUNT_TOKEN + r")\b", count_text)
-    if leading_count:
-        token = leading_count.group(1)
-        value = int(token) if token.isdigit() else _COUNT_WORDS[token]
-        if 1 <= value <= _MAX_OBJECTS:
-            global_count = value
-    size = 1.0
-    size_match = _SIZE.search(text)
-    if size_match:
-        try:
-            size = float(size_match.group(1).replace(",", "."))
-        except ValueError as exc:
-            raise SceneRequestError("Некорректный размер объекта.") from exc
-    elif "больш" in text:
-        size = 1.8
-    elif "малень" in text:
-        size = 0.55
-    if not 0.1 <= size <= 10:
-        raise SceneRequestError("Размер должен быть от 0.1 до 10.")
-
-    color_name, color = "blue", _COLOR_DEFAULT
-    for candidate, aliases, rgba in _COLORS:
-        if any(re.search(r"(?<![а-яё])" + re.escape(alias) + r"(?![а-яё])", text) for alias in aliases):
-            color_name, color = candidate, rgba
-            break
-
-    objects: list[dict[str, Any]] = []
-    previous_end = 0
-    for pos, primitive, alias, end in selected:
-        # Match a count immediately before the primitive, allowing up to three adjectives.
-        prefix = count_text[max(previous_end, pos - 64):pos]
-        local_count = _LOCAL_COUNT.search(prefix)
-        count = 1
-        if local_count:
-            token = local_count.group(1)
-            candidate_count = int(token) if token.isdigit() else _COUNT_WORDS[token]
-            if 1 <= candidate_count <= _MAX_OBJECTS:
-                count = candidate_count
-        elif not objects and global_count is not None:
-            count = global_count
-        if len(objects) + count > _MAX_OBJECTS:
-            raise SceneRequestError(f"Scene is limited to {_MAX_OBJECTS} objects.")
-        color_segment = text[previous_end:pos]
-        object_color_name, object_color = color_name, color
-        for candidate, aliases, rgba in _COLORS:
-            if any(re.search(r"(?<![а-яё])" + re.escape(word) + r"(?![а-яё])", color_segment) for word in aliases):
-                object_color_name, object_color = candidate, rgba
-        for _ in range(count):
-            objects.append({
-                "primitive": primitive,
-                "color_name": object_color_name,
-                "color": list(object_color),
-                "scale": size,
-                "name": f"{primitive.replace('_', ' ').title()} {len(objects) + 1:02d}",
-            })
-        previous_end = end
-
-    if "9:16" in text or "вертикаль" in text or "портрет" in text:
-        resolution = [720, 1280]
-        aspect = "9:16"
-    elif "1:1" in text or "квадрат" in text:
-        resolution = [1024, 1024]
-        aspect = "1:1"
-    else:
-        resolution = [1280, 720]
-        aspect = "16:9"
-    return {
-        "schema_version": 1,
-        "objects": objects,
-        "resolution": resolution,
-        "aspect_ratio": aspect,
-        "render_percentage": 50,
-        "prompt_summary": prompt.strip(),
-    }
+    """Compatibility wrapper around the expanded, inert natural-language compiler."""
+    from local_agent.scene_language import SceneRequestError as PlannerError, parse_scene_request as compile_prompt
+    try:
+        return compile_prompt(prompt)
+    except PlannerError as exc:
+        raise SceneRequestError(str(exc)) from exc
 
 
 _BLENDER_SCRIPT = r'''
@@ -187,56 +94,233 @@ def make_material(index, rgba):
         bsdf.inputs["Roughness"].default_value = 0.42
     return material
 
-for index, item in enumerate(cfg["objects"]):
-    primitive = item["primitive"]
-    if cfg["aspect_ratio"] == "9:16":
-        location = (0.0, 0.0, 1.0 + index * 2.0)
-    elif cfg["aspect_ratio"] == "1:1":
-        columns = max(1, math.ceil(math.sqrt(len(cfg["objects"]))))
-        rows = math.ceil(len(cfg["objects"]) / columns)
-        location = ((index % columns - (columns - 1) / 2) * 2.3,
-                    ((index // columns) - (rows - 1) / 2) * 2.3, 1.0)
-    else:
-        location = ((index - (len(cfg["objects"]) - 1) / 2) * 2.3, 0.0, 1.0)
-    if primitive == "cube":
+def material_for(name, rgba, roughness=0.48, metallic=0.0):
+    key = "Agent | " + name
+    material = bpy.data.materials.get(key) or bpy.data.materials.new(key)
+    material.diffuse_color = tuple(rgba)
+    material.use_nodes = True
+    bsdf = material.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = tuple(rgba)
+        bsdf.inputs["Roughness"].default_value = roughness
+        bsdf.inputs["Metallic"].default_value = metallic
+    return material
+
+def add_prim(kind, location, scale, mat, name):
+    if kind == "cube":
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=location)
-    elif primitive == "uv_sphere":
+    elif kind == "uv_sphere":
         bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=20, location=location)
         for polygon in bpy.context.object.data.polygons: polygon.use_smooth = True
-    elif primitive == "cylinder":
-        bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=0.65, depth=1.5, location=location)
-    elif primitive == "cone":
-        bpy.ops.mesh.primitive_cone_add(vertices=32, radius1=0.7, radius2=0.0, depth=1.5, location=location)
-    elif primitive == "torus":
+    elif kind == "cylinder":
+        bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=0.5, depth=1.0, location=location)
+    elif kind == "cone":
+        bpy.ops.mesh.primitive_cone_add(vertices=32, radius1=0.7, radius2=0.0, depth=1.0, location=location)
+    elif kind == "torus":
         bpy.ops.mesh.primitive_torus_add(major_segments=48, minor_segments=16, location=location)
-    elif primitive == "monkey":
+    elif kind == "monkey":
         bpy.ops.mesh.primitive_monkey_add(location=location)
+    elif kind == "rock":
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.0, location=location)
     else:
-        raise RuntimeError("Unsupported primitive in validated plan.")
+        raise RuntimeError("Unsupported primitive: " + str(kind))
     obj = bpy.context.object
-    obj.name = item["name"]
-    obj.scale = (item["scale"],) * 3
-    obj.data.materials.append(make_material(index + 1, item["color"]))
+    obj.name = name
+    obj.scale = (scale[0], scale[1], scale[2])
+    if mat: obj.data.materials.append(mat)
+    if kind in ("uv_sphere", "cylinder", "cone", "torus"): 
+        for polygon in obj.data.polygons: polygon.use_smooth = kind == "uv_sphere"
+    return obj
 
-# Neutral floor and lighting make the first render useful without external assets.
-floor_material = make_material(99, (0.12, 0.14, 0.17, 1.0))
-bpy.ops.mesh.primitive_plane_add(size=max(18.0, len(cfg["objects"]) * 3.0), location=(0, 0, -0.02))
-bpy.context.object.name = "Environment | floor"
-bpy.context.object.data.materials.append(floor_material)
+def make_item(item, location, index):
+    kind = item["primitive"]
+    s = max(0.1, float(item["scale"]))
+    base = Vector(location)
+    color = item["color"]
+    primary = material_for(item["color_name"], color)
+    wood = material_for("wood", (0.28, 0.105, 0.035, 1.0))
+    leaf = material_for("foliage", (0.055, 0.31, 0.09, 1.0))
+    roof = material_for("roof", (0.35, 0.055, 0.035, 1.0))
+    glass = material_for("glass", (0.08, 0.48, 0.72, 1.0), 0.22, 0.15)
+    dark = material_for("dark metal", (0.025, 0.035, 0.045, 1.0), 0.32, 0.45)
+    made = []
+    def part(k, off, sc, mat, suffix):
+        obj = add_prim(k, tuple(base + Vector(off) * s), tuple(float(v) * s for v in sc), mat, item["name"] + " | " + suffix)
+        made.append(obj)
+        return obj
+    if kind in ("cube", "uv_sphere", "cylinder", "cone", "torus", "monkey", "rock"):
+        obj = add_prim(kind, location, (s, s, s), primary, item["name"])
+        made.append(obj)
+    elif kind == "tree":
+        part("cylinder", (0, 0, 0.72), (0.20, 0.20, 0.85), wood, "trunk")
+        part("cone", (0, 0, 1.45), (0.95, 0.95, 0.90), leaf, "crown lower")
+        part("cone", (0, 0, 2.00), (0.70, 0.70, 0.78), leaf, "crown middle")
+        part("cone", (0, 0, 2.48), (0.45, 0.45, 0.65), leaf, "crown top")
+    elif kind == "house":
+        part("cube", (0, 0, 0.65), (1.55, 1.30, 1.30), primary, "walls")
+        part("cone", (0, 0, 1.65), (1.25, 1.25, 0.85), roof, "roof")
+        part("cube", (0, -0.665, 0.34), (0.34, 0.08, 0.66), wood, "door")
+        part("cube", (-0.48, -0.67, 0.88), (0.30, 0.07, 0.28), glass, "window left")
+        part("cube", (0.48, -0.67, 0.88), (0.30, 0.07, 0.28), glass, "window right")
+    elif kind == "mountain":
+        part("cone", (0, 0, 1.0), (1.8, 1.5, 2.2), primary, "peak")
+        part("cone", (0.2, -0.35, 1.85), (0.58, 0.50, 0.62), material_for("snow", (0.88, 0.92, 0.96, 1)), "snow cap")
+    elif kind == "cloud":
+        part("uv_sphere", (-0.55, 0, 0), (0.68, 0.52, 0.50), primary, "left puff")
+        part("uv_sphere", (0, 0.05, 0.20), (0.78, 0.62, 0.64), primary, "center puff")
+        part("uv_sphere", (0.58, 0, 0), (0.62, 0.50, 0.45), primary, "right puff")
+    elif kind == "person":
+        part("uv_sphere", (0, 0, 1.68), (0.30, 0.30, 0.30), material_for("skin", (0.72, 0.45, 0.30, 1)), "head")
+        part("cylinder", (0, 0, 1.05), (0.30, 0.25, 0.55), primary, "torso")
+        part("cylinder", (-0.38, 0, 1.05), (0.10, 0.10, 0.45), primary, "left arm")
+        part("cylinder", (0.38, 0, 1.05), (0.10, 0.10, 0.45), primary, "right arm")
+        part("cylinder", (-0.16, 0, 0.38), (0.12, 0.12, 0.42), dark, "left leg")
+        part("cylinder", (0.16, 0, 0.38), (0.12, 0.12, 0.42), dark, "right leg")
+    elif kind == "car":
+        part("cube", (0, 0, 0.48), (1.85, 0.88, 0.48), primary, "body")
+        part("cube", (0.08, 0, 0.83), (0.90, 0.72, 0.42), glass, "cabin")
+        for x in (-0.62, 0.62):
+            for y in (-0.48, 0.48):
+                part("cylinder", (x, y, 0.24), (0.22, 0.22, 0.12), dark, "wheel")
+    elif kind == "table":
+        part("cube", (0, 0, 0.88), (1.55, 1.05, 0.16), primary, "top")
+        for x in (-0.62, 0.62):
+            for y in (-0.38, 0.38): part("cube", (x, y, 0.42), (0.12, 0.12, 0.82), wood, "leg")
+    elif kind == "chair":
+        part("cube", (0, 0, 0.55), (0.85, 0.80, 0.14), primary, "seat")
+        part("cube", (0, 0.34, 1.02), (0.85, 0.12, 0.90), wood, "back")
+        for x in (-0.32, 0.32):
+            for y in (-0.28, 0.28): part("cube", (x, y, 0.27), (0.10, 0.10, 0.52), wood, "leg")
+    elif kind == "lamp":
+        part("cylinder", (0, 0, 0.78), (0.10, 0.10, 1.5), dark, "stand")
+        part("cylinder", (0, 0, 1.58), (0.48, 0.48, 0.22), primary, "shade")
+        part("uv_sphere", (0, 0, 1.43), (0.16, 0.16, 0.16), material_for("lamp glow", (1.0, 0.75, 0.32, 1)), "bulb")
+    elif kind == "bench":
+        part("cube", (0, 0, 0.58), (1.65, 0.50, 0.12), wood, "seat")
+        part("cube", (0, 0.20, 0.92), (1.65, 0.10, 0.62), primary, "back")
+        for x in (-0.62, 0.62): part("cube", (x, 0, 0.28), (0.10, 0.12, 0.55), dark, "leg")
+    elif kind == "flower":
+        part("cylinder", (0, 0, 0.48), (0.06, 0.06, 0.92), leaf, "stem")
+        for j in range(5):
+            a = j * math.tau / 5
+            part("uv_sphere", (math.cos(a)*0.22, math.sin(a)*0.22, 1.0), (0.18, 0.18, 0.15), primary, "petal")
+        part("uv_sphere", (0, 0, 1.0), (0.13, 0.13, 0.13), material_for("flower center", (0.98, 0.66, 0.04, 1)), "center")
+    elif kind == "grass":
+        for j in range(5):
+            a = j * math.tau / 5
+            part("cone", (math.cos(a)*0.14, math.sin(a)*0.14, 0.32), (0.13, 0.13, 0.62), leaf, "blade")
+    elif kind == "road":
+        part("cube", (0, 0, 0.04), (2.2, 0.18, 0.08), dark, "road")
+        for x in (-0.7, 0, 0.7): part("cube", (x, 0, 0.09), (0.25, 0.025, 0.015), material_for("road marking", (0.95,0.88,0.62,1)), "marking")
+    elif kind == "fence":
+        for x in (-0.75, -0.25, 0.25, 0.75): part("cube", (x, 0, 0.40), (0.07, 0.12, 0.80), wood, "post")
+        for z in (0.25, 0.58): part("cube", (0, 0, z), (1.65, 0.10, 0.08), primary, "rail")
+    elif kind == "bed":
+        part("cube", (0, 0, 0.40), (1.9, 1.1, 0.35), wood, "frame")
+        part("cube", (0, 0, 0.63), (1.82, 1.02, 0.18), primary, "mattress")
+        part("cube", (-0.55, 0.28, 0.78), (0.42, 0.36, 0.10), material_for("pillow", (0.92,0.90,0.82,1)), "pillow")
+    elif kind == "book":
+        part("cube", (0, 0, 0.10), (0.95, 0.68, 0.18), primary, "cover")
+        part("cube", (0, -0.01, 0.20), (0.86, 0.62, 0.035), material_for("paper", (0.91,0.86,0.72,1)), "pages")
+    elif kind == "mug":
+        part("cylinder", (0, 0, 0.35), (0.48, 0.48, 0.68), primary, "cup")
+        part("torus", (0.48, 0, 0.38), (0.24, 0.24, 0.08), primary, "handle")
+    elif kind == "bottle":
+        part("cylinder", (0, 0, 0.45), (0.38, 0.38, 0.82), primary, "body")
+        part("cylinder", (0, 0, 0.98), (0.16, 0.16, 0.30), primary, "neck")
+        part("cylinder", (0, 0, 1.15), (0.18, 0.18, 0.08), dark, "cap")
+    elif kind == "smartphone":
+        part("cube", (0, 0, 0.08), (0.55, 0.08, 1.05), dark, "body")
+        part("cube", (0, -0.05, 0.08), (0.47, 0.018, 0.88), glass, "screen")
+    elif kind == "rocket":
+        part("cylinder", (0, 0, 0.60), (0.38, 0.38, 1.35), primary, "body")
+        part("cone", (0, 0, 1.45), (0.38, 0.38, 0.55), roof, "nose")
+        for x in (-0.32, 0.32): part("cone", (x, 0, 0.12), (0.20, 0.20, 0.55), roof, "fin")
+    elif kind in ("sun", "moon", "star"):
+        obj = add_prim("uv_sphere" if kind != "star" else "rock", location, (s, s, s), primary, item["name"])
+        made.append(obj)
+    return made
 
-center_x = 0.0
+def _grid_location(index, total, aspect, layout):
+    if layout == "circle":
+        angle = math.tau * index / max(1, total)
+        return (math.cos(angle) * max(2.0, total * 0.28), math.sin(angle) * max(2.0, total * 0.28), 1.0)
+    if layout == "grid" or (layout == "auto" and aspect == "1:1"):
+        columns = max(1, math.ceil(math.sqrt(total)))
+        rows = math.ceil(total / columns)
+        return ((index % columns - (columns - 1) / 2) * 2.7,
+                ((index // columns) - (rows - 1) / 2) * 2.7, 0.8)
+    if aspect == "9:16":
+        return (0.0, 0.0, 0.8 + index * 2.5)
+    if layout == "line" or layout == "auto":
+        return ((index - (total - 1) / 2) * 2.7, 0.0, 0.8)
+    columns = max(1, math.ceil(math.sqrt(total)))
+    rows = math.ceil(total / columns)
+    return ((index % columns - (columns - 1) / 2) * 2.7,
+            ((index // columns) - (rows - 1) / 2) * 2.7, 0.8)
+
+for index, item in enumerate(cfg["objects"]):
+    loc = _grid_location(index, len(cfg["objects"]), cfg["aspect_ratio"], cfg.get("layout", "auto"))
+    make_item(item, loc, index)
+
+# Build a simple environment from the prompt without external assets.
+environment = cfg.get("environment", "auto")
+style = cfg.get("style", "balanced")
+lighting = cfg.get("lighting", "soft")
+floor_color = (0.12, 0.14, 0.17, 1.0)
+if environment == "forest": floor_color = (0.055, 0.20, 0.065, 1.0)
+elif environment == "island": floor_color = (0.78, 0.62, 0.32, 1.0)
+elif environment == "mountains": floor_color = (0.18, 0.22, 0.19, 1.0)
+elif environment == "room": floor_color = (0.28, 0.23, 0.18, 1.0)
+elif environment == "city": floor_color = (0.18, 0.19, 0.21, 1.0)
+elif style == "minimal": floor_color = (0.78, 0.80, 0.82, 1.0)
+floor_material = material_for("environment floor", floor_color)
+if cfg.get("ground", True):
+    bpy.ops.mesh.primitive_plane_add(size=max(22.0, len(cfg["objects"]) * 4.0), location=(0, 0, -0.03))
+    bpy.context.object.name = "Environment | floor"
+    bpy.context.object.data.materials.append(floor_material)
+
+if environment == "room":
+    wall_mat = material_for("room walls", (0.72, 0.72, 0.69, 1.0))
+    for loc, scale in [((0, 5, 3), (12, 0.15, 6)), ((-6, 0, 3), (0.15, 10, 6))]:
+        bpy.ops.mesh.primitive_cube_add(size=1, location=loc)
+        wall = bpy.context.object
+        wall.name = "Environment | wall"
+        wall.scale = scale
+        wall.data.materials.append(wall_mat)
+elif environment == "forest":
+    for j, (x, y) in enumerate([(-7, 3), (-5, 6), (-2, 5), (2, 6), (5, 4), (7, 1), (-7, -3), (7, -4)]):
+        make_item({"primitive":"tree","scale":0.8,"color_name":"green","color":[0.055,0.31,0.09,1],"name":"Background tree %02d" % j}, (x,y,0), j)
+elif environment == "city":
+    for j, (x, y, h) in enumerate([(-8,4,3),(-6,5,5),(6,5,4),(8,3,6),(-8,-3,4),(8,-4,3)]):
+        bmat = material_for("building %d" % j, (0.19 + 0.025*j, 0.22 + 0.02*j, 0.27 + 0.02*j, 1.0))
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(x,y,h/2))
+        building = bpy.context.object
+        building.name = "Environment | building %02d" % j
+        building.scale = (1.4,1.4,h)
+        building.data.materials.append(bmat)
+elif environment == "space":
+    star_mat = material_for("starlight", (0.85,0.90,1.0,1.0), 0.2)
+    for j, (x,y,z) in enumerate([(-7,3,5),(-5,6,7),(-2,4,6),(3,6,5),(6,3,7),(7,-2,5),(-6,-4,6),(1,-5,7)]):
+        add_prim("uv_sphere",(x,y,z),(.07,.07,.07),star_mat,"Environment | star %02d" % j)
+elif environment == "island":
+    water = material_for("ocean", (0.025,0.20,0.34,1.0), 0.28, 0.05)
+    bpy.ops.mesh.primitive_plane_add(size=45, location=(0,0,-0.20))
+    bpy.context.object.name = "Environment | ocean"
+    bpy.context.object.data.materials.append(water)
+elif environment == "mountains":
+    for j, (x,y,h) in enumerate([(-7,5,4),(-4,7,5),(4,7,4),(7,4,6),(-8,-1,3),(8,-2,4)]):
+        add_prim("cone",(x,y,h/2),(2.6,2.4,h),material_for("distant mountain", (0.20,0.25,0.27,1.0)),"Environment | mountain %02d" % j)
+
+total = max(1, len(cfg["objects"]))
+camera_distance = max(10.0, total * (1.6 if cfg["aspect_ratio"] != "9:16" else 0.75))
 if cfg["aspect_ratio"] == "9:16":
-    target_height = (len(cfg["objects"]) - 1) * 1.0 + 1.0
-    camera_location = (7.0, -13.0, target_height + 4.0)
+    target_height = (total - 1) * 1.15 + 1.0
+    camera_location = (camera_distance * 0.45, -camera_distance, target_height + 3.0)
     target = Vector((0.0, 0.0, target_height))
-elif cfg["aspect_ratio"] == "1:1":
-    camera_distance = max(10.0, math.sqrt(len(cfg["objects"])) * 5.0)
-    camera_location = (camera_distance * 0.65, -camera_distance, camera_distance * 0.65)
-    target = Vector((0.0, 0.0, 0.8))
 else:
-    camera_distance = max(10.0, len(cfg["objects"]) * 1.2)
-    camera_location = (camera_distance * 0.55, -camera_distance * 0.85, camera_distance * 0.65)
-    target = Vector((0.0, 0.0, 0.8))
+    camera_location = (camera_distance * 0.55, -camera_distance * 0.95, camera_distance * 0.68)
+    target = Vector((0.0, 0.0, 0.9))
 bpy.ops.object.camera_add(location=camera_location)
 camera = bpy.context.object
 camera.name = "Camera | generated scene"
@@ -270,7 +354,27 @@ scene.render.resolution_percentage = cfg["render_percentage"]
 scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_mode = "RGBA"
 scene.render.filepath = os.path.join(out_dir, "scene_preview.png")
-scene.world.color = (0.055, 0.055, 0.055)
+scene.world.color = tuple(cfg.get("world_color", [0.055, 0.055, 0.055, 1.0])[:3])
+animation = cfg.get("animation", {})
+if animation.get("enabled"):
+    scene.frame_start = 1
+    scene.frame_end = max(24, min(240, int(animation.get("frames", 120))))
+    animated = [obj for obj in scene.objects if obj.name.startswith(tuple(item["name"] for item in cfg["objects"]))]
+    for obj in animated:
+        obj.location = obj.location.copy()
+        obj.keyframe_insert(data_path="location", frame=scene.frame_start)
+        obj.rotation_euler = obj.rotation_euler.copy()
+        obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_start)
+        if animation.get("kind") == "rotate":
+            obj.rotation_euler.z += math.tau
+        elif animation.get("kind") == "move":
+            obj.location.x += 2.0
+            obj.location.z += 0.7
+        else:
+            obj.location.z += 1.5
+        obj.keyframe_insert(data_path="location", frame=scene.frame_end)
+        obj.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
+    scene.frame_set(1)
 blend_path = os.path.join(out_dir, "scene.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend_path)
 bpy.ops.render.render(write_still=True)
@@ -283,7 +387,7 @@ with open(os.path.join(out_dir, "scene_result.json"), "w", encoding="utf-8") as 
         "engine": scene.render.engine,
         "object_count": len(scene.objects),
         "generated_object_count": len(cfg["objects"]),
-        "aspect_ratio": cfg["aspect_ratio"],
+        "aspect_ratio": cfg["aspect_ratio"],\n        "environment": cfg.get("environment", "auto"),\n        "style": cfg.get("style", "balanced"),\n        "lighting": cfg.get("lighting", "soft"),\n        "animation_enabled": bool(cfg.get("animation", {}).get("enabled")),
     }, stream, ensure_ascii=False)
 '''
 
