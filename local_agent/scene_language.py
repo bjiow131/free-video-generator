@@ -189,6 +189,19 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
                 "star": ("gold", (0.83, 0.53, 0.12, 1.0)),
                 "table": ("brown", (0.28, 0.11, 0.035, 1.0)),
                 "chair": ("brown", (0.28, 0.11, 0.035, 1.0)),
+                "snail": ("orange", (0.78, 0.34, 0.08, 1.0)),
+                "scooter": ("yellow", (0.95, 0.58, 0.025, 1.0)),
+                "bicycle": ("red", (0.80, 0.035, 0.025, 1.0)),
+                "fish": ("orange", (1.0, 0.30, 0.06, 1.0)),
+                "cactus": ("green", (0.055, 0.31, 0.09, 1.0)),
+                "snowman": ("white", (0.88, 0.90, 0.94, 1.0)),
+                "castle": ("gray", (0.42, 0.45, 0.50, 1.0)),
+                "sofa": ("purple", (0.38, 0.07, 0.68, 1.0)),
+                "submarine": ("yellow", (0.95, 0.58, 0.025, 1.0)),
+                "coral": ("pink", (0.95, 0.12, 0.42, 1.0)),
+                "swing": ("blue", (0.025, 0.18, 0.85, 1.0)),
+                "slide": ("red", (0.80, 0.035, 0.025, 1.0)),
+                "mia": ("orange", (0.85, 0.25, 0.08, 1.0)),
             }
             color_name, rgba = defaults.get(kind, (color_name, rgba))
         for _ in range(count):
