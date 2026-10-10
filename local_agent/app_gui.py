@@ -23,7 +23,7 @@ from local_agent.scene_edit import SceneEditError, edit_existing_scene
 from local_agent.video_export import PRESETS as VIDEO_PRESETS, VideoExportError, export_animation_to_mp4
 from local_agent.update_manager import apply_update_archive, UpdateError
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 APP_TITLE = "Blender Work Agent"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -313,6 +313,9 @@ class BlenderAgentApp(tk.Tk):
             messagebox.showwarning("Слишком длинное задание", f"Максимум {PROMPT_LIMIT} символов в этой версии.", parent=self)
             return
         selected_characters = self._selected_character_cards() if not self.active_project else []
+        if len(selected_characters) > 8:
+            messagebox.showwarning("Слишком много персонажей", "Для одной сцены пока можно выбрать не более 8 персонажей.", parent=self)
+            return
         character_summary = ""
         if selected_characters:
             character_summary = "\n\nПерсонажи из карточек: " + ", ".join(card["name"] for card in selected_characters)
@@ -417,6 +420,11 @@ class BlenderAgentApp(tk.Tk):
             self.character_tree.focus(select_id)
             self._select_character()
         self._refresh_character_choices()
+        for card in self._load_characters():
+            frame = self.reference_tabs.get(card.get("id"))
+            if frame is not None and frame.winfo_exists():
+                self.tabs.tab(frame, text=f"Референсы: {card.get('name', 'Персонаж')}"[:32])
+                self._refresh_reference_tab(card)
 
     def _refresh_character_choices(self) -> None:
         if not hasattr(self, "character_selection_list"):
@@ -437,7 +445,7 @@ class BlenderAgentApp(tk.Tk):
         ids = [self._character_choice_ids[i] for i in self.character_selection_list.curselection()
                if i < len(self._character_choice_ids)]
         by_id = {card.get("id"): card for card in self._load_characters()}
-        return [by_id[card_id] for card_id in ids if card_id in by_id][:8]
+        return [by_id[card_id] for card_id in ids if card_id in by_id]
 
     def _open_selected_character_card(self, _event=None) -> None:
         cards = self._selected_character_cards()
@@ -631,6 +639,10 @@ class BlenderAgentApp(tk.Tk):
         if not card: return
         if not messagebox.askyesno("Удалить карточку", f"Удалить карточку «{card['name']}»? Изображения останутся на диске.", parent=self): return
         self._save_characters([item for item in self._load_characters() if item["id"] != card["id"]])
+        frame = self.reference_tabs.pop(card["id"], None)
+        if frame is not None and frame.winfo_exists():
+            self.tabs.forget(frame)
+            frame.destroy()
         self._refresh_characters()
         self.character_detail.delete("1.0", "end")
 
