@@ -605,12 +605,12 @@ def _reference_indices_for_character(card: dict[str, Any], prompt: str,
         other = str(other).strip().casefold()
         if not other:
             continue
-        candidates = [other]
         if len(other) >= 5:
-            candidates.append(other[:-1])
-        for candidate in candidates:
-            for found in re.finditer(r"(?<![\w])" + re.escape(candidate) + r"(?![\w])", text):
-                mentions.append((found.start(), found.end(), other))
+            pattern = r"(?<![\w])(?:" + re.escape(other) + r"|" + re.escape(other[:-1]) + r"[а-яё]{0,3})(?![\w])"
+        else:
+            pattern = r"(?<![\w])" + re.escape(other) + r"(?![\w])"
+        for found in re.finditer(pattern, text):
+            mentions.append((found.start(), found.end(), other))
     mentions.sort()
     if name_at >= 0:
         own_end = name_at + len(name.casefold())
