@@ -55,7 +55,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/2] No scene will be created without your confirmation.
+echo [2/2] Blender will open in its visible GUI for the task.
 choice /C YN /N /M "Create the current Blender forest preview now? [Y/N] "
 if errorlevel 2 goto done
 
