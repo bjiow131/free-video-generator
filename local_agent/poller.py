@@ -22,9 +22,19 @@ from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
+from local_agent.result_outbox import ResultOutbox
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
+
+
+def _result_outbox() -> ResultOutbox:
+    return ResultOutbox(ROOT / ".local_agent" / "pending_results")
+
+
+def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
+    """Persist each result before publishing it; retain it if the network fails."""
+    return _result_outbox().publish(client, task_id, result)
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
     "preflight": preflight,
@@ -384,7 +394,7 @@ def _not_expired(task: Any) -> bool:
 
 def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | None = None) -> None:
     if not _not_expired(task):
-        client.publish_result(task.task_id, {
+        _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"
         })
         return
@@ -607,6 +617,9 @@ def main() -> int:
     try:
         while True:
             try:
+                pending_results = _result_outbox().flush(client)
+                if pending_results["published"] or pending_results["invalid"]:
+                    print(f"Pending results: published={pending_results['published']}, deferred={pending_results['deferred']}, invalid={pending_results['invalid']}")
                 fetched = client.fetch_desired_task()
                 if fetched is not None:
                     task, manifest_sha = fetched
