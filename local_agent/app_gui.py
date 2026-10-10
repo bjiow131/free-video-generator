@@ -210,6 +210,59 @@ class BlenderAgentApp(tk.Tk):
             except OSError as exc:
                 messagebox.showerror("Ошибка запуска Blender", f"Не удалось открыть Blender: {exc}", parent=self)
 
+    def _export_video(self) -> None:
+        project = self.active_project
+        if not project or not project.is_file():
+            chosen = filedialog.askopenfilename(title="Выберите анимированный проект Blender", filetypes=[("Blender project", "*.blend")], parent=self)
+            if not chosen:
+                return
+            project = Path(chosen).expanduser().resolve()
+        preset = simpledialog.askstring("Экспорт видео", "Введите платформу: TikTok, YouTube, YouTube Shorts или Instagram Reels", initialvalue="YouTube Shorts", parent=self)
+        if not preset:
+            return
+        preset = preset.strip()
+        if preset not in VIDEO_PRESETS:
+            messagebox.showerror("Неизвестный формат", "Выберите: " + ", ".join(VIDEO_PRESETS), parent=self)
+            return
+        details = VIDEO_PRESETS[preset]
+        default_name = project.stem + "_" + preset.lower().replace(" ", "_") + ".mp4"
+        destination = filedialog.asksaveasfilename(title="Сохранить готовое видео", defaultextension=".mp4", initialfile=default_name, filetypes=[("MP4 video", "*.mp4")], parent=self)
+        if not destination:
+            return
+        output = Path(destination).expanduser().resolve()
+        if output.exists():
+            messagebox.showerror("Файл уже существует", "Выберите другое имя, чтобы не перезаписать готовое видео.", parent=self)
+            return
+        if not self._ask_confirm(f"Платформа: {preset}\nРазрешение: {details['resolution'][0]} × {details['resolution'][1]}\nПроект: {project}\nВидео: {output}"):
+            return
+        self._busy = True
+        self.create_btn.configure(state="disabled")
+        self._set_status("Рендер видео выполняется в Blender…")
+        threading.Thread(target=self._run_video_export, args=(project, output, preset), daemon=True).start()
+
+    def _run_video_export(self, project: Path, output: Path, preset: str) -> None:
+        try:
+            blender_info = discover_blender()
+            if not blender_info.get("available"):
+                raise VideoExportError("Blender не найден. Проверьте настройки запуска.")
+            result = export_animation_to_mp4(project, output, preset, blender_info["path"])
+            self.after(0, lambda: self._video_export_success(result))
+        except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            self.after(0, lambda msg=message: self._video_export_failed(msg))
+
+    def _video_export_success(self, result: dict) -> None:
+        self._busy = False
+        self.create_btn.configure(state="normal")
+        self._set_status("Видео экспортировано: " + result["output_path"])
+        messagebox.showinfo("Видео готово", f'Платформа: {result["preset"]}\nФайл: {result["output_path"]}\nРазрешение: {result["resolution"][0]} × {result["resolution"][1]}\nFPS: {result["fps"]}\nЛог: {result["log_path"]}', parent=self)
+
+    def _video_export_failed(self, message: str) -> None:
+        self._busy = False
+        self.create_btn.configure(state="normal")
+        self._set_status("Экспорт видео не выполнен.")
+        messagebox.showerror("Не удалось экспортировать видео", message, parent=self)
+
     def _clear_project(self) -> None:
         self.active_project = None
         self.project_label_var.set("Новый проект: задание будет обработано как создание сцены.")
