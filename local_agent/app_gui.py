@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from local_agent.blender_workflow import discover_blender
 from local_agent.scene_request import SceneRequestError, create_scene_from_prompt
 from local_agent.scene_edit import SceneEditError, edit_existing_scene
-from local_agent.update_manager import apply_update_folder, UpdateError
+from local_agent.update_manager import apply_update_archive, UpdateError
 
 APP_VERSION = "0.2.0"
 APP_TITLE = "Blender Work Agent"
@@ -166,7 +166,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(panel, text="Обновление отдельными файлами", style="Title.TLabel").pack(anchor="w")
         ttk.Label(panel, text="Обновление устанавливается из локальной папки: агент создаёт резервные копии изменяемых файлов, проверяет пути и не удаляет проекты. После обновления приложение нужно перезапустить.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(8, 12))
         ttk.Label(panel, text=f"Версия интерфейса: {APP_VERSION}", style="PanelTitle.TLabel").pack(anchor="w")
-        ttk.Label(panel, text="Ожидаемая структура папки обновления: update_manifest.json и файлы внутри payload/. В манифесте перечислены только новые или заменяемые файлы.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(6, 12))
+        ttk.Label(panel, text="Выбери ZIP-пакет обновления с update_manifest.json и файлами внутри payload/. В манифесте перечислены только новые или заменяемые файлы.", background="#ffffff", wraplength=850).pack(anchor="w", pady=(6, 12))
         ttk.Button(panel, text="Установить обновление из папки…", command=self._apply_update).pack(anchor="w")
         ttk.Button(panel, text="Открыть папку агента", command=self._open_agent_folder).pack(anchor="w", pady=(8, 0))
         ttk.Label(self.update_tab, text="Обновление кода не требует переустановки Python/Blender. Не закрывайте приложение до завершения резервного копирования.", wraplength=850).pack(anchor="w", pady=(14, 0))
@@ -406,7 +406,7 @@ class BlenderAgentApp(tk.Tk):
         if not folder: return
         if not messagebox.askyesno("Установить обновление", "Будут заменены только перечисленные файлы агента. Перед заменой создаются резервные копии. Продолжить?", parent=self): return
         try:
-            result = apply_update_folder(Path(folder), Path(__file__).resolve().parents[1])
+            result = apply_update_archive(Path(archive), Path(__file__).resolve().parents[1])
         except (UpdateError, OSError) as exc:
             messagebox.showerror("Обновление отклонено", str(exc), parent=self); return
         messagebox.showinfo("Обновление установлено", f"Файлов обновлено: {result['updated_count']}\nРезервные копии: {result['backup_dir']}\nПерезапустите агент.", parent=self)
