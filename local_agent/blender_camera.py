@@ -52,9 +52,6 @@ target=sum(points,Vector((0,0,0)))/len(points) if points else Vector((0,0,1))
 if not points: target=Vector((0,0,1))
 spec=cfg["spec"]
 distance=spec["distance"]
-if preset=="portrait_vertical":
-    scene.render.resolution_x=360; scene.render.resolution_y=640
-    scene.render.resolution_percentage=100
 camera=scene.camera
 if camera is None:
     bpy.ops.object.camera_add()
@@ -93,11 +90,14 @@ if camera.animation_data and camera.animation_data.action:
     for fc in camera.animation_data.action.fcurves:
         for key in fc.keyframe_points: key.interpolation="BEZIER"
 scene.frame_set(scene.frame_start)
+original_settings=(scene.render.resolution_x,scene.render.resolution_y,scene.render.resolution_percentage,scene.render.filepath)
 scene.render.image_settings.file_format="PNG"
 scene.render.filepath=preview
 scene.render.resolution_percentage=min(scene.render.resolution_percentage,50)
 bpy.ops.wm.save_as_mainfile(filepath=out)
 bpy.ops.render.render(write_still=True)
+scene.render.resolution_x,scene.render.resolution_y,scene.render.resolution_percentage,scene.render.filepath=original_settings
+bpy.ops.wm.save_as_mainfile(filepath=out)
 data={"status":"completed","source":src,"output":out,"preview":preview,
       "camera":camera.name,"preset":preset,"move":move,"frames":[scene.frame_start,scene.frame_start+frames-1],
       "lens_mm":camera.data.lens,"resolution":[scene.render.resolution_x,scene.render.resolution_y],
