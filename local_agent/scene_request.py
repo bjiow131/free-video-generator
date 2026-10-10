@@ -745,5 +745,5 @@ def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds:
     manifest["character_reference_paths"] = {
         item["id"]: item.get("references", []) for item in plan.get("selected_characters", [])
     }
-    (project / "scene_result.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    (project / "scene_result.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return manifest
