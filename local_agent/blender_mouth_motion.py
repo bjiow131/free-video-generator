@@ -149,6 +149,31 @@ def apply_mouth_motion(project_name: str) -> dict[str, Any]:
                 or isinstance(cue.get("frame_end"), bool) or not isinstance(cue.get("frame_end"), int)
                 or cue["frame_start"] < 1 or cue["frame_end"] < cue["frame_start"]):
             return {"status": "blocked", "reason": "invalid_mouth_motion_cue"}
+    # Gate speech animation on a fresh facial-rig audit of the exact source file.
+    from local_agent.blender_face_rig_check import check_face_rig
+    preflight = check_face_rig(
+        project_name, source.name,
+        report_name="face_rig_preflight_for_mouth_motion.json",
+    )
+    if preflight.get("status") != "ready":
+        return {
+            "status": "blocked",
+            "reason": "facial_rig_preflight_not_ready",
+            "preflight": preflight,
+            "next_step": "Fix the listed rig issues and rerun face-rig-check before creating speech animation.",
+        }
+    supported = re.compile(r"(mouth.?open|open.?mouth|jaw.?open|рот.?открыт|открыт.?рот|челюсть.?откр)", re.I)
+    supported_controls = [
+        item for item in preflight.get("shape_keys", [])
+        if isinstance(item, dict) and supported.search(str(item.get("control", "")))
+    ]
+    if not supported_controls:
+        return {
+            "status": "blocked",
+            "reason": "no_supported_mouth_open_shape_key",
+            "preflight": preflight,
+            "next_step": "Add a shape key named mouth_open (or рот_открыт), then rerun the face-rig check.",
+        }
     cfg = {"source": str(source), "output": str(output), "report": str(report), "cues": cues}
     try:
         with tempfile.TemporaryDirectory(prefix=".mouth-motion-", dir=project) as temp:
