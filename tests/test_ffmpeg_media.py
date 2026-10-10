@@ -261,3 +261,24 @@ def test_failed_frame_extraction_preserves_existing_target(tmp_path, monkeypatch
 
     assert target.read_bytes() == b"previous valid frame"
     assert not list(tmp_path.glob("frame_*.png"))
+
+
+def test_failed_concat_preserves_existing_final_video(tmp_path, monkeypatch):
+    first = tmp_path / "first.mp4"
+    second = tmp_path / "second.mp4"
+    first.write_bytes(b"first source")
+    second.write_bytes(b"second source")
+    target = tmp_path / "final.mp4"
+    target.write_bytes(b"previous final video")
+
+    def fake_run(args, **kwargs):
+        if args[0] == "ffprobe":
+            return completed(json.dumps(probe_result()))
+        return completed(returncode=1, stderr="simulated concat failure")
+
+    monkeypatch.setattr("local_agent.ffmpeg_media.subprocess.run", fake_run)
+    with pytest.raises(MediaError, match="failed"):
+        FFmpegMediaTools().concatenate([str(first), str(second)], str(target))
+
+    assert target.read_bytes() == b"previous final video"
+    assert not list(tmp_path.glob("concat_output_*.mp4"))
