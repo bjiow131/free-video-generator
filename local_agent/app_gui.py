@@ -419,18 +419,20 @@ class BlenderAgentApp(tk.Tk):
             self.character_tree.selection_set(select_id)
             self.character_tree.focus(select_id)
             self._select_character()
-        self._refresh_character_choices()
+        self._refresh_character_choices(select_id)
         for card in self._load_characters():
             frame = self.reference_tabs.get(card.get("id"))
             if frame is not None and frame.winfo_exists():
                 self.tabs.tab(frame, text=f"Референсы: {card.get('name', 'Персонаж')}"[:32])
                 self._refresh_reference_tab(card)
 
-    def _refresh_character_choices(self) -> None:
+    def _refresh_character_choices(self, select_id: str | None = None) -> None:
         if not hasattr(self, "character_selection_list"):
             return
         selected_ids = {self._character_choice_ids[i] for i in self.character_selection_list.curselection()
                         if i < len(getattr(self, "_character_choice_ids", []))}
+        if select_id:
+            selected_ids.add(select_id)
         cards = [card for card in self._load_characters() if card.get("kind", "Персонаж") != "Референс"]
         self._character_choice_ids = []
         self.character_selection_list.delete(0, "end")
