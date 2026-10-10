@@ -164,3 +164,38 @@ def test_malformed_later_cue_does_not_partially_animate_earlier_speaker():
             frame_end=240,
         )
     assert key.inserted == []
+
+
+def test_character_objects_are_indexed_only_by_explicit_stable_id():
+    from local_agent.blender_dialogue import index_character_objects_by_speaker
+
+    class TaggedObject:
+        def __init__(self, name, character_id, object_type="MESH"):
+            self.name = name
+            self.type = object_type
+            self._props = {"local_agent_character_id": character_id}
+
+        def get(self, key):
+            return self._props.get(key)
+
+    mia_head = TaggedObject("Head", "char.mia.master")
+    mia_body = TaggedObject("Body", "char.mia.master")
+    untagged = TaggedObject("Stepa | Head", None)
+    camera = TaggedObject("Camera", "char.stepa.master", "CAMERA")
+
+    result = index_character_objects_by_speaker([mia_head, mia_body, untagged, camera])
+
+    assert result["status"] == "indexed"
+    assert result["character_count"] == 1
+    assert result["characters"]["char.mia.master"] == [mia_head, mia_body]
+    assert result["indexed_object_count"] == 2
+    assert result["unindexed_objects"] == ["Stepa | Head"]
+    assert result["non_mesh_objects"] == ["Camera"]
+
+
+def test_character_index_rejects_unsafe_custom_property_name():
+    from local_agent.blender_dialogue import index_character_objects_by_speaker
+
+    result = index_character_objects_by_speaker([], id_property="bad[property]")
+    assert result["status"] == "rejected"
+    assert result["reason"] == "invalid_id_property"
