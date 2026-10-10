@@ -407,6 +407,27 @@ elif environment == "island":
 elif environment == "mountains":
     for j, (x,y,h) in enumerate([(-7,5,4),(-4,7,5),(4,7,4),(7,4,6),(-8,-1,3),(8,-2,4)]):
         add_prim("cone",(x,y,h/2),(2.6,2.4,h),material_for("distant mountain", (0.20,0.25,0.27,1.0)),"Environment | mountain %02d" % j)
+elif environment == "underwater":
+    for j, (x,y) in enumerate([(-6,3),(-4,-3),(4,4),(6,-2)]):
+        make_item({"primitive":"coral","scale":0.8,"color_name":"pink","color":[0.92,0.12,0.34,1],"name":"Background coral %02d" % j}, (x,y,0), j)
+    for j, (x,y,z) in enumerate([(-4,1,2),(3,2,3),(5,-3,2)]):
+        make_item({"primitive":"fish","scale":0.65,"color_name":"orange","color":[1.0,0.30,0.06,1],"name":"Background fish %02d" % j}, (x,y,z), j)
+elif environment == "desert":
+    sand = material_for("dune sand",(0.78,0.55,0.29,1.0))
+    for j, (x,y,h) in enumerate([(-7,4,2.8),(-4,7,3.6),(5,6,3.2),(8,1,2.4),(-8,-3,2.2)]):
+        add_prim("cone",(x,y,h/2),(3.5,2.4,h),sand,"Environment | dune %02d" % j)
+elif environment == "winter":
+    for j, (x,y) in enumerate([(-7,3),(-5,5),(5,5),(7,2),(-7,-3),(7,-4)]):
+        make_item({"primitive":"tree","scale":0.8,"color_name":"green","color":[0.055,0.22,0.12,1],"name":"Snowy tree %02d" % j}, (x,y,0), j)
+elif environment == "village":
+    for j, (x,y) in enumerate([(-7,3),(-4,5),(5,5),(7,2),(-7,-3),(7,-4)]):
+        make_item({"primitive":"house","scale":0.7,"color_name":"brown","color":[0.42,0.24,0.12,1],"name":"Village house %02d" % j}, (x,y,0), j)
+elif environment == "playground":
+    for j, (x,y) in enumerate([(-6,3),(6,3),(-6,-3),(6,-3)]):
+        make_item({"primitive":"tree","scale":0.7,"color_name":"green","color":[0.055,0.31,0.09,1],"name":"Playground tree %02d" % j}, (x,y,0), j)
+elif environment == "fantasy":
+    for j, (x,y,z) in enumerate([(-7,4,4),(-4,6,5),(5,6,5),(8,2,4)]):
+        add_prim("cone",(x,y,z/2),(2.5,2.5,z),material_for("fantasy mountain",(0.16,0.12,0.30,1)),"Fantasy | mountain %02d" % j)
 
 total = max(1, len(cfg["objects"]))
 camera_distance = max(10.0, total * (1.6 if cfg["aspect_ratio"] != "9:16" else 0.75))
