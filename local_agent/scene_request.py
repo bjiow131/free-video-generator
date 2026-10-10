@@ -158,11 +158,19 @@ def parse_scene_request(prompt: str) -> dict[str, Any]:
 
 
 _BLENDER_SCRIPT = r'''
-import bpy, json, math, os, sys
+import bpy, json, math, os, sys, traceback
 from mathutils import Vector
 args = sys.argv[sys.argv.index("--") + 1:]
 with open(args[0], "r", encoding="utf-8") as stream:
     cfg = json.load(stream)
+def _agent_excepthook(exc_type, exc, tb):
+    try:
+        with open(os.path.join(cfg["output_dir"], "scene_result.json"), "w", encoding="utf-8") as stream:
+            json.dump({"status": "failed", "error": str(exc), "error_type": getattr(exc_type, "__name__", "Exception")}, stream, ensure_ascii=False)
+    except Exception:
+        pass
+    traceback.print_exception(exc_type, exc, tb)
+sys.excepthook = _agent_excepthook
 out_dir = os.path.realpath(cfg["output_dir"])
 os.makedirs(out_dir, exist_ok=True)
 scene = bpy.context.scene
@@ -338,6 +346,8 @@ def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds:
                         manifest = {}
                     if manifest.get("status") == "completed":
                         break
+                    if manifest.get("status") == "failed":
+                        raise SceneRequestError("Blender отклонил создание сцены: " + str(manifest.get("error", "неизвестная ошибка"))[:1800])
                 code = process.poll()
                 if code is not None:
                     tail = ""
