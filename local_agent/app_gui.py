@@ -44,8 +44,8 @@ class BlenderAgentApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(f"{APP_TITLE} · {APP_VERSION}")
-        self.geometry("1060x760")
-        self.minsize(850, 620)
+        self.geometry("1180x820")
+        self.minsize(940, 700)
         self.configure(bg="#eef1f4")
         self.workspace = DEFAULT_WORKSPACE.expanduser()
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -59,33 +59,61 @@ class BlenderAgentApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._close)
 
     def _build_styles(self) -> None:
+        # Calm editorial studio palette: ink, porcelain and a restrained violet accent.
+        self.colors = {
+            "canvas": "#F3F5FA", "surface": "#FFFFFF", "surface_alt": "#F8F9FD",
+            "ink": "#182238", "muted": "#69758B", "line": "#E2E7F0",
+            "accent": "#6558E8", "accent_hover": "#5145D2", "accent_soft": "#EEECFF",
+            "success": "#16836B", "danger": "#C64C5B", "header": "#171D32",
+        }
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("TFrame", background="#eef1f4")
-        style.configure("Panel.TFrame", background="#ffffff")
-        style.configure("TLabel", background="#eef1f4", foreground="#263341", font=("Segoe UI", 10))
-        style.configure("Title.TLabel", font=("Segoe UI Semibold", 19), foreground="#152536")
-        style.configure("Subtitle.TLabel", font=("Segoe UI", 10), foreground="#617080")
-        style.configure("PanelTitle.TLabel", background="#ffffff", font=("Segoe UI Semibold", 11), foreground="#233445")
-        style.configure("TButton", font=("Segoe UI", 10), padding=(12, 8))
-        style.configure("Accent.TButton", font=("Segoe UI Semibold", 10), padding=(16, 9))
-        style.configure("TNotebook", background="#eef1f4", borderwidth=0)
-        style.configure("TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(18, 10))
-        style.configure("Treeview", rowheight=28, font=("Segoe UI", 10))
-        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10))
+        palette = self.colors
+        self.configure(bg=palette["canvas"])
+        style.configure(".", font=("Segoe UI", 10), foreground=palette["ink"])
+        style.configure("TFrame", background=palette["canvas"])
+        style.configure("Panel.TFrame", background=palette["surface"])
+        style.configure("Inset.TFrame", background=palette["surface_alt"])
+        style.configure("TLabel", background=palette["canvas"], foreground=palette["ink"], font=("Segoe UI", 10))
+        style.configure("Title.TLabel", font=("Segoe UI Semibold", 22), foreground=palette["ink"])
+        style.configure("Subtitle.TLabel", font=("Segoe UI", 9), foreground=palette["muted"])
+        style.configure("PanelTitle.TLabel", background=palette["surface"], font=("Segoe UI Semibold", 11), foreground=palette["ink"])
+        style.configure("Eyebrow.TLabel", background=palette["surface"], foreground=palette["accent"], font=("Segoe UI Semibold", 9))
+        style.configure("Header.TFrame", background=palette["header"])
+        style.configure("HeaderTitle.TLabel", background=palette["header"], foreground="#FFFFFF", font=("Segoe UI Semibold", 19))
+        style.configure("HeaderSubtitle.TLabel", background=palette["header"], foreground="#B8C0D4", font=("Segoe UI", 9))
+        style.configure("Badge.TLabel", background="#282F49", foreground="#E5E8F5", padding=(12, 7), font=("Segoe UI Semibold", 9))
+        style.configure("TButton", font=("Segoe UI Semibold", 9), padding=(12, 8), background=palette["surface"], foreground=palette["ink"], bordercolor=palette["line"], focusthickness=0)
+        style.map("TButton", background=[("active", palette["accent_soft"]), ("pressed", palette["accent_soft"])], foreground=[("active", palette["accent"])])
+        style.configure("Accent.TButton", font=("Segoe UI Semibold", 10), padding=(16, 10), background=palette["accent"], foreground="#FFFFFF", bordercolor=palette["accent"], focusthickness=0)
+        style.map("Accent.TButton", background=[("active", palette["accent_hover"]), ("pressed", palette["accent_hover"]), ("disabled", "#B7B3E9")], foreground=[("disabled", "#FFFFFF")])
+        style.configure("TNotebook", background=palette["canvas"], borderwidth=0, tabmargins=(0, 0, 0, 0))
+        style.configure("TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(20, 12), background=palette["canvas"], foreground=palette["muted"], borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", palette["surface"]), ("active", palette["accent_soft"])], foreground=[("selected", palette["accent"]), ("active", palette["ink"])], expand=[("selected", (0, 0, 0, 1))])
+        style.configure("Treeview", rowheight=34, font=("Segoe UI", 10), background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["ink"], borderwidth=0, relief="flat")
+        style.map("Treeview", background=[("selected", palette["accent_soft"])], foreground=[("selected", palette["ink"])])
+        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 9), background=palette["surface_alt"], foreground=palette["muted"], padding=(8, 9), borderwidth=0)
+        style.configure("TCombobox", padding=(8, 7), fieldbackground=palette["surface"], background=palette["surface"], foreground=palette["ink"], arrowcolor=palette["accent"])
+        style.map("TCombobox", fieldbackground=[("readonly", palette["surface"])], selectbackground=[("readonly", palette["surface"])], selectforeground=[("readonly", palette["ink"])])
+        style.configure("TEntry", padding=(9, 8), fieldbackground=palette["surface"], foreground=palette["ink"], bordercolor=palette["line"])
+        style.configure("TSeparator", background=palette["line"])
 
     def _build_header(self) -> None:
-        header = ttk.Frame(self, padding=(22, 18, 22, 12))
+        header = ttk.Frame(self, style="Header.TFrame", padding=(28, 20, 28, 20))
         header.pack(fill="x")
-        left = ttk.Frame(header)
+        left = ttk.Frame(header, style="Header.TFrame")
         left.pack(side="left", fill="x", expand=True)
-        ttk.Label(left, text="Blender Work Agent", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(left, text="Локальная рабочая среда для создания и доработки сцен Blender", style="Subtitle.TLabel").pack(anchor="w", pady=(3, 0))
-        self.project_badge = ttk.Label(header, text="Проект не открыт", style="Subtitle.TLabel")
-        self.project_badge.pack(side="right", anchor="e", padx=(10, 0))
+        brand = ttk.Frame(left, style="Header.TFrame")
+        brand.pack(anchor="w")
+        ttk.Label(brand, text="BLENDER", style="HeaderSubtitle.TLabel").pack(side="left")
+        ttk.Label(brand, text="  /  STUDIO", style="HeaderSubtitle.TLabel").pack(side="left")
+        ttk.Label(left, text="Blender Work Agent", style="HeaderTitle.TLabel").pack(anchor="w", pady=(5, 1))
+        ttk.Label(left, text="Локальная среда производства сцен, персонажей и анимации", style="HeaderSubtitle.TLabel").pack(anchor="w")
+        self.project_badge = ttk.Label(header, text="●  ПРОЕКТ НЕ ОТКРЫТ", style="Badge.TLabel")
+        self.project_badge.pack(side="right", anchor="center", padx=(16, 0))
 
     def _build_tabs(self) -> None:
         self.tabs = ttk.Notebook(self)
