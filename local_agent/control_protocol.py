@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_camera_control"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -136,6 +136,25 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         if set(args) - {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
             raise ProtocolError("blender_mia_blockout requires only a safe project_name.")
 
+    if value["operation"] == "blender_camera_control":
+        args = value["arguments"]
+        allowed = {"project_name", "preset", "move", "frames", "create_camera_if_missing"}
+        presets = {"establishing_wide", "medium_shot", "close_up", "portrait_vertical", "low_angle", "high_angle"}
+        moves = {"static", "push_in", "pull_out", "pan_left", "pan_right", "orbit"}
+        if set(args) - allowed or not {"project_name", "preset"} <= set(args):
+            raise ProtocolError("blender_camera_control requires project_name and preset, with only typed optional fields.")
+        if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("Camera project_name must use safe project-name characters.")
+        if args["preset"] not in presets:
+            raise ProtocolError("Unsupported camera preset.")
+        if args.get("move", "static") not in moves:
+            raise ProtocolError("Unsupported camera move.")
+        frames = args.get("frames", 48)
+        if isinstance(frames, bool) or not isinstance(frames, int) or not 2 <= frames <= 240:
+            raise ProtocolError("Camera frames must be an integer from 2 to 240.")
+        create = args.get("create_camera_if_missing", True)
+        if not isinstance(create, bool):
+            raise ProtocolError("create_camera_if_missing must be boolean.")
     if value["operation"] == "blender_mia_skeleton":
         args = value["arguments"]
         if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
