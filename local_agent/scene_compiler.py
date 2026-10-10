@@ -24,7 +24,7 @@ _ACTION_CAPABILITIES = {
 def _speaker_id(name: str) -> str:
     """Map common character names to stable IDs; hash unknown names deterministically."""
     import hashlib
-    normalized = re.sub(r"\\s+", " ", str(name).strip()).casefold()
+    normalized = re.sub(r"\s+", " ", str(name).strip()).casefold()
     known = {
         "мия": "char.mia.master",
         "mia": "char.mia.master",
