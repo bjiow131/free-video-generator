@@ -408,7 +408,7 @@ elif environment == "room": floor_color = (0.28, 0.23, 0.18, 1.0)
 elif environment == "city": floor_color = (0.18, 0.19, 0.21, 1.0)
 elif style == "minimal": floor_color = (0.78, 0.80, 0.82, 1.0)
 floor_material = material_for("environment floor", floor_color)
-if cfg.get("ground", True):
+if cfg.get("ground", True) and environment != "coast":
     bpy.ops.mesh.primitive_plane_add(size=max(22.0, len(cfg["objects"]) * 4.0), location=(0, 0, -0.03))
     bpy.context.object.name = "Environment | floor"
     bpy.context.object.data.materials.append(floor_material)
@@ -503,6 +503,9 @@ camera_distance = max(10.0, total * (1.6 if cfg["aspect_ratio"] != "9:16" else 0
 if cfg.get("camera_angle") == "top":
     camera_location = (0.01, -0.01, max(12.0, total * 3.0))
     target = Vector((0.0, 0.0, 0.5))
+elif environment == "coast":
+    camera_location = (8.0, -14.0, 7.0)
+    target = Vector((0.0, 1.5, 1.0))
 elif cfg["aspect_ratio"] == "9:16":
     target_height = (total - 1) * 1.15 + 1.0
     camera_location = (camera_distance * 0.45, -camera_distance, target_height + 3.0)
@@ -579,6 +582,11 @@ animation = cfg.get("animation", {})
 if animation.get("enabled"):
     scene.frame_start = 1
     scene.frame_end = max(24, min(240, int(animation.get("frames", 120))))
+    camera_plan = cfg.get("scene_plan", {}).get("camera", {})
+    if camera_plan.get("motion") == "follow_actor":
+        camera.keyframe_insert(data_path="location", frame=scene.frame_start)
+        camera.location.x += 4.0 if rider_id else 2.0
+        camera.keyframe_insert(data_path="location", frame=scene.frame_end)
     animated = [root for item, root in made_by_item if not rider_id or item.get("character_card_id") == rider_id or item["primitive"] == vehicle_kind]
     for obj in animated:
         obj.location = obj.location.copy()
