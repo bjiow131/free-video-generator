@@ -27,7 +27,7 @@ from local_agent.update_manager import apply_update_archive, UpdateError
 from local_agent.character_library import CharacterPassportImportError, import_character_passport
 from local_agent.scene01_reference_pack import ReferencePackError, download_scene01_reference_pack
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -655,6 +655,7 @@ class BlenderAgentApp(tk.Tk):
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
+        ttk.Button(actions, text="Открыть источник", command=lambda cid=card_id: self._open_reference_source_from_tab(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Назвать позу…", command=lambda cid=card_id: self._label_reference_pose(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
         setattr(frame, "reference_tree", tree)
