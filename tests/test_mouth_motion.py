@@ -35,3 +35,16 @@ def test_dialogue_without_timeline_clip_is_reported_not_guessed():
     )
     assert result["cues"] == []
     assert result["warnings"][0]["scene_id"] == "scene_002"
+
+
+def test_multiple_speakers_are_preserved_in_cues():
+    result = compile_mouth_motion(
+        [{"scene_id": "scene_001", "dialogue": [
+            {"speaker": "Mia", "text": "Hello there!"},
+            {"speaker": "Friend", "text": "Hi, Mia!"},
+        ]}],
+        {"fps": 24, "clips": [{"scene_id": "scene_001", "start_frame": 101, "end_frame": 340}]},
+    )
+    assert {cue["speaker"] for cue in result["cues"]} == {"Mia", "Friend"}
+    assert min(cue["frame_start"] for cue in result["cues"]) >= 101
+    assert max(cue["frame_end"] for cue in result["cues"]) <= 340
