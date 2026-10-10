@@ -43,6 +43,12 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Frog low poly animated 3D model",
+      "url": "https://opengameart.org/content/frog-low-poly-animated-3d-model",
+      "license": "CC0",
+      "usage": "Blender model candidate; source page says rigged/animated, inspect before production"
     }
   ],
   "notes": "Водные сцены делать без тяжёлой симуляции: простые ряби и заранее подготовленные эффекты."

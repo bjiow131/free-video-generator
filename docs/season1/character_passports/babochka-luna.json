@@ -43,6 +43,12 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Butterfly (animated) 3D model",
+      "url": "https://opengameart.org/content/butterfly-animated",
+      "license": "CC0",
+      "usage": "rigged low-poly butterfly candidate; inspect model and animation"
     }
   ],
   "notes": "Полёт по кривым и простая деформация крыльев предпочтительнее физической симуляции."

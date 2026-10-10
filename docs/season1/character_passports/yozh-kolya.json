@@ -43,6 +43,12 @@
       "url": "https://opengameart.org/content/animated-animales-low-poly",
       "license": "CC0",
       "usage": "visual_or_technical_reference_only"
+    },
+    {
+      "title": "Hedgehog on unkempt lawn (CC0 photo reference)",
+      "url": "https://commons.wikimedia.org/wiki/File:Hedgehog_on_unkempt_lawn.jpg",
+      "license": "CC0 1.0",
+      "usage": "anatomy and proportions; not a model"
     }
   ],
   "notes": "Для рига иголки лучше реализовать как единый стилизованный слой/инстансы."
