@@ -59,7 +59,7 @@ def _validate_patch_paths(patch: str) -> None:
     for line in patch.splitlines():
         if line.startswith("diff --git "):
             parts = line.split()
-            if len(parts) != 4:
+            if len(parts) != 4 or not parts[2].startswith("a/") or not parts[3].startswith("b/"):
                 raise RepairProtocolError("malformed git diff header")
             _validate_one_path(parts[2])
             _validate_one_path(parts[3])
