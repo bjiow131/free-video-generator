@@ -20,6 +20,69 @@ _ACTION_CAPABILITIES = {
     "camera_pan": "camera_animation_adapter_required",
     "show_asset": "blender_asset_importer_required",
 }
+
+def _speaker_id(name: str) -> str:
+    """Map common character names to stable IDs; hash unknown names deterministically."""
+    import hashlib
+    normalized = re.sub(r"\\s+", " ", str(name).strip()).casefold()
+    known = {
+        "мия": "char.mia.master",
+        "mia": "char.mia.master",
+        "стёпа": "char.stepa.master",
+        "степа": "char.stepa.master",
+        "stepa": "char.stepa.master",
+        "мама": "char.mama.master",
+        "папа": "char.papa.master",
+        "бабушка аня": "char.grandma_anya.master",
+        "лев": "char.lev.master",
+        "улитка спираль": "char.snail_spiral.master",
+        "пип": "char.pip.master",
+        "тишка": "char.tishka.master",
+        "ква": "char.kva.master",
+        "луна": "char.luna.master",
+        "коля": "char.kolya.master",
+        "бублик": "char.bublik.master",
+        "рогач": "char.rogach.master",
+    }
+    if normalized in known:
+        return known[normalized]
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
+    return "char.unknown_" + digest
+
+
+def _estimated_dialogue_cues(
+    scene_id: str, dialogue: list[dict[str, Any]], duration_seconds: int
+) -> list[dict[str, Any]]:
+    """Build rough open/closed events; these are not synchronized to recorded audio."""
+    if not dialogue:
+        return []
+    fps = 30
+    frame_end = max(1, int(duration_seconds * fps))
+    count = len(dialogue)
+    cues = []
+    for index, line in enumerate(dialogue):
+        speaker = line.get("speaker", "")
+        text = line.get("text", "")
+        if not isinstance(speaker, str) or not isinstance(text, str) or not text.strip():
+            continue
+        start = 1 + (index * frame_end) // count
+        end = max(start, min(frame_end, ((index + 1) * frame_end) // count))
+        events = []
+        frame = start
+        state = "open"
+        while frame <= end and len(events) < 250:
+            events.append({"frame": frame, "mouth_state": state})
+            state = "closed" if state == "open" else "open"
+            frame += 4
+        cues.append({
+            "speaker_id": _speaker_id(speaker),
+            "line_id": f"{scene_id}_L{index + 1:03d}",
+            "text": text.strip(),
+            "timing_status": "estimated_until_voiceover",
+            "events": events or [{"frame": start, "mouth_state": "open"}],
+        })
+    return cues
+
 class StoryCompileError(ValueError):
     """A story plan cannot be safely compiled or stored."""
 
@@ -53,6 +116,7 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
             "action_brief": scene["action"],
             "camera_brief": scene["camera"],
             "dialogue": scene["dialogue"],
+            "dialogue_cues": _estimated_dialogue_cues(scene["scene_id"], scene["dialogue"], scene["duration_seconds"]),
             "sound_brief": scene["sound"],
             "transition": scene["transition"],
             "visual_prompt": scene["visual_prompt"],
