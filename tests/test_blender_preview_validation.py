@@ -11,7 +11,7 @@ def _write_png(path, width=360, height=640):
         body = kind + payload
         return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    data = zlib.compress((b"\\x00" + b"\\x00" * (width * 3)) * height)
+    data = zlib.compress((b"\x00" + b"\x00" * (width * 3)) * height)
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", data) + chunk(b"IEND", b""))
 
 
