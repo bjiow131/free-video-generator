@@ -22,10 +22,9 @@ def test_season1_has_complete_versioned_passports_with_open_references():
         assert passport["visual_identity"]
         assert passport["animation_requirements"]
         assert passport["rig"]["status"] == "not_created"
-        assert passport["status"] == "design_ready_model_not_built"
+        assert passport["status"] == "awaiting_original_references"
         refs = passport["reference_sources"]
-        assert refs
-        assert all(item["url"].startswith("https://") and item["license"] for item in refs)
+        assert refs == []
 
 
 def test_season1_asset_catalog_and_reusable_inventory_are_consistent():
@@ -35,5 +34,5 @@ def test_season1_asset_catalog_and_reusable_inventory_are_consistent():
     assert inventory["target_episodes"] == 30
     assert 5 <= inventory["episode_duration_minutes"][0] <= inventory["episode_duration_minutes"][1] <= 10
     assert "жёлтый самокат Мии" in inventory["prop_groups"][0]["items"]
-    assert any(item["id"] == "snail_moss_photo" for item in catalog["source_packs"])
-    assert any("not a child likeness" in item["use"] for item in catalog["source_packs"] if item["id"] in {"human_men", "human_women"})
+    assert catalog["source_packs"] == []
+    assert catalog["status"] == "awaiting_original_generated_assets"
