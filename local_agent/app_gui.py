@@ -488,13 +488,19 @@ class BlenderAgentApp(tk.Tk):
         if self.character_tree.exists(card_id):
             self.character_tree.selection_set(card_id)
             self.character_tree.focus(card_id)
-        self._refresh_characters(card_id)
+        self._select_character()
+        for other_id, parts in getattr(self, "character_card_tiles", {}).items():
+            selected = other_id == card_id
+            parts["tile"].configure(highlightbackground=self.colors["accent"] if selected else self.colors["line"])
+            parts["stripe"].configure(bg=self.colors["accent"] if selected else self.colors["line"])
+            parts["refs"].configure(fg=self.colors["accent"] if selected else self.colors["muted"])
         if double:
             self._open_character_references()
 
     def _refresh_character_gallery(self, selected_id: str | None = None) -> None:
         if not hasattr(self, "character_gallery_frame"):
             return
+        self.character_card_tiles = {}
         for widget in self.character_gallery_frame.winfo_children():
             widget.destroy()
         cards = [card for card in self._load_characters() if card.get("kind", "Персонаж") != "Референс"]
@@ -523,6 +529,7 @@ class BlenderAgentApp(tk.Tk):
             refs = tk.Label(body, text=f"{len(card.get('references', []))} референсов  ·  двойной щелчок — открыть", bg=self.colors["surface"],
                 fg=self.colors["accent"] if is_selected else self.colors["muted"], font=("Segoe UI", 8), anchor="w")
             refs.pack(fill="x")
+            self.character_card_tiles[card["id"]] = {"tile": tile, "stripe": stripe, "refs": refs}
             for widget in (tile, stripe, body, name, meta, refs):
                 widget.bind("<Button-1>", lambda _e, cid=card["id"]: self._choose_character_card(cid))
                 widget.bind("<Double-Button-1>", lambda _e, cid=card["id"]: self._choose_character_card(cid, True))
