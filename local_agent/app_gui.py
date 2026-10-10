@@ -214,12 +214,21 @@ class BlenderAgentApp(tk.Tk):
         right = ttk.Frame(split, padding=(10, 0, 0, 0))
         split.add(left, weight=1)
         split.add(right, weight=2)
+        ttk.Label(left, text="КАРТОЧКИ ПЕРСОНАЖЕЙ", style="Eyebrow.TLabel").pack(anchor="w", pady=(0, 8))
+        gallery_wrap = ttk.Frame(left, style="Inset.TFrame", padding=5)
+        gallery_wrap.pack(fill="both", expand=True)
+        self.character_gallery_canvas = tk.Canvas(gallery_wrap, bg=self.colors["surface_alt"], highlightthickness=0, bd=0)
+        gallery_scroll = ttk.Scrollbar(gallery_wrap, orient="vertical", command=self.character_gallery_canvas.yview)
+        self.character_gallery_canvas.configure(yscrollcommand=gallery_scroll.set)
+        gallery_scroll.pack(side="right", fill="y")
+        self.character_gallery_canvas.pack(side="left", fill="both", expand=True)
+        self.character_gallery_frame = tk.Frame(self.character_gallery_canvas, bg=self.colors["surface_alt"])
+        self.character_gallery_window = self.character_gallery_canvas.create_window((0, 0), window=self.character_gallery_frame, anchor="nw")
+        self.character_gallery_frame.bind("<Configure>", lambda _e: self.character_gallery_canvas.configure(scrollregion=self.character_gallery_canvas.bbox("all")))
+        self.character_gallery_canvas.bind("<Configure>", lambda e: self.character_gallery_canvas.itemconfigure(self.character_gallery_window, width=e.width))
+        self.character_gallery_canvas.bind_all("<MouseWheel>", self._scroll_character_gallery, add="+")
+        # Keep an internal selection model compatible with the reference-tab workflow.
         self.character_tree = ttk.Treeview(left, columns=("type",), show="tree headings", selectmode="browse")
-        self.character_tree.heading("#0", text="Имя")
-        self.character_tree.heading("type", text="Тип")
-        self.character_tree.column("#0", width=180)
-        self.character_tree.column("type", width=100)
-        self.character_tree.pack(fill="both", expand=True)
         self.character_tree.bind("<<TreeviewSelect>>", self._select_character)
         self.character_tree.bind("<Double-Button-1>", self._open_character_references)
         self.character_detail = tk.Text(right, height=12, wrap="word", font=("Segoe UI", 10), relief="flat", bd=0, padx=14, pady=14,
@@ -470,6 +479,54 @@ class BlenderAgentApp(tk.Tk):
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, CHARACTER_DB)
 
+    def _scroll_character_gallery(self, event) -> None:
+        if not hasattr(self, "character_gallery_canvas"):
+            return
+        self.character_gallery_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _choose_character_card(self, card_id: str, double: bool = False) -> None:
+        if self.character_tree.exists(card_id):
+            self.character_tree.selection_set(card_id)
+            self.character_tree.focus(card_id)
+        self._refresh_characters(card_id)
+        if double:
+            self._open_character_references()
+
+    def _refresh_character_gallery(self, selected_id: str | None = None) -> None:
+        if not hasattr(self, "character_gallery_frame"):
+            return
+        for widget in self.character_gallery_frame.winfo_children():
+            widget.destroy()
+        cards = [card for card in self._load_characters() if card.get("kind", "Персонаж") != "Референс"]
+        if not cards:
+            empty = tk.Label(self.character_gallery_frame, text="Библиотека пока пуста\n\nСоздай карточку первого героя.", justify="center",
+                bg=self.colors["surface_alt"], fg=self.colors["muted"], font=("Segoe UI", 10), padx=16, pady=32)
+            empty.pack(fill="x")
+            return
+        for card in cards:
+            is_selected = card.get("id") == selected_id
+            tile = tk.Frame(self.character_gallery_frame, bg=self.colors["surface"],
+                highlightthickness=1, highlightbackground=self.colors["accent"] if is_selected else self.colors["line"], bd=0)
+            tile.pack(fill="x", padx=3, pady=4)
+            stripe = tk.Frame(tile, bg=self.colors["accent"] if is_selected else self.colors["line"], width=4)
+            stripe.pack(side="left", fill="y")
+            body = tk.Frame(tile, bg=self.colors["surface"], padx=11, pady=10)
+            body.pack(side="left", fill="both", expand=True)
+            name = tk.Label(body, text=card.get("name", "Без имени"), bg=self.colors["surface"], fg=self.colors["ink"],
+                font=("Segoe UI Semibold", 10), anchor="w")
+            name.pack(fill="x")
+            category = card.get("profile_type", "Человек")
+            style_name = card.get("visual_style", "Стилизованный 3D")
+            meta = tk.Label(body, text=f"{category}  ·  {style_name}", bg=self.colors["surface"], fg=self.colors["muted"],
+                font=("Segoe UI", 8), anchor="w")
+            meta.pack(fill="x", pady=(3, 2))
+            refs = tk.Label(body, text=f"{len(card.get('references', []))} референсов  ·  двойной щелчок — открыть", bg=self.colors["surface"],
+                fg=self.colors["accent"] if is_selected else self.colors["muted"], font=("Segoe UI", 8), anchor="w")
+            refs.pack(fill="x")
+            for widget in (tile, stripe, body, name, meta, refs):
+                widget.bind("<Button-1>", lambda _e, cid=card["id"]: self._choose_character_card(cid))
+                widget.bind("<Double-Button-1>", lambda _e, cid=card["id"]: self._choose_character_card(cid, True))
+
     def _refresh_characters(self, select_id: str | None = None) -> None:
         if not hasattr(self, "character_tree"):
             return
@@ -481,6 +538,14 @@ class BlenderAgentApp(tk.Tk):
             self.character_tree.selection_set(select_id)
             self.character_tree.focus(select_id)
             self._select_character()
+        elif not select_id:
+            selection = self.character_tree.selection()
+            if selection:
+                self.character_tree.selection_remove(*selection)
+                self.character_detail.configure(state="normal")
+                self.character_detail.delete("1.0", "end")
+                self.character_detail.configure(state="disabled")
+        self._refresh_character_gallery(select_id or (self.character_tree.selection()[0] if self.character_tree.selection() else None))
         self._refresh_character_choices(select_id)
         for card in self._load_characters():
             frame = self.reference_tabs.get(card.get("id"))
