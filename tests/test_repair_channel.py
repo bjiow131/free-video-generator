@@ -180,3 +180,51 @@ def test_fetch_repair_rejects_digest_mismatch():
     ])
     with pytest.raises(RepairProtocolError, match="SHA-256"):
         fetch_repair(client)
+
+
+def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, monkeypatch):
+    import subprocess
+    from pathlib import Path
+    from local_agent import poller
+
+    project = tmp_path / "project"
+    project.mkdir()
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=project, capture_output=True, text=True,
+            check=True, shell=False,
+        )
+    git("init", "-b", "main")
+    git("config", "user.name", "Repair Test")
+    git("config", "user.email", "repair-test@example.invalid")
+    (project / "README.md").write_text("base\\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    base = git("rev-parse", "HEAD").stdout.strip()
+    monkeypatch.setattr(poller, "ROOT", project)
+
+    patch = (
+        "diff --git a/tests/test_smoke_repair.py b/tests/test_smoke_repair.py\\n"
+        "new file mode 100644\\n"
+        "--- /dev/null\\n"
+        "+++ b/tests/test_smoke_repair.py\\n"
+        "@@ -0,0 +1,2 @@\\n"
+        "+def test_smoke_repair():\\n"
+        "+    assert True\\n"
+    )
+    result = poller._apply_patch(patch, "repair-smoke-01", expected_base_sha=base)
+    assert result["status"] == "completed", result
+    assert result["repair_commit"]
+    assert result["active_checkout_modified"] is False
+    assert result["pushed_to_remote"] is False
+    assert git("rev-parse", "HEAD").stdout.strip() == base
+    worktree = Path(result["worktree"])
+    assert (worktree / "tests" / "test_smoke_repair.py").is_file()
+    assert subprocess.run(
+        ["git", "rev-parse", result["repair_commit"]], cwd=project,
+        capture_output=True, text=True, check=False, shell=False,
+    ).returncode == 0
+
+    subprocess.run(["git", "worktree", "remove", "--force", str(worktree)],
+                   cwd=project, capture_output=True, text=True, check=True, shell=False)
+    git("branch", "-D", result["branch"])
