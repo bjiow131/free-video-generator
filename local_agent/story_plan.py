@@ -66,7 +66,8 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
           "sound":_text(scene.get("sound",""),f"Scene {index} sound",limit=600,required=False),"transition":_text(scene.get("transition","cut"),f"Scene {index} transition",limit=100),
           "visual_prompt":_text(scene.get("visual_prompt",""),f"Scene {index} visual_prompt",limit=2000,required=False)})
     if total>duration*2: raise StoryPlanError("Total scene duration is implausibly long compared with target_duration_seconds.")
-    # The estimated duration is derived from scenes; never trust a supplied cache.\n    result={"schema_version":1,"project_name":project_name,"title":title,"logline":logline,"target_duration_seconds":duration,"estimated_scene_duration_seconds":total,"language":language,"character_bible":bible,"scenes":scenes,"continuity_notes":notes}
+    # The estimated duration is derived from scenes; never trust a supplied cache.
+    result={"schema_version":1,"project_name":project_name,"title":title,"logline":logline,"target_duration_seconds":duration,"estimated_scene_duration_seconds":total,"language":language,"character_bible":bible,"scenes":scenes,"continuity_notes":notes}
     if len(json.dumps(result,ensure_ascii=False).encode("utf-8"))>MAX_PLAN_BYTES: raise StoryPlanError("Validated story plan exceeds the 48 KB limit.")
     return result
 def save_story_plan(workspace: str | Path, data: Any) -> dict[str, Any]:
