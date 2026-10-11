@@ -123,3 +123,15 @@ def test_update_archive_rejects_path_traversal(tmp_path: Path):
         archive.writestr("payload/../../escape.py", "unsafe")
     with pytest.raises(UpdateError):
         apply_update_archive(archive_path, tmp_path / "install")
+
+def test_windows_launchers_discover_blender_and_keep_errors_visible():
+    root = Path(__file__).resolve().parents[1]
+    launch = (root / "run_blender_agent.bat").read_text(encoding="utf-8")
+    setup = (root / "setup_blender_agent.bat").read_text(encoding="utf-8")
+    for script in (launch, setup):
+        assert "if not defined BLENDER_EXECUTABLE" in script
+        assert "where blender.exe" in script
+        assert "Blender *" in script
+        assert "Blender 5.2" not in script
+    assert 'python.exe" -m local_agent.app_gui' in launch
+    assert 'pythonw.exe" -m local_agent.app_gui' not in launch
