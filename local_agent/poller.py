@@ -555,11 +555,16 @@ def _remember_manifest(
     rejected: bool = False, status: str | None = None,
 ) -> dict[str, Any]:
     """Persist bounded task identity history; task IDs are immutable."""
-    processed = state.get("processed_tasks", {})
-    if not isinstance(processed, dict):
-        processed = {}
+    previous = state.get("processed_tasks", {})
+    if not isinstance(previous, dict):
+        raise RuntimeError("Task replay history is invalid; refusing to discard existing state")
+    # Copy before mutation, so rejecting a new ID at the capacity boundary
+    # cannot corrupt the caller's in-memory replay protections.
+    processed = dict(previous)
     record = processed.get(task_id)
     if not isinstance(record, dict):
+        if len(processed) >= 10000:
+            raise RuntimeError("Task replay history capacity reached; refusing new IDs")
         record = {"manifest_sha": manifest_sha}
     elif rejected:
         record = {**record, "rejected_sha": manifest_sha}
