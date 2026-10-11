@@ -23,11 +23,10 @@ from local_agent.studio_state import StudioConflict, StudioError, StudioStore, t
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
-from local_agent.telegram_preferences import (
-    TelegramPreferenceError, load_notifications, save_notifications, notifications_enabled,
-)
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, save_policy,
+    load_telegram_notifications, save_telegram_notifications,
+    telegram_notifications_enabled,
     get_trusted_update_opt_in as get_opt_in,
     set_trusted_update_opt_in as set_opt_in,
 )
@@ -334,8 +333,8 @@ def _telegram_credentials() -> tuple[str | None, str | None]:
 def telegram_status() -> dict[str, bool]:
     token, chat = _telegram_credentials()
     try:
-        notices = load_notifications()["enabled"]
-    except TelegramPreferenceError as exc:
+        notices = load_telegram_notifications()["enabled"]
+    except MailboxPolicyError as exc:
         raise TelegramAlertError(str(exc)) from None
     return {"configured": bool(token), "paired": bool(token and chat),
             "outbound_only": True, "enabled": bool(token and chat and notices),
@@ -347,8 +346,8 @@ def telegram_set_notifications(data: dict) -> dict[str, bool]:
     """Local-only switch. Disabling also drops undelivered old notices."""
     with _TELEGRAM_LOCK:
         try:
-            result = save_notifications(data)
-        except TelegramPreferenceError as exc:
+            result = save_telegram_notifications(data)
+        except MailboxPolicyError as exc:
             raise TelegramAlertError(str(exc)) from None
         if not result["enabled"]:
             # Pending messages must not appear unexpectedly if alerts are re-enabled.
@@ -488,7 +487,7 @@ def telegram_queue_event(event_id: str, message: str) -> bool:
         if not token or not chat:
             return False
         with _TELEGRAM_LOCK:
-            if not notifications_enabled():
+            if not telegram_notifications_enabled():
                 return False
             outbox = _telegram_outbox_dir()
             if len(list(outbox.glob("*.json"))) >= 100:
@@ -512,7 +511,7 @@ def telegram_flush_outbox(*, max_messages: int = 4) -> int:
             return 0
         count = 0
         with _TELEGRAM_LOCK:
-            if not notifications_enabled():
+            if not telegram_notifications_enabled():
                 return 0
             for path in sorted(_TELEGRAM_OUTBOX.glob("*.json"))[:max_messages]:
                 if path.is_symlink() or path.stat().st_size > 2048:
@@ -539,7 +538,7 @@ def telegram_flush_outbox(*, max_messages: int = 4) -> int:
 def telegram_send_test(data: dict) -> dict:
     if data != {}:
         raise TelegramAlertError("Лишние параметры запроса")
-    if not notifications_enabled():
+    if not telegram_notifications_enabled():
         raise TelegramAlertError("Уведомления Telegram выключены в настройках")
     token, chat = _telegram_credentials()
     if not token or not chat:
@@ -714,8 +713,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(503, {"error": str(exc)})
         if path == "/api/telegram-notifications":
             try:
-                return self._json(200, {"notifications_enabled": load_notifications()["enabled"]})
-            except TelegramPreferenceError as exc:
+                return self._json(200, {"notifications_enabled": load_telegram_notifications()["enabled"]})
+            except MailboxPolicyError as exc:
                 return self._json(503, {"error": str(exc)})
         if path == "/api/telegram-transport":
             try:
