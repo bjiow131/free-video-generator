@@ -253,6 +253,213 @@ def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[
 
 
 
+
+# Telegram alerts are explicitly opt-in and use the already-installed Windows
+# Credential Manager. Never put a BotFather token in source, GitHub, logs or JSON.
+_TELEGRAM_TOKEN_TARGET = "LocalAgent/Telegram/bot-token"
+_TELEGRAM_CHAT_TARGET = "LocalAgent/Telegram/private-chat-id"
+_TELEGRAM_TOKEN_RE = re.compile(r"[0-9]{5,15}:[A-Za-z0-9_-]{20,128}\Z")
+_TELEGRAM_LOCK = threading.RLock()
+_TELEGRAM_OUTBOX = ROOT / ".local_agent" / "telegram_outbox"
+
+
+class TelegramAlertError(ValueError):
+    pass
+
+
+def _telegram_credentials() -> tuple[str | None, str | None]:
+    if os.name != "nt":
+        return (None, None)
+    from local_agent.windows_credentials import CredentialStoreError, read_credential
+    try:
+        token = read_credential(target=_TELEGRAM_TOKEN_TARGET)
+        chat = read_credential(target=_TELEGRAM_CHAT_TARGET)
+    except CredentialStoreError:
+        raise TelegramAlertError("Защищённое хранилище Windows недоступно") from None
+    return token, chat
+
+
+def telegram_status() -> dict[str, bool]:
+    token, chat = _telegram_credentials()
+    return {"configured": bool(token), "paired": bool(token and chat),
+            "outbound_only": True, "enabled": bool(token and chat)}
+
+
+def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) -> dict:
+    """Fixed HTTPS origin, fixed allowlisted Telegram Bot API methods."""
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    if method not in ("getMe", "getUpdates", "sendMessage"):
+        raise TelegramAlertError("Недопустимая операция Telegram")
+    if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
+        raise TelegramAlertError("Неверный формат токена Telegram-бота")
+    payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    request = Request("https://api.telegram.org/bot" + token + "/" + method,
+                      method="POST", data=payload,
+                      headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read(262145)
+    except HTTPError as exc:
+        # Never include the URL or response text, which can contain the token.
+        raise TelegramAlertError("Telegram вернул HTTP " + str(exc.code)) from None
+    except (URLError, TimeoutError, OSError):
+        raise TelegramAlertError("Не удалось связаться с Telegram") from None
+    if len(raw) > 262144:
+        raise TelegramAlertError("Ответ Telegram слишком большой")
+    try:
+        obj = json.loads(raw)
+        if not isinstance(obj, dict) or obj.get("ok") is not True:
+            raise ValueError("bad response")
+        return obj
+    except (ValueError, UnicodeError):
+        raise TelegramAlertError("Некорректный ответ Telegram") from None
+
+
+def telegram_save_token(data: dict) -> dict:
+    """Verify BotFather token via getMe, then save in Windows vault only."""
+    from local_agent.windows_credentials import CredentialStoreError, write_credential, delete_credential
+    if os.name != "nt":
+        raise TelegramAlertError("Подключение Telegram доступно только в Windows Studio")
+    token = data.get("bot_token")
+    if not isinstance(data, dict) or set(data) != {"bot_token"} or not isinstance(token, str):
+        raise TelegramAlertError("Укажите токен Telegram-бота")
+    token = token.strip()
+    if not _TELEGRAM_TOKEN_RE.fullmatch(token):
+        raise TelegramAlertError("Проверьте токен BotFather")
+    payload = _telegram_call(token, "getMe", {})
+    bot = payload.get("result")
+    if not isinstance(bot, dict) or bot.get("is_bot") is not True:
+        raise TelegramAlertError("Telegram не подтвердил бота")
+    try:
+        # Changing the token must revoke pairing with the previous bot.
+        write_credential(token, target=_TELEGRAM_TOKEN_TARGET)
+        delete_credential(target=_TELEGRAM_CHAT_TARGET)
+    except CredentialStoreError:
+        raise TelegramAlertError("Не удалось сохранить Telegram в Windows") from None
+    return {"configured": True, "paired": False, "enabled": False,
+            "bot_username": str(bot.get("username", ""))[:80],
+            "next_step": "Напишите /start созданному боту и нажмите Привязать чат"}
+
+
+def telegram_pair_chat(data: dict) -> dict:
+    from local_agent.windows_credentials import CredentialStoreError, write_credential
+    if data != {}:
+        raise TelegramAlertError("Не указывайте идентификаторы чатов вручную")
+    token, _ = _telegram_credentials()
+    if not token:
+        raise TelegramAlertError("Сначала сохраните токен бота")
+    recent = _telegram_call(token, "getUpdates", {"limit": 100, "timeout": 0})
+    now = int(time.time())
+    candidates: set[str] = set()
+    for update in recent.get("result", []):
+        if not isinstance(update, dict):
+            continue
+        message = update.get("message")
+        if not isinstance(message, dict):
+            continue
+        chat, sender = message.get("chat"), message.get("from")
+        if not isinstance(chat, dict) or not isinstance(sender, dict):
+            continue
+        if chat.get("type") != "private" or chat.get("id") != sender.get("id"):
+            continue
+        txt, stamp = message.get("text"), message.get("date")
+        if (isinstance(txt, str) and txt.split(" ", 1)[0].split("@", 1)[0] == "/start"
+                and type(stamp) is int and 0 <= now - stamp <= 900):
+            candidates.add(str(chat["id"]))
+    if len(candidates) != 1:
+        raise TelegramAlertError(
+            "Нужен один личный чат: отправьте боту /start и повторите через 15 секунд"
+            if not candidates else "Обнаружено несколько чатов. Создайте отдельного бота для личных уведомлений")
+    chat_id = next(iter(candidates))
+    _telegram_call(token, "sendMessage",
+                   {"chat_id": chat_id, "text": "Blender AI Agent подключён. Тестовое уведомление доставлено."})
+    try:
+        write_credential(chat_id, target=_TELEGRAM_CHAT_TARGET)
+    except CredentialStoreError:
+        raise TelegramAlertError("Не удалось закрепить личный Telegram-чат в Windows") from None
+    return telegram_status()
+
+
+def _telegram_outbox_dir() -> Path:
+    parent = _TELEGRAM_OUTBOX.parent
+    if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+        raise TelegramAlertError("Недопустимая папка уведомлений")
+    if _TELEGRAM_OUTBOX.is_symlink() or getattr(_TELEGRAM_OUTBOX, "is_junction", lambda: False)():
+        raise TelegramAlertError("Недопустимая очередь уведомлений")
+    _TELEGRAM_OUTBOX.mkdir(parents=True, exist_ok=True)
+    return _TELEGRAM_OUTBOX
+
+
+def telegram_queue_event(event_id: str, message: str) -> bool:
+    """Queue a bounded, idempotent local event, even while Telegram is offline."""
+    import hashlib
+    if not isinstance(event_id, str) or not re.fullmatch(r"[A-Za-z0-9:_-]{1,120}", event_id):
+        return False
+    if not isinstance(message, str) or not 1 <= len(message) <= 600:
+        return False
+    try:
+        token, chat = _telegram_credentials()
+        if not token or not chat:
+            return False
+        with _TELEGRAM_LOCK:
+            outbox = _telegram_outbox_dir()
+            if len(list(outbox.glob("*.json"))) >= 100:
+                return False
+            digest = hashlib.sha256(event_id.encode("utf-8")).hexdigest()
+            target = outbox / (digest + ".json")
+            if not target.is_file():
+                with target.open("x", encoding="utf-8") as file:
+                    json.dump({"event": event_id, "message": message,
+                               "timestamp": int(time.time())}, file, ensure_ascii=False)
+            return True
+    except (OSError, ValueError, TelegramAlertError):
+        return False
+
+
+def telegram_flush_outbox(*, max_messages: int = 4) -> int:
+    """Read a few queued notices and deliver them to one locally paired chat."""
+    try:
+        token, chat = _telegram_credentials()
+        if not token or not chat or not _TELEGRAM_OUTBOX.is_dir():
+            return 0
+        count = 0
+        with _TELEGRAM_LOCK:
+            for path in sorted(_TELEGRAM_OUTBOX.glob("*.json"))[:max_messages]:
+                if path.is_symlink() or path.stat().st_size > 2048:
+                    continue
+                try:
+                    event = json.loads(path.read_text(encoding="utf-8"))
+                    if not isinstance(event, dict) or set(event) != {"event", "message", "timestamp"}:
+                        continue
+                    if time.time() - event["timestamp"] > 604800:
+                        path.unlink(missing_ok=True)
+                        continue
+                    _telegram_call(token, "sendMessage", {"chat_id": chat, "text": event["message"]}, timeout=8)
+                    path.unlink()
+                    count += 1
+                except TelegramAlertError:
+                    break
+                except (OSError, ValueError, TypeError, KeyError):
+                    continue
+        return count
+    except (OSError, TelegramAlertError):
+        return 0
+
+
+def telegram_send_test(data: dict) -> dict:
+    if data != {}:
+        raise TelegramAlertError("Лишние параметры запроса")
+    token, chat = _telegram_credentials()
+    if not token or not chat:
+        raise TelegramAlertError("Сначала привяжите Telegram-чат")
+    _telegram_call(token, "sendMessage",
+                   {"chat_id": chat, "text": "Проверка связи: Blender AI Agent на Windows работает."})
+    return {"sent": True}
+
+
+
+
 class ReviewStudioJobs(StudioJobs):
     """Export complete Blender renders to a locally authorized Dropbox folder."""
 
@@ -266,6 +473,14 @@ class ReviewStudioJobs(StudioJobs):
             result = {"status": "failed", "reason": str(exc)[:180]}
         except Exception as exc:
             result = {"status": "failed", "error_type": type(exc).__name__}
+        if result.get("status") == "exported_to_local_dropbox":
+            telegram_queue_event("studio:" + job_id,
+                                 "Blender Studio: видео готово. Кадры отправлены в Dropbox. Задача " + job_id[:12])
+            telegram_flush_outbox(max_messages=2)
+        elif result.get("status") == "failed":
+            telegram_queue_event("studio-export-error:" + job_id,
+                                 "Blender Studio: ошибка отправки в Dropbox. Проверьте Studio.")
+            telegram_flush_outbox(max_messages=2)
         if result.get("status") == "disabled":
             return
         try:
@@ -401,6 +616,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, review_status())
             except ReviewDeliveryError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/telegram-status":
+            try:
+                return self._json(200, telegram_status())
+            except TelegramAlertError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -480,7 +700,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -490,7 +710,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test") and length > 240):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -510,6 +730,14 @@ class StudioHandler(BaseHTTPRequestHandler):
             if path == "/api/dropbox-review":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
+            if path == "/api/telegram-configure":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, telegram_save_token(body))
+            if path == "/api/telegram-pair":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, telegram_pair_chat(body))
+            if path == "/api/telegram-test":
+                return self._json(200, telegram_send_test(body))
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
@@ -551,7 +779,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Unknown endpoint"})
         except StudioConflict as exc:
             return self._json(409, {"error": str(exc)})
-        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, ReviewDeliveryError, ValueError, TypeError, binascii.Error) as exc:
+        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, ReviewDeliveryError, TelegramAlertError, ValueError, TypeError, binascii.Error) as exc:
             return self._json(400, {"error": str(exc)})
         except OSError as exc:
             return self._json(500, {"error": f"Local file error: {type(exc).__name__}"})
