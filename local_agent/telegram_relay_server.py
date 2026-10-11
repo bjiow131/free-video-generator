@@ -117,6 +117,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             return self._send(200, {"ok": True, "service": "telegram-relay"})
+        if self.path == "/health/upstream":
+            # No credentials, chat data or Telegram Bot API token used.
+            if not _limit():
+                return self._send(429, {"ok": False, "reason": "rate_limited"})
+            url = "https://api.telegram.org/"
+            try:
+                request = Request(url, method="GET")
+                with build_opener(RejectRedirect()).open(request, timeout=8):
+                    return self._send(200, {"ok": True, "upstream": "reachable"})
+            except HTTPError:
+                # Telegram's root URL normally returns HTTP 4xx.
+                return self._send(200, {"ok": True, "upstream": "reachable"})
+            except (URLError, TimeoutError, OSError):
+                return self._send(503, {"ok": False, "upstream": "unavailable"})
         self._send(404, {"ok": False})
 
     def do_POST(self):
