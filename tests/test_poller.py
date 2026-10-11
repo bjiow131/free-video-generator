@@ -420,6 +420,7 @@ def test_apply_patch_uses_isolated_worktree_and_never_changes_active_checkout(mo
     root.mkdir()
     (root / ".git").mkdir()
     monkeypatch.setattr(poller, "ROOT", root)
+    monkeypatch.setattr(poller, "test_command", lambda suite, root: [sys.executable, "-m", "pytest", "-q", "tests/test_poller.py"])
     calls = []
 
     def fake_run(args, **kwargs):
@@ -459,6 +460,7 @@ def test_apply_patch_removes_temporary_worktree_when_post_patch_tests_fail(monke
     root.mkdir()
     (root / ".git").mkdir()
     monkeypatch.setattr(poller, "ROOT", root)
+    monkeypatch.setattr(poller, "test_command", lambda suite, root: [sys.executable, "-m", "pytest", "-q", "tests/test_poller.py"])
     calls = []
     created_worktree = None
 
