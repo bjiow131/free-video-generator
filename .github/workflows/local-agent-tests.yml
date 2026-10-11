@@ -1,5 +1,7 @@
-name: Local agent safety tests
+name: Blender AI Agent — Windows regression
 
+# This workflow validates ONLY the local Blender agent. The legacy API/UI
+# remains in this repository but is unrelated and must never be run here.
 on:
   pull_request:
     branches:
@@ -10,11 +12,8 @@ on:
       - feature/chatgpt-repair-channel
     paths:
       - "local_agent/**"
-      - "tests/test_blender_bridge.py"
-      - "tests/test_control_protocol.py"
-      - "tests/test_poller.py"
-      - "tests/test_poller_delivery_state.py"
-      - "tests/test_result_outbox.py"
+      - "tests/test_blender_*.py"
+      - "tests/test_local_agent_*.py"
       - "tests/test_local_project_runner.py"
       - "tests/test_checkpoint_schema.py"
       - "tests/test_ffmpeg_media.py"
@@ -22,14 +21,17 @@ on:
       - "tests/test_repair_channel.py"
       - "tests/test_patch_validation.py"
       - "tests/test_repair_replay.py"
-      - "tests/test_local_agent_attachments.py"
+      - "tests/test_poller*.py"
+      - "tests/test_result_outbox.py"
       - "tests/test_story_plan.py"
       - "tests/test_scene_compiler.py"
       - "tests/test_asset_registry.py"
       - "tests/test_preflight.py"
       - "tests/test_dialogue_cues.py"
-      - "tests/test_blender_dialogue.py"
       - "tests/test_notifications.py"
+      - "tests/test_error_knowledge.py"
+      - "tests/test_manifest_security.py"
+      - "tests/test_control_protocol.py"
       - "requirements-local-agent.txt"
       - "requirements-github-mailbox.txt"
       - "scripts/windows/**"
@@ -42,94 +44,60 @@ on:
       - audit/repair-channel-hardening-20261011
     paths:
       - "local_agent/**"
-      - "tests/test_blender_bridge.py"
-      - "tests/test_control_protocol.py"
-      - "tests/test_poller.py"
-      - "tests/test_poller_delivery_state.py"
-      - "tests/test_result_outbox.py"
+      - "tests/test_blender_*.py"
+      - "tests/test_local_agent_*.py"
       - "tests/test_local_project_runner.py"
-      - "tests/test_checkpoint_schema.py"
-      - "tests/test_ffmpeg_media.py"
-      - "tests/test_github_queue.py"
-      - "tests/test_repair_channel.py"
-      - "tests/test_patch_validation.py"
-      - "tests/test_repair_replay.py"
-      - "tests/test_local_agent_attachments.py"
-      - "tests/test_story_plan.py"
-      - "tests/test_scene_compiler.py"
-      - "tests/test_asset_registry.py"
+      - "tests/test_poller*.py"
       - "requirements-local-agent.txt"
       - "requirements-github-mailbox.txt"
       - "scripts/windows/**"
+      - "setup_blender_agent.bat"
+      - "run_blender_agent.bat"
       - ".github/workflows/local-agent-tests.yml"
+  workflow_dispatch:
 
 concurrency:
-  group: local-agent-safety-${{ github.head_ref || github.ref_name }}
+  group: blender-agent-windows-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  local-agent-safety:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install test dependencies
-        run: |
-          python -m pip install --disable-pip-version-check -r requirements-local-agent.txt
-          python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
-      - name: Compile Python sources and local connection checker
-        run: python -m compileall -q server.py core models local_agent scripts/check_github_connection.py
-      - name: Run repair-channel regression tests
-        run: python -m pytest -q tests/test_github_queue.py tests/test_repair_channel.py tests/test_poller.py tests/test_control_protocol.py tests/test_patch_validation.py tests/test_repair_replay.py tests/test_local_agent_control_protocol.py tests/test_poller_delivery_state.py tests/test_result_outbox.py
-      - name: Run existing Blender and local-agent compatibility tests
-        timeout-minutes: 4
-        run: |
-          python -m pytest -q \
-            tests/test_dialogue_cues.py \
-            tests/test_blender_dialogue.py \
-            tests/test_blender_bridge.py \
-            tests/test_local_project_runner.py \
-            tests/test_checkpoint_schema.py \
-            tests/test_ffmpeg_media.py \
-            tests/test_local_agent_attachments.py \
-            tests/test_story_plan.py \
-            tests/test_scene_compiler.py \
-            tests/test_asset_registry.py \
-            tests/test_preflight.py \
-            tests/test_notifications.py \
-            tests/test_blender_knowledge.py \
-            tests/test_blender_open_project.py \
-            tests/test_blender_preview_validation.py \
-            tests/test_blender_rigging.py \
-            tests/test_blender_workflow.py \
-            tests/test_error_knowledge.py \
-            tests/test_local_agent_core.py \
-            tests/test_local_agent_examples.py \
-            tests/test_manifest_security.py
-
-  windows-mailbox-smoke:
-    name: Windows mailbox and Blender-agent regression smoke
+  windows-blender-agent:
+    name: Windows — complete Blender agent suite
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
-      - name: Check out repository
+      - name: Check out agent sources
         uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Use Windows Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install mailbox/test dependencies
+      - name: Install Blender-agent test dependencies only
         run: python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
-      - name: Compile Windows agent modules
+      - name: Compile local agent and mailbox checker only
         run: python -m compileall -q local_agent scripts/check_github_connection.py
-      - name: Verify mailbox safety, replay and Windows file operations
-        timeout-minutes: 7
-        run: python -m pytest -q tests/test_github_queue.py tests/test_repair_channel.py tests/test_patch_validation.py tests/test_repair_replay.py tests/test_poller.py tests/test_poller_delivery_state.py tests/test_result_outbox.py tests/test_blender_bridge.py tests/test_ffmpeg_media.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_checkpoint_schema.py
+      - name: Run complete local Blender-agent tests (no cloud API or web app)
+        timeout-minutes: 10
+        run: python -m local_agent.test_scope all
+
+  portable-security:
+    name: Portable security contracts (supplemental)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check out agent sources
+        uses: actions/checkout@v4
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Blender-agent test dependencies only
+        run: python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
+      - name: Compile agent-only Python sources
+        run: python -m compileall -q local_agent scripts/check_github_connection.py
+      - name: Run portable mailbox and repair protocol security tests
+        timeout-minutes: 4
+        run: python -m local_agent.test_scope security
