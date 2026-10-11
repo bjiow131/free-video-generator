@@ -176,3 +176,84 @@ def test_windows_batch_launcher_never_interpolates_typed_project_name_in_command
     assert 'set "BLENDER_EXECUTABLE=C:' not in launcher
     assert 'set "BLENDER_EXECUTABLE=C:' not in setup
     assert "local_agent.blender_locator --check" in setup
+
+
+
+def test_mia_discovery_uses_same_installed_blender_as_preflight(tmp_path, monkeypatch):
+    from local_agent import blender_workflow as workflow
+
+    executable = tmp_path / "blender.exe"
+    executable.write_bytes(b"fixture")
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.setattr(workflow, "find_blender_executable", lambda: executable)
+    monkeypatch.setattr(workflow.subprocess, "run", lambda *a, **k: SimpleNamespace(
+        returncode=0, stdout="Blender 5.0.0\n", stderr="",
+    ))
+    result = workflow.discover_blender()
+    assert result["status"] == "ready"
+    assert result["path"] == str(executable.resolve())
+    assert result["path_source"] == "installed_or_path"
+
+
+def test_mia_gui_can_open_with_autodetected_blender(tmp_path, monkeypatch):
+    from local_agent import blender_workflow as workflow
+
+    executable = tmp_path / "blender.exe"
+    executable.write_bytes(b"fixture")
+    workspace = tmp_path / "workspace"
+    project = workspace / "mia_scene"
+    project.mkdir(parents=True)
+    scene = project / "mia_blockout.blend"
+    scene.write_bytes(b"blend placeholder")
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
+    monkeypatch.setattr(workflow, "find_blender_executable", lambda: executable)
+    commands = []
+    monkeypatch.setattr(workflow.subprocess, "Popen", lambda command, **kwargs: (
+        commands.append((command, kwargs)) or SimpleNamespace(pid=10)
+    ))
+    result = workflow.open_mia_project("mia_scene")
+    assert result["status"] == "started"
+    assert commands[0][0] == [str(executable), str(scene)]
+    assert commands[0][1]["shell"] is False
+
+
+def test_mia_rigging_detects_blender_before_complaining_about_missing_blockout(tmp_path, monkeypatch):
+    from local_agent import blender_rigging as rigging
+
+    exe = tmp_path / "blender.exe"
+    exe.write_bytes(b"fixture")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
+    monkeypatch.setattr(rigging, "find_blender_executable", lambda: exe)
+    result = rigging.create_mia_skeleton("mia")
+    assert result == {"status": "blocked", "reason": "mia_blockout_project_not_found"}
+
+
+def test_mailbox_preview_uses_locally_discovered_executable_not_remote_path(tmp_path, monkeypatch):
+    from local_agent import poller, blender_bridge
+
+    exe = tmp_path / "blender.exe"
+    exe.write_bytes(b"fixture")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
+    monkeypatch.setattr(poller, "find_blender_executable", lambda: exe)
+    calls = []
+
+    class FakeBridge:
+        def __init__(self, blender_path, workspace_path):
+            calls.append(("init", str(blender_path), workspace_path))
+
+        def run_task(self, task, **kwargs):
+            calls.append(("run", task, kwargs))
+            return {"status": "completed"}
+
+    monkeypatch.setattr(blender_bridge, "BlenderBridge", FakeBridge)
+    result = poller._run_blender_forest_preview({"project_name": "mia"})
+    assert result["status"] == "completed"
+    assert calls[0] == ("init", str(exe), str(workspace))
+    assert calls[1][1] == "forest_preview"
