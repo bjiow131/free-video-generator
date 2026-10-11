@@ -16,6 +16,7 @@ class LocalKeyHTTPTests(unittest.TestCase):
     def setUpClass(cls):
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), StudioHandler)
         cls.server.octava_lock = threading.Lock()
+        cls.server.mailbox_policy_lock = threading.Lock()
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 
