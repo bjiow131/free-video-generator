@@ -45,12 +45,12 @@ def test_rejects_unsafe_project_names(tmp_path: Path, name: str) -> None:
 
 def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) -> None:
     def fake_run(command, **kwargs):
-        assert command[1:2] == ["--factory-startup"]
-        assert command[2:5] == ["--disable-autoexec", "--python-exit-code", "1"]
-        assert command[5] == "--python"
-        assert Path(command[6]).name == "starter_scene.py"
-        assert command[7] == "--"
-        assert Path(command[8]).name == "task.json"
+        assert command[1:3] == ["--background", "--factory-startup"]
+        assert command[3:7] == ["--disable-autoexec", "--offline-mode", "--python-exit-code", "1"]
+        assert command[7] == "--python"
+        assert Path(command[8]).name == "starter_scene.py"
+        assert command[9] == "--"
+        assert Path(command[10]).name == "task.json"
         assert kwargs["capture_output"] is True
         assert kwargs["check"] is False
         project_dir = Path(kwargs["cwd"])
@@ -73,7 +73,7 @@ def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) ->
 
 
 
-def test_gui_launcher_returns_after_manifest_without_waiting_for_window_close(
+def test_headless_launcher_returns_after_manifest_without_waiting_for_worker_exit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = []
@@ -109,7 +109,7 @@ def test_gui_launcher_returns_after_manifest_without_waiting_for_window_close(
     assert result["status"] == "completed"
     assert len(calls) == 1
     command, kwargs = calls[0]
-    assert command[1:2] == ["--factory-startup"]
+    assert command[1:3] == ["--background", "--factory-startup"]
     assert kwargs["stdin"] is not None
     assert "capture_output" not in kwargs
     assert kwargs["stdout"] is not None
