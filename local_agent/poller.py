@@ -742,7 +742,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             # user knows to rotate the key, without exposing any credential.
             from local_agent.octava_advisor import OctavaAdviceError
             result = {"task_id": task.task_id, "status": "error", "error_type": type(exc).__name__}
-            if isinstance(exc, OctavaAdviceError):
+            if isinstance(exc, (OctavaAdviceError, MailboxPolicyError)):
                 result["reason"] = str(exc)
     # Attach a deterministic diagnosis to failed outcomes. This suggests next
     # steps only; it never edits files or runs commands by itself.
