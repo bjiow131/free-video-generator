@@ -12,6 +12,11 @@ from local_agent.poller import _not_expired
 def _agent_interactive_console_for_tests(monkeypatch):
     # Simulate an interactive local terminal for approval-path unit tests.
     monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    # Legacy approval tests must be deterministic regardless of the developer's
+    # real local Studio policy file. New unattended tests cover the opt-in path.
+    from local_agent import poller
+    from local_agent.mailbox_policy import default_policy
+    monkeypatch.setattr(poller, "load_policy", default_policy)
 
 
 def test_not_expired_accepts_future_utc_timestamp():
