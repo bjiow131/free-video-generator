@@ -70,20 +70,36 @@ for segment in config["segments"]:
 # Object bounds are projected into normalized camera coordinates.
 # If the subject does not fit, widen the lens within safe limits.
 def visibility_blocker(eye, evaluated_subject, depsgraph):
-    """Check center and inset bounding-box samples for foreground obstacles."""
+    """Check sampled evaluated mesh surface and projected silhouette for occlusion.
+
+    Bounding-box corners alone do not represent the surface of rounded meshes.
+    The returned name is diagnostic; a clear result is not a pixel-level proof.
+    """
     matrix = evaluated_subject.matrix_world
     center = matrix.translation.copy()
-    corners = [matrix @ Vector(corner) for corner in evaluated_subject.bound_box]
-    # Inset points avoid unstable grazing hits at exact mesh bounds.
-    points = [center] + [center.lerp(corner, 0.75) for corner in corners]
+    points = [center]
+    if evaluated_subject.type == "MESH":
+        mesh = evaluated_subject.to_mesh()
+        try:
+            vertices = mesh.vertices
+            if vertices:
+                # Sample up to 96 deterministic surface vertices per evaluation.
+                stride = max(1, len(vertices) // 96)
+                points.extend(matrix @ vertices[i].co for i in range(0, len(vertices), stride))
+        finally:
+            evaluated_subject.to_mesh_clear()
+    else:
+        corners = [matrix @ Vector(corner) for corner in evaluated_subject.bound_box]
+        points.extend(center.lerp(corner, 0.75) for corner in corners)
     for point in points:
         direction = point - eye
-        if direction.length <= 1e-5:
+        distance = direction.length
+        if distance <= 1e-5:
             return "camera overlaps subject"
         hit, _, _, _, blocker, _ = scene.ray_cast(
             depsgraph, eye, direction.normalized(),
-            distance=max(0.0, direction.length - 1e-3))
-        if hit and blocker.original != obj:
+            distance=max(0.0, distance - 1e-3))
+        if hit and blocker is not None and blocker.original != obj:
             return blocker.name
     return None
 
