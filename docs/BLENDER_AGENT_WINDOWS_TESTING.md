@@ -7,6 +7,14 @@ an Agnes API key, the AI Studio UI, a Docker server or an online video model.
 ## Supported scope
 
 - Target platform: Windows 10/11, Python 3.11+, locally installed Blender and FFmpeg.
+- The Windows launcher no longer assumes a specific Blender release. It resolves
+  an explicit `BLENDER_EXECUTABLE` override first (and fails if that path is
+  invalid), otherwise searches standard Blender Foundation installations for
+  the newest installed version, then PATH. Setup verifies `blender.exe --version`
+  without starting a render.
+- The project name typed at the Windows prompt is passed through the environment
+  to the Python CLI, never interpolated into a `.bat` command line. The Blender
+  bridge validates that name against a strict allowlist before running Blender.
 - Agent modules: `local_agent/`; local starter: `setup_blender_agent.bat`
   and `run_blender_agent.bat`; optional remote mailbox is **separate and opt-in**.
 - Code-level coverage: GitHub mailbox security, immutable IDs, backup/cleanup,
