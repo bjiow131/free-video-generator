@@ -713,7 +713,13 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             result_status = details.get("status", "completed")
             result = {"task_id": task.task_id, "status": result_status, "details": details}
         except Exception as exc:  # Keep error details bounded and avoid leaking tracebacks.
+            # OctavAPI errors have fixed, deliberately redacted messages.
+            # Preserve an actionable reason (e.g. insufficient balance) so the
+            # user knows to rotate the key, without exposing any credential.
+            from local_agent.octava_advisor import OctavaAdviceError
             result = {"task_id": task.task_id, "status": "error", "error_type": type(exc).__name__}
+            if isinstance(exc, OctavaAdviceError):
+                result["reason"] = str(exc)
     # Attach a deterministic diagnosis to failed outcomes. This suggests next
     # steps only; it never edits files or runs commands by itself.
     outcome = str(result.get("status", "unknown")).lower()
