@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from local_agent.prompt_interpreter import interpret_scene
-from local_agent.dropbox_review import export_review, ReviewDeliveryError
 
 _TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 
@@ -201,10 +200,6 @@ class StudioJobs:
                 raise StudioJobError("FFmpeg did not create a valid MP4; see ffmpeg.log")
             info.update(state="completed", message="Тестовая анимация готова", progress_percent=100,
                         video_url="/api/studio-video/" + job_id)
-            try:
-                info["review_delivery"] = export_review(d, info, ffmpeg)
-            except (ReviewDeliveryError, OSError, ValueError) as exc:
-                info["review_delivery"] = {"status": "failed", "reason": str(exc)[:180]}
         except Exception as exc:
             info.update(state="cancelled" if job_id in self.cancelled else "failed", message=str(exc)[:500])
         finally:
@@ -306,10 +301,6 @@ class StudioJobs:
                 raise StudioJobError("FFmpeg не смог объединить сцены; см. ffmpeg.log")
             info.update(state="completed", message="Все сцены собраны в MP4", progress_percent=100,
                         rendered_frames=info["total_frames"], video_url="/api/studio-video/"+job_id)
-            try:
-                info["review_delivery"] = export_review(directory, info, ffmpeg)
-            except (ReviewDeliveryError, OSError, ValueError) as exc:
-                info["review_delivery"] = {"status": "failed", "reason": str(exc)[:180]}
         except Exception as exc:
             info.update(state="cancelled" if job_id in self.cancelled else "failed", message=str(exc)[:500])
         finally:
