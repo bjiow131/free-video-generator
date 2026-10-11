@@ -103,9 +103,10 @@ def preflight() -> dict[str, Any]:
         "python_311_plus": sys.version_info >= (3, 11),
         "workspace_ready": workspace_check.get("exists") is True and workspace_check.get("writable") is True,
         "blender_available": blender_check.get("available") is True,
+        "mailbox_configured": bool(os.environ.get("LOCAL_AGENT_GITHUB_REPO", "").strip()),
     }
     return {
-        "status": "ready" if all(checks.values()) else "needs_setup",
+        "status": "ready" if checks["python_311_plus"] and checks["workspace_ready"] and checks["blender_available"] else "needs_setup",
         "checks": checks, "python": {"version": sys.version.split()[0]},
         "workspace": workspace_check, "disk_free_bytes": disk_free_bytes,
         "blender": blender_check,
