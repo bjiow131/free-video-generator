@@ -231,6 +231,7 @@ def test_fetch_repair_rejects_digest_mismatch():
 
 def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, monkeypatch):
     import subprocess
+    import sys
     from pathlib import Path
     from local_agent import poller
 
