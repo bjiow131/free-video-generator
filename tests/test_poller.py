@@ -502,7 +502,7 @@ def test_apply_patch_rejects_disallowed_paths_before_git_operations(tmp_path, mo
     (root / ".git").mkdir()
     monkeypatch.setattr(poller, "ROOT", root)
     result = poller._apply_patch(
-        "diff --git a/tests/.git/config b/tests/.git/config\\n", "unsafe-patch"
+        "diff --git a/tests/.git/config b/tests/.git/config\n", "unsafe-patch"
     )
     assert result == {"status": "rejected", "reason": "unsafe_or_malformed_patch"}
     assert not (tmp_path / ".local_agent_worktrees").exists()
@@ -522,7 +522,7 @@ def test_apply_patch_cleans_up_when_git_operation_times_out(tmp_path, monkeypatc
     def fake_run(args, **kwargs):
         calls.append(args)
         if args[1:3] == ["rev-parse", "--verify"]:
-            return SimpleNamespace(returncode=0, stdout="base-sha\\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
         if args[1:4] == ["show-ref", "--verify", "--quiet"]:
             return SimpleNamespace(returncode=1, stdout="", stderr="")
         if args[1:3] == ["worktree", "add"]:
@@ -540,7 +540,7 @@ def test_apply_patch_cleans_up_when_git_operation_times_out(tmp_path, monkeypatc
         raise AssertionError(args)
 
     monkeypatch.setattr(poller.subprocess, "run", fake_run)
-    result = poller._apply_patch("diff --git a/local_agent/file.py b/local_agent/file.py\\n", "timeout-01")
+    result = poller._apply_patch("diff --git a/local_agent/file.py b/local_agent/file.py\n", "timeout-01")
 
     assert result["status"] == "timeout"
     assert result["rollback_verified"] is True
