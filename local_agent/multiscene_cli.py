@@ -31,6 +31,7 @@ obj = bpy.data.objects.get(name)
 if obj is None:
     raise RuntimeError("Required animated object not found: " + name)
 camera.animation_data_clear()
+camera.data.animation_data_clear()
 obj.animation_data_clear()
 # Track the subject continuously, including between keyframes.
 # This keeps its origin centered but cannot prevent occlusion by other geometry.
