@@ -1790,6 +1790,7 @@ def supervise_windows() -> int:
     import winreg
     import webbrowser
     import urllib.request
+    import threading
 
     state_dir = _ensure_agent_dir()
     lock_path = state_dir / "octava_supervisor.lock"
@@ -1946,6 +1947,53 @@ def supervise_windows() -> int:
         except (OSError, ValueError, TypeError, KeyError):
             return False
 
+    telegram_stop = threading.Event()
+    # Telegram control stays in the supervisor. It survives a crashed mailbox
+    # worker and never blocks the two-second process health checks.
+    def telegram_loop() -> None:
+        while not telegram_stop.is_set():
+            try:
+                def alive(name: str) -> str:
+                    p = processes.get(name)
+                    return "работает" if p is not None and p.poll() is None else "не запущена"
+                control = load_runtime_control()
+                state_label = "пауза" if control["paused"] else "активен"
+                status_line = ("Blender AI Agent:\nGitHub-агент: " + alive("mailbox") +
+                               "\nStudio: " + alive("studio") +
+                               "\nПриём заданий: " + state_label)
+                try:
+                    manifest = _load_state()
+                    task_id = manifest.get("last_task_id")
+                    task_id = task_id if isinstance(task_id, str) and len(task_id) <= 128 else "нет"
+                    record = manifest.get("processed_tasks", {}).get(task_id, {})
+                    outcome = str(record.get("status", "ожидание"))[:40] if isinstance(record, dict) else "неизвестно"
+                    tasks_line = ("Последняя задача: " + task_id +
+                                  "\nСостояние: " + outcome)
+                except (OSError, RuntimeError, ValueError):
+                    tasks_line = "Состояние задач временно недоступно."
+                logs_line = "Последние события supervisor:\n"
+                try:
+                    lines = events_file.read_text(encoding="utf-8").splitlines()[-80:]
+                    # No arbitrary stdout, commands or environment data go to Telegram.
+                    safe = [line[:150] for line in lines if
+                            any(word in line for word in (
+                                "Started mailbox service", "Started studio service",
+                                "auto-restarting", "controlled restart",
+                                "Scheduled supervisor recovery", "supervisor active",
+                                "Supervisor stopped"))]
+                    logs_line += "\n".join(safe[-5:]) or "Пока нет событий."
+                except OSError:
+                    logs_line += "Журнал недоступен."
+                _supervisor_telegram_poll_once(status_line, tasks_line, logs_line)
+            except (ImportError, OSError, RuntimeError, ValueError):
+                pass
+            telegram_stop.wait(12)
+
+    thread = threading.Thread(target=telegram_loop, name="octava-telegram-commands",
+                              daemon=True)
+    pending_restored_notice = "запуска Windows-supervisor"
+    thread.start()
+
     try:
         for name in command:
             launch(name)
@@ -1955,6 +2003,19 @@ def supervise_windows() -> int:
         while True:
             time.sleep(2)
             now = time.monotonic()
+            try:
+                control = load_runtime_control()
+                if (control["restart_requested"] != control["restart_acknowledged"]
+                        and not studio_render_active()):
+                    if acknowledge_runtime_restart():
+                        log("Manual controlled restart requested by locally authorized operator")
+                        stop("mailbox")
+                        stop("studio")
+                        failures = {"mailbox": 0, "studio": 0}
+                        next_start = {"mailbox": 0.0, "studio": 0.0}
+                        pending_restored_notice = "ручного перезапуска"
+            except MailboxPolicyError:
+                log("Invalid runtime control preferences; manual restart refused")
             for name in command:
                 p = processes.get(name)
                 if p is not None and p.poll() is not None:
@@ -1970,18 +2031,29 @@ def supervise_windows() -> int:
                         stop("studio")
                         failures = {"mailbox": 0, "studio": 0}
                         next_start = {"mailbox": 0.0, "studio": 0.0}
+                        pending_restored_notice = "установки обновления"
                         continue
                     failures[name] = 0 if runtime >= 10 else failures[name] + 1
                     next_start[name] = now + _supervisor_restart_delay(failures[name], runtime)
                     log(f"{name} exited code={code}; auto-restarting")
+                    pending_restored_notice = "автоматического восстановления после сбоя"
                     _telegram_signal("service-restart", name + "-" + str(int(time.time() // 3600)),
                                      "Blender AI Agent: служба " + name + " завершилась. Автоматический перезапуск.")
                 if name not in processes and now >= next_start[name]:
                     launch(name)
+            if pending_restored_notice and all(
+                processes.get(name) is not None and processes[name].poll() is None
+                for name in ("mailbox", "studio")
+            ):
+                reason = pending_restored_notice
+                pending_restored_notice = None
+                _telegram_signal("service-online", str(int(time.time())),
+                                 "Blender AI Agent: службы Studio и GitHub запущены после " + reason + ".")
     except KeyboardInterrupt:
         log("Supervisor stopped on local keyboard request")
         return 0
     finally:
+        telegram_stop.set()
         stop("studio")
         stop("mailbox")
         try:
