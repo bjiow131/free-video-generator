@@ -171,8 +171,9 @@ def import_character_passport(
         destination = refs_dir / f"{entry['view']}_{entry['sha256'][:12]}{image.suffix.lower()}"
         refs_dir.mkdir(parents=True, exist_ok=True)
         if destination.exists():
-            destination = refs_dir / f"{len(refs_added) + 1:02d}_{_sha256(image)[:10]}_{image.name}"
-        if not destination.exists():
+            if destination.is_symlink() or not destination.is_file() or _sha256(destination) != entry["sha256"]:
+                raise CharacterPassportImportError("Existing reference file conflicts with its manifest.")
+        else:
             shutil.copy2(image, destination)
         verified_metadata.append({"view": entry["view"], "file": str(destination), "sha256": entry["sha256"], "origin": "project_generated", "provenance_claim_verified": False})
         refs_added.append(str(destination))
@@ -224,7 +225,7 @@ def import_character_passport(
             "visual_style": card.get("visual_style", "По референсам / смешанный"),
             "description": card.get("description", ""),
             "references": list(dict.fromkeys(list(card.get("references", [])) + refs_added)),
-            "original_reference_metadata": list(card.get("original_reference_metadata", [])) + verified_metadata,
+            "original_reference_metadata": list({entry["file"]: entry for entry in (list(card.get("original_reference_metadata", [])) + verified_metadata)}.values()),
             "passport_path": str(version_path),
             "passport_version": next_version,
             "passport_status": status,
