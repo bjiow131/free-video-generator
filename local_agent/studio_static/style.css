@@ -28,3 +28,12 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .mailbox-option b{font-size:13px;line-height:1.4}
 .mailbox-option small{color:var(--muted);font-size:12px;line-height:1.45}
 .mailbox-option:focus-within{outline:2px solid var(--cyan);outline-offset:2px}
+
+
+/* Telegram notification control: persistent local switch. */
+.telegram-alert-control{display:flex;gap:18px;align-items:center;justify-content:space-between;padding:16px;margin:10px 0 16px;background:var(--surface,#102636);border:1px solid var(--edge);border-radius:12px}
+.telegram-alert-control>div{flex:1;min-width:0}
+.telegram-alert-control b{font-size:14px}
+.telegram-alert-control .section-note{margin:6px 0 0}
+.telegram-alert-control button{flex:none;white-space:nowrap}
+@media(max-width:640px){.telegram-alert-control{flex-direction:column;align-items:stretch}.telegram-alert-control button{width:100%}}
