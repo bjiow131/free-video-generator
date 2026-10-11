@@ -42,7 +42,7 @@ def validate_patch_paths(patch: str) -> None:
     """
     if not isinstance(patch, str) or not patch.startswith("diff --git "):
         raise PatchValidationError("patch has no git diff headers")
-    if any(ord(char) < 32 and char not in "\n\r\t" for char in patch) or "\x7f" in patch:
+    if any(ord(char) < 32 and char not in "\n\t" for char in patch) or "\x7f" in patch:
         raise PatchValidationError("patch contains terminal control characters")
 
     expected = None
