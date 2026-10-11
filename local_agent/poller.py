@@ -728,8 +728,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_mia_skeleton(task.arguments)
             elif task.operation == "octava_advice":
                 if unattended:
-                    # Reserve BEFORE any paid call; restart/retry cannot bypass
-                    # daily spending guard. The provider may charge on failure.
+                    # Legacy hook is deliberately a no-op: the user removed the
+                    # 20-per-day local quota. Local OctavAPI consent still applies.
                     reserve_octava_call()
                 details = _run_octava_advice(task.arguments)
             else:
