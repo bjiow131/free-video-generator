@@ -10,6 +10,8 @@ def test_preflight_reports_missing_setup_without_network_or_render(monkeypatch, 
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr(cli, "_tool_version", lambda _command: {"available": False})
+    # Blender discovery also scans Program Files, independently of PATH.
+    monkeypatch.setattr(cli, "find_blender_executable", lambda: None)
     result = cli.preflight()
     assert result["status"] == "needs_setup"
     assert result["checks"]["workspace_ready"] is True
@@ -27,6 +29,8 @@ def test_preflight_handles_unconfigured_workspace(monkeypatch):
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr(cli, "_tool_version", lambda _command: {"available": False})
+    # Blender discovery also scans Program Files, independently of PATH.
+    monkeypatch.setattr(cli, "find_blender_executable", lambda: None)
     result = cli.preflight()
     assert result["checks"]["workspace_ready"] is False
     assert result["workspace"]["configured"] is False
