@@ -1,4 +1,4 @@
-"""Offline unattended mailbox authorization + durable spending limit tests."""
+"""Offline unattended mailbox authorization without a local daily provider cap."""
 import importlib.util
 import json
 from datetime import datetime, timezone, timedelta
@@ -18,7 +18,6 @@ def vault(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setattr(policy, '_ROOT', root)
     monkeypatch.setattr(policy, 'POLICY_FILE', root / '.local_agent' / 'mailbox_policy.json')
-    monkeypatch.setattr(policy, '_CALLS_FILE', root / '.local_agent' / 'octava_call_limit.json')
     return root
 
 
@@ -81,17 +80,16 @@ def test_symlink_attack_blocks_storage(vault, tmp_path):
     assert not list(other.iterdir())
 
 
-def test_daily_octava_budget_survives_restart(vault):
+def test_octava_calls_are_unlimited_by_local_daily_policy(vault):
     at = datetime(2026, 10, 11, tzinfo=timezone.utc)
-    for n in range(1, policy.MAX_OCTAVA_CALLS_PER_UTC_DAY + 1):
-        assert policy.reserve_octava_call(at) == n
-    with pytest.raises(policy.MailboxPolicyError, match='лимит'):
-        policy.reserve_octava_call(at)
-    assert policy.reserve_octava_call(at + timedelta(days=1)) == 1
+    for _ in range(100):
+        assert policy.reserve_octava_call(at) is None
+    assert policy.reserve_octava_call(at + timedelta(days=1)) is None
 
 
-def test_corrupt_budget_blocks_request(vault):
-    policy._CALLS_FILE.parent.mkdir(parents=True)
-    policy._CALLS_FILE.write_text('{"day":"2026-10-11", "calls": "unlimited"}')
-    with pytest.raises(policy.MailboxPolicyError):
-        policy.reserve_octava_call(datetime(2026, 10, 11, tzinfo=timezone.utc))
+def test_legacy_corrupt_counter_does_not_block_paid_calls(vault):
+    legacy = vault / '.local_agent' / 'octava_call_limit.json'
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text('not json')
+    assert policy.reserve_octava_call() is None
+    assert legacy.read_text() == 'not json'
