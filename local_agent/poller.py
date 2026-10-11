@@ -341,6 +341,72 @@ def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[
     }
 
 
+def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
+    """Create a short fixed camera-motion MP4, then export through opt-in Dropbox.
+
+    This is a procedural diagnostic fixture, NEVER an animation of project
+    characters and NEVER code, paths or prompts supplied by remote messages.
+    It lives in a unique QA project outside the user's mia_story project.
+    """
+    import time
+    import uuid
+    from local_agent.studio_state import StudioStore, default_state
+    from local_agent.studio_server import ReviewStudioJobs, read_settings
+    from local_agent.studio_jobs import StudioJobError
+
+    project = "agent_camera_qa_" + uuid.uuid4().hex[:12]
+    store = StudioStore(workspace, project=project)
+    state = default_state(project)
+    state["settings"].update({"duration": 3, "fps": 12, "resolution": "360x640"})
+    scene_id = "camera_qa"
+    state["scenes"] = [{
+        "id": scene_id, "title": "Проверка движения камеры",
+        "prompt": "тестовый персонаж идёт, камера следует за ним",
+        "location": "тестовая сцена", "camera": "следование",
+        "style": "проверка", "animation": "ходьба",
+        "status": "черновик", "preview": "",
+        "duration": 3, "characters": [], "props": [],
+    }]
+    enabled = read_settings()["enabled"]
+    jobs = ReviewStudioJobs(store)
+    try:
+        queued = jobs.start(state, scene_id)
+    except StudioJobError as exc:
+        return {"status": "failed", "reason": str(exc)[:240],
+                "mode": "procedural_camera_fixture"}
+    job_id = queued["job_id"]
+    deadline = time.monotonic() + 480
+    outcome = {}
+    while time.monotonic() < deadline:
+        outcome = jobs.status(job_id)
+        finished = outcome["state"] in ("completed", "failed", "cancelled", "interrupted")
+        reviewed = not enabled or "review_delivery" in outcome or outcome["state"] != "completed"
+        if finished and reviewed:
+            break
+        time.sleep(1)
+    else:
+        try:
+            jobs.cancel(job_id)
+        except StudioJobError:
+            pass
+        return {"status": "failed", "reason": "camera_smoke_timeout_480_seconds",
+                "mode": "procedural_camera_fixture", "job_id": job_id}
+    if outcome["state"] != "completed":
+        return {"status": "failed", "reason": str(outcome.get("message", "render_failed"))[:240],
+                "mode": "procedural_camera_fixture", "job_id": job_id}
+    review = outcome.get("review_delivery", {"status": "not_confirmed"})
+    return {
+        "status": "completed",
+        "mode": "procedural_camera_fixture",
+        "job_id": job_id,
+        "project": project,
+        "video": str(store.root / "studio_jobs" / job_id / "scene.mp4"),
+        "frames_expected": outcome["total_frames"],
+        "review_delivery": review,
+        "cloud_sync_verified": False,
+    }
+
+
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
     # The Studio launcher configures LOCAL_AGENT_WORKSPACE, but the GitHub
@@ -366,6 +432,12 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
             preview=arguments.get("preview", True),
             cycles=arguments.get("cycles", False),
         )
+        if arguments.get("render", True) and arguments["project_name"].startswith("qa_camera_"):
+            # Existing allowlisted forest task supports a fixed accompanying
+            # camera fixture for end-to-end QA. No arbitrary remote inputs.
+            video = _run_studio_camera_qa(workspace)
+            return {"status": video["status"], "task": "blender_forest_preview",
+                    "result": result, "camera_video_qa": video}
         return {"status": "completed", "task": "blender_forest_preview", "result": result}
     except BlenderBridgeError as exc:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
