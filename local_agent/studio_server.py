@@ -262,6 +262,55 @@ _TELEGRAM_TOKEN_RE = re.compile(r"[0-9]{5,15}:[A-Za-z0-9_-]{20,128}\Z")
 _TELEGRAM_LOCK = threading.RLock()
 _TELEGRAM_OUTBOX = ROOT / ".local_agent" / "telegram_outbox"
 
+_TELEGRAM_TRANSPORT = ROOT / ".local_agent" / "telegram_transport.json"
+_TELEGRAM_RELAY_URL = "https://octava-telegram-relay.onrender.com/api/telegram"
+
+
+def telegram_transport_settings() -> dict[str, bool]:
+    path = _TELEGRAM_TRANSPORT
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise TelegramAlertError("Недопустимая конфигурация Telegram")
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {"use_relay": False}
+    except OSError:
+        raise TelegramAlertError("Не удалось прочитать настройки Telegram") from None
+    if len(raw) > 160:
+        raise TelegramAlertError("Некорректные настройки Telegram")
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise TelegramAlertError("Некорректные настройки Telegram") from None
+    if not isinstance(value, dict) or set(value) != {"use_relay"} or type(value["use_relay"]) is not bool:
+        raise TelegramAlertError("Некорректные настройки Telegram")
+    return value
+
+
+def telegram_set_transport(value: dict) -> dict:
+    if not isinstance(value, dict) or set(value) != {"use_relay"} or type(value["use_relay"]) is not bool:
+        raise TelegramAlertError("Ожидается флаг use_relay")
+    path = _TELEGRAM_TRANSPORT
+    if path.parent.is_symlink() or path.is_symlink():
+        raise TelegramAlertError("Недопустимая папка конфигурации")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    with _TELEGRAM_LOCK:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".telegram-route-",
+                                         suffix=".tmp", delete=False, mode="w",
+                                         encoding="utf-8") as output:
+            temp_path = Path(output.name)
+            json.dump(value, output)
+            output.flush()
+            os.fsync(output.fileno())
+        try:
+            os.replace(temp_path, path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    return {"use_relay": value["use_relay"], "relay_provider": "Render",
+            "note": "При включении бот-токен и сообщения передаются через ваш HTTPS-сервис Render"}
+
+
 
 class TelegramAlertError(ValueError):
     pass
@@ -282,7 +331,8 @@ def _telegram_credentials() -> tuple[str | None, str | None]:
 def telegram_status() -> dict[str, bool]:
     token, chat = _telegram_credentials()
     return {"configured": bool(token), "paired": bool(token and chat),
-            "outbound_only": True, "enabled": bool(token and chat)}
+            "outbound_only": True, "enabled": bool(token and chat),
+            "use_relay": telegram_transport_settings()["use_relay"]}
 
 
 def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) -> dict:
@@ -294,8 +344,15 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
     if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
         raise TelegramAlertError("Неверный формат токена Telegram-бота")
     payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    request = Request("https://api.telegram.org/bot" + token + "/" + method,
-                      method="POST", data=payload,
+    if telegram_transport_settings()["use_relay"]:
+        # Separate owner's HTTPS service is an explicit local opt-in. Unlike the
+        # direct Telegram route, Render receives the bot token and message body.
+        url = _TELEGRAM_RELAY_URL
+        payload = json.dumps({"token": token, "method": method, "params": data},
+                             ensure_ascii=False).encode("utf-8")
+    else:
+        url = "https://api.telegram.org/bot" + token + "/" + method
+    request = Request(url, method="POST", data=payload,
                       headers={"Content-Type": "application/json"})
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -621,6 +678,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, telegram_status())
             except TelegramAlertError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/telegram-transport":
+            try:
+                return self._json(200, telegram_transport_settings())
+            except TelegramAlertError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -700,7 +762,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -710,7 +772,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test") and length > 240):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport") and length > 240):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -730,6 +792,9 @@ class StudioHandler(BaseHTTPRequestHandler):
             if path == "/api/dropbox-review":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
+            if path == "/api/telegram-transport":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, telegram_set_transport(body))
             if path == "/api/telegram-configure":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, telegram_save_token(body))
