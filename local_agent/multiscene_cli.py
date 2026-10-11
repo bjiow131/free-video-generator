@@ -29,6 +29,16 @@ if obj is None:
     raise RuntimeError("Required animated object not found: " + name)
 camera.animation_data_clear()
 obj.animation_data_clear()
+# Track the subject continuously, including between keyframes.
+# This keeps its origin centered but cannot prevent occlusion by other geometry.
+for constraint in list(camera.constraints):
+    if constraint.name == "Multiscene subject tracking":
+        camera.constraints.remove(constraint)
+tracking = camera.constraints.new(type="TRACK_TO")
+tracking.name = "Multiscene subject tracking"
+tracking.target = obj
+tracking.track_axis = "TRACK_NEGATIVE_Z"
+tracking.up_axis = "UP_Y"
 base_cam = camera.location.copy()
 base_obj = obj.location.copy()
 scene.frame_start = 1
