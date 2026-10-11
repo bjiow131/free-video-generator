@@ -108,6 +108,8 @@ def visibility_blocker(eye, evaluated_subject, depsgraph):
 scene.view_layers.update()
 margin = 0.08
 min_lens = 18.0
+max_lens = 100.0
+frame_candidates = []
 for frame in range(scene.frame_start, scene.frame_end + 1):
     scene.frame_set(frame)
     camera.data.lens = config["camera_lens_mm"]
@@ -127,7 +129,13 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
         if camera.data.lens <= min_lens:
             raise RuntimeError("Subject cannot fit inside camera frame at frame %d" % frame)
         camera.data.lens = max(min_lens, camera.data.lens * 0.90)
-    camera.data.keyframe_insert(data_path="lens", frame=frame)
+    # Fit first, then prefer a closer composition when there is room to zoom.
+    # The fallback is always the already-tested fitting focal length.
+    fitting_lens = float(camera.data.lens)
+    height = max(p.y for p in coords) - min(p.y for p in coords)
+    preferred_lens = fitting_lens
+    if height > 1e-5 and height < 0.38:
+        preferred_lens = min(max_lens, fitting_lens * (0.38 / height))
     # Detect foreground occlusion that camera projection alone cannot catch.
     # This is a conservative geometric check, not an image-based visual test.
     scene.view_layers.update()
@@ -141,34 +149,39 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
         raise RuntimeError("Camera overlaps subject at frame %d" % frame)
     # Build candidate sets for the whole timeline before selecting a path.
     # Every candidate is validated against current-frame geometry and framing.
-    frame_candidates = locals().get("frame_candidates", [])
     base_position = camera.location.copy()
     valid = []
-    for side, rise in (
-        (0.0, 0.0), (0.0, 0.6), (0.7, 0.0), (-0.7, 0.0),
-        (1.4, 0.4), (-1.4, 0.4), (0.0, 1.5),
-        (2.4, 0.8), (-2.4, 0.8), (0.0, 2.8),
-    ):
-        camera.location = base_position + Vector((side, 0.0, rise))
-        scene.view_layers.update()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        subject = obj.evaluated_get(depsgraph)
-        eye2 = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
-        if (subject.matrix_world.translation - eye2).length <= 0.1:
-            continue
-        if visibility_blocker(eye2, subject, depsgraph) is not None:
-            continue
-        projected = [world_to_camera_view(scene, camera, point)
-                     for point in world_corners]
-        if all(margin <= p.x <= 1 - margin and
-               margin <= p.y <= 1 - margin and p.z > 0
-               for p in projected):
-            valid.append(tuple(camera.location))
-    camera.location = base_position
+    # Do not reject an otherwise good frame just because a tighter lens
+    # prevents finding an unobstructed camera position.
+    for trial_lens in dict.fromkeys((preferred_lens, fitting_lens)):
+        camera.data.lens = trial_lens
+        valid = []
+        for side, rise in (
+            (0.0, 0.0), (0.0, 0.6), (0.7, 0.0), (-0.7, 0.0),
+            (1.4, 0.4), (-1.4, 0.4), (0.0, 1.5),
+            (2.4, 0.8), (-2.4, 0.8), (0.0, 2.8),
+        ):
+            camera.location = base_position + Vector((side, 0.0, rise))
+            scene.view_layers.update()
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            subject = obj.evaluated_get(depsgraph)
+            eye2 = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
+            if (subject.matrix_world.translation - eye2).length <= 0.1:
+                continue
+            if visibility_blocker(eye2, subject, depsgraph) is not None:
+                continue
+            projected = [world_to_camera_view(scene, camera, point)
+                         for point in world_corners]
+            if all(margin <= p.x <= 1 - margin and
+                   margin <= p.y <= 1 - margin and p.z > 0
+                   for p in projected):
+                valid.append(tuple(camera.location))
+        camera.location = base_position
+        if valid:
+            break
     if not valid:
-        raise RuntimeError(
-            "No feasible camera position at frame %d (occluder: %s)" %
-            (frame, visibility_blocker(eye, evaluated, depsgraph)))
+        raise RuntimeError("No feasible camera position at frame %d" % frame)
+    camera.data.keyframe_insert(data_path="lens", frame=frame)
     frame_candidates.append(valid)
 # Optimize the complete path rather than greedily selecting per-frame offsets.
 from local_agent.camera_path_planner import optimize_camera_path
@@ -205,14 +218,10 @@ for _pass in range(2):
                for p in projected):
             revised[frame] = candidate.copy()
     positions = revised
-# Remove camera location curves before baking the accepted per-frame path.
-# Otherwise earlier segment keys can distort the smoothed motion.
-if camera.animation_data and camera.animation_data.action:
-    action = camera.animation_data.action
-    if hasattr(action, "fcurves"):
-        for curve in list(action.fcurves):
-            if curve.data_path == "location":
-                action.fcurves.remove(curve)
+# Bake a fresh camera location action: Blender 5.x may store curves in
+# action slots, so manipulating legacy action.fcurves is not sufficient.
+# Lens animation belongs to camera.data and is intentionally preserved.
+camera.animation_data_clear()
 for frame, position in positions.items():
     scene.frame_set(frame)
     camera.location = position
