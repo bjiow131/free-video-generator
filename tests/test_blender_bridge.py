@@ -46,7 +46,10 @@ def test_rejects_unsafe_project_names(tmp_path: Path, name: str) -> None:
 def test_runs_only_fixed_blender_script_and_validates_outputs(tmp_path: Path) -> None:
     def fake_run(command, **kwargs):
         assert command[1:2] == ["--factory-startup"]
-        assert command[3] == "--python"
+        assert command[2] == "--python"
+        assert Path(command[3]).name == "starter_scene.py"
+        assert command[4] == "--"
+        assert Path(command[5]).name == "task.json"
         assert kwargs["capture_output"] is True
         assert kwargs["check"] is False
         project_dir = Path(kwargs["cwd"])
