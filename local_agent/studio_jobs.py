@@ -17,6 +17,42 @@ from local_agent.prompt_interpreter import interpret_scene
 _TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 
 
+def _prepare_studio_blender_script(source: Path, job_dir: Path) -> Path:
+    """Use a validated temporary compatibility copy on older installations.
+
+    The Windows trusted updater cannot overwrite the Blender-side script.
+    Older installed versions create an empty factory scene whose world is None.
+    This exact one-line compatibility fix uses only already-installed code and
+    writes a private copy inside the new render job. A fixed upstream script is
+    used directly without any modifications.
+    """
+    if source.is_symlink() or not source.is_file():
+        raise StudioJobError("Unsafe or missing Blender scene script")
+    if source.stat().st_size > 200_000:
+        raise StudioJobError("Blender scene script too large")
+    original = source.read_text(encoding="utf-8")
+    marker = "    scene.world.color = (0.08, 0.11, 0.16)"
+    if marker not in original:
+        return source
+    if original.count(marker) != 1 or "    bpy.ops.wm.read_factory_settings(use_empty=True)" not in original:
+        raise StudioJobError("Unexpected Blender scene compatibility signature")
+    repaired = original.replace(
+        marker,
+        '    if scene.world is None:\\n'
+        '        scene.world = bpy.data.worlds.new("Studio Camera QA World")\\n'
+        + marker,
+    )
+    # The replacement is fixed code, not a remote task field. Reject malformed
+    # source before Blender launches; never mutate the installed original.
+    compile(repaired, str(source), "exec")
+    temporary = job_dir / "studio_blender_scene_compat.py"
+    if temporary.exists() or temporary.is_symlink():
+        raise StudioJobError("Existing Blender compatibility script is unsafe")
+    with temporary.open("x", encoding="utf-8") as stream:
+        stream.write(repaired)
+    return temporary
+
+
 def scene_fingerprint(state: dict[str, Any], scene: dict[str, Any]) -> str:
     """Version the exact scene inputs that could affect a rendered clip.
 
@@ -148,7 +184,7 @@ class StudioJobs:
             with self.lock:
                 info.update(state="running", message="Blender создаёт анимацию")
                 self._write(d, info)
-            script = Path(__file__).resolve().with_name("studio_blender_scene.py")
+            script = _prepare_studio_blender_script(Path(__file__).resolve().with_name("studio_blender_scene.py"), d)
             cmd = [str(blender), "--background", "--factory-startup", "--disable-autoexec",
                    "--offline-mode", "--python-exit-code", "12", "--python", str(script), "--", str(d / "manifest.json"), str(d)]
             with (d / "blender.log").open("w", encoding="utf-8", errors="replace") as log:
