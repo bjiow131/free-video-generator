@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "lyagushka-kva",
+  "status": "awaiting_original_references",
+  "display_name": "Ква",
+  "category": "animal",
+  "role": "Обитатель маленького пруда",
+  "age_or_species": "лягушка",
+  "visual_identity": "Зелёная небольшая лягушка с выразительными глазами и длинными задними лапами; контрастный живот.",
+  "personality": [
+    "смелая",
+    "шутливая",
+    "любит воду"
+  ],
+  "animation_requirements": "прыжок, приземление, присед, плавание; контролируемые брызги",
+  "voice_and_mouth_sync": "короткие фразы и кваканье",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Водные сцены делать без тяжёлой симуляции: простые ряби и заранее подготовленные эффекты. Original project-specific references required; external source links removed."
+}

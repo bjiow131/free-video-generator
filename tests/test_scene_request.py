@@ -284,3 +284,10 @@ def test_unrelated_animation_does_not_enable_vehicle_follow_camera():
     assert plan["camera"]["motion"] == "static"
     assert plan["camera"]["status"] == "static_camera"
 
+
+def test_speaking_mouth_script_is_valid_and_keyframed():
+    from local_agent.scene_request import _BLENDER_SCRIPT
+    compile(_BLENDER_SCRIPT, "scene_builder.py", "exec")
+    assert 'item["name"] + " | mouth"' in _BLENDER_SCRIPT
+    assert 'mouth.keyframe_insert(data_path="scale"' in _BLENDER_SCRIPT
+    assert 'cfg.get("mouth_motion_enabled")' in _BLENDER_SCRIPT

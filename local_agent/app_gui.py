@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import traceback
+import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -26,7 +27,7 @@ from local_agent.update_manager import apply_update_archive, UpdateError
 from local_agent.character_library import CharacterPassportImportError, import_character_passport
 from local_agent.scene01_reference_pack import ReferencePackError, download_scene01_reference_pack
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 APP_TITLE = "Blender Work Agent Studio"
 DEFAULT_WORKSPACE = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", str(Path.home() / "BlenderAgentProjects")))
 CHARACTER_DIR = Path(os.environ.get("LOCAL_AGENT_CHARACTER_LIBRARY", str(Path.home() / "BlenderAgentLibrary")))
@@ -209,8 +210,9 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="БИБЛИОТЕКА АССЕТОВ", style="Eyebrow.TLabel").pack(anchor="w")
         ttk.Label(title_block, text="Персонажи и референсы", style="Title.TLabel").pack(anchor="w", pady=(3, 3))
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
+        ttk.Button(top, text="Подготовить библиотеку сезона 1…", command=self._prepare_season1_library).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
-        ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
+        # Third-party Scene 01 downloads are not offered in original-only mode.
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
@@ -241,7 +243,7 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.pack(fill="both", expand=True)
         actions = ttk.Frame(right)
         actions.pack(fill="x", pady=(10, 0))
-        ttk.Button(actions, text="Добавить изображение-референс…", command=self._add_reference).pack(side="left")
+        ttk.Button(actions, text="Добавить оригинальный референс…", command=self._add_reference).pack(side="left")
         ttk.Button(actions, text="Открыть изображение", command=self._open_reference).pack(side="left", padx=8)
         ttk.Button(actions, text="Изменить описание", command=self._edit_character).pack(side="left")
         ttk.Button(actions, text="Удалить карточку", command=self._delete_character).pack(side="right")
@@ -632,7 +634,7 @@ class BlenderAgentApp(tk.Tk):
         heading = ttk.Frame(frame)
         heading.pack(fill="x", pady=(0, 10))
         ttk.Label(heading, text=f"Референсы персонажа «{card.get('name', '')}»", style="Title.TLabel").pack(side="left")
-        ttk.Button(heading, text="Добавить референсы…", command=lambda cid=card_id: self._add_reference_to_card(cid)).pack(side="right")
+        ttk.Button(heading, text="Импортировать оригинальный референс…", command=lambda cid=card_id: self._add_reference_to_card(cid)).pack(side="right")
         tree = ttk.Treeview(frame, columns=("pose", "path"), show="headings", selectmode="browse")
         tree.heading("pose", text="Поза / вид")
         tree.heading("path", text="Файл")
@@ -640,12 +642,24 @@ class BlenderAgentApp(tk.Tk):
         tree.column("path", width=650)
         tree.pack(fill="both", expand=True)
         tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_from_tab(cid))
+        ttk.Label(frame, text="ОТКРЫТЫЕ ИСТОЧНИКИ И ЛИЦЕНЗИИ", style="Eyebrow.TLabel").pack(anchor="w", pady=(12, 5))
+        source_tree = ttk.Treeview(frame, columns=("title", "license", "url"), show="headings", selectmode="browse", height=4)
+        source_tree.heading("title", text="Источник")
+        source_tree.heading("license", text="Лицензия")
+        source_tree.heading("url", text="Ссылка")
+        source_tree.column("title", width=260, stretch=True)
+        source_tree.column("license", width=170, stretch=False)
+        source_tree.column("url", width=420, stretch=True)
+        source_tree.pack(fill="x", expand=False)
+        source_tree.bind("<Double-Button-1>", lambda _event, cid=card_id: self._open_reference_source_from_tab(cid))
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Открыть выбранный", command=lambda cid=card_id: self._open_reference_from_tab(cid)).pack(side="left")
+        ttk.Button(actions, text="Открыть источник", command=lambda cid=card_id: self._open_reference_source_from_tab(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Назвать позу…", command=lambda cid=card_id: self._label_reference_pose(cid)).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Открыть карточку", command=lambda cid=card_id: self._select_card_in_library(cid)).pack(side="left", padx=(8, 0))
         setattr(frame, "reference_tree", tree)
+        setattr(frame, "reference_source_tree", source_tree)
         self._refresh_reference_tab(card)
         self.tabs.select(frame)
 
@@ -665,6 +679,43 @@ class BlenderAgentApp(tk.Tk):
             p = Path(path)
             label = labels.get(str(path)) or (p.stem.split("_", 1)[1] if "_" in p.stem else p.stem)
             tree.insert("", "end", iid=str(index), values=(label, str(p)))
+        source_tree = getattr(frame, "reference_source_tree", None)
+        if source_tree is not None:
+            for iid in source_tree.get_children():
+                source_tree.delete(iid)
+            for index, source in enumerate(card.get("reference_sources", [])):
+                if not isinstance(source, dict):
+                    continue
+                source_tree.insert("", "end", iid=str(index), values=(
+                    str(source.get("title", "Open reference"))[:180],
+                    str(source.get("license", "License not recorded"))[:100],
+                    str(source.get("url", ""))[:500],
+                ))
+
+    def _open_reference_source_from_tab(self, card_id: str) -> None:
+        frame = self.reference_tabs.get(card_id)
+        source_tree = getattr(frame, "reference_source_tree", None) if frame is not None else None
+        selected = source_tree.selection() if source_tree is not None else ()
+        if not selected:
+            messagebox.showinfo("Выберите источник", "Выберите строку в таблице открытых источников.", parent=self)
+            return
+        card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if not card:
+            return
+        sources = [item for item in card.get("reference_sources", []) if isinstance(item, dict)]
+        try:
+            source = sources[int(selected[0])]
+            url = str(source.get("url", "")).strip()
+        except (IndexError, ValueError, TypeError):
+            return
+        # Imported passport data is untrusted: open HTTPS pages only, never local files or script schemes.
+        if not url.startswith("https://") or len(url) > 2000:
+            messagebox.showerror("Небезопасная ссылка", "Разрешены только HTTPS-ссылки на страницы источников.", parent=self)
+            return
+        try:
+            webbrowser.open(url, new=2)
+        except Exception as exc:
+            messagebox.showerror("Не удалось открыть источник", str(exc), parent=self)
 
     def _label_reference_pose(self, card_id: str) -> None:
         frame = self.reference_tabs.get(card_id)
@@ -702,42 +753,32 @@ class BlenderAgentApp(tk.Tk):
         self._refresh_characters(card_id)
 
     def _add_reference_to_card(self, card_id: str) -> None:
+        """Import only project-generated images with validated local manifests."""
         card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
         if not card:
             return
-        paths = filedialog.askopenfilenames(title=f"Добавить референсы для «{card['name']}»",
-            filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff")], parent=self)
-        if not paths:
+        manifest_path = filedialog.askopenfilename(
+            title="Манифест оригинального референса (JSON)",
+            filetypes=[("JSON манифест", "*.json")], parent=self)
+        if not manifest_path:
             return
-        allowed = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
-        folder = CHARACTER_DIR / card_id
-        folder.mkdir(parents=True, exist_ok=True)
-        added = []
-        for raw in paths:
-            src = Path(raw)
-            try:
-                if src.suffix.lower() not in allowed or src.stat().st_size > 30 * 1024 * 1024:
-                    continue
-                index = len(card.get("references", [])) + len(added) + 1
-                destination = folder / f"{index:02d}_{src.name}"
-                if destination.exists():
-                    destination = folder / f"{index:02d}_{int(time.time())}_{src.name}"
-                shutil.copy2(src, destination)
-                added.append(str(destination))
-            except OSError:
-                continue
-        if not added:
-            messagebox.showwarning("Нет добавленных файлов", "Не удалось добавить изображения. Поддерживаются изображения до 30 МБ.", parent=self)
+        passport_path = card.get("passport_path")
+        if not passport_path or not Path(passport_path).is_file():
+            messagebox.showerror("Нет паспорта", "Сначала импортируйте паспорт персонажа.", parent=self)
             return
-        data = self._load_characters()
-        for item in data:
-            if item.get("id") == card_id:
-                item.setdefault("references", []).extend(added)
-        self._save_characters(data)
-        updated = next(item for item in data if item.get("id") == card_id)
-        self._refresh_reference_tab(updated)
+        try:
+            result = import_character_passport(
+                passport_path, CHARACTER_DIR, character_id=card_id,
+                original_reference_manifests=[manifest_path],
+                original_asset_root=Path(manifest_path).parent)
+        except (CharacterPassportImportError, OSError, ValueError) as exc:
+            messagebox.showerror("Референс отклонён", str(exc), parent=self)
+            return
+        updated = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if updated:
+            self._refresh_reference_tab(updated)
         self._refresh_characters(card_id)
-        self._set_status(f"Добавлено референсов: {len(added)} для {card['name']}.")
+        self._set_status(f"Проверенный референс добавлен для {card['name']}: {result['references_added']}.")
 
     def _open_reference_from_tab(self, card_id: str) -> None:
         frame = self.reference_tabs.get(card_id)
@@ -995,6 +1036,59 @@ class BlenderAgentApp(tk.Tk):
             parent=self,
         )
 
+    def _prepare_season1_library(self) -> None:
+        """Install the versioned Season 1 passport set without blocking the GUI."""
+        script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_season1_library.py"
+        if not script.is_file():
+            messagebox.showerror("Не найден установщик", f"Файл не найден: {script}", parent=self)
+            return
+        if not messagebox.askyesno(
+            "Подготовить библиотеку сезона 1",
+            "Будут добавлены 14 паспортов, скачаны три CC0-фотореференса и создан манифест сезона. "
+            "Неизменённые паспорта повторно импортироваться не будут. 3D-модели автоматически не скачиваются. Продолжить?",
+            parent=self,
+        ):
+            return
+        self._set_status("Подготовка библиотеки сезона 1…")
+        self._busy = True
+
+        def worker() -> None:
+            import subprocess
+            env = os.environ.copy()
+            env["LOCAL_AGENT_CHARACTER_LIBRARY"] = str(CHARACTER_DIR)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script)],
+                    cwd=str(script.parents[1]),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+                output = (result.stdout or "").strip()
+                errors = (result.stderr or "").strip()
+                self.after(0, lambda: self._finish_season1_library(result.returncode, output, errors))
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                error_text = str(exc)
+                self.after(0, lambda message=error_text: self._finish_season1_library(1, "", message))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_season1_library(self, code: int, output: str, errors: str) -> None:
+        self._busy = False
+        if code == 0:
+            self._refresh_characters()
+            self._set_status("Библиотека сезона 1 подготовлена.")
+            messagebox.showinfo("Библиотека сезона 1 готова", output or "Паспорта и манифест сохранены.", parent=self)
+        else:
+            self._set_status("Подготовка библиотеки сезона 1 завершилась с ошибкой.")
+            messagebox.showerror(
+                "Не удалось подготовить библиотеку",
+                (errors or output or f"Код завершения: {code}")[-5000:],
+                parent=self,
+            )
+
     def _add_character(self) -> None:
         dialog = tk.Toplevel(self)
         dialog.title("Новая карточка персонажа")
@@ -1074,19 +1168,9 @@ class BlenderAgentApp(tk.Tk):
     def _add_reference(self) -> None:
         card = self._selected_card()
         if not card:
-            messagebox.showwarning("Выберите карточку", "Сначала выберите карточку.", parent=self); return
-        path = filedialog.askopenfilename(title="Добавить изображение-референс", filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")], parent=self)
-        if not path: return
-        src = Path(path)
-        if src.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"} or src.stat().st_size > 30 * 1024 * 1024:
-            messagebox.showerror("Недопустимый файл", "Поддерживаются изображения до 30 МБ.", parent=self); return
-        folder = CHARACTER_DIR / card["id"]; folder.mkdir(parents=True, exist_ok=True)
-        destination = folder / f"{len(card.get('references', [])) + 1:02d}_{src.name}"
-        shutil.copy2(src, destination)
-        data = self._load_characters()
-        for item in data:
-            if item["id"] == card["id"]: item.setdefault("references", []).append(str(destination))
-        self._save_characters(data); self._refresh_characters(card["id"])
+            messagebox.showwarning("Выберите карточку", "Сначала выберите карточку.", parent=self)
+            return
+        self._add_reference_to_card(card["id"])
 
     def _open_reference(self) -> None:
         card = self._selected_card()

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "belka-tishka",
+  "status": "awaiting_original_references",
+  "display_name": "Тишка",
+  "category": "animal",
+  "role": "Быстрый помощник и источник комических ситуаций",
+  "age_or_species": "белка",
+  "visual_identity": "Пышный хвост, небольшие лапы, тёплая рыже-коричневая палитра; один простой отличительный аксессуар допустим.",
+  "personality": [
+    "проворная",
+    "запасливая",
+    "добрая"
+  ],
+  "animation_requirements": "бег, прыжки, баланс хвоста, удержание ореха, лазание по стволу",
+  "voice_and_mouth_sync": "быстрая лёгкая речь или звуковые реакции",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Проверить, есть ли в выбранном CC0-наборе белка с подходящим ригом; иначе сделать оригинальную модель. Original project-specific references required; external source links removed."
+}

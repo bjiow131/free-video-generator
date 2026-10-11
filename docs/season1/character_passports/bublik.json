@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "bublik",
+  "status": "awaiting_original_references",
+  "display_name": "Бублик",
+  "category": "animal",
+  "role": "Семейная собака, появляется по необходимости",
+  "age_or_species": "собака",
+  "visual_identity": "Небольшая дружелюбная собака среднего компактного телосложения; однотонная шерсть с пятном для узнаваемости.",
+  "personality": [
+    "преданный",
+    "игривый",
+    "чуткий"
+  ],
+  "animation_requirements": "ходьба на четырёх лапах, бег, виляние хвостом, сидение, нюхание",
+  "voice_and_mouth_sync": "лай/скулёж без человеческой речи",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Выбрать модель с подходящим четырёхногим ригом; не ретаргетить человеческую анимацию. Original project-specific references required; external source links removed."
+}

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "yozh-kolya",
+  "status": "awaiting_original_references",
+  "display_name": "Коля",
+  "category": "animal",
+  "role": "Тихий сосед по лесу",
+  "age_or_species": "ёж",
+  "visual_identity": "Низкий округлый корпус, короткие лапки, крупный нос; иголки крупными группами, не тысячами отдельных объектов.",
+  "personality": [
+    "осторожный",
+    "добрый",
+    "любит порядок"
+  ],
+  "animation_requirements": "медленная ходьба, сворачивание в компактную позу, нюхание, перенос листика",
+  "voice_and_mouth_sync": "тихий доброжелательный голос или фырканье",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Для рига иголки лучше реализовать как единый стилизованный слой/инстансы. Original project-specific references required; external source links removed."
+}

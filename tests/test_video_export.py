@@ -20,3 +20,7 @@ def test_export_validates_project_preset_and_extension(tmp_path: Path):
 
 def test_generated_export_script_has_valid_python_syntax():
     compile(_SCRIPT, "blender_video_export.py", "exec")
+
+def test_export_accepts_nla_tracks_in_addition_to_active_actions():
+    assert "o.animation_data.nla_tracks" in _SCRIPT
+    assert "o.animation_data.action" in _SCRIPT

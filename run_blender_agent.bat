@@ -6,11 +6,18 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title Blender Work Agent
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\venv"
-set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+if not defined BLENDER_EXECUTABLE (
+  for /f "delims=" %%B in ('where blender.exe 2^>nul') do if not defined BLENDER_EXECUTABLE set "BLENDER_EXECUTABLE=%%B"
+)
+if not defined BLENDER_EXECUTABLE (
+  for /d %%D in ("%ProgramFiles%\Blender Foundation\Blender *") do (
+    if exist "%%~fD\blender.exe" set "BLENDER_EXECUTABLE=%%~fD\blender.exe"
+  )
+)
 set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
 set "LOCAL_AGENT_CHARACTER_LIBRARY=%USERPROFILE%\BlenderAgentLibrary"
 
-if not exist "%AGENT_VENV%\Scripts\pythonw.exe" (
+if not exist "%AGENT_VENV%\Scripts\python.exe" (
   echo [ERROR] Agent environment is missing.
   echo Run setup_blender_agent.bat first.
   pause
@@ -19,7 +26,7 @@ if not exist "%AGENT_VENV%\Scripts\pythonw.exe" (
 if not exist "%BLENDER_EXECUTABLE%" (
   echo [ERROR] Blender was not found at:
   echo %BLENDER_EXECUTABLE%
-  echo Edit BLENDER_EXECUTABLE in run_blender_agent.bat if Blender is installed elsewhere.
+  echo Set BLENDER_EXECUTABLE to the full path of blender.exe and retry.
   pause
   exit /b 1
 )
@@ -36,7 +43,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "" "%AGENT_VENV%\Scripts\pythonw.exe" -m local_agent.app_gui
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.app_gui
 if errorlevel 1 (
   echo [ERROR] Could not launch the GUI.
   pause

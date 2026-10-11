@@ -176,6 +176,8 @@ def make_item(item, location, index):
         part("cylinder", (0.38, 0, 1.05), (0.10, 0.10, 0.45), primary, "right arm")
         part("cylinder", (-0.16, 0, 0.38), (0.12, 0.12, 0.42), dark, "left leg")
         part("cylinder", (0.16, 0, 0.38), (0.12, 0.12, 0.42), dark, "right leg")
+        # Mouth is a separate animatable mesh; no audio synchronization is assumed.
+        part("uv_sphere", (0, -0.287, 1.59), (0.105, 0.035, 0.022), dark, "mouth")
     elif kind == "car":
         part("cube", (0, 0, 0.48), (1.85, 0.88, 0.48), primary, "body")
         part("cube", (0.08, 0, 0.83), (0.90, 0.72, 0.42), glass, "cabin")
@@ -609,6 +611,22 @@ if animation.get("enabled"):
                     wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_start)
                     wheel.rotation_euler.y += math.tau * 2
                     wheel.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end)
+    # Simple prompt-driven speech: alternate mouth scale without lip sync.
+    if cfg.get("mouth_motion_enabled"):
+        for item, root in made_by_item:
+            if item.get("primitive") != "person":
+                continue
+            mouth_name = item["name"] + " | mouth"
+            mouth = bpy.data.objects.get(mouth_name)
+            if mouth is None:
+                continue
+            original = mouth.scale.copy()
+            for frame in range(scene.frame_start, scene.frame_end + 1, 6):
+                mouth.scale = original.copy()
+                mouth.scale.z = original.z * (3.0 if ((frame - scene.frame_start) // 6) % 2 else 0.6)
+                mouth.keyframe_insert(data_path="scale", frame=frame)
+            mouth.scale = original.copy()
+            mouth.keyframe_insert(data_path="scale", frame=scene.frame_end)
     scene.frame_set(1)
 blend_path = os.path.join(out_dir, "scene.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend_path)
@@ -661,8 +679,12 @@ def _reference_indices_for_character(card: dict[str, Any], prompt: str,
         own_end = name_at + len(name.casefold())
         previous_ends = [end for start, end, other in mentions if end <= name_at and other != name.casefold()]
         next_starts = [start for start, end, other in mentions if start > name_at and other != name.casefold()]
-        window_start = max(previous_ends) if previous_ends else max(0, name_at - 80)
+        window_start = max(previous_ends) if previous_ends else name_at
+        window_start = max(window_start, text.rfind(";", 0, name_at) + 1)
         window_end = min(next_starts) if next_starts else min(len(text), own_end + 140)
+        next_clause = text.find(";", own_end, window_end)
+        if next_clause >= 0:
+            window_end = next_clause
         window = text[window_start:window_end]
     else:
         window = text
@@ -761,6 +783,13 @@ def create_scene_from_prompt(prompt: str, project_name: str, *, timeout_seconds:
     if visual_mode not in {"Стилизованная 3D-сцена", "Реалистичная сцена", "Свободный стиль"}:
         visual_mode = "Свободный стиль"
     plan["visual_mode"] = visual_mode
+    # Speech animation is deliberately coarse; audio remains a separate layer.
+    speech_terms = ("говорит", "произносит", "разговаривает", "поёт", "поет", "напевает", "says", "speaks", "sings")
+    if any(term in prompt.casefold() for term in speech_terms) and any(
+        item.get("primitive") == "person" for item in plan["objects"]
+    ):
+        plan["mouth_motion_enabled"] = True
+        plan["animation"]["enabled"] = True
     if not isinstance(project_name, str) or not _PROJECT_RE.fullmatch(project_name):
         raise SceneRequestError("Project name must use 1-48 letters, digits, underscores, or hyphens.")
     blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()

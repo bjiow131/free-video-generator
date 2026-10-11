@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "ptichka-pip",
+  "status": "awaiting_original_references",
+  "display_name": "Пип",
+  "category": "animal",
+  "role": "Проводник по верхнему ярусу леса",
+  "age_or_species": "маленькая лесная птица",
+  "visual_identity": "Небольшая округлая птичка с контрастной грудкой, крупным клювом и простыми крыльями; читается в силуэте.",
+  "personality": [
+    "быстрый",
+    "любопытный",
+    "наблюдательный"
+  ],
+  "animation_requirements": "прыжки, короткий взлёт, взмахи крыльев, поворот головы, клевок",
+  "voice_and_mouth_sync": "короткие чириканья; слова редки и коротки",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "В первом сезоне избегать сложной реалистичной перьевой симуляции; использовать простые формы. Original project-specific references required; external source links removed."
+}

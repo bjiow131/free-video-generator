@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "babochka-luna",
+  "status": "awaiting_original_references",
+  "display_name": "Луна",
+  "category": "animal",
+  "role": "Появляется в сценах наблюдения за природой",
+  "age_or_species": "бабочка",
+  "visual_identity": "Два крупных симметричных крыла с простым рисунком; пастельная палитра, заметна на фоне зелени.",
+  "personality": [
+    "лёгкая",
+    "спокойная",
+    "переменчивая"
+  ],
+  "animation_requirements": "петляющий полёт, посадка на цветок, раскрытие/закрытие крыльев",
+  "voice_and_mouth_sync": "без речи; музыкальные/звуковые сигналы добавляются отдельно",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Полёт по кривым и простая деформация крыльев предпочтительнее физической симуляции. Original project-specific references required; external source links removed."
+}

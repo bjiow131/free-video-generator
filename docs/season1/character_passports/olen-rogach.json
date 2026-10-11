@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "olen-rogach",
+  "status": "awaiting_original_references",
+  "display_name": "Рогач",
+  "category": "animal",
+  "role": "Редкий лесной гость, учит наблюдать на расстоянии",
+  "age_or_species": "молодой олень",
+  "visual_identity": "Стройное тело, большие уши, мягкие пятна на спине; молодой олень без больших рогов.",
+  "personality": [
+    "осторожный",
+    "тихий",
+    "грациозный"
+  ],
+  "animation_requirements": "спокойная ходьба, поворот головы, короткий рывок, уши реагируют на звук",
+  "voice_and_mouth_sync": "без речи",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Редкий эпизодический герой; сцены держать на расстоянии, не делать его постоянным спутником детей. Original project-specific references required; external source links removed."
+}

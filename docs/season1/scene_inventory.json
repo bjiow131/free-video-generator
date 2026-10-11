@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "season": 1,
+  "target_episodes": 30,
+  "episode_duration_minutes": [
+    5,
+    10
+  ],
+  "character_ids": [
+    "mia",
+    "stepa",
+    "mama",
+    "papa",
+    "baba-anya",
+    "lesnik-lev",
+    "snail-spiral",
+    "ptichka-pip",
+    "belka-tishka",
+    "yozh-kolya",
+    "lyagushka-kva",
+    "babochka-luna",
+    "bublik",
+    "olen-rogach"
+  ],
+  "locations": [
+    {
+      "id": "family_home",
+      "name": "Дом и двор Мии",
+      "reusable_sets": [
+        "кухня",
+        "прихожая",
+        "двор",
+        "место для самоката и велосипеда"
+      ]
+    },
+    {
+      "id": "forest_gate",
+      "name": "Вход на лесную тропу",
+      "reusable_sets": [
+        "указатель",
+        "ворота/начало тропы",
+        "карта маршрута"
+      ]
+    },
+    {
+      "id": "meadow_path",
+      "name": "Лесная тропинка и поляна",
+      "reusable_sets": [
+        "главная тропа",
+        "пень",
+        "корни",
+        "камни",
+        "цветы"
+      ]
+    },
+    {
+      "id": "grandma_garden",
+      "name": "Сад бабушки Ани",
+      "reusable_sets": [
+        "грядки",
+        "лейка",
+        "корзинка",
+        "компост",
+        "маленькая теплица"
+      ]
+    },
+    {
+      "id": "pond",
+      "name": "Пруд",
+      "reusable_sets": [
+        "берег",
+        "камыши",
+        "плоские камни",
+        "ряби воды",
+        "мостик"
+      ]
+    },
+    {
+      "id": "tree_hollow",
+      "name": "Большое дерево с дуплом",
+      "reusable_sets": [
+        "ствол",
+        "корни",
+        "дупло",
+        "ветка-низкая",
+        "ветка-высокая"
+      ]
+    },
+    {
+      "id": "forest_clearing",
+      "name": "Лесная поляна",
+      "reusable_sets": [
+        "площадка для игр",
+        "поваленное бревно",
+        "грибные группы",
+        "световые пятна"
+      ]
+    },
+    {
+      "id": "hill_viewpoint",
+      "name": "Небольшой холм и обзорная точка",
+      "reusable_sets": [
+        "склон",
+        "камень-ориентир",
+        "дальний лес",
+        "небо/облака"
+      ]
+    }
+  ],
+  "prop_groups": [
+    {
+      "id": "mobility",
+      "items": [
+        "жёлтый самокат Мии",
+        "детский велосипед Мии",
+        "велосипед Стёпы",
+        "шлем",
+        "звонок",
+        "насос",
+        "ремкомплект"
+      ]
+    },
+    {
+      "id": "nature_observation",
+      "items": [
+        "лупа",
+        "детский бинокль",
+        "блокнот наблюдений",
+        "карандаши",
+        "карта тропы",
+        "мешочек для безопасного сбора мусора"
+      ]
+    },
+    {
+      "id": "garden",
+      "items": [
+        "лейка",
+        "маленькая лопатка",
+        "перчатки",
+        "корзина",
+        "семена",
+        "таблички растений"
+      ]
+    },
+    {
+      "id": "forest",
+      "items": [
+        "указатель",
+        "фонарик",
+        "компас",
+        "верёвка",
+        "плоские камни",
+        "веточки",
+        "листья",
+        "шишки",
+        "орехи",
+        "цветы",
+        "грибы — только как наблюдаемые объекты"
+      ]
+    },
+    {
+      "id": "continuity",
+      "items": [
+        "рюкзак Мии",
+        "рюкзак Стёпы",
+        "бутылка воды",
+        "перекус в контейнере",
+        "плащ от дождя",
+        "семейная фотография"
+      ]
+    }
+  ],
+  "reusable_effects": [
+    "след улитки",
+    "лёгкая пыльца",
+    "падающие листья",
+    "капли дождя",
+    "рябь на пруду",
+    "пузырьки",
+    "солнечные пятна",
+    "дыхание/пар в холодном воздухе",
+    "простые птичьи траектории"
+  ],
+  "production_requirements": [
+    "Vertical/horizontal camera framing presets per shot",
+    "Scene units and character height scale documented",
+    "Reusable material palette",
+    "No per-episode duplicate of hero rigs or locations",
+    "Every scene object linked to stable asset_id",
+    "Word-level speech markers drive jaw/mouth open-close only"
+  ]
+}

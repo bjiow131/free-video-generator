@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "series": "Мия и тропинка открытий",
+  "source_policy": "Only original references generated for this project may be added to the production asset catalog. No third-party image/model URL or automatic download.",
+  "source_packs": [],
+  "assets": [],
+  "status": "awaiting_original_generated_assets",
+  "note": "Cleared third-party source catalog. Character passports and narrative scene inventory are retained separately; their external reference_sources will be cleared."
+}

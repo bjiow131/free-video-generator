@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "character_id": "snail-spiral",
+  "status": "awaiting_original_references",
+  "display_name": "Спираль",
+  "category": "animal",
+  "role": "Животный друг и визуальный центр сезона",
+  "age_or_species": "улитка",
+  "visual_identity": "Маленькая стилизованная улитка с крупной читаемой спиралью на раковине, тёплой палитрой и выразительными глазными стебельками. Дизайн должен оставаться узнаваемым на крупном плане.",
+  "personality": [
+    "неторопливый",
+    "любознательный",
+    "добрый"
+  ],
+  "animation_requirements": "скольжение с контролем следа, лёгкие покачивания, втягивание/выдвижение глазных стебельков; рот открывается/закрывается по помеченным словам реплик, без сложной фонемной системы",
+  "voice_and_mouth_sync": "если говорит — короткие фразы; рот синхронизируется по временным меткам слов из сценария",
+  "rig": {
+    "status": "not_created",
+    "expected_controls": [
+      "root",
+      "body",
+      "head",
+      "eyes_or_primary_features",
+      "limbs_or_wings",
+      "mouth_if_speaking"
+    ],
+    "mouth_sync": "word-level open/close markers from script; no phoneme system required"
+  },
+  "continuity_rules": [
+    "Силуэт, масштаб, палитра и расположение отличительных деталей неизменны между сериями.",
+    "Один канонический master-меш и риг; варианты одежды/аксессуаров отдельными объектами.",
+    "Не считать внешний референс готовой моделью или подтверждённым ригом."
+  ],
+  "reference_sources": [],
+  "notes": "Фотографии — анатомические референсы. Требуется отдельная стилизованная 3D-модель; не копировать альбиносную окраску как обязательную. Original project-specific references required; external source links removed."
+}

@@ -18,7 +18,7 @@ import bpy, json, os, sys
 args=sys.argv[sys.argv.index("--")+1:]
 cfg=json.load(open(args[0],encoding="utf-8"))
 scene=bpy.context.scene
-if scene.frame_end <= scene.frame_start or not any(o.animation_data and o.animation_data.action for o in bpy.data.objects):
+if scene.frame_end <= scene.frame_start or not any(o.animation_data and (o.animation_data.action or len(o.animation_data.nla_tracks) > 0) for o in bpy.data.objects):
     raise RuntimeError("В проекте не найдена анимация с ключевыми кадрами.")
 w,h=cfg["resolution"]
 scene.render.resolution_x=w; scene.render.resolution_y=h; scene.render.resolution_percentage=100
@@ -43,7 +43,7 @@ def export_animation_to_mp4(blend_path: str | Path, output_path: str | Path, pre
         raise VideoExportError("Исполняемый файл Blender не найден.")
     if out.suffix.lower() != ".mp4":
         raise VideoExportError("Для видео выберите расширение .mp4.")
-    if out == blend or out.exists():
+    if out == blend or out.exists() or out.is_symlink():
         raise VideoExportError("Файл назначения уже существует или совпадает с проектом. Выберите другое имя.")
     out.parent.mkdir(parents=True, exist_ok=True)
     log = out.with_name(out.stem + "_export.log")

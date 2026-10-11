@@ -18,6 +18,8 @@ import time
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
+from local_agent.github_queue import GitHubQueueClient, QueueTransportError
+from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user

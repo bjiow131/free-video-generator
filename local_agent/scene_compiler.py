@@ -45,6 +45,22 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
         assets = [{"name": name, "resolution_status": "unresolved_asset_reference"} for name in scene["assets"]]
         if assets:
             requirements.add("asset_registry_required")
+        # Deterministic speaking intervals for downstream mouth-animation adapters.
+        # These are timing cues, not a claim that a Blender rig has been animated.
+        dialogue_cues = []
+        dialogue = scene["dialogue"]
+        if dialogue:
+            slot = scene["duration_seconds"] / len(dialogue)
+            for line_index, line in enumerate(dialogue):
+                start = round(line_index * slot, 3)
+                end = round((line_index + 1) * slot, 3)
+                dialogue_cues.append({
+                    "speaker": line["speaker"],
+                    "start_seconds": start,
+                    "end_seconds": end,
+                    "mouth_motion": "open_close",
+                    "execution_status": "adapter_required",
+                })
         compiled_scenes.append({
             "scene_id": scene["scene_id"],
             "title": scene["title"],
@@ -53,6 +69,7 @@ def compile_story_plan(data: Any) -> dict[str, Any]:
             "action_brief": scene["action"],
             "camera_brief": scene["camera"],
             "dialogue": scene["dialogue"],
+            "dialogue_cues": dialogue_cues,
             "sound_brief": scene["sound"],
             "transition": scene["transition"],
             "visual_prompt": scene["visual_prompt"],
