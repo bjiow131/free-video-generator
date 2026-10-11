@@ -24,3 +24,16 @@ def test_rejects_project_symlink_escape(tmp_path:Path):
     try: (tmp_path/"mia_snail").symlink_to(outside,target_is_directory=True)
     except (OSError,NotImplementedError): pytest.skip("Symlink creation is unavailable on this platform")
     with pytest.raises(StoryPlanError,match="symlink"): save_story_plan(tmp_path,sample_plan())
+
+
+def test_normalized_story_plan_round_trips_through_validator():
+    normalized = validate_story_plan(sample_plan())
+    assert validate_story_plan(normalized) == normalized
+
+
+@pytest.mark.parametrize("tampered", [0, True, "22", 100])
+def test_rejects_forged_derived_scene_duration(tampered):
+    normalized = validate_story_plan(sample_plan())
+    normalized["estimated_scene_duration_seconds"] = tampered
+    with pytest.raises(StoryPlanError, match="estimated_scene_duration_seconds"):
+        validate_story_plan(normalized)

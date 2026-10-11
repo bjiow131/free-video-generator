@@ -58,3 +58,8 @@ The agent records the outcome in `queue/results/repair-<repair_id>.json`. After 
 - `blocked`, `declined`, `superseded`, or `failed_needs_user`: a human decision or cleanup is needed.
 
 A successful result does **not** mean the patch was pushed to the source repository or merged. The tested diff is returned to the private mailbox only; source-repository publication and merging remain a separate reviewed step. ChatGPT should inspect the reported outcome and prepare any follow-up fix as a new repair ID, never by overwriting the previous repair.
+
+
+## Code execution warning
+
+The isolated Git worktree protects the active checkout from ordinary Git changes, but it is **not an OS sandbox**. Running `pytest` executes Python imports and hooks from the submitted patch under the local user's account. A private mailbox, SHA-256, path allowlist and YES confirmation do not make unreviewed code safe. Inspect the entire exact patch before confirming it; never approve an unknown patch or trust code simply because it passed CI.

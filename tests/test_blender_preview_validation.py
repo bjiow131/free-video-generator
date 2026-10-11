@@ -41,7 +41,7 @@ def test_png_validator_rejects_truncated_png(tmp_path):
     path.write_bytes(path.read_bytes()[:-5])
     ok, reason, _ = workflow._validate_png(path, (360, 640))
     assert ok is False
-    assert reason == "png_chunk_truncated"
+    assert reason == "png_chunk_type_truncated"
 
 
 def test_png_validator_rejects_wrong_dimensions(tmp_path):

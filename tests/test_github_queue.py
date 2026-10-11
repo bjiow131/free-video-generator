@@ -194,3 +194,54 @@ def test_publish_repair_artifact_refuses_different_content_for_existing_id():
     client = GitHubQueueClient(cfg(), session=session)
     with pytest.raises(QueueConfigurationError, match="different content"):
         client.publish_repair_artifact("repair-03", requested_patch)
+
+
+def test_publish_result_retry_same_content_is_idempotent_without_write():
+    result = {"status": "completed", "details": {"task_id": "task-unique"}}
+    existing_json = json.dumps(result, ensure_ascii=False, indent=2).encode("utf-8")
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={
+            "type": "file", "encoding": "base64",
+            "content": base64.b64encode(existing_json).decode("ascii"),
+            "sha": "existing-blob-sha",
+        }),
+        FakeResponse(data={"commit": {"sha": "SHOULD-NOT-WRITE"}}),
+    ])
+    ref = GitHubQueueClient(cfg(), session=session).publish_result("task-unique", result)
+    assert ref == "existing-result:existing-blob-sha"
+    assert len(session.responses) == 1  # PUT must not occur
+
+
+def test_publish_result_rejects_changed_content_for_immutable_task_id():
+    prior = json.dumps({"status": "completed"}, indent=2).encode("utf-8")
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data={
+            "type": "file", "encoding": "base64",
+            "content": base64.b64encode(prior).decode("ascii"),
+            "sha": "existing-blob-sha",
+        }),
+        FakeResponse(data={"commit": {"sha": "SHOULD-NOT-WRITE"}}),
+    ])
+    with pytest.raises(QueueTransportError, match="Immutable result ID"):
+        GitHubQueueClient(cfg(), session=session).publish_result(
+            "task-unique", {"status": "rejected", "reason": "ID collision"}
+        )
+    assert len(session.responses) == 1
+
+
+@pytest.mark.parametrize("item", [
+    {"type": "dir", "sha": "fake"},
+    {"type": "file", "encoding": "none", "sha": "fake"},
+    {"type": "file", "encoding": "base64", "content": "!!!", "sha": "fake"},
+])
+def test_publish_result_rejects_invalid_existing_file_metadata(item):
+    session = FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(data=item),
+        FakeResponse(data={"commit": {"sha": "SHOULD-NOT-WRITE"}}),
+    ])
+    with pytest.raises(QueueTransportError, match="Could not validate existing result"):
+        GitHubQueueClient(cfg(), session=session).publish_result("task-unique", {"status": "ok"})
+    assert len(session.responses) == 1
