@@ -7,15 +7,14 @@ cd /d "%~dp0"
 
 title Blender Work Agent - Local Only
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\venv"
-set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
-set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
+if not defined LOCAL_AGENT_WORKSPACE set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
 
 echo.
 echo ==========================================
 echo   BLENDER WORK AGENT - LOCAL ONLY
 echo ==========================================
 echo.
-echo Blender: %BLENDER_EXECUTABLE%
+echo Blender executable: auto-detect installed Blender or BLENDER_EXECUTABLE override
 echo Workspace: %LOCAL_AGENT_WORKSPACE%
 echo Remote task queue: DISABLED
 echo ChatGPT connection: NONE
@@ -27,14 +26,6 @@ echo.
 if not exist "%AGENT_VENV%\Scripts\python.exe" (
   echo [ERROR] Agent environment is missing.
   echo Run setup_blender_agent.bat first.
-  pause
-  exit /b 1
-)
-
-if not exist "%BLENDER_EXECUTABLE%" (
-  echo [ERROR] Blender was not found at:
-  echo %BLENDER_EXECUTABLE%
-  echo Edit BLENDER_EXECUTABLE in run_blender_agent.bat.
   pause
   exit /b 1
 )
@@ -59,16 +50,17 @@ echo [2/2] Blender will open in its visible GUI for the task.
 choice /C YN /N /M "Create the current Blender forest preview now? [Y/N] "
 if errorlevel 2 goto done
 
-set /p "PROJECT_NAME=Project folder name (default mia_forest): "
-if not defined PROJECT_NAME set "PROJECT_NAME=mia_forest"
+rem Keep typed data in the environment; never interpolate it into cmd.exe source.
+set "LOCAL_AGENT_PROJECT_NAME=mia_forest"
+set /p "LOCAL_AGENT_PROJECT_NAME=Project folder name (default mia_forest): "
 
 echo.
 echo Launching Blender locally...
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.blender_cli --project "%PROJECT_NAME%"
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.blender_cli
 set "RESULT=%ERRORLEVEL%"
 echo.
 if "%RESULT%"=="0" (
-  echo Blender task completed. Check %LOCAL_AGENT_WORKSPACE%\%PROJECT_NAME%
+  echo Blender task completed. Check the project folder inside your configured workspace.
 ) else (
   echo Blender task returned error code %RESULT%.
 )
