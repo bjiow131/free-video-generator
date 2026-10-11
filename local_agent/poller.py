@@ -1719,7 +1719,7 @@ def main() -> int:
 _TELEGRAM_UPDATES_STATE = ROOT / ".local_agent" / "telegram_updates_state.json"
 
 
-def _read_telegram_offset() -> int:
+def _read_telegram_offset(identity: str | None = None) -> int:
     path = _TELEGRAM_UPDATES_STATE
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
         raise RuntimeError("Unsafe Telegram cursor")
@@ -1729,14 +1729,17 @@ def _read_telegram_offset() -> int:
         return 0
     except (OSError, ValueError, UnicodeError) as exc:
         raise RuntimeError("Telegram command cursor is unreadable") from exc
-    if (not isinstance(data, dict) or set(data) != {"next_offset"}
-            or type(data["next_offset"]) is not int
-            or not (0 <= data["next_offset"] <= 2**63 - 1)):
+    if not isinstance(data, dict) or set(data) not in ({"next_offset"}, {"next_offset", "identity"}):
         raise RuntimeError("Telegram command cursor is invalid")
+    if (type(data["next_offset"]) is not int or
+            not (0 <= data["next_offset"] <= 2**63 - 1)):
+        raise RuntimeError("Telegram command cursor is invalid")
+    if identity is not None and data.get("identity") != identity:
+        return 0  # Pairing a DIFFERENT bot/chat must not inherit an old cursor.
     return data["next_offset"]
 
 
-def _save_telegram_offset(next_offset: int) -> None:
+def _save_telegram_offset(next_offset: int, identity: str | None = None) -> None:
     if type(next_offset) is not int or not 0 <= next_offset <= 2**63 - 1:
         raise RuntimeError("Invalid Telegram cursor")
     path = _TELEGRAM_UPDATES_STATE
@@ -1750,7 +1753,10 @@ def _save_telegram_offset(next_offset: int) -> None:
             suffix=".tmp", delete=False,
         ) as out:
             tmp = Path(out.name)
-            json.dump({"next_offset": next_offset}, out)
+            data = {"next_offset": next_offset}
+            if identity is not None:
+                data["identity"] = identity
+            json.dump(data, out)
             out.flush()
             os.fsync(out.fileno())
         os.replace(tmp, path)
@@ -1811,7 +1817,6 @@ def _telegram_command_response(update: Any, paired_chat: str, *,
         return ("Перезапуск Studio и GitHub-агента запрошен. "
                 "Если идёт рендер, дождёмся безопасной точки.")
     if command in ("/notifications_off", "/notifications_on"):
-        from local_agent.mailbox_policy import save_telegram_notifications
         from local_agent.studio_server import telegram_set_notifications
         on = command == "/notifications_on"
         telegram_set_notifications({"enabled": on})
@@ -1827,7 +1832,9 @@ def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
     token, paired = _telegram_credentials()
     if not token or not paired:
         return
-    next_offset = _read_telegram_offset()
+    import hashlib
+    identity = hashlib.sha256((token + ":" + paired).encode("utf-8")).hexdigest()[:24]
+    next_offset = _read_telegram_offset(identity)
     response = _telegram_call(token, "getUpdates",
                               {"offset": next_offset, "limit": 20, "timeout": 0,
                                "allowed_updates": ["message"]}, timeout=8)
@@ -1843,7 +1850,7 @@ def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
         next_offset = update_id + 1
         # A command is claimed before dispatch so /restart is never replayed
         # from Telegram after a supervisor crash.
-        _save_telegram_offset(next_offset)
+        _save_telegram_offset(next_offset, identity)
         try:
             reply = _telegram_command_response(
                 update, paired, status_line=status_line, tasks_line=tasks_line,
