@@ -84,6 +84,6 @@ Ensure the previous mailbox task is expired or completed, never reuse an immutab
 
 ## Verified and unverified
 
-- Verified here: GitHub private mailbox accessible, historic Windows `doctor` result accessible, adapter and mailbox routing code committed; 6 isolated offline key-rotation tests passed in Linux with mocked HTTP responses; Studio JS syntax validated in V8.
+- Verified here: GitHub private mailbox accessible, historic Windows `doctor` result accessible, adapter and mailbox routing code committed; 7 isolated offline key-rotation tests passed in Linux with mocked HTTP responses; Studio JS syntax validated in V8.
 - Not yet verified: full GitHub branch test suite, new Studio HTTP regression suite on exact branch, Windows OctavAPI key install, live third-party request from Windows, current private mailbox round-trip, actual Blender 5.2.2 animation or fully unattended remote execution.
 - Scope limitation: this adds one opt-in text-advice operation only. The unrestricted free-text → arbitrary rigged 3D animation pipeline is **not** implemented by this bridge.
