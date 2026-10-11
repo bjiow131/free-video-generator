@@ -182,3 +182,34 @@ def test_studio_visual_review_exports_only_after_local_permission(tmp_path, monk
     assert json.loads((directory / "complete.json").read_text())["status"] == "completed"
     with pytest.raises(studio.ReviewDeliveryError, match="already exists"):
         studio.export_review(job, info, "ffmpeg")
+
+
+def test_offline_studio_import_without_third_party_packages(location):
+    """Studio runs from its own venv, unlike GitHub polling and remote updates."""
+    import subprocess
+    import sys
+    from local_agent import studio_server
+    project_root = Path(studio_server.__file__).resolve().parents[1]
+    result = subprocess.run([sys.executable, "-S", "-c",
+                             "import local_agent.studio_server; "
+                             "print('offline-studio-import-ok')"],
+                            cwd=project_root, stdin=subprocess.DEVNULL,
+                            capture_output=True, text=True, timeout=20, check=False)
+    assert result.returncode == 0, result.stderr
+    assert "offline-studio-import-ok" in result.stdout
+
+
+def test_studio_opt_in_file_compatible_with_unattended_updater(location, monkeypatch):
+    """Two Python venvs share only local validated consent, not import dependencies."""
+    from local_agent import mailbox_policy
+    monkeypatch.setattr(mailbox_policy, "_ROOT", location)
+    monkeypatch.setattr(mailbox_policy, "POLICY_FILE",
+                        location / ".local_agent" / "mailbox_policy.json")
+    monkeypatch.setattr(mailbox_policy, "_TRUSTED_UPDATES_OPT_IN", update.OPT_IN)
+    assert mailbox_policy.get_trusted_update_opt_in() == {"enabled": False}
+    mailbox_policy.set_trusted_update_opt_in({"enabled": True})
+    assert update.get_opt_in() == {"enabled": True}
+    mailbox_policy.set_trusted_update_opt_in({"enabled": False})
+    assert update.get_opt_in() == {"enabled": False}
+    with pytest.raises(mailbox_policy.MailboxPolicyError):
+        mailbox_policy.set_trusted_update_opt_in({"enabled": 1})
