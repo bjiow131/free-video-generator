@@ -442,6 +442,23 @@ def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
                 '        scene.world = bpy.data.worlds.new("Camera QA World")\n'
                 + marker,
             )
+        # Static reference pillars make camera tracking visually measurable.
+        # Keep this deterministic and local; the remote task cannot edit it.
+        camera_anchor = "    bpy.ops.object.camera_add(location=(0, -6.2, 2.5))"
+        if original.count(camera_anchor) != 1:
+            raise ValueError("Unexpected camera fixture signature")
+        reference_geometry = """
+    # Fixed camera QA reference objects: stationary in world space.
+    for index, x in enumerate((-3.0, -1.8, -0.6, 0.6, 1.8, 3.0, 4.2)):
+        height = 0.8 + (index % 3) * 0.28
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(x, 2.2, height / 2))
+        pillar = bpy.context.object
+        pillar.name = "CAMERA_QA_REFERENCE_%02d" % index
+        pillar.dimensions = (0.28, 0.28, height)
+        pillar.data.materials.append(orange if index % 2 else cyan)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+"""
+        original = original.replace(camera_anchor, reference_geometry + camera_anchor)
         compile(original, str(source), "exec")
         script = output / "camera_fixture.py"
         with script.open("x", encoding="utf-8") as stream:
@@ -611,6 +628,10 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         review = _reexport_existing_camera_qa(workspace)
         return {"status": review["status"], "task": "blender_forest_preview",
                 "camera_video_qa": review}
+    if arguments["project_name"].startswith("qa_visual_"):
+        video = _run_studio_camera_qa(workspace)
+        return {"status": video["status"], "task": "blender_forest_preview",
+                "camera_video_qa": video}
     from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
     executable = find_blender_executable()
     if executable is None:
