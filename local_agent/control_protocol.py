@@ -15,7 +15,7 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
@@ -155,6 +155,12 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         project_name = plan.get("project_name")
         if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
             raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
+    if value["operation"] == "octava_advice":
+        args = value["arguments"]
+        prompt = args.get("prompt")
+        if set(args) != {"prompt"} or not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
+            raise ProtocolError("octava_advice requires exactly one 1-1600 character prompt.")
+
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
     if any(str(key).lower() in forbidden_keys for key in value["arguments"]):
