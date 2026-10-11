@@ -50,6 +50,8 @@ def main():
     scene.display.shading.light = "STUDIO"
     scene.display.shading.color_type = "MATERIAL"
     scene.render.film_transparent = False
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("Studio Camera QA World")
     scene.world.color = (0.08, 0.11, 0.16)
 
     def material(name, rgba):
