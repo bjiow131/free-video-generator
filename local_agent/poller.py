@@ -145,6 +145,26 @@ def doctor_with_supervisor() -> dict[str, Any]:
                 network["tcp_443"] = "ok"
         except (OSError, TimeoutError):
             network["tcp_443"] = "failed"
+    # HTTPS without a token: an HTTP 4xx response still proves Telegram is reachable.
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    try:
+        with urlopen(Request("https://api.telegram.org/", method="GET"), timeout=6):
+            network["https"] = "reachable"
+    except HTTPError:
+        network["https"] = "reachable"
+    except URLError as exc:
+        import ssl
+        if isinstance(exc.reason, ssl.SSLError):
+            network["https"] = "tls_error"
+        elif isinstance(exc.reason, socket.gaierror):
+            network["https"] = "dns_error"
+        elif isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            network["https"] = "timeout"
+        else:
+            network["https"] = "connection_failed"
+    except (TimeoutError, OSError):
+        network["https"] = "connection_failed"
     result["telegram_network"] = network
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
