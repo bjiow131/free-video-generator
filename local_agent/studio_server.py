@@ -25,6 +25,7 @@ from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
 from local_agent.mailbox_policy import MailboxPolicyError, load_policy, save_policy
 from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, set_opt_in
+from local_agent.dropbox_review import ReviewDeliveryError, read_settings as dropbox_read_settings, save_settings as dropbox_save_settings, review_status as dropbox_review_status
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
@@ -142,6 +143,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, get_opt_in())
             except TrustedUpdateError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/dropbox-review":
+            try:
+                return self._json(200, dropbox_review_status())
+            except ReviewDeliveryError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -221,7 +227,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -231,7 +237,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -248,6 +254,9 @@ class StudioHandler(BaseHTTPRequestHandler):
             if path == "/api/trusted-updates":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, set_opt_in(body))
+            if path == "/api/dropbox-review":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, dropbox_save_settings(body))
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
@@ -289,7 +298,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Unknown endpoint"})
         except StudioConflict as exc:
             return self._json(409, {"error": str(exc)})
-        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, TrustedUpdateError, ValueError, TypeError, binascii.Error) as exc:
+        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, TrustedUpdateError, ReviewDeliveryError, ValueError, TypeError, binascii.Error) as exc:
             return self._json(400, {"error": str(exc)})
         except OSError as exc:
             return self._json(500, {"error": f"Local file error: {type(exc).__name__}"})
