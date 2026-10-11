@@ -790,6 +790,9 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
             _save_state(state)
         return state
 
+    if len(processed) >= 2000:
+        raise RuntimeError("Repair replay history capacity reached; refusing to accept new repair IDs")
+
     def record(status: str) -> dict[str, Any]:
         updated = dict(processed)
         updated[repair_id] = {"manifest_sha": manifest_sha, "status": status}
