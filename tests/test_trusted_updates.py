@@ -213,3 +213,30 @@ def test_studio_opt_in_file_compatible_with_unattended_updater(location, monkeyp
     assert update.get_opt_in() == {"enabled": False}
     with pytest.raises(mailbox_policy.MailboxPolicyError):
         mailbox_policy.set_trusted_update_opt_in({"enabled": 1})
+
+
+def test_legacy_blender_scene_world_is_repaired_in_private_temporary_copy(tmp_path):
+    from local_agent.studio_jobs import _prepare_studio_blender_script
+    original = tmp_path / "old_scene.py"
+    original.write_text(
+        "def main():\n"
+        "    bpy.ops.wm.read_factory_settings(use_empty=True)\n"
+        "    scene.world.color = (0.08, 0.11, 0.16)\n",
+        encoding="utf-8",
+    )
+    job = tmp_path / "render_job"
+    job.mkdir()
+    output = _prepare_studio_blender_script(original, job)
+    assert output != original
+    assert original.read_text(encoding="utf-8").count("worlds.new") == 0
+    corrected = output.read_text(encoding="utf-8")
+    assert 'if scene.world is None:' in corrected
+    assert 'bpy.data.worlds.new' in corrected
+    compile(corrected, str(output), "exec")
+
+
+def test_fixed_blender_scene_uses_original_script(tmp_path):
+    from local_agent.studio_jobs import _prepare_studio_blender_script
+    fixed = tmp_path / "scene.py"
+    fixed.write_text("def main():\n    pass\n", encoding="utf-8")
+    assert _prepare_studio_blender_script(fixed, tmp_path) == fixed
