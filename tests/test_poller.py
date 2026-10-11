@@ -739,3 +739,61 @@ def test_github_mailbox_poller_is_opt_in(monkeypatch, capsys):
     monkeypatch.delenv("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX", raising=False)
     assert poller.main() == 2
     assert "GitHub mailbox polling is disabled" in capsys.readouterr().out
+
+
+def test_task_replay_history_survives_more_than_two_hundred_new_ids_and_restart(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    first_id = "original-task"
+    state = poller._remember_manifest({}, first_id, "original-manifest", status="processed")
+    for index in range(220):
+        state = poller._remember_manifest(state, f"subsequent-task-{index}", f"sha-{index}")
+
+    path = tmp_path / "poller_state.json"
+    monkeypatch.setattr(poller, "STATE_PATH", path)
+    poller._save_state(state)
+    restored = poller._load_state()
+    assert len(restored["processed_tasks"]) == 221
+    assert poller.classify_manifest(restored, first_id, "original-manifest") == "same"
+    assert poller.classify_manifest(restored, first_id, "changed-manifest") == "reused_id"
+
+
+def test_task_replay_history_fails_closed_at_capacity():
+    from local_agent import poller
+
+    state = {"processed_tasks": {
+        f"old-task-{index}": {"manifest_sha": f"sha-{index}"}
+        for index in range(10_000)
+    }}
+    with pytest.raises(RuntimeError, match="capacity"):
+        poller._remember_manifest(state, "additional-task", "another-sha")
+    assert "old-task-0" in state["processed_tasks"]
+    assert "additional-task" not in state["processed_tasks"]
+
+
+def test_load_state_rejects_incomplete_repair_history(tmp_path, monkeypatch):
+    import json
+    from local_agent import poller
+
+    path = tmp_path / "poller_state.json"
+    path.write_text(json.dumps({
+        "processed_tasks": {},
+        "processed_repairs": {"repair-1": {"status": "completed"}},
+    }), encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", path)
+    with pytest.raises(RuntimeError, match="repair replay history"):
+        poller._load_state()
+
+
+def test_load_state_rejects_oversized_task_replay_history(tmp_path, monkeypatch):
+    import json
+    from local_agent import poller
+
+    path = tmp_path / "poller_state.json"
+    path.write_text(json.dumps({"processed_tasks": {
+        f"old-{index}": {"manifest_sha": f"sha-{index}"}
+        for index in range(10_001)
+    }}), encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", path)
+    with pytest.raises(RuntimeError, match="capacity"):
+        poller._load_state()
