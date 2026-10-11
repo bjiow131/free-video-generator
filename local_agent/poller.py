@@ -165,6 +165,21 @@ def doctor_with_supervisor() -> dict[str, Any]:
             network["https"] = "connection_failed"
     except (TimeoutError, OSError):
         network["https"] = "connection_failed"
+    # Check the fixed Render relay health endpoint, never send or inspect a bot token.
+    try:
+        with urlopen(Request("https://octava-telegram-relay.onrender.com/health",
+                             method="GET"), timeout=18) as response:
+            raw = response.read(1024)
+            body = json.loads(raw)
+            network["relay_https"] = ("reachable" if response.status == 200 and
+                                      isinstance(body, dict) and body.get("ok") is True
+                                      else "invalid_response")
+    except HTTPError:
+        network["relay_https"] = "http_error"
+    except (URLError, TimeoutError, OSError):
+        network["relay_https"] = "connection_failed"
+    except (ValueError, UnicodeError):
+        network["relay_https"] = "invalid_response"
     result["telegram_network"] = network
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
