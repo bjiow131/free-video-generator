@@ -76,6 +76,17 @@ def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
 
 
 
+
+def _telegram_signal(event: str, identifier: str, message: str) -> None:
+    """Non-blocking-in-effect notification: queue first, network failure never stops worker."""
+    try:
+        from local_agent.studio_server import telegram_queue_event, telegram_flush_outbox
+        if telegram_queue_event(event + ":" + identifier, message):
+            telegram_flush_outbox(max_messages=2)
+    except (ImportError, OSError, RuntimeError, ValueError):
+        return
+
+
 def doctor_with_supervisor() -> dict[str, Any]:
     """Read-only Windows watchdog health; never reveal account names or secrets."""
     result = doctor()
@@ -1092,6 +1103,15 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
+    if task.operation != "doctor":
+        label = str(task.operation).replace("_", " ")[:48]
+        if outcome == "completed":
+            _telegram_signal("task-ok", task.task_id,
+                             "Blender AI Agent: задача завершена. Тип: " + label)
+        elif outcome in failed_outcomes:
+            _telegram_signal("task-error", task.task_id,
+                             "Blender AI Agent: задача завершилась с ошибкой. Тип: " + label + ". Проверьте Studio.")
+
 
 
 
@@ -1440,6 +1460,8 @@ def main() -> int:
                                 publish=lambda update_id, result: _publish_result_durable(client, update_id, result),
                             )
                             if updated and updated.get("restart_needed"):
+                                _telegram_signal("update-ok", str(updated.get("update_id", "release")),
+                                                 "Blender AI Agent: проверенное обновление установлено. Перезапуск программы.")
                                 print("Trusted update applied and tested; restarting local mailbox agent.")
                                 return 75
                     except TrustedUpdateError as exc:
@@ -1665,6 +1687,8 @@ def supervise_windows() -> int:
                     failures[name] = 0 if runtime >= 10 else failures[name] + 1
                     next_start[name] = now + _supervisor_restart_delay(failures[name], runtime)
                     log(f"{name} exited code={code}; auto-restarting")
+                    _telegram_signal("service-restart", name + "-" + str(int(time.time() // 3600)),
+                                     "Blender AI Agent: служба " + name + " завершилась. Автоматический перезапуск.")
                 if name not in processes and now >= next_start[name]:
                     launch(name)
     except KeyboardInterrupt:
