@@ -107,6 +107,8 @@ def test_patch_tests_cannot_silently_change_committed_content(tmp_path, monkeypa
         "+approved\n"
     )
     monkeypatch.setattr(poller, "ROOT", root)
+    # This synthetic repo contains only the patch target, not the full agent suite.
+    monkeypatch.setattr(poller, "test_command", lambda suite, root: [sys.executable, "-m", "pytest", "-q", "tests/file.txt"])
     original_run = subprocess.run
 
     def fake_run(args, **kwargs):
