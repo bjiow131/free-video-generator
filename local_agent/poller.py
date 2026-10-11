@@ -393,90 +393,140 @@ def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[
 
 
 def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
-    """Create a short fixed camera-motion MP4, then export through opt-in Dropbox.
+    """Run a fixed 3s Blender animation headlessly and send its review to Dropbox.
 
-    This is a procedural diagnostic fixture, NEVER an animation of project
-    characters and NEVER code, paths or prompts supplied by remote messages.
-    It lives in a unique QA project outside the user's mia_story project.
+    Does not change the installed studio_blender_scene.py, Studio project files,
+    character assets, or the trusted updater allowlist. The sole Blender script
+    is a validated private copy of the already-installed offline fixture, with
+    a deterministic compatibility fix for Blender's missing World datablock.
+    No script, shell command, filename, or prompt is accepted from GitHub.
     """
-    import time
+    import shutil
     import uuid
     from local_agent.studio_state import StudioStore, default_state
-    from local_agent.studio_server import ReviewStudioJobs, read_settings
-    from local_agent.studio_jobs import StudioJobError
+    from local_agent.prompt_interpreter import interpret_scene
+    from local_agent.studio_server import export_review, read_settings
 
     project = "agent_camera_qa_" + uuid.uuid4().hex[:12]
-    store = StudioStore(workspace, project=project)
-    state = default_state(project)
-    state["settings"].update({"duration": 3, "fps": 12, "resolution": "360x640"})
-    scene_id = "camera_qa"
-    state["scenes"] = [{
-        "id": scene_id, "title": "Проверка движения камеры",
-        "prompt": "тестовый персонаж идёт, камера следует за ним",
-        "location": "тестовая сцена", "camera": "следование",
-        "style": "проверка", "animation": "ходьба",
-        "status": "черновик", "preview": "",
-        "duration": 3, "characters": [], "props": [],
-    }]
-    enabled = read_settings()["enabled"]
-    jobs = ReviewStudioJobs(store)
+    job_id = uuid.uuid4().hex
+    output = None
     try:
-        queued = jobs.start(state, scene_id)
-    except StudioJobError as exc:
-        return {"status": "failed", "reason": str(exc)[:240],
-                "mode": "procedural_camera_fixture"}
-    job_id = queued["job_id"]
-    deadline = time.monotonic() + 480
-    outcome = {}
-    while time.monotonic() < deadline:
-        outcome = jobs.status(job_id)
-        finished = outcome["state"] in ("completed", "failed", "cancelled", "interrupted")
-        reviewed = not enabled or "review_delivery" in outcome or outcome["state"] != "completed"
-        if finished and reviewed:
-            break
-        time.sleep(1)
-    else:
-        try:
-            jobs.cancel(job_id)
-        except StudioJobError:
-            pass
-        return {"status": "failed", "reason": "camera_smoke_timeout_480_seconds",
-                "mode": "procedural_camera_fixture", "job_id": job_id}
-    if outcome["state"] != "completed":
-        error_lines = []
-        blender_log = store.root / "studio_jobs" / job_id / "blender.log"
-        try:
-            if blender_log.is_file() and not blender_log.is_symlink():
-                with blender_log.open("rb") as handle:
-                    handle.seek(max(0, blender_log.stat().st_size - 8192))
-                    tail = handle.read(8192).decode("utf-8", errors="replace")
-                # This Blender task uses only a fixed local fixture; never include
-                # the full log, arbitrary source text or unfiltered credentials.
-                for raw_line in tail.splitlines():
-                    line = raw_line.strip()
-                    if line.startswith(("Traceback", "File ", "RuntimeError:",
-                                        "AttributeError:", "ValueError:", "TypeError:",
-                                        "KeyError:", "Error:", "Exception:")):
-                        # This fixed test fixture only needs error type and message.
-                        line = line.replace(str(store.workspace), "[WORKSPACE]")
-                        error_lines.append(line[:180])
-        except OSError:
-            pass
-        return {"status": "failed", "reason": str(outcome.get("message", "render_failed"))[:240],
-                "mode": "procedural_camera_fixture", "job_id": job_id,
-                "blender_errors": error_lines[-12:]}
-    review = outcome.get("review_delivery", {"status": "not_confirmed"})
-    return {
-        "status": "completed",
-        "mode": "procedural_camera_fixture",
-        "job_id": job_id,
-        "project": project,
-        "video": str(store.root / "studio_jobs" / job_id / "scene.mp4"),
-        "frames_expected": outcome["total_frames"],
-        "review_delivery": review,
-        "cloud_sync_verified": False,
-    }
+        store = StudioStore(workspace, project=project)
+        output = store.root / "studio_jobs" / job_id
+        output.mkdir(parents=True, exist_ok=False)
+        state = default_state(project)
+        state["settings"].update({"duration": 3, "fps": 12, "resolution": "360x640"})
+        plan = interpret_scene("тестовый персонаж идёт, камера следует за ним",
+                               state, "camera_qa")
+        if plan["readiness"] != "ready_fixture":
+            raise ValueError("Fixed camera fixture is not renderable")
+        (output / "manifest.json").write_text(
+            json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        blender = find_blender_executable()
+        ffmpeg = shutil.which("ffmpeg")
+        if blender is None or not ffmpeg:
+            return {"status": "failed", "reason": "blender_or_ffmpeg_missing",
+                    "project": project, "job_id": job_id}
 
+        source = ROOT / "local_agent" / "studio_blender_scene.py"
+        if source.is_symlink() or not source.is_file() or source.stat().st_size > 200_000:
+            raise ValueError("Untrusted or missing local Blender fixture")
+        original = source.read_text(encoding="utf-8")
+        marker = "    scene.world.color = (0.08, 0.11, 0.16)"
+        if marker in original:
+            if original.count(marker) != 1 or "    bpy.ops.wm.read_factory_settings(use_empty=True)" not in original:
+                raise ValueError("Unexpected Blender fixture signature")
+            original = original.replace(
+                marker,
+                '    if scene.world is None:\n'
+                '        scene.world = bpy.data.worlds.new("Camera QA World")\n'
+                + marker,
+            )
+        compile(original, str(source), "exec")
+        script = output / "camera_fixture.py"
+        with script.open("x", encoding="utf-8") as stream:
+            stream.write(original)
+
+        blender_cmd = [
+            str(blender), "--background", "--factory-startup",
+            "--disable-autoexec", "--offline-mode", "--python-exit-code", "12",
+            "--python", str(script), "--",
+            str(output / "manifest.json"), str(output),
+        ]
+        with (output / "blender.log").open("wb") as log:
+            try:
+                run = subprocess.run(
+                    blender_cmd, cwd=output, stdin=subprocess.DEVNULL,
+                    stdout=log, stderr=subprocess.STDOUT, shell=False,
+                    timeout=480, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return {"status": "failed", "reason": "blender_timeout_480s",
+                        "project": project, "job_id": job_id}
+        if run.returncode:
+            lines = []
+            with (output / "blender.log").open("rb") as log:
+                log.seek(max(0, (output / "blender.log").stat().st_size - 8192))
+                tail = log.read(8192).decode("utf-8", errors="replace")
+            for raw in tail.splitlines():
+                line = raw.strip()
+                if line.startswith(("Traceback", "RuntimeError:", "AttributeError:",
+                                    "TypeError:", "ValueError:", "Error:")):
+                    lines.append(line[:160])
+            return {"status": "failed", "reason": "blender_exit_" + str(run.returncode),
+                    "blender_errors": lines[-8:], "project": project, "job_id": job_id}
+
+        expected = plan["duration"] * plan["fps"]
+        frames = sorted((output / "frames").glob("frame_*.png"))
+        if len(frames) != expected or not (output / "scene.blend").is_file():
+            return {"status": "failed", "reason": "incomplete_blender_frames",
+                    "rendered_frames": len(frames), "expected_frames": expected,
+                    "project": project, "job_id": job_id}
+        cmd = [
+            str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-framerate", str(plan["fps"]), "-i", str(output / "frames" / "frame_%04d.png"),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            str(output / "scene.mp4"),
+        ]
+        with (output / "ffmpeg.log").open("wb") as log:
+            try:
+                merged = subprocess.run(
+                    cmd, cwd=output, stdin=subprocess.DEVNULL,
+                    stdout=log, stderr=subprocess.STDOUT, shell=False,
+                    timeout=180, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return {"status": "failed", "reason": "ffmpeg_timeout_180s",
+                        "project": project, "job_id": job_id}
+        video = output / "scene.mp4"
+        if merged.returncode or not video.is_file() or video.stat().st_size < 100:
+            return {"status": "failed", "reason": "ffmpeg_mp4_failed",
+                    "project": project, "job_id": job_id}
+
+        review = {"status": "disabled"}
+        try:
+            if read_settings()["enabled"]:
+                review = export_review(
+                    output,
+                    {"job_id": job_id, "scene_id": "camera_qa", "kind": "scene",
+                     "total_frames": expected},
+                    ffmpeg,
+                )
+        except (OSError, ValueError) as exc:
+            review = {"status": "failed", "reason": type(exc).__name__,
+                      "message": str(exc)[:180]}
+        status = "completed" if review.get("status") == "exported_to_local_dropbox" else "failed"
+        return {
+            "status": status,
+            "mode": "procedural_camera_fixture",
+            "project": project, "job_id": job_id,
+            "video": str(video), "frames_expected": expected,
+            "review_delivery": review, "cloud_sync_verified": False,
+        }
+    except (OSError, ValueError, SyntaxError) as exc:
+        return {"status": "failed", "reason": type(exc).__name__,
+                "message": str(exc)[:160], "mode": "procedural_camera_fixture",
+                "project": project, "job_id": job_id}
 
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
