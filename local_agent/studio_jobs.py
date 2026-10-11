@@ -132,9 +132,14 @@ class StudioJobs:
             cmd = [str(blender), "--background", "--factory-startup", "--disable-autoexec",
                    "--offline-mode", "--python-exit-code", "12", "--python", str(script), "--", str(d / "manifest.json"), str(d)]
             with (d / "blender.log").open("w", encoding="utf-8", errors="replace") as log:
-                proc = subprocess.Popen(cmd, cwd=str(d), stdin=subprocess.DEVNULL,
-                                        stdout=log, stderr=subprocess.STDOUT, shell=False)
+                # Check cancellation and spawn under the same lock. Otherwise
+                # cancel() can run after the earlier check but before Popen,
+                # leaving an untracked Blender process running.
                 with self.lock:
+                    if job_id in self.cancelled:
+                        raise StudioJobError("Cancelled")
+                    proc = subprocess.Popen(cmd, cwd=str(d), stdin=subprocess.DEVNULL,
+                                            stdout=log, stderr=subprocess.STDOUT, shell=False)
                     self.process = proc
                 try:
                     code = proc.wait(timeout=3600)
@@ -157,11 +162,21 @@ class StudioJobs:
                    "-i", str(d / "frames" / "frame_%04d.png"), "-c:v", "libx264",
                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(d / "scene.mp4")]
             with (d / "ffmpeg.log").open("w", encoding="utf-8", errors="replace") as log:
-                result = subprocess.run(cmd, cwd=str(d), stdin=subprocess.DEVNULL,
-                                        stdout=log, stderr=subprocess.STDOUT, timeout=300, shell=False)
+                with self.lock:
+                    if job_id in self.cancelled:
+                        raise StudioJobError("Cancelled")
+                    proc = subprocess.Popen(cmd, cwd=str(d), stdin=subprocess.DEVNULL,
+                                            stdout=log, stderr=subprocess.STDOUT, shell=False)
+                    self.process = proc
+                try:
+                    code = proc.wait(timeout=300)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    raise StudioJobError("FFmpeg exceeded the five-minute timeout")
             if job_id in self.cancelled:
                 raise StudioJobError("Cancelled")
-            if result.returncode != 0 or not (d / "scene.mp4").is_file() or (d / "scene.mp4").stat().st_size < 100:
+            if code != 0 or not (d / "scene.mp4").is_file() or (d / "scene.mp4").stat().st_size < 100:
                 raise StudioJobError("FFmpeg did not create a valid MP4; see ffmpeg.log")
             info.update(state="completed", message="Тестовая анимация готова", progress_percent=100,
                         video_url="/api/studio-video/" + job_id)
@@ -242,9 +257,11 @@ class StudioJobs:
                         "-map", "[outv]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                         "-movflags", "+faststart", str(directory / "scene.mp4")])
             with (directory / "ffmpeg.log").open("w", encoding="utf-8", errors="replace") as log:
-                proc = subprocess.Popen(cmd, cwd=str(directory), stdin=subprocess.DEVNULL,
-                                        stdout=log, stderr=subprocess.STDOUT, shell=False)
                 with self.lock:
+                    if job_id in self.cancelled:
+                        raise StudioJobError("Cancelled")
+                    proc = subprocess.Popen(cmd, cwd=str(directory), stdin=subprocess.DEVNULL,
+                                            stdout=log, stderr=subprocess.STDOUT, shell=False)
                     self.process = proc
                 try:
                     code = proc.wait(timeout=1800)
