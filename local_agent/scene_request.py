@@ -662,7 +662,11 @@ def _reference_indices_for_character(card: dict[str, Any], prompt: str,
         previous_ends = [end for start, end, other in mentions if end <= name_at and other != name.casefold()]
         next_starts = [start for start, end, other in mentions if start > name_at and other != name.casefold()]
         window_start = max(previous_ends) if previous_ends else name_at
+        window_start = max(window_start, text.rfind(";", 0, name_at) + 1)
         window_end = min(next_starts) if next_starts else min(len(text), own_end + 140)
+        next_clause = text.find(";", own_end, window_end)
+        if next_clause >= 0:
+            window_end = next_clause
         window = text[window_start:window_end]
     else:
         window = text
