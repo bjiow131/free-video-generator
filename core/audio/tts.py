@@ -147,7 +147,27 @@ class SilentTTSEngine(TTSEngine):
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await proc.communicate()
+        try:
+            _, stderr = await proc.communicate()
+        except asyncio.CancelledError:
+            # Cancelling the parent coroutine must not leave an orphan FFmpeg
+            # process or an incomplete audio file on disk.
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            try:
+                await proc.wait()
+            except Exception:
+                logger.warning("[TTS] Could not reap cancelled FFmpeg process", exc_info=True)
+            try:
+                os.remove(output_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.warning("[TTS] Failed to clean cancelled silent audio", exc_info=True)
+            raise
 
         # P9: 检查 ffmpeg 返回码，失败时抛出异常而非静默返回
         if proc.returncode != 0:
