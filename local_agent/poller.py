@@ -24,6 +24,7 @@ from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
+from local_agent.test_scope import test_command
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -196,7 +197,7 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
 
         try:
             tests = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q"],
+                test_command("all", root=worktree),
                 cwd=worktree, capture_output=True, text=True, timeout=900,
                 check=False, shell=False,
             )
