@@ -557,7 +557,9 @@ class TestLocalWindowsContracts:
     def test_start_windows_launcher_points_to_local_server(self):
         from pathlib import Path
         bat = Path("start_windows.bat").read_text(encoding="utf-8")
-        assert 'curl -s http://127.0.0.1:8765/health' in bat
+        assert 'curl -fsS --max-time 2 http://127.0.0.1:8765/health' in bat
+        assert 'WAIT_ATTEMPTS' in bat
+        assert ':startup_failed' in bat
         assert 'http://127.0.0.1:8765' in bat
         assert '.venv\\Scripts\\python.exe' in bat
         assert 'start "" /b ".venv\\Scripts\\python.exe" server.py' in bat
