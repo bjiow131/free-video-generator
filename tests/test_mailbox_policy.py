@@ -72,7 +72,10 @@ def test_corrupt_policy_does_not_disable_security(vault):
 def test_symlink_attack_blocks_storage(vault, tmp_path):
     other = tmp_path / 'outside'
     other.mkdir()
-    (vault / '.local_agent').symlink_to(other, target_is_directory=True)
+    try:
+        (vault / '.local_agent').symlink_to(other, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip('Windows account cannot create a symlink without developer mode')
     with pytest.raises(policy.MailboxPolicyError):
         policy.save_policy(dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True))
     assert not list(other.iterdir())
