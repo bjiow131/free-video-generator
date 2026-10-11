@@ -440,7 +440,7 @@ def test_apply_patch_uses_isolated_worktree_and_never_changes_active_checkout(mo
         return SimpleNamespace(returncode=0, stdout="2 passed", stderr="")
 
     monkeypatch.setattr(poller.subprocess, "run", fake_run)
-    result = poller._apply_patch("diff --git a/a b/a\n", "task-104")
+    result = poller._apply_patch("diff --git a/local_agent/a b/local_agent/a\n", "task-104")
 
     assert result["status"] == "completed"
     assert result["active_checkout_modified"] is False
@@ -485,13 +485,101 @@ def test_apply_patch_removes_temporary_worktree_when_post_patch_tests_fail(monke
         return SimpleNamespace(returncode=1, stdout="1 failed", stderr="failure details")
 
     monkeypatch.setattr(poller.subprocess, "run", fake_run)
-    result = poller._apply_patch("diff --git a/a b/a\n", "task-105")
+    result = poller._apply_patch("diff --git a/local_agent/a b/local_agent/a\n", "task-105")
 
     assert result["status"] == "failed_rolled_back"
     assert result["rollback_verified"] is True
     assert result["temporary_worktree_removed"] is True
     assert result["temporary_branch_removed"] is True
     assert created_worktree is not None and not created_worktree.exists()
+
+
+def test_apply_patch_rejects_disallowed_paths_before_git_operations(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    result = poller._apply_patch(
+        "diff --git a/tests/.git/config b/tests/.git/config\\n", "unsafe-patch"
+    )
+    assert result == {"status": "rejected", "reason": "unsafe_or_malformed_patch"}
+    assert not (tmp_path / ".local_agent_worktrees").exists()
+
+
+def test_apply_patch_cleans_up_when_git_operation_times_out(tmp_path, monkeypatch):
+    from local_agent import poller
+    from types import SimpleNamespace
+    import subprocess
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if args[1:3] == ["rev-parse", "--verify"]:
+            return SimpleNamespace(returncode=0, stdout="base-sha\\n", stderr="")
+        if args[1:4] == ["show-ref", "--verify", "--quiet"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        if args[1:3] == ["worktree", "add"]:
+            from pathlib import Path
+            Path(args[5]).mkdir(parents=True)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[1:3] == ["apply", "--check"]:
+            raise subprocess.TimeoutExpired(cmd=args, timeout=60)
+        if args[1:3] == ["worktree", "remove"]:
+            from pathlib import Path
+            Path(args[4]).rmdir()
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[1:3] == ["branch", "-D"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(args)
+
+    monkeypatch.setattr(poller.subprocess, "run", fake_run)
+    result = poller._apply_patch("diff --git a/local_agent/file.py b/local_agent/file.py\\n", "timeout-01")
+
+    assert result["status"] == "timeout"
+    assert result["rollback_verified"] is True
+    assert result["temporary_worktree_removed"] is True
+    assert result["temporary_branch_removed"] is True
+    assert any(args[1:3] == ["worktree", "remove"] for args in calls)
+
+
+def test_cleanup_preserves_branch_when_worktree_removal_fails(tmp_path):
+    from local_agent import poller
+    from types import SimpleNamespace
+
+    calls = []
+    def fake_git(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=1, stderr="worktree busy", stdout="")
+
+    result = poller._discard_failed_worktree(
+        fake_git, tmp_path / "worktree", "agent/task-test",
+        {"status": "failed_rolled_back", "reason": "post_patch_tests_failed"},
+    )
+    assert result["status"] == "failed_needs_user"
+    assert result["reason"] == "failed_task_worktree_removal"
+    assert not any(args[:2] == ["branch", "-D"] for args in calls)
+
+
+def test_cleanup_reports_interruptions_instead_of_raising(tmp_path):
+    from local_agent import poller
+    import subprocess
+
+    def fake_git(args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args, timeout=60)
+
+    result = poller._discard_failed_worktree(
+        fake_git, tmp_path / "worktree", "agent/task-test",
+        {"status": "failed_rolled_back", "reason": "post_patch_tests_failed"},
+    )
+    assert result["status"] == "failed_needs_user"
+    assert result["reason"] == "failed_task_cleanup_interrupted"
 
 
 def test_load_state_returns_empty_only_when_state_file_is_missing(tmp_path, monkeypatch):
