@@ -1,9 +1,9 @@
 name: Server Test
 
-# Keep one verification run per PR/ref. New commits must not interrupt a run
-# that has already started; GitHub may keep only the newest pending run queued.
+# Give each revision its own bounded verification slot. Older long-running
+# runs must not block fresh security fixes from receiving feedback.
 concurrency:
-  group: server-test-${{ github.head_ref || github.ref_name }}
+  group: server-test-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
   cancel-in-progress: false
 
 on:
@@ -42,8 +42,8 @@ jobs:
   verify:
     name: Sequential verification
     runs-on: ubuntu-latest
-    # Bound stalled pytest/media work so newer PR checks cannot queue indefinitely.
-    timeout-minutes: 45
+    # Keep this diagnostic verification bounded while investigating legacy hangs.
+    timeout-minutes: 20
     steps:
       - name: 1. Checkout source
         id: checkout
@@ -73,7 +73,11 @@ jobs:
 
       - name: 7. Core, recovery and security regression tests
         id: tests
-        run: python -m pytest -q tests
+        # Print the active test name; show its stack if it remains blocked.
+        # GNU timeout prevents a stalled pytest child from consuming CI for hours.
+        run: |
+          timeout --signal=TERM --kill-after=20s 12m \
+            python -m pytest -vv -x --tb=short -o faulthandler_timeout=90 tests
 
       - name: 8. Build Docker image
         id: docker
