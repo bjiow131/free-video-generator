@@ -1567,8 +1567,9 @@ def main() -> int:
             name="octava-telegram-worker-compat", daemon=True,
         )
         fallback_thread.start()
-    _telegram_signal("mailbox-online", str(int(time.time())),
-                     "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
+    if fallback_thread is not None:
+        _telegram_signal("mailbox-online", str(int(time.time())),
+                         "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
 
     try:
         while True:
