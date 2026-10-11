@@ -93,7 +93,7 @@ async def test_runner_passes_final_frame_to_next_scene(tmp_path):
     assert state["status"] == "completed"
     assert len(backend.calls) == 2
     assert backend.calls[0]["input_image"] == str(start)
-    assert backend.calls[1]["input_image"].endswith("s1/attempt_01_last.png")
+    assert tuple(Path(backend.calls[1]["input_image"]).parts[-2:]) == ("s1", "attempt_01_last.png")
     assert Path(state["final_video_path"]).read_bytes() == b"final-mp4"
     assert state["scenes"]["s1"]["video_sha256"]
     assert state["scenes"]["s1"]["frame_sha256"]
@@ -114,7 +114,7 @@ async def test_runner_retries_scene_without_skipping_chain(tmp_path):
     assert state["status"] == "completed"
     assert len(backend.calls) == 3
     assert backend.calls[1]["input_image"] == str(start)
-    assert backend.calls[2]["input_image"].endswith("s1/attempt_02_last.png")
+    assert tuple(Path(backend.calls[2]["input_image"]).parts[-2:]) == ("s1", "attempt_02_last.png")
 
 
 def test_checkpoint_survives_reload(tmp_path):
@@ -241,7 +241,7 @@ def test_checkpoint_rejects_project_directory_symlink_escape(tmp_path):
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("Directory symlinks are not available in this environment")
-    with pytest.raises(ValueError, match="outside the configured workspace"):
+    with pytest.raises(ValueError, match="must not be a symlink"):
         CheckpointStore(workspace, "symlink-test")
 
 
@@ -435,8 +435,10 @@ async def test_regenerating_upstream_scene_invalidates_downstream_frame_chain(tm
 
     assert resumed["status"] == "completed"
     assert len(backend.calls) == 4
-    assert backend.calls[2]["input_image"].endswith("s1/attempt_02_last.png")
-    assert backend.calls[3]["input_image"].endswith("s2/attempt_02_last.png")
+    # Regenerated scene 1 must start from the original initial image;
+    # regenerated scene 2 must consume the NEW scene-1 final frame.
+    assert backend.calls[2]["input_image"] == str(start)
+    assert tuple(Path(backend.calls[3]["input_image"]).parts[-2:]) == ("s1", "attempt_02_last.png")
     assert resumed["scenes"]["s2"]["input_frame_sha256"] == resumed["scenes"]["s1"]["frame_sha256"]
 
 
@@ -488,7 +490,7 @@ async def test_runner_rejects_backend_video_path_outside_project(tmp_path):
     state = await runner.run(manifest)
 
     assert state["status"] == "failed"
-    assert "Backend video path resolves outside" in state["error"]
+    assert "Backend video path does not belong to scene" in state["error"]
     assert state["scenes"]["s1"]["status"] == "failed"
 
 @pytest.mark.asyncio
@@ -564,7 +566,7 @@ async def test_runner_rejects_scene_output_symlink_before_backend_writes(tmp_pat
     backend = FakeBackend()
     store = CheckpointStore(workspace, manifest.project_id)
     runner = LocalProjectRunner(workspace, store, backend, FakeMedia())
-    with pytest.raises(ValueError, match="Backend output target resolves outside"):
+    with pytest.raises(ValueError, match="Backend output target does not belong to scene"):
         await runner.run(manifest)
 
     assert backend.calls == []
@@ -625,7 +627,7 @@ async def test_runner_rejects_project_directory_symlink_created_after_store_init
     manifest = sample_manifest(start)
     runner = LocalProjectRunner(workspace, store, FakeBackend(), FakeMedia())
 
-    with pytest.raises(ValueError, match="outside the configured workspace"):
+    with pytest.raises(ValueError, match="Project output directory must not be a symlink"):
         await runner.run(manifest)
     assert list(outside.iterdir()) == []
 
@@ -651,3 +653,19 @@ async def test_runner_rejects_project_directory_symlink_to_another_workspace_pro
     with pytest.raises(ValueError, match="must not be a symlink"):
         await runner.run(manifest)
     assert list(other_project.iterdir()) == []
+
+
+def test_reports_in_same_second_never_overwrite(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+    from local_agent import reporting
+    class Clock:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 10, 11, tzinfo=timezone.utc)
+    monkeypatch.setattr(reporting, "datetime", Clock)
+    first = reporting.write_report(tmp_path, kind="task", status="first")
+    second = reporting.write_report(tmp_path, kind="task", status="second")
+    assert first != second
+    assert json.loads(first.read_text())["status"] == "first"
+    assert json.loads(second.read_text())["status"] == "second"

@@ -4,6 +4,7 @@ The bridge accepts a small typed task schema; it never executes arbitrary Python
 provided by a user or downloaded from the mailbox. Blender runs locally.
 """
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern, is_link_or_junction
 
 import json
 import os
@@ -16,7 +17,7 @@ import tempfile
 import time
 from typing import Any, Callable
 
-_PROJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+_PROJECT_NAME = path_identifier_pattern(48)
 _ALLOWED_TASKS = {"forest_preview"}
 _DEFAULT_TIMEOUT = 900
 
@@ -234,7 +235,7 @@ class BlenderBridge:
             )
 
         requested = self.workspace / project_name
-        if requested.is_symlink() or getattr(requested, "is_junction", lambda: False)():
+        if is_link_or_junction(requested):
             raise BlenderBridgeError("Project output directory must not be a symlink or junction.")
         project_dir = _inside(self.workspace, requested)
         if project_dir.exists() and not project_dir.is_dir():
@@ -250,7 +251,7 @@ class BlenderBridge:
             "blender_stdout.log", "blender_stderr.log",
         )
         known_outputs = [project_dir / name for name in names]
-        if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)() for path in known_outputs):
+        if any(is_link_or_junction(path) for path in known_outputs):
             raise BlenderBridgeError("Known output paths must not be symlinks or junctions.")
         existing = [path for path in known_outputs if path.exists()]
         if any(not path.is_file() for path in existing):
@@ -322,7 +323,7 @@ class BlenderBridge:
         if not _PROJECT_NAME.fullmatch(project_name or ""):
             raise BlenderBridgeError("Project name must use 1-49 letters, digits, underscores, or hyphens.")
         requested_project_dir = self.workspace / project_name
-        if requested_project_dir.is_symlink() or getattr(requested_project_dir, "is_junction", lambda: False)():
+        if is_link_or_junction(requested_project_dir):
             raise BlenderBridgeError("Project output directory must not be a symlink or junction.")
         project_dir = _inside(self.workspace, requested_project_dir)
         project_dir.mkdir(parents=True, exist_ok=True)
@@ -333,7 +334,7 @@ class BlenderBridge:
             project_dir / "blender_stdout.log",
             project_dir / "blender_stderr.log",
         ]
-        if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)() for path in known_outputs):
+        if any(is_link_or_junction(path) for path in known_outputs):
             raise BlenderBridgeError("Known output paths must not be symlinks or junctions.")
         if not overwrite and any(path.exists() for path in known_outputs):
             raise BlenderBridgeError(
@@ -360,7 +361,8 @@ class BlenderBridge:
             script_path.write_text(_scene_script(), encoding="utf-8")
             config_path.write_text(json.dumps(config), encoding="utf-8")
             command = [
-                str(self.executable), "--factory-startup",
+                str(self.executable), "--factory-startup", "--disable-autoexec",
+                "--python-exit-code", "1",
                 "--python", str(script_path), "--", str(config_path),
             ]
             if self._run is subprocess.Popen:
@@ -382,7 +384,7 @@ class BlenderBridge:
                                     manifest = json.loads(result_path.read_text(encoding="utf-8"))
                                 except (OSError, ValueError):
                                     manifest = {}
-                                if manifest.get("status") == "completed":
+                                if isinstance(manifest, dict) and manifest.get("status") == "completed":
                                     break
                             return_code = process.poll()
                             if return_code is not None:
@@ -429,7 +431,7 @@ class BlenderBridge:
                         f"local_logs_written={stdout_logged and stderr_logged}: {stderr}"
                     )
         result_path = project_dir / "blender_result.json"
-        if result_path.is_symlink() or getattr(result_path, "is_junction", lambda: False)():
+        if is_link_or_junction(result_path):
             raise BlenderBridgeError("Blender result manifest must not be a symlink or junction.")
         if not result_path.is_file() or result_path.stat().st_size == 0:
             raise BlenderBridgeError("Blender exited without writing its result manifest.")
@@ -438,7 +440,7 @@ class BlenderBridge:
         except (OSError, ValueError) as exc:
             raise BlenderBridgeError("Blender result manifest is unreadable.") from exc
         expected_blend = _inside(project_dir, project_dir / "forest_starter.blend")
-        if (payload.get("status") != "completed" or not expected_blend.is_file()
+        if (not isinstance(payload, dict) or payload.get("status") != "completed" or not expected_blend.is_file()
                 or expected_blend.is_symlink() or expected_blend.stat().st_size == 0):
             raise BlenderBridgeError("Blender result manifest failed validation.")
         if payload.get("blend_path") != str(expected_blend):

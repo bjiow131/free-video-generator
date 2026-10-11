@@ -4,6 +4,7 @@ A result is written atomically before network publication. Failed publications
 remain on disk and can be retried after connectivity returns.
 """
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 
 import json
 import os
@@ -15,7 +16,7 @@ from typing import Any
 from local_agent.github_queue import MAX_RESULT_BYTES, QueueTransportError
 from local_agent.reporting import _redact_value
 
-_SAFE_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SAFE_TASK_ID = path_identifier_pattern(128, dots=True)
 
 
 class ResultOutboxError(RuntimeError):

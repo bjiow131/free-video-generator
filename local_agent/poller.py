@@ -24,6 +24,8 @@ from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
+from local_agent.test_scope import test_command
+from local_agent.blender_locator import find_blender_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -53,6 +55,22 @@ def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
     return "pending_delivery" if task_id in pending_task_ids else "processed"
 
+def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
+    """Deterministic, isolated result key for a rejected immutable-ID collision.
+
+    Do not use the original task ID: that output must remain unchanged forever.
+    Deriving the ID from both values avoids path injection and makes delivery
+    idempotent even if the process exits before the local state is saved.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(
+        (task_id + "\\n" + manifest_sha).encode("utf-8")
+    ).hexdigest()[:32]
+    return f"task-id-reuse-{digest}"
+
+
+
 
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
@@ -67,6 +85,12 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
     """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
     import re
 
+    # Both mailbox entry points must enforce the same path and file-type restrictions.
+    # Do this before creating a branch or worktree, even for a direct apply_patch task.
+    try:
+        _validate_patch_paths(patch)
+    except (RepairProtocolError, TypeError):
+        return {"status": "rejected", "reason": "unsafe_or_malformed_patch"}
     if not (ROOT / ".git").exists():
         return {"status": "blocked", "reason": "project_root_is_not_a_git_checkout"}
     safe_id = re.sub(r"[^A-Za-z0-9._-]", "-", task_id)[:80]
@@ -99,6 +123,8 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
             text=True, timeout=timeout, check=False, shell=False,
         )
 
+    worktree_created = False
+    creation_attempted = False
     try:
         head = run_git(["rev-parse", "--verify", "HEAD"])
         if head.returncode != 0:
@@ -114,13 +140,17 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 "branch": branch,
             }
 
+        creation_attempted = True
         created = run_git(["worktree", "add", "-b", branch, str(worktree), base_sha], timeout=120)
         if created.returncode != 0:
             return {
-                "status": "error",
-                "reason": "could_not_create_isolated_worktree",
+                "status": "failed_needs_user",
+                "reason": "worktree_creation_failed_inspect_for_partial_worktree_or_branch",
+                "worktree": str(worktree),
+                "branch": branch,
                 "stderr_tail": [line[:500] for line in created.stderr.splitlines()[-20:]],
             }
+        worktree_created = True
 
         checked = run_git(["apply", "--check"], cwd=worktree, input_text=patch)
         if checked.returncode != 0:
@@ -139,9 +169,36 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 {"status": "failed_rolled_back", "reason": "git_apply_failed", "stderr_tail": error_lines},
             )
 
+        # Stage the approved change BEFORE running tests: test side-effects must
+        # never become part of the repair commit.
+        patch_paths = sorted({
+            line.split()[2][2:]
+            for line in patch.splitlines() if line.startswith("diff --git ")
+        })
+        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
+        if staged.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "repair_patch_paths_could_not_be_staged"},
+            )
+        staged_check = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
+        if staged_check.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "staged_diff_check_failed"},
+            )
+        staged_snapshot = run_git(
+            ["diff", "--cached", "--no-ext-diff", "--binary"], cwd=worktree, timeout=60,
+        )
+        if staged_snapshot.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "could_not_snapshot_staged_patch"},
+            )
+
         try:
             tests = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q"],
+                test_command("all", root=worktree),
                 cwd=worktree, capture_output=True, text=True, timeout=900,
                 check=False, shell=False,
             )
@@ -176,28 +233,18 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                  "stderr_tail": [line[:500] for line in whitespace.stderr.splitlines()[-20:]]},
             )
 
-        # Stage only paths named in the validated patch; never stage the whole worktree.
-        patch_paths = []
-        for line in patch.splitlines():
-            if line.startswith("diff --git "):
-                parts = line.split()
-                if len(parts) != 4:
-                    return _discard_failed_worktree(
-                        run_git, worktree, branch,
-                        {"status": "rejected", "reason": "malformed_patch_header_after_validation"},
-                    )
-                for raw_path in parts[2:]:
-                    patch_paths.append(raw_path[2:])
-        patch_paths = sorted(set(patch_paths))
-        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
-        if staged.returncode != 0:
-            return {
-                "status": "completed_needs_review",
-                "reason": "tests_passed_but_patch_paths_could_not_be_staged",
-                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
-                "stderr_tail": [line[:500] for line in staged.stderr.splitlines()[-20:]],
-                "active_checkout_modified": False,
-            }
+        # Tests can modify repository files and even invoke Git. Fail closed
+        # rather than committing anything other than the already tested patch.
+        unstaged = run_git(["diff", "--exit-code", "--"], cwd=worktree, timeout=60)
+        current_staged = run_git(
+            ["diff", "--cached", "--no-ext-diff", "--binary"], cwd=worktree, timeout=60,
+        )
+        if (unstaged.returncode != 0 or current_staged.returncode != 0
+                or current_staged.stdout != staged_snapshot.stdout):
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "post_patch_tests_modified_worktree_or_index"},
+            )
         staged_diff = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
         if staged_diff.returncode != 0:
             return _discard_failed_worktree(
@@ -230,22 +277,54 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
             "active_checkout_modified": False,
             "pushed_to_remote": False,
         }
-    except subprocess.TimeoutExpired:
-        return {"status": "timeout", "reason": "git_operation_timed_out"}
-    except OSError as exc:
-        return {"status": "error", "error_type": type(exc).__name__}
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        failure = {
+            "status": "timeout" if isinstance(exc, subprocess.TimeoutExpired) else "error",
+            "reason": "git_operation_timed_out" if isinstance(exc, subprocess.TimeoutExpired) else "git_operation_failed",
+            "error_type": type(exc).__name__,
+        }
+        if worktree_created:
+            return _discard_failed_worktree(run_git, worktree, branch, failure)
+        if creation_attempted:
+            return {
+                "status": "failed_needs_user",
+                "reason": "worktree_creation_interrupted_inspect_for_partial_worktree_or_branch",
+                "original_failure": failure,
+                "worktree": str(worktree),
+                "branch": branch,
+            }
+        return failure
 
 
 def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[str, Any]) -> dict[str, Any]:
     """Remove only the disposable worktree created for this task after a failure."""
-    remove = run_git(["worktree", "remove", "--force", str(worktree)], timeout=120)
-    delete_branch = run_git(["branch", "-D", branch], timeout=60)
-    if remove.returncode != 0 or delete_branch.returncode != 0:
+    try:
+        remove = run_git(["worktree", "remove", "--force", str(worktree)], timeout=120)
+        # Never delete a branch while its worktree removal is unconfirmed.
+        if remove.returncode != 0:
+            return {
+                "status": "failed_needs_user",
+                "reason": "failed_task_worktree_removal",
+                "original_failure": result,
+                "worktree_remove_return_code": remove.returncode,
+                "worktree": str(worktree),
+                "branch": branch,
+            }
+        delete_branch = run_git(["branch", "-D", branch], timeout=60)
+    except (subprocess.TimeoutExpired, OSError) as exc:
         return {
             "status": "failed_needs_user",
-            "reason": "failed_task_cleanup_not_fully_verified",
+            "reason": "failed_task_cleanup_interrupted",
             "original_failure": result,
-            "worktree_remove_return_code": remove.returncode,
+            "cleanup_error_type": type(exc).__name__,
+            "worktree": str(worktree),
+            "branch": branch,
+        }
+    if delete_branch.returncode != 0:
+        return {
+            "status": "failed_needs_user",
+            "reason": "failed_task_branch_removal",
+            "original_failure": result,
             "branch_delete_return_code": delete_branch.returncode,
             "worktree": str(worktree),
             "branch": branch,
@@ -260,15 +339,21 @@ def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[
 
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace:
+    if not workspace:
         return {
             "status": "blocked",
             "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally",
             "remote_paths_or_commands_accepted": False,
         }
     from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
+    executable = find_blender_executable()
+    if executable is None:
+        return {
+            "status": "blocked",
+            "reason": "blender_executable_not_found",
+            "remote_paths_or_commands_accepted": False,
+        }
     try:
         bridge = BlenderBridge(executable, workspace)
         result = bridge.run_task(
@@ -405,11 +490,20 @@ def _load_state() -> dict[str, Any]:
     processed = data.get("processed_tasks", {})
     if not isinstance(processed, dict):
         raise RuntimeError("poller replay history is invalid; refusing to run tasks")
+    if len(processed) > 10000:
+        raise RuntimeError("poller replay history capacity exceeded; refusing to run tasks")
     for task_id, record in processed.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
             raise RuntimeError("poller replay history is invalid; refusing to run tasks")
         if not isinstance(record.get("manifest_sha"), str):
             raise RuntimeError("poller replay history is incomplete; refusing to run tasks")
+    repair_history = data.get("processed_repairs", {})
+    if not isinstance(repair_history, dict) or len(repair_history) > 2000:
+        raise RuntimeError("poller repair replay history is invalid or too large; refusing to run repairs")
+    for repair_id, record in repair_history.items():
+        if (not isinstance(repair_id, str) or not isinstance(record, dict)
+                or not isinstance(record.get("manifest_sha"), str)):
+            raise RuntimeError("poller repair replay history is incomplete; refusing to run repairs")
     return data
 
 
@@ -469,19 +563,25 @@ def _remember_manifest(
     rejected: bool = False, status: str | None = None,
 ) -> dict[str, Any]:
     """Persist bounded task identity history; task IDs are immutable."""
-    processed = state.get("processed_tasks", {})
-    if not isinstance(processed, dict):
-        processed = {}
+    previous = state.get("processed_tasks", {})
+    if not isinstance(previous, dict):
+        raise RuntimeError("Task replay history is invalid; refusing to discard existing state")
+    # Copy before mutation, so rejecting a new ID at the capacity boundary
+    # cannot corrupt the caller's in-memory replay protections.
+    processed = dict(previous)
     record = processed.get(task_id)
     if not isinstance(record, dict):
+        if len(processed) >= 10000:
+            raise RuntimeError("Task replay history capacity reached; refusing new IDs")
         record = {"manifest_sha": manifest_sha}
     elif rejected:
         record = {**record, "rejected_sha": manifest_sha}
     if status:
         record = {**record, "status": status}
     processed[task_id] = record
-    # Keep newest 200 IDs so state cannot grow without bound.
-    processed = dict(list(processed.items())[-200:])
+    # Never evict replay tombstones: an old immutable task ID must stay known.
+    if len(processed) > 10000:
+        raise RuntimeError("Task replay history capacity reached; inspect and archive safely")
     return {
         **state,
         "last_task_id": task_id,
@@ -698,23 +798,40 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         processed = {}
     previous = processed.get(repair_id)
     if isinstance(previous, dict):
-        if previous.get("manifest_sha") == manifest_sha:
+        if previous.get("manifest_sha") != manifest_sha:
+            # Keep the ORIGINAL manifest claim. Reusing a repair ID must not
+            # rewrite either its durable replay history or its GitHub result.
+            print(f"Repair {repair_id} rejected: immutable repair ID reused.")
             return state
-        result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_id_reused_with_different_manifest"}
-        publish_repair_result(result)
-        processed[repair_id] = {"manifest_sha": manifest_sha, "status": "rejected"}
-        state = {**state, "processed_repairs": dict(list(processed.items())[-100:])}
-        _save_state(state)
+        if previous.get("status") == "in_progress":
+            # The process died or was interrupted before persisting a final
+            # outcome. Never execute the same patch again on restart.
+            print(f"Repair {repair_id} interrupted; inspect the local worktree and result outbox.")
+            processed[repair_id] = {**previous, "status": "interrupted"}
+            state = {**state, "processed_repairs": processed}
+            _save_state(state)
         return state
+
+    if len(processed) >= 2000:
+        raise RuntimeError("Repair replay history capacity reached; refusing to accept new repair IDs")
 
     def record(status: str) -> dict[str, Any]:
         updated = dict(processed)
         updated[repair_id] = {"manifest_sha": manifest_sha, "status": status}
-        return {**state, "processed_repairs": dict(list(updated.items())[-100:])}
+        if len(updated) > 2000:
+            raise RuntimeError("Repair replay history capacity reached; refusing to evict repair IDs")
+        return {**state, "processed_repairs": updated}
 
     print(f"\nNew repair available: {repair_id}")
     print(f"Target base commit: {manifest['base_commit_sha']}")
     print("Patch paths are restricted to local_agent/, tests/, docs/, scripts/, and approved root files.")
+    # Path validation is not a sandbox: pytest will execute patched Python code.
+    # Show the EXACT vetted patch before interactive local approval.
+    print("\n=== BEGIN REPAIR PATCH (REVIEW BEFORE APPROVING) ===")
+    print(patch)
+    print("=== END REPAIR PATCH ===")
+    print("WARNING: tests may execute code from this patch with your local user permissions.")
+    print("Do not approve code you have not reviewed.")
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
@@ -744,7 +861,7 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         state = record("blocked")
         _save_state(state)
         return state
-    answer = input("Apply this repair in a separate Git worktree and run tests? Type YES: ").strip()
+    answer = input("After reviewing the full patch, apply in an isolated worktree and run tests? Type YES: ").strip()
     if answer != "YES":
         result = {"task_id": f"repair-{repair_id}", "status": "declined", "reason": "local_user_declined"}
         publish_repair_result(result)
@@ -760,6 +877,10 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         elif not _not_expired(type("RepairExpiry", (), {"expires_at": manifest["expires_at"], "created_at": manifest["created_at"]})()):
             result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_expired_while_waiting_for_approval"}
         else:
+            # Claim the immutable repair BEFORE touching Git or executing pytest.
+            # A crash must never replay an unknown-result repair automatically.
+            state = record("in_progress")
+            _save_state(state)
             details = _apply_patch(patch, f"repair-{repair_id}", expected_base_sha=manifest["base_commit_sha"])
             result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
             if details.get("status") == "completed" and details.get("repair_commit"):
@@ -935,16 +1056,24 @@ def main() -> int:
                                 )
                                 _save_state(state)
                     elif decision == "reused_id":
-                        # Task IDs are immutable. A changed manifest with the same ID
-                        # is rejected, never silently re-executed.
-                        _publish_result_durable(client, task.task_id, {
-                            "task_id": task.task_id,
-                            "status": "rejected",
-                            "reason": "task_id_reused_with_different_manifest",
-                        })
-                        last_sha = manifest_sha
+                        # Preserve the original queue/results/<task_id>.json. Its
+                        # immutable contents must NEVER be overwritten by an
+                        # attacker-controlled replacement manifest with the same ID.
+                        incident_id = _manifest_collision_result_id(task.task_id, manifest_sha)
+                        try:
+                            _publish_result_durable(client, incident_id, {
+                                "task_id": task.task_id,
+                                "incident_id": incident_id,
+                                "status": "rejected",
+                                "reason": "task_id_reused_with_different_manifest",
+                            })
+                        except QueueTransportError:
+                            # The incident is already persisted in the local
+                            # outbox; the next poll will retry publication.
+                            print(f"Rejected task-ID reuse for {task.task_id}; incident delivery queued.")
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
+                        last_sha = manifest_sha
                 state = _poll_repair_once(client, state)
                 backoff = interval
                 time.sleep(interval)

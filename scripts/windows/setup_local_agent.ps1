@@ -10,8 +10,9 @@ function Write-Warn([string]$Message) { Write-Host "WARNING: $Message" -Foregrou
 
 if ($env:OS -ne "Windows_NT") { throw "This setup script is for Windows 10/11 only." }
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$Requirements = Join-Path $RepoRoot "requirements-local-agent.txt"
-if (-not (Test-Path $Requirements -PathType Leaf)) { throw "Missing requirements-local-agent.txt. Run this from the agent source checkout." }
+Set-Location $RepoRoot
+$Requirements = Join-Path $RepoRoot "requirements-github-mailbox.txt"
+if (-not (Test-Path $Requirements -PathType Leaf)) { throw "Missing requirements-github-mailbox.txt. Run this from the agent source checkout." }
 
 Write-Step "Check Python"
 $PythonLauncher = Get-Command py -ErrorAction SilentlyContinue
@@ -81,17 +82,9 @@ if (-not $CurrentPoll) {
     $env:LOCAL_AGENT_POLL_SECONDS = "10"
 }
 
-Write-Step "Choose remote approval policy"
-$RemoteApproval = Read-Host "Allow remote execution of typed low-risk tasks from the private mailbox without a local console prompt? (y/N)"
-if ($RemoteApproval -match "^(y|yes)$") {
-    [Environment]::SetEnvironmentVariable("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", "1", "User")
-    $env:LOCAL_AGENT_ALLOW_REMOTE_APPROVAL = "1"
-    Write-Warn "Remote approval enabled only for the protocol allowlist. Patch application and generic test execution still require local approval."
-} else {
-    [Environment]::SetEnvironmentVariable("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", $null, "User")
-    Remove-Item Env:LOCAL_AGENT_ALLOW_REMOTE_APPROVAL -ErrorAction SilentlyContinue
-    Write-Host "Remote approval remains disabled; local console approval is required."
-}
+Write-Step "Explain mailbox approval policy"
+Write-Host "Every mailbox task requires approval in an interactive local console."
+Write-Host "Unattended remote task execution is not implemented."
 
 Write-Step "Detect optional tools"
 $Git = Get-Command git -ErrorAction SilentlyContinue
@@ -112,7 +105,7 @@ Write-Step "Run safe local diagnostics"
 if ($LASTEXITCODE -ne 0) { Write-Warn "Diagnostics returned a non-zero exit code." }
 
 Write-Step "Run focused agent tests"
-& $VenvPython -m pytest -q tests/test_blender_bridge.py tests/test_control_protocol.py tests/test_poller.py tests/test_result_outbox.py tests/test_local_project_runner.py tests/test_checkpoint_schema.py tests/test_ffmpeg_media.py tests/test_github_queue.py tests/test_local_agent_attachments.py tests/test_story_plan.py tests/test_scene_compiler.py tests/test_asset_registry.py tests/test_preflight.py tests/test_notifications.py
+& $VenvPython -m local_agent.test_scope all
 if ($LASTEXITCODE -ne 0) { throw "Focused safety tests failed. Setup is stopping; do not start mailbox polling until the failure is fixed." }
 
 if (-not $SkipCredentialPrompt) {
@@ -136,4 +129,4 @@ Write-Host "Source: $RepoRoot"
 Write-Host "Workspace: $Workspace"
 Write-Host "Next: review docs/local-agent/windows-first-run-and-failure-matrix.md"
 Write-Host "Do not start the poller until the mailbox repository is PRIVATE, its manifest is valid, and focused tests pass."
-Write-Host "Start manually with: .\.venv\Scripts\python.exe -m local_agent.poller"
+Write-Host "Start manually with: .\scripts\windows\run_local_agent.ps1"

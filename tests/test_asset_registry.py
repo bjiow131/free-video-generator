@@ -32,3 +32,25 @@ def test_rejects_project_symlink(tmp_path:Path):
     except (OSError, NotImplementedError):
         pytest.skip("Symlink creation is unavailable on this platform")
     with pytest.raises(AssetRegistryError,match="symlink"): scan_project_assets(tmp_path,"mia")
+
+
+def test_three_duplicate_registry_entries_stay_ambiguous(tmp_path):
+    project = tmp_path / "mia"
+    assets = project / "assets"
+    assets.mkdir(parents=True)
+    (assets / "Mia.blend").write_bytes(b"asset")
+    entry = {"asset_id": "Mia", "path": "assets/Mia.blend"}
+    (project / "asset_registry.json").write_text(json.dumps({"schema_version": 1, "project_name": "mia", "assets": [entry] * 3}))
+    assert read_asset_registry(project, "mia") == {}
+
+
+def test_scan_does_not_remove_another_writers_temp(tmp_path):
+    project = tmp_path / "mia"
+    (project / "assets").mkdir(parents=True)
+    temp = project / ".asset_registry.json.tmp"
+    temp.write_text("other writer")
+    try:
+        scan_project_assets(tmp_path, "mia")
+    except AssetRegistryError:
+        pass
+    assert temp.read_text() == "other writer"

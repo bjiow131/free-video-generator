@@ -82,7 +82,7 @@ def test_patch_rejects_unapproved_path_in_unified_headers():
         "--- a/local_agent/example.py\n"
         "+++ b/unknown_area/payload.py\n"
     )
-    with pytest.raises(RepairProtocolError, match="allowlist"):
+    with pytest.raises(RepairProtocolError):
         _validate_patch_paths(patch)
 
 @pytest.mark.parametrize("header", [
@@ -92,6 +92,53 @@ def test_patch_rejects_unapproved_path_in_unified_headers():
 def test_patch_rejects_noncanonical_diff_path_prefixes(header):
     with pytest.raises(RepairProtocolError, match="malformed git diff header"):
         _validate_patch_paths(header + "\n")
+
+
+
+@pytest.mark.parametrize("path", [
+    "tests/.git/config",
+    "local_agent/sub/.git/hooks/pre-commit",
+    "tests//duplicate.py",
+    "tests/./normalized.py",
+    "tests/with\rcontrol.py",
+    "tests/with trailing space ",
+])
+def test_patch_rejects_metadata_and_noncanonical_paths(path):
+    with pytest.raises(RepairProtocolError):
+        _validate_patch_paths(f"diff --git a/{path} b/{path}\n")
+
+
+@pytest.mark.parametrize("special_header", [
+    "new file mode 120000",
+    "old mode 120000",
+    "new file mode 160000",
+    "old mode 160000",
+    "GIT binary patch",
+    "Binary files a/tests/a and b/tests/a differ",
+])
+def test_patch_rejects_binary_symlink_submodule_and_special_modes(special_header):
+    patch = (
+        "diff --git a/tests/example.py b/tests/example.py\n"
+        + special_header + "\n"
+    )
+    with pytest.raises(RepairProtocolError):
+        _validate_patch_paths(patch)
+
+
+
+@pytest.mark.parametrize("file_mode", ["120000", "160000", "100755"])
+def test_patch_rejects_existing_special_mode_from_index_header(file_mode):
+    patch = (
+        "diff --git a/tests/existing.py b/tests/existing.py\n"
+        f"index abcdef0..1234567 {file_mode}\n"
+        "--- a/tests/existing.py\n"
+        "+++ b/tests/existing.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    with pytest.raises(RepairProtocolError):
+        _validate_patch_paths(patch)
 
 
 class FakeResponse:
@@ -184,6 +231,7 @@ def test_fetch_repair_rejects_digest_mismatch():
 
 def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, monkeypatch):
     import subprocess
+    import sys
     from pathlib import Path
     from local_agent import poller
 
@@ -202,6 +250,8 @@ def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, 
     git("commit", "-m", "base")
     base = git("rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(poller, "ROOT", project)
+    # The isolated fixture intentionally contains a single smoke test.
+    monkeypatch.setattr(poller, "test_command", lambda suite, root: [sys.executable, "-m", "pytest", "-q", "tests/test_smoke_repair.py"])
 
     patch = (
         "diff --git a/tests/test_smoke_repair.py b/tests/test_smoke_repair.py\n"

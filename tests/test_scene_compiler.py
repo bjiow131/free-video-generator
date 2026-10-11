@@ -113,3 +113,17 @@ def test_estimated_dialogue_window_scales_with_line_length():
     assert cues[1]["speaker_id"] == "char.stepa.master"
     assert second_span > first_span
     assert all(cue["timing_status"] == "estimated_until_voiceover" for cue in cues)
+
+
+def test_estimated_cues_always_obey_frame_and_state_contract():
+    from local_agent.scene_compiler import _estimated_dialogue_cues
+    from local_agent.dialogue_cues import validate_dialogue_cue
+    for duration in (1, 2, 5, 8, 120):
+        lines = [{"speaker": "Mia", "text": "word " * (100 if i == 29 else 1)} for i in range(30)]
+        cues = _estimated_dialogue_cues("scene", lines, duration)
+        previous_end = 0
+        for cue in cues:
+            validate_dialogue_cue(cue, frame_start=1, frame_end=duration * 30)
+            assert cue["events"][0]["frame"] > previous_end
+            assert cue["events"][-1]["mouth_state"] == "closed"
+            previous_end = cue["events"][-1]["frame"]

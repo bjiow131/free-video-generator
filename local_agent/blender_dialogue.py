@@ -46,6 +46,7 @@ def apply_mouth_cue(
     character_objects: Iterable[Any],
     frame_start: int,
     frame_end: int,
+    initialize_closed: bool = True,
 ) -> dict[str, Any]:
     """Keyframe a supported mouth-open shape key; return an explicit result.
 
@@ -68,7 +69,7 @@ def apply_mouth_cue(
     obj, shape_key = found
     # Establish a closed mouth at shot start, then apply the estimated or
     # audio-confirmed open/closed events. The metadata status is preserved.
-    keyframes = [{"frame": frame_start, "mouth_state": "closed"}]
+    keyframes = [{"frame": frame_start, "mouth_state": "closed"}] if initialize_closed else []
     keyframes.extend(normalized["events"])
     collapsed: list[dict[str, Any]] = []
     for event in keyframes:
@@ -135,8 +136,13 @@ def apply_dialogue_cues(
             }
         seen_line_ids.add(line_id)
 
+    # Materialize iterables once: multiple lines must address the same meshes.
+    objects_by_speaker = {
+        speaker: list(objects) for speaker, objects in character_objects_by_speaker.items()
+    }
+    initialized: set[str] = set()
     results: list[dict[str, Any]] = []
-    for normalized in normalized_cues:
+    for normalized in sorted(normalized_cues, key=lambda item: item["events"][0]["frame"]):
         line_id = normalized["line_id"]
         speaker_id = normalized["speaker_id"]
         if speaker_id not in character_objects_by_speaker:
@@ -149,10 +155,13 @@ def apply_dialogue_cues(
             continue
         result = apply_mouth_cue(
             normalized,
-            character_objects=character_objects_by_speaker[speaker_id],
+            character_objects=objects_by_speaker[speaker_id],
+            initialize_closed=speaker_id not in initialized,
             frame_start=frame_start,
             frame_end=frame_end,
         )
+        if result["status"] == "applied":
+            initialized.add(speaker_id)
         results.append(result)
 
     statuses = {item["status"] for item in results}

@@ -1,9 +1,10 @@
 """Local-only, non-executing index of approved project assets."""
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 import json, os, re
 from pathlib import Path
 from typing import Any
-_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+_PROJECT_RE = path_identifier_pattern(48)
 _ALLOWED_EXTENSIONS = {".blend",".obj",".fbx",".glb",".gltf",".stl",".abc",".usd",".usdz",".png",".jpg",".jpeg",".webp",".tif",".tiff",".wav",".mp3",".ogg",".flac"}
 _MAX_ASSETS = 5000
 class AssetRegistryError(ValueError):
@@ -42,12 +43,16 @@ def scan_project_assets(workspace: str | Path, project_name: str) -> dict[str, A
     destination=project/"asset_registry.json"
     if destination.is_symlink() or getattr(destination,"is_junction",lambda:False)(): raise AssetRegistryError("Registry destination must not be a symlink or junction.")
     temp=project/".asset_registry.json.tmp"
+    owns_temp = False
     try:
-        with temp.open("x",encoding="utf-8",newline="\n") as stream: json.dump(registry,stream,ensure_ascii=False,indent=2); stream.write("\n")
+        with temp.open("x",encoding="utf-8",newline="\n") as stream:
+            owns_temp = True
+            json.dump(registry,stream,ensure_ascii=False,indent=2); stream.write("\n")
         os.replace(temp,destination)
     except OSError as exc: raise AssetRegistryError(f"Could not write asset registry ({type(exc).__name__}).") from exc
     finally:
-        try: temp.unlink(missing_ok=True)
+        try:
+            if owns_temp: temp.unlink(missing_ok=True)
         except OSError: pass
     return {"status":"completed","project_name":project_name,"asset_count":len(entries),"registry_path":str(destination),"uploaded":False,"asset_files_opened":False}
 def read_asset_registry(project_dir: str | Path, project_name: str) -> dict[str, dict[str, Any]]:
@@ -57,7 +62,9 @@ def read_asset_registry(project_dir: str | Path, project_name: str) -> dict[str,
     try: data=json.loads(registry_path.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError): return {}
     if not isinstance(data,dict) or data.get("schema_version")!=1 or data.get("project_name")!=project_name or not isinstance(data.get("assets"),list): return {}
-    assets_root=(project/"assets").resolve(); result={}
+    assets_path=project/"assets"
+    if assets_path.is_symlink() or getattr(assets_path,"is_junction",lambda:False)(): return {}
+    assets_root=assets_path.resolve(); result={}; seen_ids=set()
     for entry in data["assets"]:
         if not isinstance(entry,dict) or entry.get("ambiguous") is True: continue
         asset_id,relative=entry.get("asset_id"),entry.get("path")
@@ -76,6 +83,7 @@ def read_asset_registry(project_dir: str | Path, project_name: str) -> dict[str,
         if unsafe_component: continue
         candidate=raw_candidate.resolve()
         if not candidate.is_relative_to(assets_root) or not candidate.is_file() or candidate.suffix.lower() not in _ALLOWED_EXTENSIONS: continue
-        if asset_id in result: result.pop(asset_id,None); continue
+        if asset_id in seen_ids: result.pop(asset_id,None); continue
+        seen_ids.add(asset_id)
         result[asset_id]={"asset_id":asset_id,"path":relative,"extension":candidate.suffix.lower()}
     return result

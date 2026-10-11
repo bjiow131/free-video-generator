@@ -199,3 +199,15 @@ def test_character_index_rejects_unsafe_custom_property_name():
     result = index_character_objects_by_speaker([], id_property="bad[property]")
     assert result["status"] == "rejected"
     assert result["reason"] == "invalid_id_property"
+
+
+def test_later_line_does_not_close_first_line_at_shot_start():
+    from local_agent.blender_dialogue import apply_dialogue_cues
+    key = FakeShapeKey("mouth_open")
+    obj = SimpleNamespace(data=SimpleNamespace(shape_keys=SimpleNamespace(key_blocks=[key])))
+    first = cue([{"frame": 1, "mouth_state": "open"}, {"frame": 5, "mouth_state": "closed"}])
+    second = cue([{"frame": 12, "mouth_state": "open"}, {"frame": 16, "mouth_state": "closed"}])
+    second["line_id"] = "second"
+    result = apply_dialogue_cues([first, second], character_objects_by_speaker={"char.mia.master": iter([obj])}, frame_start=1, frame_end=30)
+    assert result["status"] == "applied"
+    assert [v for _, f, v in key.inserted if f == 1] == [1.0]

@@ -7,6 +7,8 @@ from typing import Any
 import json
 import os
 import re
+import tempfile
+import uuid
 
 _SECRET_PATTERNS = (
     re.compile(r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|password|passwd|secret|client[_-]?secret)(\s*[=:]\s*)[^\s,;]+"),
@@ -43,7 +45,7 @@ def write_report(report_dir: str | Path, *, kind: str, status: str,
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_kind = re.sub(r"[^a-zA-Z0-9_-]", "_", kind)[:40] or "report"
-    target = root / f"{stamp}_{safe_kind}.json"
+    target = root / f"{stamp}_{safe_kind}_{uuid.uuid4().hex}.json"
     payload = {
         "schema_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -52,13 +54,16 @@ def write_report(report_dir: str | Path, *, kind: str, status: str,
         "computer_name_included": False,
         "details": _redact_value(details or {}),
     }
-    temp = target.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".report-", suffix=".tmp", dir=root)
+    temp = Path(temporary_name)
     try:
-        os.chmod(temp, 0o600)
-    except OSError:
-        pass
-    temp.replace(target)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, target)
+    finally:
+        temp.unlink(missing_ok=True)
     return target
 
 

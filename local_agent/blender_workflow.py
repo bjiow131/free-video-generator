@@ -14,6 +14,11 @@ import subprocess
 import zlib
 from typing import Any
 
+from local_agent.blender_locator import find_blender_executable
+from local_agent.path_names import path_identifier_pattern, is_link_or_junction
+
+_PROJECT_NAME = path_identifier_pattern(48)
+
 
 class BlenderWorkflowError(RuntimeError):
     """A safe Blender discovery or workflow operation failed."""
@@ -22,17 +27,14 @@ class BlenderWorkflowError(RuntimeError):
 def discover_blender() -> dict[str, Any]:
     """Find Blender from local configuration/PATH and query its version."""
     configured = os.environ.get("BLENDER_EXECUTABLE", "").strip()
-    candidate = Path(configured).expanduser() if configured else None
-    source = "environment" if candidate else "path"
-    if candidate is None:
-        found = shutil.which("blender.exe") or shutil.which("blender")
-        candidate = Path(found) if found else None
+    candidate = find_blender_executable()
+    source = "environment" if configured else "installed_or_path"
     if candidate is None or not candidate.is_file():
         return {"status": "needs_setup", "available": False,
                 "configured": bool(configured), "reason": "blender_executable_not_found"}
     try:
         proc = subprocess.run([str(candidate.resolve()), "--version"],
-                              capture_output=True, text=True, timeout=15,
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
                               check=False, shell=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"status": "error", "available": False,
@@ -208,95 +210,131 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     """Create a fixed Mia character/prop blockout, save .blend, and validate preview."""
     if not isinstance(project_name, str) or not project_name or len(project_name) > 48:
         raise BlenderWorkflowError("Invalid project name.")
-    import re
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
+    if not _PROJECT_NAME.fullmatch(project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
     if not blender.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace.mkdir(parents=True, exist_ok=True)
-    project = (workspace / project_name).resolve()
+    project = workspace / project_name
+    if is_link_or_junction(project):
+        raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
+    project = project.resolve()
     if not project.is_relative_to(workspace) or project == workspace:
         raise BlenderWorkflowError("Project output must stay inside workspace.")
-    if project.is_symlink() or getattr(project, "is_junction", lambda: False)():
+    if is_link_or_junction(project):
         raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
     project.mkdir(parents=True, exist_ok=True)
     outputs = [project / "mia_blockout.blend", project / "mia_blockout.png", project / "blender_result.json"]
-    if any(p.is_symlink() or getattr(p, "is_junction", lambda: False)() for p in outputs):
+    if any(is_link_or_junction(p) for p in outputs + [project / "blender_stdout.log", project / "blender_stderr.log"]):
         raise BlenderWorkflowError("Output files must not be symlinks or junctions.")
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
-    if overwrite:
-        for p in outputs:
-            if p.exists():
-                if not p.is_file():
-                    raise BlenderWorkflowError("Existing output is not a regular file.")
-                p.unlink()
     import tempfile
-    with tempfile.TemporaryDirectory(prefix=".mia-blockout-", dir=project) as temp:
-        temp_dir = Path(temp)
-        script = temp_dir / "mia_blockout.py"
-        cfg = temp_dir / "task.json"
-        script.write_text(_scene_script(), encoding="utf-8")
-        cfg.write_text(json.dumps({"output_dir": str(project)}, ensure_ascii=False), encoding="utf-8")
+    backup_dir = None
+    existing = [path for path in outputs if path.exists()]
+    if overwrite and existing:
+        if any(not path.is_file() for path in existing):
+            raise BlenderWorkflowError("Existing output is not a regular file.")
+        backup_dir = Path(tempfile.mkdtemp(prefix=".mia-backup-", dir=workspace))
+        # Complete every copy before touching any original.
+        for path in existing:
+            shutil.copy2(path, backup_dir / path.name)
+
+    def generate() -> dict[str, Any]:
+        if overwrite:
+            for path in outputs:
+                path.unlink(missing_ok=True)
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix=".mia-blockout-", dir=project) as temp:
+            temp_dir = Path(temp)
+            script = temp_dir / "mia_blockout.py"
+            cfg = temp_dir / "task.json"
+            script.write_text(_scene_script(), encoding="utf-8")
+            cfg.write_text(json.dumps({"output_dir": str(project)}, ensure_ascii=False), encoding="utf-8")
+            try:
+                proc = subprocess.run([str(blender), "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                                       "--python", str(script), "--", str(cfg)],
+                                      cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                      timeout=1200, check=False, shell=False)
+            except subprocess.TimeoutExpired:
+                return {"status": "timeout", "reason": "blender_blockout_timeout", "project_dir": str(project)}
+            except OSError as exc:
+                return {"status": "error", "error_type": type(exc).__name__}
+        (project / "blender_stdout.log").write_text((proc.stdout or "")[-262144:], encoding="utf-8")
+        (project / "blender_stderr.log").write_text((proc.stderr or "")[-262144:], encoding="utf-8")
+        if proc.returncode != 0:
+            return {"status": "failed", "reason": "blender_exit_nonzero", "return_code": proc.returncode,
+                    "stderr_tail": (proc.stderr or "")[-3000:], "project_dir": str(project)}
+        manifest = project / "blender_result.json"
+        blend = project / "mia_blockout.blend"
+        preview = project / "mia_blockout.png"
+        if not manifest.is_file() or not blend.is_file() or blend.stat().st_size == 0 or not preview.is_file() or preview.stat().st_size < 24:
+            return {"status": "failed", "reason": "expected_outputs_missing_or_empty", "project_dir": str(project)}
         try:
-            proc = subprocess.run([str(blender), "--background", "--factory-startup",
-                                   "--python", str(script), "--", str(cfg)],
-                                  cwd=str(project), capture_output=True, text=True,
-                                  timeout=1200, check=False, shell=False)
-        except subprocess.TimeoutExpired:
-            return {"status": "timeout", "reason": "blender_blockout_timeout", "project_dir": str(project)}
-        except OSError as exc:
-            return {"status": "error", "error_type": type(exc).__name__}
-    (project / "blender_stdout.log").write_text((proc.stdout or "")[-262144:], encoding="utf-8")
-    (project / "blender_stderr.log").write_text((proc.stderr or "")[-262144:], encoding="utf-8")
-    if proc.returncode != 0:
-        return {"status": "failed", "reason": "blender_exit_nonzero", "return_code": proc.returncode,
-                "stderr_tail": (proc.stderr or "")[-3000:], "project_dir": str(project)}
-    manifest = project / "blender_result.json"
-    blend = project / "mia_blockout.blend"
-    preview = project / "mia_blockout.png"
-    if not manifest.is_file() or not blend.is_file() or blend.stat().st_size == 0 or not preview.is_file() or preview.stat().st_size < 24:
-        return {"status": "failed", "reason": "expected_outputs_missing_or_empty", "project_dir": str(project)}
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"status": "failed", "reason": "output_manifest_unreadable", "project_dir": str(project)}
+        png_ok, png_reason, dimensions = _validate_png(preview, (360, 640))
+        if not png_ok:
+            return {"status": "failed", "reason": png_reason, "project_dir": str(project)}
+        if not isinstance(data, dict) or data.get("status") != "completed" or data.get("stage") != "blockout":
+            return {"status": "failed", "reason": "output_manifest_validation_failed", "project_dir": str(project)}
+        return {"status": "completed", "task": "blender_mia_blockout", "stage": "blockout",
+                "project_dir": str(project), "blend_path": str(blend), "preview_path": str(preview),
+                "resolution": dimensions, "object_count": data.get("object_count"),
+                "engine": data.get("engine"), "manual_review_required": True,
+                "note": "Starter blockout only; not a finished or rigged production character."}
+
+    completed = False
     try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"status": "failed", "reason": "output_manifest_unreadable", "project_dir": str(project)}
-    png_ok, png_reason, dimensions = _validate_png(preview, (360, 640))
-    if not png_ok:
-        return {"status": "failed", "reason": png_reason, "project_dir": str(project)}
-    if data.get("status") != "completed" or data.get("stage") != "blockout":
-        return {"status": "failed", "reason": "output_manifest_validation_failed", "project_dir": str(project)}
-    return {"status": "completed", "task": "blender_mia_blockout", "stage": "blockout",
-            "project_dir": str(project), "blend_path": str(blend), "preview_path": str(preview),
-            "resolution": dimensions, "object_count": data.get("object_count"),
-            "engine": data.get("engine"), "manual_review_required": True,
-            "note": "Starter blockout only; not a finished or rigged production character."}
+        result = generate()
+        completed = result.get("status") == "completed"
+        return result
+    finally:
+        if backup_dir is not None:
+            if completed:
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            else:
+                # Preserve the backup if restoration itself fails, so recovery
+                # never depends on a disposable TemporaryDirectory cleanup.
+                try:
+                    for path in existing:
+                        if is_link_or_junction(path):
+                            raise OSError("Output became a link during rendering")
+                        shutil.copy2(backup_dir / path.name, path)
+                except OSError as exc:
+                    raise BlenderWorkflowError(f"Restore failed; previous files remain in {backup_dir}") from exc
+                shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def open_mia_project(project_name: str) -> dict[str, Any]:
     """Open an existing generated Mia project in Blender's GUI without UI clicks."""
-    import re
-    if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
+    if not isinstance(project_name, str) or not _PROJECT_NAME.fullmatch(project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
-    project_dir = (workspace / project_name).resolve()
+    project_dir = workspace / project_name
+    if is_link_or_junction(project_dir):
+        raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
+    project_dir = project_dir.resolve()
     if not project_dir.is_relative_to(workspace) or project_dir == workspace:
         raise BlenderWorkflowError("Project path must stay inside workspace.")
     blend = project_dir / "mia_blockout.blend"
     if not blender.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
-    if project_dir.is_symlink() or getattr(project_dir, "is_junction", lambda: False)():
+    if is_link_or_junction(project_dir):
         raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
     if blend.is_symlink() or not blend.is_file() or blend.stat().st_size == 0:
         return {"status": "blocked", "reason": "valid_mia_blockout_project_not_found", "project_dir": str(project_dir)}
@@ -305,7 +343,7 @@ def open_mia_project(project_name: str) -> dict[str, Any]:
                                   "stderr": subprocess.DEVNULL, "close_fds": True}
         if os.name == "nt" and hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-        process = subprocess.Popen([str(blender), str(blend)], cwd=str(project_dir),
+        process = subprocess.Popen([str(blender), "--disable-autoexec", str(blend)], cwd=str(project_dir),
                                    shell=False, **kwargs)
     except OSError as exc:
         return {"status": "error", "error_type": type(exc).__name__}
@@ -316,16 +354,19 @@ def open_mia_project(project_name: str) -> dict[str, Any]:
 
 def inspect_mia_project(project_name: str) -> dict[str, Any]:
     """Inspect a generated project with a bundled read-only Blender script."""
-    import re
-    if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
+    if not isinstance(project_name, str) or not _PROJECT_NAME.fullmatch(project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
-    project_dir = (workspace / project_name).resolve()
+    project_dir = workspace / project_name
+    if is_link_or_junction(project_dir):
+        raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
+    project_dir = project_dir.resolve()
     blend = project_dir / "mia_blockout.blend"
     if not blender.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
@@ -369,24 +410,27 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(data,f,ensure_ascii=
     try:
         with tempfile.TemporaryDirectory(prefix=".mia-inspect-", dir=project_dir) as temp:
             script = Path(temp) / "inspect.py"
+            fresh_report = Path(temp) / "inspection.json"
             script.write_text(script_text, encoding="utf-8")
             proc = subprocess.run([str(blender), "--disable-autoexec", "--background",
-                                   "--factory-startup", "--python", str(script), "--",
-                                   str(blend), str(report)],
+                                   "--factory-startup", "--python-exit-code", "1",
+                                   "--python", str(script), "--", str(blend), str(fresh_report)],
                                   cwd=str(project_dir), capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace",
                                   timeout=180, check=False, shell=False)
+            if proc.returncode != 0 or not fresh_report.is_file() or fresh_report.stat().st_size == 0:
+                return {"status": "failed", "reason": "blender_inspection_failed",
+                        "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:]}
+            try:
+                data = json.loads(fresh_report.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return {"status": "failed", "reason": "inspection_report_unreadable"}
+            if not isinstance(data, dict) or data.get("status") != "completed" or data.get("blend_path") != str(blend):
+                return {"status": "failed", "reason": "inspection_report_validation_failed"}
+            os.replace(fresh_report, report)
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "blender_inspection_timeout"}
     except OSError as exc:
         return {"status": "error", "error_type": type(exc).__name__}
-    if proc.returncode != 0 or not report.is_file() or report.stat().st_size == 0:
-        return {"status": "failed", "reason": "blender_inspection_failed",
-                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:]}
-    try:
-        data = json.loads(report.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"status": "failed", "reason": "inspection_report_unreadable"}
-    if data.get("status") != "completed" or data.get("blend_path") != str(blend):
-        return {"status": "failed", "reason": "inspection_report_validation_failed"}
     return {"status": "completed", "task": "blender_inspect_mia_project", "inspection": data,
             "note": "Structural inspection only; it does not judge visual quality."}

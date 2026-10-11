@@ -10,12 +10,13 @@ import json
 import os
 from pathlib import Path
 import shutil
-import socket
 import subprocess
 import sys
 from typing import Any
 
 from local_agent.reporting import redact_text, write_report
+from local_agent.test_scope import test_command
+from local_agent.blender_locator import find_blender_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_DIR = ROOT / ".local_agent" / "reports"
@@ -80,11 +81,7 @@ def preflight() -> dict[str, Any]:
                     workspace_check["writable"] = False
         except OSError as exc:
             workspace_check["error_type"] = type(exc).__name__
-    blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
-    blender_path = Path(blender_value).expanduser() if blender_value else None
-    if blender_path is None:
-        found = shutil.which("blender")
-        blender_path = Path(found) if found else None
+    blender_path = find_blender_executable()
     blender_check: dict[str, Any] = {"configured": blender_path is not None, "available": False}
     if blender_path is not None:
         blender_check["path"] = str(blender_path)
@@ -103,31 +100,39 @@ def preflight() -> dict[str, Any]:
         "python_311_plus": sys.version_info >= (3, 11),
         "workspace_ready": workspace_check.get("exists") is True and workspace_check.get("writable") is True,
         "blender_available": blender_check.get("available") is True,
+        # Local preflight must not require optional GitHub mailbox or probe its
+        # credentials. This is a configuration hint, NOT authentication status.
+        "mailbox_configured": (
+            os.environ.get("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX") == "1"
+            and bool(os.environ.get("LOCAL_AGENT_GITHUB_REPO", "").strip())
+        ),
     }
+    local_checks = ("python_311_plus", "workspace_ready", "blender_available")
     return {
-        "status": "ready" if all(checks.values()) else "needs_setup",
+        "status": "ready" if all(checks[key] for key in local_checks) else "needs_setup",
         "checks": checks, "python": {"version": sys.version.split()[0]},
         "workspace": workspace_check, "disk_free_bytes": disk_free_bytes,
         "blender": blender_check,
+        "mailbox_authentication_verified": False,
         "network_request_performed": False, "blender_scene_created": False,
         "render_started": False, "secret_values_returned": False,
     }
 
 
 def status() -> dict[str, Any]:
-    """Check only the documented loopback app port; do not scan the network."""
-    host, port = "127.0.0.1", 8765
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(0.5)
-    try:
-        connected = sock.connect_ex((host, port)) == 0
-    finally:
-        sock.close()
+    """Report local Blender-agent configuration without contacting old web APIs."""
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    blender_path = find_blender_executable()
     return {
-        "app_address": f"http://{host}:{port}",
-        "port": port,
-        "reachable_on_loopback": connected,
-        "network_scan_performed": False,
+        "mode": "local_blender_agent",
+        "workspace_configured": bool(workspace),
+        "workspace_exists": bool(workspace) and Path(workspace).expanduser().is_dir(),
+        "blender_executable_configured": bool(os.environ.get("BLENDER_EXECUTABLE", "").strip()),
+        "blender_executable_found": blender_path is not None,
+        "mailbox_opted_in": os.environ.get("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX") == "1",
+        "legacy_web_server_checked": False,
+        "remote_request_performed": False,
+        "blender_render_verified": False,
     }
 
 
@@ -160,7 +165,7 @@ def run_tests() -> dict[str, Any]:
         return {"status": "blocked", "reason": "pytest is not installed"}
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q"],
+            test_command("all", root=ROOT),
             cwd=ROOT, capture_output=True, text=True, timeout=900,
             check=False, shell=False,
         )
@@ -171,6 +176,8 @@ def run_tests() -> dict[str, Any]:
             "stderr_tail": [redact_text(x[:2_000]) for x in proc.stderr.splitlines()[-120:]],
             "command_allowlisted": True,
         }
+    except FileNotFoundError as exc:
+        return {"status": "blocked", "reason": "required_blender_tests_missing", "error": str(exc)[:240]}
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "timeout_seconds": 900}
     except OSError as exc:

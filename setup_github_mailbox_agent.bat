@@ -25,7 +25,7 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
   if errorlevel 1 goto failed
 )
 
-echo Installing the one dependency used by the opt-in GitHub mailbox...
+echo Installing GitHub mailbox transport and isolated repair-test dependencies...
 "%AGENT_VENV%\Scripts\python.exe" -m pip install --disable-pip-version-check -r "%~dp0requirements-github-mailbox.txt"
 if errorlevel 1 goto failed
 
@@ -33,7 +33,7 @@ echo.
 echo GitHub mailbox environment is ready.
 echo Next: store a fine-grained token with:
 echo "%AGENT_VENV%\Scripts\python.exe" -m local_agent.credentials_cli set
-echo Then run scripts\check_github_connection.py and run_github_mailbox_agent.bat.
+echo Then run Python -m scripts.check_github_connection from the repository root, followed by run_github_mailbox_agent.bat.
 pause
 exit /b 0
 

@@ -3,6 +3,7 @@
 Creates a separate .blend output with rigid per-part proxy weights; not production skinning.
 """
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern, is_link_or_junction
 
 import json
 import os
@@ -11,9 +12,10 @@ import re
 import subprocess
 import tempfile
 from typing import Any
+from local_agent.blender_locator import find_blender_executable
 
 
-PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+PROJECT_RE = path_identifier_pattern(48)
 
 _RIG_SCRIPT = r'''
 import bpy, json, os, sys
@@ -125,24 +127,26 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     """Create a separate skeleton prototype without overwriting the blockout."""
     if not isinstance(project_name, str) or not PROJECT_RE.fullmatch(project_name):
         return {"status": "rejected", "reason": "invalid_project_name"}
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
-    workspace = Path(workspace_value).expanduser().resolve()
-    if not blender.is_file():
+    blender = find_blender_executable()
+    if blender is None:
         return {"status": "blocked", "reason": "blender_executable_not_found"}
-    project = (workspace / project_name).resolve()
+    workspace = Path(workspace_value).expanduser().resolve()
+    project = workspace / project_name
+    if is_link_or_junction(project):
+        return {"status": "rejected", "reason": "project_must_not_be_symlink_or_junction"}
+    project = project.resolve()
     if not project.is_relative_to(workspace) or project == workspace:
         return {"status": "rejected", "reason": "project_outside_workspace"}
-    if project.is_symlink() or getattr(project, "is_junction", lambda: False)():
+    if is_link_or_junction(project):
         return {"status": "rejected", "reason": "project_must_not_be_symlink_or_junction"}
     source = project / "mia_blockout.blend"
     output = project / "mia_skeleton.blend"
     report = project / "mia_skeleton_result.json"
     for path in (source, output, report):
-        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        if is_link_or_junction(path):
             return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
     if not source.is_file() or source.stat().st_size == 0:
         return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
@@ -154,8 +158,8 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
             script.write_text(_RIG_SCRIPT, encoding="utf-8")
             proc = subprocess.run(
                 [str(blender), "--disable-autoexec", "--background", "--factory-startup",
-                 "--python", str(script), "--", str(source), str(output), str(report)],
-                cwd=str(project), capture_output=True, text=True, timeout=300,
+                 "--python-exit-code", "1", "--python", str(script), "--", str(source), str(output), str(report)],
+                cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
                 check=False, shell=False,
             )
     except subprocess.TimeoutExpired:
@@ -169,7 +173,7 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
         result = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"status": "failed", "reason": "skeleton_report_unreadable"}
-    if result.get("status") != "completed" or result.get("stage") != "rigged_proxy_smoke_test" or result.get("bone_count") != 13 or result.get("pose_smoke_test") != "passed_and_reset" or result.get("bound_object_count", 0) < 1:
+    if not isinstance(result, dict) or result.get("status") != "completed" or result.get("stage") != "rigged_proxy_smoke_test" or result.get("bone_count") != 13 or result.get("pose_smoke_test") != "passed_and_reset" or result.get("bound_object_count", 0) < 1:
         return {"status": "failed", "reason": "skeleton_report_validation_failed"}
     return {
         "status": "completed", "task": "blender_mia_skeleton",

@@ -4,6 +4,7 @@ Security boundary: remote messages are data, never shell commands. This module
 validates task envelopes only; it intentionally does not execute tasks.
 """
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,10 +12,12 @@ from typing import Any
 import json
 import re
 
+from local_agent.patch_validation import PatchValidationError, validate_patch_paths
+
 PROTOCOL_VERSION = 1
 ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
-TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+TASK_ID_RE = path_identifier_pattern(80, dots=True)
+BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
 
 class ProtocolError(ValueError):
@@ -87,19 +90,10 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             raise ProtocolError("apply_patch requires exactly one string field named patch.")
         if len(patch.encode("utf-8")) > 40_000 or not patch.startswith("diff --git "):
             raise ProtocolError("Patch is missing a git diff header or exceeds the size limit.")
-        for line in patch.splitlines():
-            if line.startswith("diff --git "):
-                parts = line.split()
-                if len(parts) != 4:
-                    raise ProtocolError("Malformed git diff header.")
-                for path in parts[2:]:
-                    normalized = path[2:] if path.startswith(("a/", "b/")) else path
-                    # Git diff paths must use forward slashes; rejecting backslashes
-                    # avoids Windows traversal variants such as "..\\outside.py".
-                    if "\\" in normalized or normalized.startswith("/") or ":" in normalized or ".." in normalized.split("/"):
-                        raise ProtocolError("Patch contains an unsafe path.")
-                    if normalized == ".git" or normalized.startswith(".git/"):
-                        raise ProtocolError("Patch may not modify Git metadata.")
+        try:
+            validate_patch_paths(patch)
+        except PatchValidationError as exc:
+            raise ProtocolError(str(exc)) from exc
 
     if value["operation"] == "blender_forest_preview":
         args = value["arguments"]

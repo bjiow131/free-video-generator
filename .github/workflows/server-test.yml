@@ -1,9 +1,9 @@
 name: Server Test
 
-# Keep one verification run per PR/ref. New commits must not interrupt a run
-# that has already started; GitHub may keep only the newest pending run queued.
+# Give each revision its own bounded verification slot. Older long-running
+# runs must not block fresh security fixes from receiving feedback.
 concurrency:
-  group: server-test-${{ github.head_ref || github.ref_name }}
+  group: server-test-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
   cancel-in-progress: false
 
 on:
@@ -13,9 +13,26 @@ on:
       - "requirements.txt"
       - "core/**"
       - "models/**"
-      - "local_agent/**"
       - "static/**"
-      - "tests/**"
+      # Explicit legacy-web suite triggers. Blender/local_agent-only changes
+      # must not start the unrelated cloud/API verification workflow.
+      - "tests/test_agnes_*.py"
+      - "tests/test_anchor_async_io.py"
+      - "tests/test_core.py"
+      - "tests/test_comfyui.py"
+      - "tests/test_compositor_cleanup.py"
+      - "tests/test_creative_async_io.py"
+      - "tests/test_creative_ffmpeg.py"
+      - "tests/test_ffmpeg_concat_path.py"
+      - "tests/test_frontend.py"
+      - "tests/test_manuscript_async_io.py"
+      - "tests/test_models_validation.py"
+      - "tests/test_pipeline_async_io.py"
+      - "tests/test_rate_limiter.py"
+      - "tests/test_server_*.py"
+      - "tests/test_simple_video_persistence.py"
+      - "tests/test_tts_*.py"
+      - "tests/test_wan2gp_inspector.py"
       - "start_windows.bat"
       - "setup_windows.bat"
       - "Dockerfile"
@@ -28,9 +45,26 @@ on:
       - "requirements.txt"
       - "core/**"
       - "models/**"
-      - "local_agent/**"
       - "static/**"
-      - "tests/**"
+      # Explicit legacy-web suite triggers. Blender/local_agent-only changes
+      # must not start the unrelated cloud/API verification workflow.
+      - "tests/test_agnes_*.py"
+      - "tests/test_anchor_async_io.py"
+      - "tests/test_core.py"
+      - "tests/test_comfyui.py"
+      - "tests/test_compositor_cleanup.py"
+      - "tests/test_creative_async_io.py"
+      - "tests/test_creative_ffmpeg.py"
+      - "tests/test_ffmpeg_concat_path.py"
+      - "tests/test_frontend.py"
+      - "tests/test_manuscript_async_io.py"
+      - "tests/test_models_validation.py"
+      - "tests/test_pipeline_async_io.py"
+      - "tests/test_rate_limiter.py"
+      - "tests/test_server_*.py"
+      - "tests/test_simple_video_persistence.py"
+      - "tests/test_tts_*.py"
+      - "tests/test_wan2gp_inspector.py"
       - "start_windows.bat"
       - "setup_windows.bat"
       - "Dockerfile"
@@ -42,42 +76,72 @@ jobs:
   verify:
     name: Sequential verification
     runs-on: ubuntu-latest
+    # Keep this diagnostic verification bounded while investigating legacy hangs.
+    timeout-minutes: 20
     steps:
       - name: 1. Checkout source
         id: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 1a. Determine if the legacy application changed
+        id: legacy_scope
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
+          if printf '%s\n' "$changed" | grep -Eq '^(server\.py$|core/|models/|static/|requirements\.txt$|Dockerfile$|README\.md$|start_windows\.bat$|setup_windows\.bat$|tests/test_(agnes_|anchor_async_io|core\.py$|comfyui|compositor_cleanup|creative_|ffmpeg_concat_path|frontend|manuscript_async_io|models_validation|pipeline_async_io|rate_limiter|server_|simple_video_persistence|tts_|wan2gp_inspector))'; then
+            echo "run_legacy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_legacy=false" >> "$GITHUB_OUTPUT"
+            echo "Only the Blender agent or CI itself changed; skip the legacy web/API application suite."
+          fi
 
       - name: 2. Set up Python
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: 3. Install application dependencies
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: dependencies
         run: python -m pip install -r requirements.txt
 
       - name: 4. Static Python compilation
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: compile
         run: python -m compileall -q server.py core models local_agent
 
       - name: 5. Import application entry point
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: import_app
         run: python -c "from server import app; print(app.title)"
 
       - name: 6. Install test runner
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: pytest_install
         run: python -m pip install pytest
 
       - name: 7. Core, recovery and security regression tests
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: tests
-        run: python -m pytest -q tests
+        # Print the active test name; show its stack if it remains blocked.
+        # GNU timeout prevents a stalled pytest child from consuming CI for hours.
+        run: |
+          timeout --signal=TERM --kill-after=20s 12m \
+            python -m pytest -vv --tb=short -o faulthandler_timeout=60 tests
 
       - name: 8. Build Docker image
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: docker
         run: docker build --tag agnes-video-generator:ci .
 
       - name: 9. Validate web UI JavaScript syntax
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: web_ui
         run: |
           python - <<'PY'
@@ -93,6 +157,7 @@ jobs:
           node --check /tmp/ai-studio.js
 
       - name: 10. Validate Windows launcher contract
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: windows_launcher
         run: |
           python - <<'PY'
@@ -113,6 +178,7 @@ jobs:
           PY
 
       - name: 11. Validate Windows setup script contract
+        if: ${{ github.event_name != 'pull_request' || steps.legacy_scope.outputs.run_legacy == 'true' }}
         id: windows_setup
         run: |
           python - <<'PY'
@@ -149,6 +215,9 @@ jobs:
         run: |
           {
             echo "## Sequential verification report"
+            echo
+            echo "Legacy application scope: ${{ steps.legacy_scope.outputs.run_legacy || 'direct workflow run' }}."
+            echo "A skipped legacy suite on a Blender-only PR is intentional, not evidence of cloud-app tests passing."
             echo
             echo "| Stage | Result |"
             echo "|---|---|"
