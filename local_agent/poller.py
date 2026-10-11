@@ -557,8 +557,9 @@ def _remember_manifest(
     if status:
         record = {**record, "status": status}
     processed[task_id] = record
-    # Keep newest 200 IDs so state cannot grow without bound.
-    processed = dict(list(processed.items())[-200:])
+    # Never evict replay tombstones: an old immutable task ID must stay known.
+    if len(processed) > 10000:
+        raise RuntimeError("Task replay history capacity reached; inspect and archive safely")
     return {
         **state,
         "last_task_id": task_id,
