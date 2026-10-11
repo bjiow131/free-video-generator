@@ -25,6 +25,7 @@ from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
+from local_agent.blender_locator import find_blender_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -338,15 +339,21 @@ def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[
 
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace:
+    if not workspace:
         return {
             "status": "blocked",
             "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally",
             "remote_paths_or_commands_accepted": False,
         }
     from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
+    executable = find_blender_executable()
+    if executable is None:
+        return {
+            "status": "blocked",
+            "reason": "blender_executable_not_found",
+            "remote_paths_or_commands_accepted": False,
+        }
     try:
         bridge = BlenderBridge(executable, workspace)
         result = bridge.run_task(
