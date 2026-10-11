@@ -125,6 +125,22 @@ def test_patch_rejects_binary_symlink_submodule_and_special_modes(special_header
         _validate_patch_paths(patch)
 
 
+
+@pytest.mark.parametrize("file_mode", ["120000", "160000", "100755"])
+def test_patch_rejects_existing_special_mode_from_index_header(file_mode):
+    patch = (
+        "diff --git a/tests/existing.py b/tests/existing.py\n"
+        f"index abcdef0..1234567 {file_mode}\n"
+        "--- a/tests/existing.py\n"
+        "+++ b/tests/existing.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    with pytest.raises(RepairProtocolError):
+        _validate_patch_paths(patch)
+
+
 class FakeResponse:
     def __init__(self, data):
         self._data = data
