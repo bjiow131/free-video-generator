@@ -16,6 +16,7 @@ from typing import Any
 
 from local_agent.reporting import redact_text, write_report
 from local_agent.test_scope import test_command
+from local_agent.blender_locator import find_blender_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_DIR = ROOT / ".local_agent" / "reports"
@@ -80,11 +81,7 @@ def preflight() -> dict[str, Any]:
                     workspace_check["writable"] = False
         except OSError as exc:
             workspace_check["error_type"] = type(exc).__name__
-    blender_value = os.environ.get("BLENDER_EXECUTABLE", "").strip()
-    blender_path = Path(blender_value).expanduser() if blender_value else None
-    if blender_path is None:
-        found = shutil.which("blender")
-        blender_path = Path(found) if found else None
+    blender_path = find_blender_executable()
     blender_check: dict[str, Any] = {"configured": blender_path is not None, "available": False}
     if blender_path is not None:
         blender_check["path"] = str(blender_path)
@@ -125,14 +122,13 @@ def preflight() -> dict[str, Any]:
 def status() -> dict[str, Any]:
     """Report local Blender-agent configuration without contacting old web APIs."""
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    configured_executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
-    blender_path = configured_executable or shutil.which("blender")
+    blender_path = find_blender_executable()
     return {
         "mode": "local_blender_agent",
         "workspace_configured": bool(workspace),
         "workspace_exists": bool(workspace) and Path(workspace).expanduser().is_dir(),
-        "blender_executable_configured": bool(blender_path),
-        "blender_executable_found": bool(blender_path) and Path(blender_path).expanduser().is_file(),
+        "blender_executable_configured": bool(os.environ.get("BLENDER_EXECUTABLE", "").strip()),
+        "blender_executable_found": blender_path is not None,
         "mailbox_opted_in": os.environ.get("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX") == "1",
         "legacy_web_server_checked": False,
         "remote_request_performed": False,
