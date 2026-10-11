@@ -18,7 +18,8 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
 echo Starting opt-in GitHub mailbox agent.
 echo Repository: %LOCAL_AGENT_GITHUB_REPO%
 echo Branch: %LOCAL_AGENT_GITHUB_REF%
-echo Remote tasks still require local approval.
+echo Task confirmations depend on the locally saved Studio policy.
+echo Unattended operations run without YES only after enabling the checkbox in Studio Settings.
 "%AGENT_VENV%\Scripts\python.exe" -m local_agent.poller
 set "AGENT_EXIT=%ERRORLEVEL%"
 if not "%AGENT_EXIT%"=="0" (
