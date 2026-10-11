@@ -28,3 +28,34 @@ No real Blender 5.2.2 execution on Windows/RTX 4060, actual render-frame changes
 6. Check installer and rollback on a disposable Windows checkout before changing `C:\\AI-Agent` or valuable `C:\\AI-Agent-Workspace` data.
 
 No work is running in the background under this checkpoint.
+## Continuation — five verified work blocks (11 October 2026)
+
+Source of truth remains `feature/blender-studio-ui-20261011`. **Do not modify `main`.** No background task is running.
+
+### Block 1 — inventory and baseline
+- The earlier Work state is already in GitHub through `80a704c638fbd1deebc54cacc643cd6d7153b0ba`.
+- Independent partial overlay at `/mnt/data/blender_build`: 39 pytest passes, 3 intentionally deselected because its local checkout omits older project modules; `compileall` and `node --check` passed.
+- Those 39 tests are **not** a test pass of the canonical GitHub branch.
+
+### Block 2 — subprocess cancellation (committed)
+- `c569fdda2757f609bb4ff8e106591cba0afd1423`: atomic cancellation check and process spawn for Blender, scene FFmpeg and multi-scene FFmpeg; replace blocking FFmpeg `subprocess.run` with cancellable `Popen/wait`.
+- `031fe688b2bf87e1100dde64aa3fc3160753c92f`: three mocked race regression tests.
+
+### Block 3 — stale project footage / readiness (committed)
+- `2588405d59edce2fdddb8df403e83b4cf28ef1a6`: scene fingerprints in saved jobs, refuse assembly after scene/settings/passport changes.
+- `589b1d9f215ce90eef847c044259bec7ca165cfa`: FFmpeg assembly regressions for edited prompt and FPS.
+- `93ee2f1cd07f358416fe16cf70a66d22d2c087df`: clear stale UI plan when editing scene, participants, props or render settings.
+
+### Block 4 — live acceptance / installer (committed)
+- `3b7054f77535a5df782534dc24afd6a2fc04f7b6`: opt-in temporary-workspace real Blender/FFmpeg acceptance, 18 frames + hashes + ffprobe video frames.
+- `2fef614f2a28770af17ee0c3777e1520f984f5c0`: installer includes test suite and uniquely named backups.
+- `0cd13f74bcd0d65b910d58d8b0903cdbefc0ae3a`: explicit Windows acceptance commands in `docs/BLENDER_STUDIO_WINDOWS_ACCEPTANCE_20261011.md`.
+
+### Block 5 — truth-in-reporting handoff
+- GitHub branch HEAD before this checkpoint update: `0cd13f74bcd0d65b910d58d8b0903cdbefc0ae3a`.
+- All listed code/test/docs files verified present through the GitHub connector.
+- **Not verified**: the new regression suite against the exact GitHub checkout, Blender 5.2.2 real render on Windows, PowerShell installer/rollback on Windows, user GPU, actual Mia rig or non-fixture character animation.
+- The chosen canonical engine is Work's `studio_jobs.py` + `studio_blender_scene.py` (fixture only). Do **not** overwrite this with incompatible experimental `studio_executor.py` files from the local overlay.
+- Next engineering gate: full Python 3.11 suite and live Blender acceptance on a disposable Windows checkout, then implement a deliberate real-asset/rig importer with its own readiness checks. Do not report fixture rendering as Mia production readiness.
+
+The five-block notes are also saved in `/mnt/data/blender_build/docs/CONTINUE_AFTER_INTERRUPTION.md` in the current local container session.
