@@ -106,9 +106,58 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     hit, hit_location, hit_normal, hit_index, hit_obj, hit_matrix = scene.ray_cast(
         depsgraph, eye, ray.normalized(), distance=max(0.0, distance - 1e-3))
     if hit and hit_obj.original != obj:
-        raise RuntimeError(
-            "Subject occluded at frame %d by %s; camera path must be adjusted" %
-            (frame, hit_obj.name))
+        # Try bounded lateral/elevated alternatives, retaining TRACK_TO.
+        # Use the preceding corrected position to reduce camera jumps.
+        original_eye = camera.location.copy()
+        chosen = None
+        for side, rise in (
+            (0.0, 0.6), (0.7, 0.0), (-0.7, 0.0),
+            (1.4, 0.4), (-1.4, 0.4), (0.0, 1.5),
+            (2.4, 0.8), (-2.4, 0.8), (0.0, 2.8),
+        ):
+            camera.location = original_eye + Vector((side, 0.0, rise))
+            scene.view_layers.update()
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            eye2 = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
+            direction = subject_center - eye2
+            length = direction.length
+            if length <= 1e-5:
+                continue
+            blocked, _, _, _, blocker, _ = scene.ray_cast(
+                depsgraph, eye2, direction.normalized(),
+                distance=max(0.0, length - 1e-3))
+            if blocked and blocker.original != obj:
+                continue
+            projected = [world_to_camera_view(scene, camera, corner)
+                         for corner in world_corners]
+            if all(margin <= p.x <= 1 - margin and
+                   margin <= p.y <= 1 - margin and p.z > 0
+                   for p in projected):
+                chosen = camera.location.copy()
+                break
+        if chosen is None:
+            raise RuntimeError(
+                "Subject occluded at frame %d by %s; no safe camera position found" %
+                (frame, hit_obj.name))
+        camera.location = chosen
+    # Keyframe the corrected path; validate every frame again after baking.
+    camera.keyframe_insert(data_path="location", frame=frame)
+# Second pass catches new occlusions introduced by keyframe interpolation.
+for frame in range(scene.frame_start, scene.frame_end + 1):
+    scene.frame_set(frame)
+    scene.view_layers.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    eye = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
+    center = obj.evaluated_get(depsgraph).matrix_world.translation.copy()
+    direction = center - eye
+    if direction.length <= 1e-5:
+        raise RuntimeError("Camera overlaps subject at frame %d" % frame)
+    blocked, _, _, _, blocker, _ = scene.ray_cast(
+        depsgraph, eye, direction.normalized(),
+        distance=max(0.0, direction.length - 1e-3))
+    if blocked and blocker.original != obj:
+        raise RuntimeError("Camera path still occluded at frame %d by %s" %
+                           (frame, blocker.name))
 # Preserve the frame-1 camera settings in the saved file.
 scene.frame_set(scene.frame_start)
 bpy.ops.wm.save_as_mainfile(filepath=config["blend_output"])
