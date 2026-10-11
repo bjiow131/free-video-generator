@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
+from local_agent.blender_locator import find_blender_executable
 
 
 def main() -> int:
@@ -18,7 +19,7 @@ def main() -> int:
     parser.add_argument("--workspace", default=os.environ.get("LOCAL_AGENT_WORKSPACE", ""),
                         help="Allowed output workspace (or set LOCAL_AGENT_WORKSPACE).")
     parser.add_argument("--task", choices=("forest-preview",), default="forest-preview")
-    parser.add_argument("--project", default="mia_forest",
+    parser.add_argument("--project", default=os.environ.get("LOCAL_AGENT_PROJECT_NAME") or "mia_forest",
                         help="Project folder name; letters, digits, underscores, hyphens only.")
     parser.add_argument("--no-render", action="store_true",
                         help="Create and save the .blend file without rendering a PNG.")
@@ -31,7 +32,10 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.blender:
-        parser.error("Provide --blender or set BLENDER_EXECUTABLE.")
+        discovered = find_blender_executable()
+        args.blender = str(discovered) if discovered else None
+    if not args.blender:
+        parser.error("Blender executable not found; configure BLENDER_EXECUTABLE or install Blender.")
     if not args.workspace:
         parser.error("Provide --workspace or set LOCAL_AGENT_WORKSPACE.")
     try:
