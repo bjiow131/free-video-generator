@@ -18,7 +18,7 @@ import bpy, json, os, sys
 args=sys.argv[sys.argv.index("--")+1:]
 cfg=json.load(open(args[0],encoding="utf-8"))
 scene=bpy.context.scene
-if scene.frame_end <= scene.frame_start or not any(o.animation_data and o.animation_data.action for o in bpy.data.objects):
+if scene.frame_end <= scene.frame_start or not any(o.animation_data and (o.animation_data.action or len(o.animation_data.nla_tracks) > 0) for o in bpy.data.objects):
     raise RuntimeError("В проекте не найдена анимация с ключевыми кадрами.")
 w,h=cfg["resolution"]
 scene.render.resolution_x=w; scene.render.resolution_y=h; scene.render.resolution_percentage=100
