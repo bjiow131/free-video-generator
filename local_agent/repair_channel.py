@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import quote
 
 from local_agent.github_queue import MAX_MANIFEST_BYTES, QueueTransportError
+from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 MAX_REPAIR_PATCH_BYTES = 40_000
 _REPAIR_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$")
@@ -39,43 +40,12 @@ def _parse_time(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _validate_one_path(raw_path: str, *, allow_null: bool = False) -> None:
-    if raw_path != raw_path.strip() or any(ord(c) < 32 or ord(c) == 127 for c in raw_path):
-        raise RepairProtocolError("patch contains an unsafe path")
-    path = raw_path
-    if allow_null and path in {"/dev/null", "dev/null"}:
-        return
-    if path.startswith(("a/", "b/")):
-        path = path[2:]
-    if (not path or path.startswith("/") or "\\" in path or ":" in path
-            or any(part in {"", ".", "..", ".git"} for part in path.split("/"))):
-        raise RepairProtocolError("patch contains an unsafe path")
-    if not (path.startswith(_ALLOWED_PREFIXES) or path in _ALLOWED_ROOT_FILES):
-        raise RepairProtocolError("patch path is outside the repair allowlist")
-
-
 def _validate_patch_paths(patch: str) -> None:
-    if not isinstance(patch, str) or not patch.startswith("diff --git "):
-        raise RepairProtocolError("repair patch is not a unified Git diff")
-    if any(marker in patch for marker in (
-        "GIT binary patch", "Binary files ", "new file mode 120000",
-        "old mode 120000", "new file mode 160000", "old mode 160000",
-    )):
-        raise RepairProtocolError("binary, symlink, and submodule patches are prohibited")
-    headers = [line for line in patch.splitlines() if line.startswith("diff --git ")]
-    if not headers:
-        raise RepairProtocolError("patch has no git diff headers")
-    for line in patch.splitlines():
-        if line.startswith("diff --git "):
-            parts = line.split()
-            if len(parts) != 4 or not parts[2].startswith("a/") or not parts[3].startswith("b/"):
-                raise RepairProtocolError("malformed git diff header")
-            _validate_one_path(parts[2])
-            _validate_one_path(parts[3])
-        elif line.startswith(("--- ", "+++ ")):
-            _validate_one_path(line[4:], allow_null=True)
-        elif line.startswith(("rename from ", "rename to ", "copy from ", "copy to ")):
-            _validate_one_path(line.split(" ", 2)[2])
+    """Backward-compatible repair protocol validation interface."""
+    try:
+        validate_patch_paths(patch)
+    except PatchValidationError as exc:
+        raise RepairProtocolError(str(exc)) from exc
 
 
 def parse_repair_manifest(raw: str, *, now: datetime | None = None) -> dict[str, Any]:
