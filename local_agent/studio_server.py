@@ -25,12 +25,233 @@ from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
 from local_agent.mailbox_policy import MailboxPolicyError, load_policy, save_policy
 from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, set_opt_in
-from local_agent.dropbox_review import ReviewDeliveryError, read_settings as dropbox_read_settings, save_settings as dropbox_save_settings, review_status as dropbox_review_status
+from datetime import datetime, timezone
+import tempfile
+import time
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
 _IMAGE_MIMES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
 _MAX_REQUEST = 4_600_000
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SETTINGS = ROOT / ".local_agent" / "dropbox_review.json"
+REVIEW_FOLDER = "AI-Agent-Reviews"
+MAX_VIDEO_BYTES = 32_000_000
+MAX_REVIEW_JOBS = 40
+_JOB_RE = re.compile(r"[a-f0-9]{32}\Z")
+_LOCK = threading.RLock()
+
+
+class ReviewDeliveryError(ValueError):
+    pass
+
+
+def _safe_path(path: Path) -> Path:
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise ReviewDeliveryError("Unsafe Dropbox path or junction")
+    return path
+
+
+def read_settings() -> dict[str, bool]:
+    with _LOCK:
+        _safe_path(SETTINGS.parent)
+        _safe_path(SETTINGS)
+        try:
+            raw = SETTINGS.read_bytes()
+        except FileNotFoundError:
+            return {"enabled": False}
+        if len(raw) > 256:
+            raise ReviewDeliveryError("Invalid Dropbox review setting length")
+        try:
+            obj = json.loads(raw)
+        except (ValueError, UnicodeError) as exc:
+            raise ReviewDeliveryError("Invalid Dropbox review settings") from exc
+        if not isinstance(obj, dict) or set(obj) != {"enabled"} or type(obj["enabled"]) is not bool:
+            raise ReviewDeliveryError("Invalid Dropbox review permission")
+        return obj
+
+
+def save_settings(value: dict[str, bool]) -> dict[str, bool]:
+    if not isinstance(value, dict) or set(value) != {"enabled"} or type(value["enabled"]) is not bool:
+        raise ReviewDeliveryError("Expected an enabled boolean")
+    with _LOCK:
+        _safe_path(SETTINGS.parent)
+        SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+        _safe_path(SETTINGS)
+        with tempfile.NamedTemporaryFile(prefix=".dropbox-review-", suffix=".tmp",
+                                         dir=SETTINGS.parent, delete=False) as f:
+            name = Path(f.name)
+            f.write((json.dumps(value) + "\n").encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.replace(name, SETTINGS)
+        finally:
+            name.unlink(missing_ok=True)
+    return value
+
+
+def discover_dropbox_root() -> Path | None:
+    """Recognize account folders reported by Dropbox Desktop or explicit local override."""
+    override = os.environ.get("LOCAL_AGENT_DROPBOX_ROOT", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+        _safe_path(candidate)
+        if not candidate.is_dir():
+            return None
+        return candidate.resolve()
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        config = Path(appdata) / "Dropbox" / "info.json"
+        if config.is_file() and not config.is_symlink():
+            try:
+                obj = json.loads(config.read_text(encoding="utf-8"))
+                if isinstance(obj, dict):
+                    for account in ("personal", "business"):
+                        info = obj.get(account)
+                        if isinstance(info, dict) and isinstance(info.get("path"), str):
+                            candidate = Path(info["path"])
+                            _safe_path(candidate)
+                            if candidate.is_dir():
+                                return candidate.resolve()
+            except (OSError, ValueError, TypeError, ReviewDeliveryError):
+                pass
+    # Avoid guessing a user folder: an unrelated directory named "Dropbox"
+    # could cause silently exporting private Blender scenes outside Dropbox.
+    return None
+
+
+def review_status() -> dict[str, Any]:
+    permitted = read_settings()["enabled"]
+    path = discover_dropbox_root()
+    return {"enabled": permitted, "desktop_folder_detected": path is not None,
+            "sync_verified": False, "folder_name": REVIEW_FOLDER,
+            "note": "Actual cloud sync must be confirmed by checking Dropbox."}
+
+
+def _ffmpeg(cmd: list[str], *, timeout: int) -> None:
+    try:
+        p = subprocess.run(cmd, shell=False, stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ReviewDeliveryError("FFmpeg export could not finish") from exc
+    if p.returncode:
+        raise ReviewDeliveryError("FFmpeg preview export failed")
+
+
+def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[str, Any]:
+    """Export a bounded video, contact sheet and technical manifest into Dropbox Sync.
+
+    The completion marker is written last. Existing review folders are never overwritten.
+    A failure must not change the status of the successful original Blender render.
+    """
+    if not read_settings()["enabled"]:
+        return {"status": "disabled"}
+    job_id = job_info.get("job_id")
+    if not isinstance(job_id, str) or not _JOB_RE.fullmatch(job_id):
+        raise ReviewDeliveryError("Invalid render job ID")
+    src = _safe_path(job_dir / "scene.mp4")
+    if not src.is_file() or src.stat().st_size < 100:
+        raise ReviewDeliveryError("No completed scene.mp4")
+    root = discover_dropbox_root()
+    if root is None:
+        raise ReviewDeliveryError("Dropbox Desktop folder was not detected; sign in to Dropbox desktop")
+    review_root = _safe_path(root / REVIEW_FOLDER)
+    review_root.mkdir(exist_ok=True)
+    entries = list(review_root.iterdir())
+    if len(entries) >= MAX_REVIEW_JOBS:
+        raise ReviewDeliveryError("Review folder limit reached; manually archive older reviews")
+    destination = _safe_path(review_root / job_id)
+    if destination.exists():
+        raise ReviewDeliveryError("Review job already exists; refusing to overwrite")
+    destination.mkdir()
+    try:
+        video = destination / "preview.mp4"
+        if src.stat().st_size <= MAX_VIDEO_BYTES:
+            shutil.copyfile(src, video)
+        else:
+            _ffmpeg([str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                     "-i", str(src), "-vf", "scale=480:-2:force_original_aspect_ratio=decrease",
+                     "-an", "-r", "12", "-c:v", "libx264", "-preset", "veryfast",
+                     "-crf", "32", "-pix_fmt", "yuv420p", str(video)], timeout=300)
+        if video.stat().st_size > MAX_VIDEO_BYTES:
+            raise ReviewDeliveryError("Review video still exceeds 32 MB after compression")
+        sheet = destination / "frames.jpg"
+        _ffmpeg([str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(video), "-vf", "fps=1,scale=180:-2,tile=4x3",
+                 "-frames:v", "1", "-q:v", "4", str(sheet)], timeout=90)
+        if not sheet.is_file() or sheet.stat().st_size < 150:
+            raise ReviewDeliveryError("Contact sheet is missing")
+        plan_file = job_dir / "manifest.json"
+        plan = {}
+        if plan_file.is_file() and not plan_file.is_symlink():
+            try:
+                plan = json.loads(plan_file.read_text("utf-8"))
+                if not isinstance(plan, dict):
+                    plan = {}
+            except (OSError, ValueError, UnicodeError):
+                plan = {}
+        details = {
+            "job_id": job_id,
+            "render_type": job_info.get("kind"),
+            "scene_id": job_info.get("scene_id"),
+            "fps": plan.get("fps"),
+            "duration_seconds": plan.get("duration"),
+            "camera": plan.get("camera") if isinstance(plan.get("camera"), (str, dict)) else None,
+            "frame_count": job_info.get("total_frames"),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "files": ["preview.mp4", "frames.jpg"],
+        }
+        packed = json.dumps(details, ensure_ascii=False, indent=2)
+        if len(packed.encode("utf-8")) > 8192:
+            details["camera"] = None
+            packed = json.dumps(details, ensure_ascii=False, indent=2)
+        (destination / "camera.json").write_text(packed + "\n", encoding="utf-8")
+        (destination / "complete.json").write_text(
+            json.dumps({"status": "completed", "job_id": job_id}) + "\n", encoding="utf-8")
+        return {"status": "exported_to_local_dropbox", "folder": REVIEW_FOLDER + "/" + job_id,
+                "files": ["preview.mp4", "frames.jpg", "camera.json", "complete.json"],
+                "cloud_sync_verified": False}
+    except BaseException:
+        # Only this newly-created job folder; never delete user-owned existing content.
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
+
+
+
+class ReviewStudioJobs(StudioJobs):
+    """Export complete Blender renders to a locally authorized Dropbox folder."""
+
+    def _publish_visual_review(self, job_id: str, directory: Path, ffmpeg: str) -> None:
+        try:
+            info = self.status(job_id)
+            if info.get("state") != "completed":
+                return
+            result = export_review(directory, info, ffmpeg)
+        except (ReviewDeliveryError, OSError, ValueError) as exc:
+            result = {"status": "failed", "reason": str(exc)[:180]}
+        except Exception as exc:
+            result = {"status": "failed", "error_type": type(exc).__name__}
+        if result.get("status") == "disabled":
+            return
+        try:
+            with self.lock:
+                info = self.status(job_id)
+                if info.get("state") == "completed":
+                    info["review_delivery"] = result
+                    self._write(directory, info)
+        except (OSError, ValueError):
+            pass
+
+    def _run(self, job_id: str, d: Path, blender: str, ffmpeg: str):
+        super()._run(job_id, d, blender, ffmpeg)
+        self._publish_visual_review(job_id, d, ffmpeg)
+
+    def _assemble(self, info: dict, video_paths: list[Path], ffmpeg: str):
+        super()._assemble(info, video_paths, ffmpeg)
+        self._publish_visual_review(info["job_id"], self._path(info["job_id"]), ffmpeg)
 
 
 class StudioHTTPServer(ThreadingHTTPServer):
@@ -39,7 +260,7 @@ class StudioHTTPServer(ThreadingHTTPServer):
     def __init__(self, address, store: StudioStore):
         super().__init__(address, StudioHandler)
         self.store = store
-        self.jobs = StudioJobs(store)
+        self.jobs = ReviewStudioJobs(store)
         self.render_lock = threading.Lock()
         self.octava_lock = threading.Lock()
         self.mailbox_policy_lock = threading.Lock()
@@ -145,7 +366,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(503, {"error": str(exc)})
         if path == "/api/dropbox-review":
             try:
-                return self._json(200, dropbox_review_status())
+                return self._json(200, review_status())
             except ReviewDeliveryError as exc:
                 return self._json(503, {"error": str(exc)})
         if path == "/api/state":
@@ -256,7 +477,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                     return self._json(200, set_opt_in(body))
             if path == "/api/dropbox-review":
                 with self.server.mailbox_policy_lock:
-                    return self._json(200, dropbox_save_settings(body))
+                    return self._json(200, save_settings(body))
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
