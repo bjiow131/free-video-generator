@@ -151,6 +151,33 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 {"status": "failed_rolled_back", "reason": "git_apply_failed", "stderr_tail": error_lines},
             )
 
+        # Stage the approved change BEFORE running tests: test side-effects must
+        # never become part of the repair commit.
+        patch_paths = sorted({
+            line.split()[2][2:]
+            for line in patch.splitlines() if line.startswith("diff --git ")
+        })
+        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
+        if staged.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "repair_patch_paths_could_not_be_staged"},
+            )
+        staged_check = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
+        if staged_check.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "staged_diff_check_failed"},
+            )
+        staged_snapshot = run_git(
+            ["diff", "--cached", "--no-ext-diff", "--binary"], cwd=worktree, timeout=60,
+        )
+        if staged_snapshot.returncode != 0:
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "could_not_snapshot_staged_patch"},
+            )
+
         try:
             tests = subprocess.run(
                 [sys.executable, "-m", "pytest", "-q"],
@@ -188,28 +215,18 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                  "stderr_tail": [line[:500] for line in whitespace.stderr.splitlines()[-20:]]},
             )
 
-        # Stage only paths named in the validated patch; never stage the whole worktree.
-        patch_paths = []
-        for line in patch.splitlines():
-            if line.startswith("diff --git "):
-                parts = line.split()
-                if len(parts) != 4:
-                    return _discard_failed_worktree(
-                        run_git, worktree, branch,
-                        {"status": "rejected", "reason": "malformed_patch_header_after_validation"},
-                    )
-                for raw_path in parts[2:]:
-                    patch_paths.append(raw_path[2:])
-        patch_paths = sorted(set(patch_paths))
-        staged = run_git(["add", "--", *patch_paths], cwd=worktree, timeout=60)
-        if staged.returncode != 0:
-            return {
-                "status": "completed_needs_review",
-                "reason": "tests_passed_but_patch_paths_could_not_be_staged",
-                "base_commit": base_sha, "branch": branch, "worktree": str(worktree),
-                "stderr_tail": [line[:500] for line in staged.stderr.splitlines()[-20:]],
-                "active_checkout_modified": False,
-            }
+        # Tests can modify repository files and even invoke Git. Fail closed
+        # rather than committing anything other than the already tested patch.
+        unstaged = run_git(["diff", "--exit-code", "--"], cwd=worktree, timeout=60)
+        current_staged = run_git(
+            ["diff", "--cached", "--no-ext-diff", "--binary"], cwd=worktree, timeout=60,
+        )
+        if (unstaged.returncode != 0 or current_staged.returncode != 0
+                or current_staged.stdout != staged_snapshot.stdout):
+            return _discard_failed_worktree(
+                run_git, worktree, branch,
+                {"status": "failed_rolled_back", "reason": "post_patch_tests_modified_worktree_or_index"},
+            )
         staged_diff = run_git(["diff", "--cached", "--check"], cwd=worktree, timeout=60)
         if staged_diff.returncode != 0:
             return _discard_failed_worktree(
