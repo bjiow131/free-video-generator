@@ -42,7 +42,7 @@ if errorlevel 1 (
 if not exist "%BLENDER_EXECUTABLE%" (
   echo [ERROR] Blender was not found at:
   echo %BLENDER_EXECUTABLE%
-  echo Edit BLENDER_EXECUTABLE in run_blender_agent.bat and this script.
+  echo Set BLENDER_EXECUTABLE to the full path of blender.exe and retry.
   pause
   exit /b 1
 )
