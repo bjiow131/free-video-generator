@@ -68,6 +68,33 @@ class LocalKeyHTTPTests(unittest.TestCase):
         self.assertEqual(status, 403)
         save.assert_not_called()
 
+    def test_mailbox_policy_get_does_not_expose_tokens(self):
+        settings = {"enabled": True, "allow_octava": True,
+                    "allow_blender": False, "allow_tests": False}
+        with patch("local_agent.studio_server.load_policy", return_value=settings):
+            status, data = self.fetch("GET", "/api/mailbox-policy")
+        self.assertEqual(status, 200)
+        self.assertEqual(data, settings)
+        self.assertNotIn("api_key", json.dumps(data))
+
+    def test_mailbox_policy_requires_browser_origin(self):
+        settings = {"enabled": True, "allow_octava": False,
+                    "allow_blender": False, "allow_tests": False}
+        with patch("local_agent.studio_server.save_policy") as save:
+            status, _ = self.fetch("POST", "/api/mailbox-policy",
+                                   settings, include_origin=False)
+        self.assertEqual(status, 403)
+        save.assert_not_called()
+
+    def test_mailbox_policy_updated_from_studio(self):
+        settings = {"enabled": True, "allow_octava": False,
+                    "allow_blender": True, "allow_tests": False}
+        with patch("local_agent.studio_server.save_policy", return_value=settings) as save:
+            status, result = self.fetch("POST", "/api/mailbox-policy", settings)
+        self.assertEqual(status, 200)
+        self.assertEqual(result, settings)
+        save.assert_called_once_with(settings)
+
     def test_extra_fields_forbidden(self):
         with patch("local_agent.studio_server.replace_key") as save:
             status, _ = self.fetch("POST", "/api/octava-key", {"api_key": "secret-123456789", "command": "rm -rf"})
