@@ -133,9 +133,9 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     # The fallback is always the already-tested fitting focal length.
     fitting_lens = float(camera.data.lens)
     height = max(p.y for p in coords) - min(p.y for p in coords)
-    preferred_lens = fitting_lens
-    if height > 1e-5 and height < 0.38:
-        preferred_lens = min(max_lens, fitting_lens * (0.38 / height))
+    from local_agent.camera_composition import preferred_focal_length
+    preferred_lens = preferred_focal_length(
+        fitting_lens, height, target_fraction=0.38, max_lens=max_lens)
     # Detect foreground occlusion that camera projection alone cannot catch.
     # This is a conservative geometric check, not an image-based visual test.
     scene.view_layers.update()
