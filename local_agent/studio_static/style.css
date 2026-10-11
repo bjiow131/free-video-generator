@@ -10,3 +10,13 @@
 svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round} .header-title svg{width:20px;height:20px;flex-shrink:0}
 
 .render-video{width:100%;max-height:400px;background:#07111b;border-radius:10px;border:1px solid var(--edge);margin-bottom:12px}
+
+/* Optional OctavAPI settings. Key is never echoed or persisted in web storage. */
+.credential-card{width:min(100%,700px);margin:14px auto 0;padding-bottom:12px}
+.credential-card .editor-content{display:flex;flex-direction:column;gap:15px;padding:18px}
+.credential-card .field{width:100%;max-width:100%}
+.credential-card .input{width:100%;min-height:45px}
+.credential-status{padding:10px 14px;border:1px solid var(--edge);border-radius:9px;background:#0a2632;color:var(--cyan);font-weight:600}
+.credential-save{max-width:340px;width:100%;min-height:43px}
+.credential-card .section-note{margin:0;line-height:1.6;max-width:620px}
+@media(max-width:700px){.credential-card{margin:8px 0}.credential-card .editor-content{padding:13px}.credential-save{max-width:none}}
