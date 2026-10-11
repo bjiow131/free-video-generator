@@ -482,11 +482,20 @@ def _load_state() -> dict[str, Any]:
     processed = data.get("processed_tasks", {})
     if not isinstance(processed, dict):
         raise RuntimeError("poller replay history is invalid; refusing to run tasks")
+    if len(processed) > 10000:
+        raise RuntimeError("poller replay history capacity exceeded; refusing to run tasks")
     for task_id, record in processed.items():
         if not isinstance(task_id, str) or not isinstance(record, dict):
             raise RuntimeError("poller replay history is invalid; refusing to run tasks")
         if not isinstance(record.get("manifest_sha"), str):
             raise RuntimeError("poller replay history is incomplete; refusing to run tasks")
+    repair_history = data.get("processed_repairs", {})
+    if not isinstance(repair_history, dict) or len(repair_history) > 2000:
+        raise RuntimeError("poller repair replay history is invalid or too large; refusing to run repairs")
+    for repair_id, record in repair_history.items():
+        if (not isinstance(repair_id, str) or not isinstance(record, dict)
+                or not isinstance(record.get("manifest_sha"), str)):
+            raise RuntimeError("poller repair replay history is incomplete; refusing to run repairs")
     return data
 
 
