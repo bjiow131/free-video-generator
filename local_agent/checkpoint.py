@@ -1,5 +1,6 @@
 """Crash-safe local checkpoint storage for long-running video projects."""
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 
 import json
 import os
@@ -11,7 +12,7 @@ from threading import Lock, RLock
 from typing import Any
 
 ALLOWED_SCENE_STATES = {"pending", "queued", "claimed", "running", "validating", "completed", "retry_wait", "failed", "paused", "cancelled"}
-_SAFE_PROJECT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SAFE_PROJECT_ID = path_identifier_pattern(64)
 
 
 class CheckpointStore:

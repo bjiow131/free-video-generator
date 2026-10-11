@@ -1,12 +1,13 @@
 """Compile a validated story plan into a safe, inspectable storyboard manifest."""
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 import json, os, re
 from pathlib import Path
 from typing import Any
 from local_agent.story_plan import StoryPlanError, validate_story_plan
 from local_agent.asset_registry import read_asset_registry
 
-_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+_PROJECT_RE = path_identifier_pattern(48)
 _ACTION_CAPABILITIES = {
     "idle": "character_rig_required",
     "look_at": "character_rig_required",
@@ -76,12 +77,13 @@ def _estimated_dialogue_cues(
     total_weight = sum(weights)
     cues = []
     elapsed_weight = 0
+    distributable_frames = frame_end - len(valid_lines)
     for index, (line, weight) in enumerate(zip(valid_lines, weights)):
         speaker = line.get("speaker", "")
         text = line.get("text", "")
-        start = 1 + (elapsed_weight * frame_end) // total_weight
+        start = 1 + index + (elapsed_weight * distributable_frames) // total_weight
         elapsed_weight += weight
-        end = max(start, min(frame_end, (elapsed_weight * frame_end) // total_weight))
+        end = index + 1 + (elapsed_weight * distributable_frames) // total_weight
         events = []
         frame = start
         state = "open"
@@ -97,7 +99,10 @@ def _estimated_dialogue_cues(
             if events[-1]["frame"] < end:
                 events.append({"frame": end, "mouth_state": "closed"})
             else:
-                events[-1]["mouth_state"] = "closed"
+                if len(events) > 1:
+                    events.pop()  # The preceding event already closes the mouth.
+                else:
+                    events[-1]["mouth_state"] = "closed"
         cues.append({
             "speaker_id": _speaker_id(speaker),
             "line_id": f"{scene_id}_L{index + 1:03d}",
@@ -219,8 +224,10 @@ def compile_project_story(workspace: str | Path, project_name: str) -> dict[str,
     if destination.exists():
         raise StoryCompileError("storyboard_compile.json already exists; refusing to overwrite it.")
     temp = project / ".storyboard_compile.json.tmp"
+    owns_temp = False
     try:
         with temp.open("x", encoding="utf-8", newline="\n") as stream:
+            owns_temp = True
             json.dump(compiled, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
         try:
@@ -230,7 +237,7 @@ def compile_project_story(workspace: str | Path, project_name: str) -> dict[str,
         temp.unlink()
     finally:
         try:
-            temp.unlink(missing_ok=True)
+            if owns_temp: temp.unlink(missing_ok=True)
         except OSError:
             pass
     return {

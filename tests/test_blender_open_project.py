@@ -37,5 +37,5 @@ def test_open_project_launches_only_validated_local_blend(monkeypatch, tmp_path)
     monkeypatch.setattr(workflow.subprocess, "Popen", lambda command, **kwargs: (calls.append((command, kwargs)) or Process()))
     result = workflow.open_mia_project("mia")
     assert result["status"] == "started"
-    assert calls[0][0] == [str(exe.resolve()), str(blend)]
+    assert calls[0][0] == [str(exe.resolve()), "--disable-autoexec", str(blend)]
     assert calls[0][1]["shell"] is False

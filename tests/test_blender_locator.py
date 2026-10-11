@@ -214,7 +214,7 @@ def test_mia_gui_can_open_with_autodetected_blender(tmp_path, monkeypatch):
     ))
     result = workflow.open_mia_project("mia_scene")
     assert result["status"] == "started"
-    assert commands[0][0] == [str(executable), str(scene)]
+    assert commands[0][0] == [str(executable), "--disable-autoexec", str(scene)]
     assert commands[0][1]["shell"] is False
 
 

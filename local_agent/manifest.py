@@ -1,5 +1,6 @@
 """Validated, versioned project manifest for the computer-only video agent."""
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern, is_windows_device_name
 
 import re
 from dataclasses import dataclass, field
@@ -8,7 +9,7 @@ from typing import Any
 ALLOWED_RATIOS = {"9:16", "16:9", "1:1"}
 MAX_SCENES_DEFAULT = 1000
 MANIFEST_SCHEMA_VERSION = 1
-_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SAFE_ID = path_identifier_pattern(64)
 _WINDOWS_UNSAFE_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
@@ -78,7 +79,7 @@ class ProjectManifest:
             raise ValueError(f"Project has {len(raw_scenes)} scenes; limit is {max_scenes}")
         scenes = tuple(SceneSpec.from_dict(item, i + 1) for i, item in enumerate(raw_scenes))
         ids = [scene.scene_id for scene in scenes]
-        if len(ids) != len(set(ids)):
+        if len(ids) != len({value.casefold() for value in ids}):
             raise ValueError("scene_id values must be unique within a project")
         initial_image = data.get("initial_image")
         if initial_image is not None and (not isinstance(initial_image, str) or not initial_image.strip()):
@@ -89,7 +90,7 @@ class ProjectManifest:
         output_name = data.get("output_name", "final_video.mp4")
         if not isinstance(output_name, str) or not output_name or len(output_name) > 180:
             raise ValueError("output_name must be a filename of at most 180 characters")
-        if output_name in {".", ".."} or _WINDOWS_UNSAFE_FILENAME.search(output_name) or output_name.endswith((" ", ".")):
+        if is_windows_device_name(output_name) or output_name in {".", ".."} or _WINDOWS_UNSAFE_FILENAME.search(output_name) or output_name.endswith((" ", ".")):
             raise ValueError("output_name must be a safe filename, not a path")
         if not output_name.lower().endswith(".mp4"):
             raise ValueError("output_name must use the .mp4 extension")

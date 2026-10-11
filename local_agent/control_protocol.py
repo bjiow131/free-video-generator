@@ -4,6 +4,7 @@ Security boundary: remote messages are data, never shell commands. This module
 validates task envelopes only; it intentionally does not execute tasks.
 """
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,8 +16,8 @@ from local_agent.patch_validation import PatchValidationError, validate_patch_pa
 
 PROTOCOL_VERSION = 1
 ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
-TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+TASK_ID_RE = path_identifier_pattern(80, dots=True)
+BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
 
 class ProtocolError(ValueError):

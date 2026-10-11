@@ -653,3 +653,19 @@ async def test_runner_rejects_project_directory_symlink_to_another_workspace_pro
     with pytest.raises(ValueError, match="must not be a symlink"):
         await runner.run(manifest)
     assert list(other_project.iterdir()) == []
+
+
+def test_reports_in_same_second_never_overwrite(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+    from local_agent import reporting
+    class Clock:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 10, 11, tzinfo=timezone.utc)
+    monkeypatch.setattr(reporting, "datetime", Clock)
+    first = reporting.write_report(tmp_path, kind="task", status="first")
+    second = reporting.write_report(tmp_path, kind="task", status="second")
+    assert first != second
+    assert json.loads(first.read_text())["status"] == "first"
+    assert json.loads(second.read_text())["status"] == "second"

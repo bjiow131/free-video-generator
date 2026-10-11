@@ -62,3 +62,21 @@ def test_schema_version_and_project_name_round_trip():
     assert restored.project_id == "safe_project-01"
     assert restored.project_name == "Fictional test"
     assert restored.schema_version == 1
+
+
+@pytest.mark.parametrize("name", ["CON", "aux", "NUL", "COM1", "lpt9"])
+def test_windows_device_names_rejected_on_every_host(name):
+    with pytest.raises(ValueError):
+        ProjectManifest.from_dict(manifest(project_id=name))
+    with pytest.raises(ValueError):
+        ProjectManifest.from_dict(manifest(scenes=[{"scene_id": name, "prompt": "test"}]))
+    with pytest.raises(ValueError):
+        ProjectManifest.from_dict(manifest(output_name=name + ".mp4"))
+    from local_agent.path_names import path_identifier_pattern
+    assert path_identifier_pattern(48).fullmatch(name) is None
+    assert path_identifier_pattern(128, dots=True).fullmatch(name + ".json") is None
+
+
+def test_scene_ids_cannot_alias_on_windows():
+    with pytest.raises(ValueError, match="unique"):
+        ProjectManifest.from_dict(manifest(scenes=[{"scene_id": "Scene", "prompt": "one"}, {"scene_id": "scene", "prompt": "two"}]))

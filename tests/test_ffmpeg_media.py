@@ -282,3 +282,31 @@ def test_failed_concat_preserves_existing_final_video(tmp_path, monkeypatch):
 
     assert target.read_bytes() == b"previous final video"
     assert not list(tmp_path.glob("concat_output_*.mp4"))
+
+
+def test_real_ffmpeg_exact_final_frame_and_silent_concat(tmp_path):
+    import shutil
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        pytest.skip("Real FFmpeg and ffprobe are not installed")
+    media = FFmpegMediaTools(timeout=30)
+    source = tmp_path / "первый ' клип.mp4"
+    subprocess.run([
+        "ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i",
+        "testsrc2=size=64x64:rate=12:duration=2", "-an", "-c:v", "mpeg4", str(source),
+    ], check=True, capture_output=True, timeout=30)
+    media.validate_video(str(source), 2)
+    frame = tmp_path / "последний.png"
+    media.extract_last_frame(str(source), str(frame))
+    def decode(path):
+        return subprocess.run([
+            "ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
+            "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
+        ], check=True, capture_output=True, timeout=30).stdout
+    all_frames = decode(source)
+    assert len(all_frames) == 24 * 64 * 64 * 3
+    assert decode(frame) == all_frames[-64*64*3:]
+    target = tmp_path / "итог.mp4"
+    media.concatenate([str(source), str(source)], str(target))
+    media.validate_video(str(target), 4)
+    assert decode(target) == all_frames + all_frames
+    assert all(s["codec_type"] == "video" for s in media._probe(target)["streams"])

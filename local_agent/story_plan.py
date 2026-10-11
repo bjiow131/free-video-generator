@@ -1,10 +1,11 @@
 """Validated, data-only story plans authored by the remote creative director."""
 from __future__ import annotations
+from local_agent.path_names import path_identifier_pattern
 import json, os, re
 from pathlib import Path
 from typing import Any
-_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
-_SCENE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+_PROJECT_RE = path_identifier_pattern(48)
+_SCENE_RE = path_identifier_pattern(48)
 MAX_SCENES, MAX_PLAN_BYTES, MAX_TEXT = 80, 48_000, 4_000
 class StoryPlanError(ValueError):
     """A story plan is malformed or unsafe to store."""
@@ -86,8 +87,10 @@ def save_story_plan(workspace: str | Path, data: Any) -> dict[str, Any]:
     if destination.is_symlink(): raise StoryPlanError("Story plan destination must not be a symlink.")
     if destination.exists(): raise StoryPlanError("story_plan.json already exists; refusing to overwrite it.")
     temp=resolved/".story_plan.json.tmp"
+    owns_temp = False
     try:
         with temp.open("x",encoding="utf-8",newline="\n") as stream:
+            owns_temp = True
             json.dump(plan,stream,ensure_ascii=False,indent=2); stream.write("\n")
         try:
             os.link(temp, destination)  # Atomic no-clobber creation on the same filesystem.
@@ -95,6 +98,7 @@ def save_story_plan(workspace: str | Path, data: Any) -> dict[str, Any]:
             raise StoryPlanError("story_plan.json already exists; refusing to overwrite it.") from exc
         temp.unlink()
     finally:
-        try: temp.unlink(missing_ok=True)
+        try:
+            if owns_temp: temp.unlink(missing_ok=True)
         except OSError: pass
     return {"status":"completed","project_name":plan["project_name"],"title":plan["title"],"scene_count":len(plan["scenes"]),"estimated_scene_duration_seconds":plan["estimated_scene_duration_seconds"],"plan_path":str(destination),"execution_started":False,"blender_launched":False}

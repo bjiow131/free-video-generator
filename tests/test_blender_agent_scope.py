@@ -115,3 +115,14 @@ def test_agent_cli_test_operation_never_runs_unscoped_pytest(monkeypatch):
     assert captured[0][0] == test_scope.test_command("all", root=cli.ROOT)
     assert "tests" not in captured[0][0]
     assert captured[0][1]["cwd"] == cli.ROOT
+
+
+def test_powershell_mailbox_setup_matches_actual_runtime_contract():
+    scripts = test_scope.PROJECT_ROOT / "scripts" / "windows"
+    setup = (scripts / "setup_local_agent.ps1").read_text()
+    runner = (scripts / "run_local_agent.ps1").read_text()
+    assert '"requirements-github-mailbox.txt"' in setup
+    assert "-m local_agent.test_scope all" in setup
+    assert "LOCAL_AGENT_ALLOW_REMOTE_APPROVAL" not in setup
+    assert '$env:LOCAL_AGENT_ENABLE_GITHUB_MAILBOX = "1"' in runner
+    assert "-m local_agent.poller *>>" not in runner

@@ -16,4 +16,5 @@ $Settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCo
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Description "Starts the local-first AI Studio agent after this Windows user signs in." -Force | Out-Null
 Write-Host "Registered '$TaskName'. It starts at the next Windows sign-in and writes logs to .local_agent\logs\poller.log."
 Write-Warning "This does not auto-sign in after a reboot. A Windows user must sign in once after restart; automatic sign-in is intentionally not enabled."
-Write-Host "Start it now with: Start-ScheduledTask -TaskName '$TaskName'"
+Write-Warning "Registration does not enable unattended task execution. Mailbox tasks require an interactive console approval; a non-interactive run will block them."
+Write-Host "For task approval, launch scripts\windows\run_local_agent.ps1 in a visible console."

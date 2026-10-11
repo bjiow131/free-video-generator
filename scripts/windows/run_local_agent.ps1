@@ -12,7 +12,11 @@ if ((Test-Path $LogPath -PathType Leaf) -and (Get-Item $LogPath).Length -gt 2MB)
 }
 Set-Location $RepoRoot
 "[$(Get-Date -Format o)] Starting local agent poller" | Out-File -FilePath $LogPath -Append -Encoding utf8
-& $Python -m local_agent.poller *>> $LogPath
+$env:LOCAL_AGENT_ENABLE_GITHUB_MAILBOX = "1"
+$env:PYTHONUTF8 = "1"
+Write-Host "Each task needs approval in this console; unattended execution is unavailable."
+# Keep approval prompts visible. Individual task reports remain on disk.
+& $Python -u -m local_agent.poller
 $ExitCode = $LASTEXITCODE
 "[$(Get-Date -Format o)] Poller exited with code $ExitCode" | Out-File -FilePath $LogPath -Append -Encoding utf8
 exit $ExitCode
