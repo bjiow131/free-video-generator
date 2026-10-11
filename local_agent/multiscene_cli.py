@@ -20,6 +20,7 @@ from mathutils import Vector
 from bpy_extras.object_utils import world_to_camera_view
 
 config = json.loads(Path(sys.argv[sys.argv.index("--") + 1]).read_text(encoding="utf-8"))
+sys.path.insert(0, config["project_root"])
 bpy.ops.wm.open_mainfile(filepath=config["source"])
 scene = bpy.context.scene
 camera = scene.camera
@@ -137,48 +138,46 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     distance = ray.length
     if distance <= 1e-5:
         raise RuntimeError("Camera overlaps subject at frame %d" % frame)
-    blocker_name = visibility_blocker(eye, evaluated, depsgraph)
-    if blocker_name is not None:
-        # Try bounded lateral/elevated alternatives, retaining TRACK_TO.
-        # Use the preceding corrected position to reduce camera jumps.
-        original_eye = camera.location.copy()
-        chosen = None
-        for side, rise in (
-            (0.0, 0.6), (0.7, 0.0), (-0.7, 0.0),
-            (1.4, 0.4), (-1.4, 0.4), (0.0, 1.5),
-            (2.4, 0.8), (-2.4, 0.8), (0.0, 2.8),
-        ):
-            camera.location = original_eye + Vector((side, 0.0, rise))
-            scene.view_layers.update()
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            eye2 = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
-            direction = subject_center - eye2
-            length = direction.length
-            if length <= 1e-5:
-                continue
-            if visibility_blocker(eye2, evaluated, depsgraph) is not None:
-                continue
-            projected = [world_to_camera_view(scene, camera, corner)
-                         for corner in world_corners]
-            if all(margin <= p.x <= 1 - margin and
-                   margin <= p.y <= 1 - margin and p.z > 0
-                   for p in projected):
-                chosen = camera.location.copy()
-                break
-        if chosen is None:
-            raise RuntimeError(
-                "Subject occluded at frame %d by %s; no safe camera position found" %
-                (frame, blocker_name))
-        camera.location = chosen
-    # Keyframe the corrected path; validate every frame again after baking.
-    camera.keyframe_insert(data_path="location", frame=frame)
+    # Build candidate sets for the whole timeline before selecting a path.
+    # Every candidate is validated against current-frame geometry and framing.
+    frame_candidates = locals().get("frame_candidates", [])
+    base_position = camera.location.copy()
+    valid = []
+    for side, rise in (
+        (0.0, 0.0), (0.0, 0.6), (0.7, 0.0), (-0.7, 0.0),
+        (1.4, 0.4), (-1.4, 0.4), (0.0, 1.5),
+        (2.4, 0.8), (-2.4, 0.8), (0.0, 2.8),
+    ):
+        camera.location = base_position + Vector((side, 0.0, rise))
+        scene.view_layers.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        subject = obj.evaluated_get(depsgraph)
+        eye2 = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
+        if (subject.matrix_world.translation - eye2).length <= 0.1:
+            continue
+        if visibility_blocker(eye2, subject, depsgraph) is not None:
+            continue
+        projected = [world_to_camera_view(scene, camera, point)
+                     for point in world_corners]
+        if all(margin <= p.x <= 1 - margin and
+               margin <= p.y <= 1 - margin and p.z > 0
+               for p in projected):
+            valid.append(tuple(camera.location))
+    camera.location = base_position
+    if not valid:
+        raise RuntimeError(
+            "No feasible camera position at frame %d (occluder: %s)" %
+            (frame, visibility_blocker(eye, evaluated, depsgraph)))
+    frame_candidates.append(valid)
+# Optimize the complete path rather than greedily selecting per-frame offsets.
+from local_agent.camera_path_planner import optimize_camera_path
+planned = optimize_camera_path(frame_candidates)
+positions = {frame: Vector(position)
+             for frame, position in enumerate(planned, scene.frame_start)}
+
 # Smooth the baked path conservatively: accept each local average only if
 # the target remains inside the frame and the sight line stays unobstructed.
 # Rejected candidates retain their previously validated camera position.
-positions = {}
-for frame in range(scene.frame_start, scene.frame_end + 1):
-    scene.frame_set(frame)
-    positions[frame] = camera.location.copy()
 for _pass in range(2):
     revised = {f: pos.copy() for f, pos in positions.items()}
     for frame in range(scene.frame_start + 1, scene.frame_end):
@@ -278,6 +277,7 @@ def main() -> int:
     frames = output / "frames"
     frames.mkdir()
     config = {
+        "project_root": str(Path(__file__).resolve().parent.parent),
         "source": str(source), "object_name": args.object,
         "camera_lens_mm": args.camera_lens_mm,
         "fps": args.fps, "total_frames": timeline[-1].end_frame,
