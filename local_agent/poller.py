@@ -180,6 +180,21 @@ def doctor_with_supervisor() -> dict[str, Any]:
         network["relay_https"] = "connection_failed"
     except (ValueError, UnicodeError):
         network["relay_https"] = "invalid_response"
+    if network.get("relay_https") == "reachable":
+        try:
+            with urlopen(Request("https://octava-telegram-relay.onrender.com/health/upstream",
+                                 method="GET"), timeout=18) as response:
+                payload = json.loads(response.read(1024))
+                network["relay_to_telegram"] = ("reachable" if response.status == 200 and
+                                                isinstance(payload, dict) and
+                                                payload.get("upstream") == "reachable"
+                                                else "invalid_response")
+        except HTTPError:
+            network["relay_to_telegram"] = "upstream_unavailable"
+        except (URLError, TimeoutError, OSError):
+            network["relay_to_telegram"] = "connection_failed"
+        except (ValueError, UnicodeError):
+            network["relay_to_telegram"] = "invalid_response"
     result["telegram_network"] = network
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
