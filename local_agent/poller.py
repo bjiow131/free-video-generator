@@ -29,6 +29,7 @@ from local_agent.blender_locator import find_blender_executable
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
 )
+from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, process_pending, recover_interrupted
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -1033,8 +1034,19 @@ def main() -> int:
         print(f"Cannot load poller replay state: {exc}")
         return 2
 
+    # If a previous Windows process crashed while swapping an authorized
+    # release, restore the full previous set before doing any work.
+    try:
+        if recover_interrupted():
+            print("Interrupted trusted update rolled back to local backup.")
+    except TrustedUpdateError as exc:
+        lock_handle.close()
+        print(f"Cannot recover previous trusted update: {exc}")
+        return 2
+
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
+    next_update_check = time.monotonic()
     last_seen = state.get("last_task_id")
     last_sha = state.get("manifest_sha")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
@@ -1130,6 +1142,19 @@ def main() -> int:
                         _save_state(state)
                         last_sha = manifest_sha
                 state = _poll_repair_once(client, state)
+                if time.monotonic() >= next_update_check:
+                    next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
+                    try:
+                        if get_opt_in()["enabled"]:
+                            updated = process_pending(
+                                client,
+                                publish=lambda update_id, result: _publish_result_durable(client, update_id, result),
+                            )
+                            if updated and updated.get("restart_needed"):
+                                print("Trusted update applied and tested; restarting local mailbox agent.")
+                                return 75
+                    except TrustedUpdateError as exc:
+                        print(f"Trusted update safely refused: {exc}")
                 backoff = interval
                 time.sleep(interval)
             except KeyboardInterrupt:
