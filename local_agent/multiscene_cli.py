@@ -92,6 +92,23 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
             raise RuntimeError("Subject cannot fit inside camera frame at frame %d" % frame)
         camera.data.lens = max(min_lens, camera.data.lens * 0.90)
     camera.data.keyframe_insert(data_path="lens", frame=frame)
+    # Detect foreground occlusion that camera projection alone cannot catch.
+    # This is a conservative geometric check, not an image-based visual test.
+    scene.view_layers.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    camera_eval = camera.evaluated_get(depsgraph)
+    eye = camera_eval.matrix_world.translation.copy()
+    subject_center = evaluated.matrix_world.translation.copy()
+    ray = subject_center - eye
+    distance = ray.length
+    if distance <= 1e-5:
+        raise RuntimeError("Camera overlaps subject at frame %d" % frame)
+    hit, hit_location, hit_normal, hit_index, hit_obj, hit_matrix = scene.ray_cast(
+        depsgraph, eye, ray.normalized(), distance=max(0.0, distance - 1e-3))
+    if hit and hit_obj.original != obj:
+        raise RuntimeError(
+            "Subject occluded at frame %d by %s; camera path must be adjusted" %
+            (frame, hit_obj.name))
 # Preserve the frame-1 camera settings in the saved file.
 scene.frame_set(scene.frame_start)
 bpy.ops.wm.save_as_mainfile(filepath=config["blend_output"])
