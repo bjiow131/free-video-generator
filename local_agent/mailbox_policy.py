@@ -126,6 +126,43 @@ def is_auto_authorized(operation: str, policy: dict[str, bool] | None = None) ->
     return False
 
 
+
+# Both the Studio UI and GitHub updater use this same opt-in file.
+# Kept here so the offline Studio process never imports requests/GitHub.
+_TRUSTED_UPDATES_OPT_IN = _ROOT / '.local_agent' / 'trusted_updates_enabled.json'
+
+
+def get_trusted_update_opt_in() -> dict[str, bool]:
+    """Read explicit local update consent without loading network dependencies."""
+    with _LOCK:
+        _safe_directory()
+        _safe_file(_TRUSTED_UPDATES_OPT_IN)
+        try:
+            raw = _TRUSTED_UPDATES_OPT_IN.read_bytes()
+        except FileNotFoundError:
+            return {'enabled': False}
+        except OSError as exc:
+            raise MailboxPolicyError('Не удалось прочесть разрешение на обновления') from exc
+        if len(raw) > 120:
+            raise MailboxPolicyError('Повреждено разрешение на обновления')
+        try:
+            data = json.loads(raw)
+        except (UnicodeError, ValueError, TypeError) as exc:
+            raise MailboxPolicyError('Повреждено разрешение на обновления') from exc
+        if not isinstance(data, dict) or set(data) != {'enabled'} or type(data['enabled']) is not bool:
+            raise MailboxPolicyError('Повреждено разрешение на обновления')
+        return data
+
+
+def set_trusted_update_opt_in(value: dict[str, bool]) -> dict[str, bool]:
+    """Save Studio update consent in the file used by trusted_updates.get_opt_in."""
+    if not isinstance(value, dict) or set(value) != {'enabled'} or type(value['enabled']) is not bool:
+        raise MailboxPolicyError('Ожидается enabled: true/false')
+    with _LOCK:
+        _atomic_write(_TRUSTED_UPDATES_OPT_IN,
+                      (json.dumps(value, sort_keys=True) + '\n').encode('utf-8'))
+    return value
+
 def reserve_octava_call(now=None) -> None:
     """Backward-compatible no-op: no ChatGPT-side daily OctavAPI call limit.
 
