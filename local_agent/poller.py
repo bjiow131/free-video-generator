@@ -392,8 +392,28 @@ def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
         return {"status": "failed", "reason": "camera_smoke_timeout_480_seconds",
                 "mode": "procedural_camera_fixture", "job_id": job_id}
     if outcome["state"] != "completed":
+        error_lines = []
+        blender_log = store.root / "studio_jobs" / job_id / "blender.log"
+        try:
+            if blender_log.is_file() and not blender_log.is_symlink():
+                with blender_log.open("rb") as handle:
+                    handle.seek(max(0, blender_log.stat().st_size - 8192))
+                    tail = handle.read(8192).decode("utf-8", errors="replace")
+                # This Blender task uses only a fixed local fixture; never include
+                # the full log, arbitrary source text or unfiltered credentials.
+                for raw_line in tail.splitlines():
+                    line = raw_line.strip()
+                    if line.startswith(("Traceback", "File ", "RuntimeError:",
+                                        "AttributeError:", "ValueError:", "TypeError:",
+                                        "KeyError:", "Error:", "Exception:")):
+                        import re
+                        line = re.sub(r"(?i)([a-z]:\\users\\)[^\\\s]+", r"\\1[USER]", line)
+                        error_lines.append(line[:180])
+        except OSError:
+            pass
         return {"status": "failed", "reason": str(outcome.get("message", "render_failed"))[:240],
-                "mode": "procedural_camera_fixture", "job_id": job_id}
+                "mode": "procedural_camera_fixture", "job_id": job_id,
+                "blender_errors": error_lines[-12:]}
     review = outcome.get("review_delivery", {"status": "not_confirmed"})
     return {
         "status": "completed",
