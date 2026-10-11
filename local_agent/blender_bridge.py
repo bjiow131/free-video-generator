@@ -361,13 +361,13 @@ class BlenderBridge:
             script_path.write_text(_scene_script(), encoding="utf-8")
             config_path.write_text(json.dumps(config), encoding="utf-8")
             command = [
-                str(self.executable), "--factory-startup", "--disable-autoexec",
-                "--python-exit-code", "1",
+                str(self.executable), "--background", "--factory-startup",
+                "--disable-autoexec", "--offline-mode", "--python-exit-code", "1",
                 "--python", str(script_path), "--", str(config_path),
             ]
             if self._run is subprocess.Popen:
-                # Launch Blender as a visible GUI process. Wait for the task manifest,
-                # not for the user to close Blender; the scene stays open after rendering.
+                # Run headless in the background. Wait for its completion manifest,
+                # never open a Blender GUI window during unattended tasks.
                 result_path = project_dir / "blender_result.json"
                 stdout_path = project_dir / "blender_stdout.log"
                 stderr_path = project_dir / "blender_stderr.log"
