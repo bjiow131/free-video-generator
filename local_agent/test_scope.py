@@ -22,6 +22,9 @@ SECURITY_TESTS = (
     "tests/test_repair_replay.py",
     "tests/test_local_agent_control_protocol.py",
     "tests/test_poller_delivery_state.py",
+    "tests/test_mailbox_idle_alerts.py",
+    "tests/test_telegram_notification_switch.py",
+    "tests/test_octava_studio_http.py",
     "tests/test_result_outbox.py",
 )
 BLENDER_TESTS = (
