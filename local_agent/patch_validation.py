@@ -64,22 +64,32 @@ def validate_patch_paths(patch: str) -> None:
         if expected is None:
             raise PatchValidationError("patch has no git diff headers")
         if line.startswith(("GIT binary patch", "Binary files ")):
-            raise PatchValidationError("binary patches are prohibited")
+            raise PatchValidationError("binary, symlink, and submodule patches are prohibited")
         if in_hunk:
             # Patch body content is not metadata. Git apply checks hunk syntax.
             continue
         if line.startswith(_UNSAFE_METADATA):
             raise PatchValidationError("renames and copies are not supported")
         if line.startswith(("old mode ", "new mode ")):
-            raise PatchValidationError("file mode changes are prohibited")
+            raise PatchValidationError("binary, symlink, and submodule patches are prohibited")
         if line.startswith(("new file mode ", "deleted file mode ")):
             if line not in ("new file mode 100644", "deleted file mode 100644"):
-                raise PatchValidationError("special or executable file modes are prohibited")
+                raise PatchValidationError("binary, symlink, and submodule patches are prohibited")
         if line.startswith("--- "):
+            if line[4:] != "/dev/null":
+                candidate = line[4:]
+                if not candidate.startswith("a/"):
+                    raise PatchValidationError("malformed unified header path")
+                _path(candidate[2:])
             if line[4:] not in (f"a/{expected}", "/dev/null"):
                 raise PatchValidationError("unified header does not match diff path")
             old_header = True
         elif line.startswith("+++ "):
+            if line[4:] != "/dev/null":
+                candidate = line[4:]
+                if not candidate.startswith("b/"):
+                    raise PatchValidationError("malformed unified header path")
+                _path(candidate[2:])
             if line[4:] not in (f"b/{expected}", "/dev/null"):
                 raise PatchValidationError("unified header does not match diff path")
             new_header = True
