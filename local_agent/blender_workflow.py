@@ -14,6 +14,8 @@ import subprocess
 import zlib
 from typing import Any
 
+from local_agent.blender_locator import find_blender_executable
+
 
 class BlenderWorkflowError(RuntimeError):
     """A safe Blender discovery or workflow operation failed."""
@@ -22,11 +24,8 @@ class BlenderWorkflowError(RuntimeError):
 def discover_blender() -> dict[str, Any]:
     """Find Blender from local configuration/PATH and query its version."""
     configured = os.environ.get("BLENDER_EXECUTABLE", "").strip()
-    candidate = Path(configured).expanduser() if configured else None
-    source = "environment" if candidate else "path"
-    if candidate is None:
-        found = shutil.which("blender.exe") or shutil.which("blender")
-        candidate = Path(found) if found else None
+    candidate = find_blender_executable()
+    source = "environment" if configured else "installed_or_path"
     if candidate is None or not candidate.is_file():
         return {"status": "needs_setup", "available": False,
                 "configured": bool(configured), "reason": "blender_executable_not_found"}
@@ -211,11 +210,12 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     import re
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
     if not blender.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
@@ -284,11 +284,12 @@ def open_mia_project(project_name: str) -> dict[str, Any]:
     import re
     if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
     project_dir = (workspace / project_name).resolve()
     if not project_dir.is_relative_to(workspace) or project_dir == workspace:
@@ -319,11 +320,12 @@ def inspect_mia_project(project_name: str) -> dict[str, Any]:
     import re
     if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}", project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    blender = find_blender_executable()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
     workspace = Path(workspace_value).expanduser().resolve()
     project_dir = (workspace / project_name).resolve()
     blend = project_dir / "mia_blockout.blend"
