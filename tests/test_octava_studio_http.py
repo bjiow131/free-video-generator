@@ -96,6 +96,28 @@ class LocalKeyHTTPTests(unittest.TestCase):
         self.assertEqual(result, settings)
         save.assert_called_once_with(settings)
 
+    def test_trusted_updates_disabled_by_default(self):
+        with patch("local_agent.studio_server.get_opt_in", return_value={"enabled": False}):
+            status, data = self.fetch("GET", "/api/trusted-updates")
+        self.assertEqual(status, 200)
+        self.assertEqual(data, {"enabled": False})
+
+    def test_trusted_updates_requires_same_origin(self):
+        with patch("local_agent.studio_server.set_opt_in") as save:
+            status, _ = self.fetch("POST", "/api/trusted-updates", {"enabled": True},
+                                   include_origin=False)
+        self.assertEqual(status, 403)
+        save.assert_not_called()
+
+    def test_trusted_updates_can_be_locally_enabled_or_disabled(self):
+        for enabled in (True, False):
+            with patch("local_agent.studio_server.set_opt_in",
+                       return_value={"enabled": enabled}) as save:
+                status, data = self.fetch("POST", "/api/trusted-updates", {"enabled": enabled})
+            self.assertEqual(status, 200)
+            self.assertEqual(data, {"enabled": enabled})
+            save.assert_called_once_with({"enabled": enabled})
+
     def test_extra_fields_forbidden(self):
         with patch("local_agent.studio_server.replace_key") as save:
             status, _ = self.fetch("POST", "/api/octava-key", {"api_key": "secret-123456789", "command": "rm -rf"})
