@@ -23,6 +23,9 @@ from local_agent.studio_state import StudioConflict, StudioError, StudioStore, t
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
+from local_agent.telegram_preferences import (
+    TelegramPreferenceError, load_notifications, save_notifications, notifications_enabled,
+)
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, save_policy,
     get_trusted_update_opt_in as get_opt_in,
@@ -330,9 +333,33 @@ def _telegram_credentials() -> tuple[str | None, str | None]:
 
 def telegram_status() -> dict[str, bool]:
     token, chat = _telegram_credentials()
+    try:
+        notices = load_notifications()["enabled"]
+    except TelegramPreferenceError as exc:
+        raise TelegramAlertError(str(exc)) from None
     return {"configured": bool(token), "paired": bool(token and chat),
-            "outbound_only": True, "enabled": bool(token and chat),
+            "outbound_only": True, "enabled": bool(token and chat and notices),
+            "notifications_enabled": notices,
             "use_relay": telegram_transport_settings()["use_relay"]}
+
+
+def telegram_set_notifications(data: dict) -> dict[str, bool]:
+    """Local-only switch. Disabling also drops undelivered old notices."""
+    with _TELEGRAM_LOCK:
+        try:
+            result = save_notifications(data)
+        except TelegramPreferenceError as exc:
+            raise TelegramAlertError(str(exc)) from None
+        if not result["enabled"]:
+            # Pending messages must not appear unexpectedly if alerts are re-enabled.
+            if _TELEGRAM_OUTBOX.is_dir() and not _TELEGRAM_OUTBOX.is_symlink():
+                for path in _TELEGRAM_OUTBOX.glob("*.json"):
+                    if path.is_file() and not path.is_symlink():
+                        try:
+                            path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+        return {"notifications_enabled": result["enabled"]}
 
 
 def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) -> dict:
@@ -461,6 +488,8 @@ def telegram_queue_event(event_id: str, message: str) -> bool:
         if not token or not chat:
             return False
         with _TELEGRAM_LOCK:
+            if not notifications_enabled():
+                return False
             outbox = _telegram_outbox_dir()
             if len(list(outbox.glob("*.json"))) >= 100:
                 return False
@@ -483,6 +512,8 @@ def telegram_flush_outbox(*, max_messages: int = 4) -> int:
             return 0
         count = 0
         with _TELEGRAM_LOCK:
+            if not notifications_enabled():
+                return 0
             for path in sorted(_TELEGRAM_OUTBOX.glob("*.json"))[:max_messages]:
                 if path.is_symlink() or path.stat().st_size > 2048:
                     continue
@@ -508,6 +539,8 @@ def telegram_flush_outbox(*, max_messages: int = 4) -> int:
 def telegram_send_test(data: dict) -> dict:
     if data != {}:
         raise TelegramAlertError("Лишние параметры запроса")
+    if not notifications_enabled():
+        raise TelegramAlertError("Уведомления Telegram выключены в настройках")
     token, chat = _telegram_credentials()
     if not token or not chat:
         raise TelegramAlertError("Сначала привяжите Telegram-чат")
@@ -679,6 +712,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, telegram_status())
             except TelegramAlertError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/telegram-notifications":
+            try:
+                return self._json(200, {"notifications_enabled": load_notifications()["enabled"]})
+            except TelegramPreferenceError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/telegram-transport":
             try:
                 return self._json(200, telegram_transport_settings())
@@ -763,7 +801,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -773,7 +811,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport") and length > 240):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications") and length > 240):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -793,6 +831,9 @@ class StudioHandler(BaseHTTPRequestHandler):
             if path == "/api/dropbox-review":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
+            if path == "/api/telegram-notifications":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, telegram_set_notifications(body))
             if path == "/api/telegram-transport":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, telegram_set_transport(body))
