@@ -1392,6 +1392,32 @@ def _acquire_instance_lock(path: Path):
 # Task inactivity is not the same thing as a GitHub outage. A valid, previously
 # handled manifest must NOT reset this timer during routine polling.
 _MAILBOX_IDLE_SECONDS = 10 * 60
+_MAILBOX_HEARTBEAT = ROOT / ".local_agent" / "mailbox_loop_heartbeat"
+_MAILBOX_STALE_SECONDS = 15 * 60
+
+
+def _touch_mailbox_heartbeat() -> None:
+    """Supervisor checks this even when the GitHub API is unreachable."""
+    base = _ensure_agent_dir()
+    path = _MAILBOX_HEARTBEAT
+    if path.parent.resolve() != base or path.is_symlink():
+        raise RuntimeError("Unsafe mailbox heartbeat path")
+    path.touch(exist_ok=True)
+
+
+def _mailbox_is_stale(*, now_wall: float, started_at_wall: float) -> bool:
+    """Do not kill slow-but-bounded GitHub retries or a just-started worker."""
+    if now_wall - started_at_wall < _MAILBOX_STALE_SECONDS:
+        return False
+    try:
+        if _MAILBOX_HEARTBEAT.is_symlink():
+            return True
+        stamp = _MAILBOX_HEARTBEAT.stat().st_mtime
+    except OSError:
+        return True
+    return now_wall - stamp >= _MAILBOX_STALE_SECONDS
+
+
 
 
 def _mailbox_idle_initialize(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
@@ -1493,6 +1519,7 @@ def main() -> int:
     try:
         while True:
             try:
+                _touch_mailbox_heartbeat()
                 result_outbox = _result_outbox()
                 pending_before_flush = result_outbox.pending_task_ids()
                 pending_results = result_outbox.flush(client)
@@ -1903,6 +1930,7 @@ def supervise_windows() -> int:
     started_at: dict[str, float] = {}
     failures: dict[str, int] = {"mailbox": 0, "studio": 0}
     next_start: dict[str, float] = {"mailbox": 0.0, "studio": 0.0}
+    pending_stalled_warning = False
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     def launch(name: str) -> None:
@@ -2014,8 +2042,37 @@ def supervise_windows() -> int:
                         failures = {"mailbox": 0, "studio": 0}
                         next_start = {"mailbox": 0.0, "studio": 0.0}
                         pending_restored_notice = "ручного перезапуска"
+                        pending_stalled_warning = False
             except MailboxPolicyError:
                 log("Invalid runtime control preferences; manual restart refused")
+            # A live process may still be stuck. Avoid interrupting a render or
+            # a claimed task; those require a deliberate /restart.
+            worker = processes.get("mailbox")
+            if worker is not None and worker.poll() is None and _mailbox_is_stale(
+                now_wall=time.time(),
+                started_at_wall=time.time() - max(0.0, now - started_at.get("mailbox", now)),
+            ):
+                try:
+                    manifest = _load_state()
+                    last_id = manifest.get("last_task_id")
+                    item = manifest.get("processed_tasks", {}).get(last_id, {})
+                    claimed = isinstance(item, dict) and item.get("status") == "in_progress"
+                except (RuntimeError, OSError, ValueError, TypeError):
+                    claimed = True
+                if not claimed and not studio_render_active():
+                    log("Mailbox heartbeat stale; supervisor restarting worker")
+                    stop("mailbox")
+                    failures["mailbox"] = 0
+                    next_start["mailbox"] = 0.0
+                    pending_restored_notice = "восстановления зависшей службы GitHub"
+                    pending_stalled_warning = False
+                elif not pending_stalled_warning:
+                    log("Mailbox heartbeat stale while task/render active; manual /restart available")
+                    _telegram_signal("worker-hung", str(int(time.time() // 3600)),
+                                     "Blender AI Agent: нет отклика от GitHub-агента; активную задачу не прерываем. Можно отправить /restart.")
+                    pending_stalled_warning = True
+            else:
+                pending_stalled_warning = False
             for name in command:
                 p = processes.get(name)
                 if p is not None and p.poll() is not None:
