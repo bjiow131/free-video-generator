@@ -227,7 +227,13 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     direction = center - eye
     if direction.length <= 1e-5:
         raise RuntimeError("Camera overlaps subject at frame %d" % frame)
-    blocker_name = visibility_blocker(eye, obj.evaluated_get(depsgraph), depsgraph)
+    subject = obj.evaluated_get(depsgraph)
+    corners = [subject.matrix_world @ Vector(corner) for corner in subject.bound_box]
+    projected = [world_to_camera_view(scene, camera, point) for point in corners]
+    if not all(margin <= p.x <= 1 - margin and
+               margin <= p.y <= 1 - margin and p.z > 0 for p in projected):
+        raise RuntimeError("Camera framing invalid after baking at frame %d" % frame)
+    blocker_name = visibility_blocker(eye, subject, depsgraph)
     if blocker_name is not None:
         raise RuntimeError("Camera path still occluded at frame %d by %s" %
                            (frame, blocker_name))
