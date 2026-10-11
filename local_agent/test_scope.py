@@ -28,6 +28,7 @@ BLENDER_TESTS = (
     "tests/test_dialogue_cues.py",
     "tests/test_blender_dialogue.py",
     "tests/test_blender_bridge.py",
+    "tests/test_blender_locator.py",
     "tests/test_local_project_runner.py",
     "tests/test_checkpoint_schema.py",
     "tests/test_ffmpeg_media.py",
