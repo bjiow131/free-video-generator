@@ -1627,6 +1627,150 @@ def main() -> int:
         lock_handle.close()
 
 
+
+# Telegram is a command console only for the private chat already paired in Studio.
+# This poller runs in the INDEPENDENT supervisor, not the mailbox worker.
+_TELEGRAM_UPDATES_STATE = ROOT / ".local_agent" / "telegram_updates_state.json"
+
+
+def _read_telegram_offset() -> int:
+    path = _TELEGRAM_UPDATES_STATE
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise RuntimeError("Unsafe Telegram cursor")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise RuntimeError("Telegram command cursor is unreadable") from exc
+    if (not isinstance(data, dict) or set(data) != {"next_offset"}
+            or type(data["next_offset"]) is not int
+            or not (0 <= data["next_offset"] <= 2**63 - 1)):
+        raise RuntimeError("Telegram command cursor is invalid")
+    return data["next_offset"]
+
+
+def _save_telegram_offset(next_offset: int) -> None:
+    if type(next_offset) is not int or not 0 <= next_offset <= 2**63 - 1:
+        raise RuntimeError("Invalid Telegram cursor")
+    path = _TELEGRAM_UPDATES_STATE
+    directory = _ensure_agent_dir()
+    if path.parent.resolve() != directory or path.is_symlink():
+        raise RuntimeError("Unsafe Telegram cursor path")
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=directory, prefix=".telegram-offset-",
+            suffix=".tmp", delete=False,
+        ) as out:
+            tmp = Path(out.name)
+            json.dump({"next_offset": next_offset}, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+
+
+def _telegram_command_response(update: Any, paired_chat: str, *,
+                               status_line: str, tasks_line: str,
+                               logs_line: str, now: int | None = None) -> str | None:
+    """Validate BOTH sender and private chat. Never evaluate free-form commands."""
+    if not isinstance(update, dict):
+        return None
+    msg = update.get("message")
+    if not isinstance(msg, dict):
+        return None
+    chat, sender = msg.get("chat"), msg.get("from")
+    if not isinstance(chat, dict) or not isinstance(sender, dict):
+        return None
+    # str(int) normalization intentionally accepts only Telegram integer IDs.
+    if (chat.get("type") != "private" or type(chat.get("id")) is not int
+            or type(sender.get("id")) is not int or chat["id"] != sender["id"]
+            or str(chat["id"]) != paired_chat):
+        return None
+    stamp = msg.get("date")
+    current = int(time.time()) if now is None else now
+    if type(stamp) is not int or not 0 <= current - stamp <= 180:
+        return None  # Expired commands must not restart the machine after downtime.
+    raw = msg.get("text")
+    if not isinstance(raw, str) or not 1 <= len(raw) <= 120:
+        return None
+    parts = raw.strip().split()
+    if len(parts) != 1 or not parts[0].startswith("/"):
+        return ("Поддерживаются только команды. /help — список команд.")
+    # Commands with @bot suffix remain private and must not contain arguments.
+    command = parts[0].split("@", 1)[0].lower()
+    if command in ("/start", "/help"):
+        return ("Blender AI Agent — команды:\n/status — состояние служб\n"
+                "/tasks — последняя задача\n/logs — события запуска\n"
+                "/pause — остановить приём задач\n/resume — возобновить\n"
+                "/restart — перезапустить службы\n"
+                "/notifications_on и /notifications_off — уведомления.")
+    if command == "/status":
+        return status_line
+    if command == "/tasks":
+        return tasks_line
+    if command == "/logs":
+        return logs_line
+    if command == "/pause":
+        set_runtime_pause({"paused": True})
+        return "Приём новых задач GitHub приостановлен. /resume — возобновить."
+    if command == "/resume":
+        set_runtime_pause({"paused": False})
+        return "Приём новых задач GitHub возобновлён."
+    if command == "/restart":
+        request_runtime_restart({})
+        return ("Перезапуск Studio и GitHub-агента запрошен. "
+                "Если идёт рендер, дождёмся безопасной точки.")
+    if command in ("/notifications_off", "/notifications_on"):
+        from local_agent.mailbox_policy import save_telegram_notifications
+        from local_agent.studio_server import telegram_set_notifications
+        on = command == "/notifications_on"
+        telegram_set_notifications({"enabled": on})
+        return ("Автоматические уведомления включены." if on
+                else "Автоматические уведомления выключены. Команды работают.")
+    return "Неизвестная команда. Напишите /help."
+
+
+def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
+                                   logs_line: str) -> None:
+    """Read commands using existing Render relay, with atomic at-most-once cursor."""
+    from local_agent.studio_server import _telegram_credentials, _telegram_call
+    token, paired = _telegram_credentials()
+    if not token or not paired:
+        return
+    next_offset = _read_telegram_offset()
+    response = _telegram_call(token, "getUpdates",
+                              {"offset": next_offset, "limit": 20, "timeout": 0,
+                               "allowed_updates": ["message"]}, timeout=8)
+    updates = response.get("result")
+    if not isinstance(updates, list):
+        return
+    for update in updates[:20]:
+        if not isinstance(update, dict) or type(update.get("update_id")) is not int:
+            continue
+        update_id = update["update_id"]
+        if update_id < next_offset or update_id >= 2**63 - 1:
+            continue
+        next_offset = update_id + 1
+        # A command is claimed before dispatch so /restart is never replayed
+        # from Telegram after a supervisor crash.
+        _save_telegram_offset(next_offset)
+        try:
+            reply = _telegram_command_response(
+                update, paired, status_line=status_line, tasks_line=tasks_line,
+                logs_line=logs_line,
+            )
+            if reply is not None:
+                # Explicit replies must work even when automatic alerts are off.
+                _telegram_call(token, "sendMessage",
+                               {"chat_id": paired, "text": reply[:1300]}, timeout=8)
+        except (MailboxPolicyError, OSError, RuntimeError, ValueError):
+            continue
+
+
 def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
     """Fast crash recovery, with bounded backoff for persistent start failures."""
     return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 5)))
