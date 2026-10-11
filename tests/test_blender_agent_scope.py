@@ -73,3 +73,45 @@ def test_agent_ci_does_not_run_cloud_api_tests():
     assert "python -m compileall -q local_agent" in workflow
     for prohibited in ("server.py", "core/api", "models/", "test_agnes_", "test_core.py"):
         assert prohibited not in workflow
+
+
+def test_agent_status_is_local_and_never_checks_old_web_api(tmp_path, monkeypatch):
+    from local_agent import cli
+
+    workspace = tmp_path / "scenes"
+    workspace.mkdir()
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"fixture")
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
+    monkeypatch.setenv("BLENDER_EXECUTABLE", str(blender))
+    monkeypatch.delenv("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX", raising=False)
+
+    result = cli.status()
+    assert result["mode"] == "local_blender_agent"
+    assert result["workspace_exists"] is True
+    assert result["blender_executable_found"] is True
+    assert result["mailbox_opted_in"] is False
+    assert result["legacy_web_server_checked"] is False
+    assert result["remote_request_performed"] is False
+    assert result["blender_render_verified"] is False
+
+
+def test_agent_cli_test_operation_never_runs_unscoped_pytest(monkeypatch):
+    from types import SimpleNamespace
+    from local_agent import cli
+
+    captured = []
+
+    def fake_run(args, **kwargs):
+        captured.append((args, kwargs))
+        return SimpleNamespace(returncode=0, stdout="isolated tests passed", stderr="")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli.importlib.util, "find_spec", lambda name: object())
+    result = cli.run_tests()
+
+    assert result["status"] == "passed"
+    assert len(captured) == 1
+    assert captured[0][0] == test_scope.test_command("all", root=cli.ROOT)
+    assert "tests" not in captured[0][0]
+    assert captured[0][1]["cwd"] == cli.ROOT
