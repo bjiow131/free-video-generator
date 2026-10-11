@@ -1168,19 +1168,9 @@ class BlenderAgentApp(tk.Tk):
     def _add_reference(self) -> None:
         card = self._selected_card()
         if not card:
-            messagebox.showwarning("Выберите карточку", "Сначала выберите карточку.", parent=self); return
-        path = filedialog.askopenfilename(title="Добавить изображение-референс", filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"), ("All files", "*.*")], parent=self)
-        if not path: return
-        src = Path(path)
-        if src.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"} or src.stat().st_size > 30 * 1024 * 1024:
-            messagebox.showerror("Недопустимый файл", "Поддерживаются изображения до 30 МБ.", parent=self); return
-        folder = CHARACTER_DIR / card["id"]; folder.mkdir(parents=True, exist_ok=True)
-        destination = folder / f"{len(card.get('references', [])) + 1:02d}_{src.name}"
-        shutil.copy2(src, destination)
-        data = self._load_characters()
-        for item in data:
-            if item["id"] == card["id"]: item.setdefault("references", []).append(str(destination))
-        self._save_characters(data); self._refresh_characters(card["id"])
+            messagebox.showwarning("Выберите карточку", "Сначала выберите карточку.", parent=self)
+            return
+        self._add_reference_to_card(card["id"])
 
     def _open_reference(self) -> None:
         card = self._selected_card()
