@@ -15,11 +15,14 @@ $Names = @(
     'local_agent\studio_static\app.js',
     'tests\test_studio.py',
     'tests\test_prompt_pipeline.py',
+    'tests\test_studio_assembly.py',
+    'tests\test_studio_jobs_cancellation.py',
+    'tests\test_studio_live_blender.py',
     'run_blender_studio.bat',
     'rollback_blender_studio.ps1',
     'docs\studio_ui_release.md'
 )
-$Backup = Join-Path $Target ("backup-studio-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$Backup = Join-Path $Target ("backup-studio-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + "-" + [guid]::NewGuid().ToString("N").Substring(0,8))
 foreach ($Name in $Names) {
     $From = Join-Path $Source $Name
     if (!(Test-Path $From -PathType Leaf)) { throw "Файл отсутствует в архиве: $Name" }
