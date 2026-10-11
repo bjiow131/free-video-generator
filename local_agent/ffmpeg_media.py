@@ -104,10 +104,10 @@ class FFmpegMediaTools:
             raise MediaError("Reference image is not a readable image/video stream")
 
     def extract_last_frame(self, video_path: str, output_path: str) -> str:
-        self._probe(video_path)
         target = Path(output_path)
         if target.resolve() == Path(video_path).resolve():
             raise MediaError("Frame output path must not overwrite the source video")
+        self._probe(video_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         # Never let an old frame make a failed FFmpeg run appear successful.
         # Generate beside the target and replace it only after validation passes.
@@ -156,6 +156,10 @@ class FFmpegMediaTools:
     def concatenate(self, video_paths: list[str], output_path: str) -> str:
         if not video_paths:
             raise MediaError("No clips were provided for assembly")
+        target = Path(output_path)
+        resolved_target = target.resolve()
+        if any(Path(path).resolve() == resolved_target for path in video_paths):
+            raise MediaError("Assembly output path must not overwrite a source clip")
         signatures = []
         for path in video_paths:
             data = self._probe(path)
