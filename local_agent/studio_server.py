@@ -205,8 +205,14 @@ def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[
         if video.stat().st_size > MAX_VIDEO_BYTES:
             raise ReviewDeliveryError("Review video still exceeds 32 MB after compression")
         sheet = destination / "frames.jpg"
+        total_frames = job_info.get("total_frames")
+        if type(total_frames) is int and 12 <= total_frames <= 60_000:
+            stride = max(1, total_frames // 12)
+            vf = f"select='not(mod(n\,{stride}))',scale=180:-2,tile=4x3"
+        else:
+            vf = "fps=1,scale=180:-2,tile=4x3"
         _ffmpeg([str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                 "-i", str(video), "-vf", "fps=1,scale=180:-2,tile=4x3",
+                 "-i", str(video), "-vf", vf,
                  "-frames:v", "1", "-q:v", "4", str(sheet)], timeout=90)
         if not sheet.is_file() or sheet.stat().st_size < 150:
             raise ReviewDeliveryError("Contact sheet is missing")
