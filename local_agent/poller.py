@@ -1454,6 +1454,11 @@ def main() -> int:
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
+                        from local_agent.studio_server import telegram_flush_outbox
+                        telegram_flush_outbox(max_messages=4)
+                    except (ImportError, OSError, RuntimeError, ValueError):
+                        pass
+                    try:
                         if get_opt_in()["enabled"]:
                             updated = process_pending(
                                 client,
