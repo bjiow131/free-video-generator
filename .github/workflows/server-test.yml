@@ -42,6 +42,8 @@ jobs:
   verify:
     name: Sequential verification
     runs-on: ubuntu-latest
+    # Bound stalled pytest/media work so newer PR checks cannot queue indefinitely.
+    timeout-minutes: 45
     steps:
       - name: 1. Checkout source
         id: checkout
