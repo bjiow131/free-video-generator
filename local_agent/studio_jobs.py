@@ -130,7 +130,7 @@ class StudioJobs:
                 self._write(d, info)
             script = Path(__file__).resolve().with_name("studio_blender_scene.py")
             cmd = [str(blender), "--background", "--factory-startup", "--disable-autoexec",
-                   "--python", str(script), "--", str(d / "manifest.json"), str(d)]
+                   "--offline-mode", "--python-exit-code", "12", "--python", str(script), "--", str(d / "manifest.json"), str(d)]
             with (d / "blender.log").open("w", encoding="utf-8", errors="replace") as log:
                 proc = subprocess.Popen(cmd, cwd=str(d), stdin=subprocess.DEVNULL,
                                         stdout=log, stderr=subprocess.STDOUT, shell=False)
