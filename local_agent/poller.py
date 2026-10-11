@@ -759,13 +759,18 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         processed = {}
     previous = processed.get(repair_id)
     if isinstance(previous, dict):
-        if previous.get("manifest_sha") == manifest_sha:
+        if previous.get("manifest_sha") != manifest_sha:
+            # Keep the ORIGINAL manifest claim. Reusing a repair ID must not
+            # rewrite either its durable replay history or its GitHub result.
+            print(f"Repair {repair_id} rejected: immutable repair ID reused.")
             return state
-        result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_id_reused_with_different_manifest"}
-        publish_repair_result(result)
-        processed[repair_id] = {"manifest_sha": manifest_sha, "status": "rejected"}
-        state = {**state, "processed_repairs": dict(list(processed.items())[-100:])}
-        _save_state(state)
+        if previous.get("status") == "in_progress":
+            # The process died or was interrupted before persisting a final
+            # outcome. Never execute the same patch again on restart.
+            print(f"Repair {repair_id} interrupted; inspect the local worktree and result outbox.")
+            processed[repair_id] = {**previous, "status": "interrupted"}
+            state = {**state, "processed_repairs": processed}
+            _save_state(state)
         return state
 
     def record(status: str) -> dict[str, Any]:
@@ -828,6 +833,10 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         elif not _not_expired(type("RepairExpiry", (), {"expires_at": manifest["expires_at"], "created_at": manifest["created_at"]})()):
             result = {"task_id": f"repair-{repair_id}", "status": "rejected", "reason": "repair_expired_while_waiting_for_approval"}
         else:
+            # Claim the immutable repair BEFORE touching Git or executing pytest.
+            # A crash must never replay an unknown-result repair automatically.
+            state = record("in_progress")
+            _save_state(state)
             details = _apply_patch(patch, f"repair-{repair_id}", expected_base_sha=manifest["base_commit_sha"])
             result = {"task_id": f"repair-{repair_id}", "status": details.get("status", "unknown"), "details": details}
             if details.get("status") == "completed" and details.get("repair_commit"):
