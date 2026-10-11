@@ -572,7 +572,7 @@ class TestLocalWindowsContracts:
 
 
 class TestTaskRecoveryNormalization:
-    def test_running_state_is_reset_to_pending_on_load(self, tmp_path, monkeypatch):
+    def test_running_state_is_not_rewritten_by_live_task_manager_load(self, tmp_path, monkeypatch):
         from core.task_manager import TaskManager
         from models.task import SimpleVideoTask
         monkeypatch.setattr("core.task_manager.get_working_dir", lambda: str(tmp_path))
@@ -580,7 +580,8 @@ class TestTaskRecoveryNormalization:
         tm = TaskManager("recover-1")
         tm.create(state)
         loaded = tm.load()
-        assert loaded.status == "pending"
+        # Ordinary reads must not treat a still-running task as a restart.
+        assert loaded.status == "running"
 
 
 # ═══════════════════════════════════════════════════
