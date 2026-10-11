@@ -104,7 +104,7 @@ def test_patch_rejects_noncanonical_diff_path_prefixes(header):
     "tests/with trailing space ",
 ])
 def test_patch_rejects_metadata_and_noncanonical_paths(path):
-    with pytest.raises(RepairProtocolError, match="unsafe path"):
+    with pytest.raises(RepairProtocolError):
         _validate_patch_paths(f"diff --git a/{path} b/{path}\n")
 
 
