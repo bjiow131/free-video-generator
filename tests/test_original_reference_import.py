@@ -52,3 +52,23 @@ def test_rejects_reference_for_other_character(tmp_path):
     with pytest.raises(CharacterPassportImportError):
         import_character_passport(passport, tmp_path / "library",
             original_reference_manifests=[manifest], original_asset_root=original)
+
+def test_repeat_import_does_not_duplicate_references(tmp_path):
+    original = tmp_path / "original"
+    original.mkdir()
+    image = original / "front.png"
+    image.write_bytes(b"original")
+    manifest = original / "manifest.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1, "asset_id": "mia", "origin": "project_generated",
+        "view": "front", "file": "front.png",
+        "sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+    }), encoding="utf-8")
+    passport = tmp_path / "mia.json"
+    passport.write_text(json.dumps({"schema_version": 1, "character_id": "mia"}), encoding="utf-8")
+    for _ in range(2):
+        import_character_passport(passport, tmp_path / "library",
+            original_reference_manifests=[manifest], original_asset_root=original)
+    card = json.loads((tmp_path / "library" / "characters.json").read_text(encoding="utf-8"))[0]
+    assert len(card["references"]) == 1
+    assert len(card["original_reference_metadata"]) == 1
