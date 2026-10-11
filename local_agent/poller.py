@@ -30,6 +30,10 @@ from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
 )
 from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, process_pending, recover_interrupted
+from local_agent.mailbox_policy import (
+    load_runtime_control, set_runtime_pause, request_runtime_restart,
+    acknowledge_runtime_restart,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -1498,7 +1502,7 @@ def main() -> int:
                 if fetched is not None:
                     task, manifest_sha = fetched
                     decision = classify_manifest(state, task.task_id, manifest_sha)
-                    if decision == "new":
+                    if decision == "new" and not load_runtime_control()["paused"]:
                         state = _mailbox_idle_new_task(state)
                         # Persist a claim before doing any local work. If the process
                         # dies or result publication fails, never blindly replay it.
@@ -1575,8 +1579,9 @@ def main() -> int:
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
                         last_sha = manifest_sha
-                state = _poll_repair_once(client, state)
-                state = _mailbox_idle_tick(state, github_reachable=True)
+                if not load_runtime_control()["paused"]:
+                    state = _poll_repair_once(client, state)
+                    state = _mailbox_idle_tick(state, github_reachable=True)
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -1603,12 +1608,17 @@ def main() -> int:
                 print("\nPoller stopped.")
                 return 0
             except QueueTransportError as exc:
-                state = _mailbox_idle_tick(state, github_reachable=False)
+                if not load_runtime_control()["paused"]:
+                    state = _mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
-            except (OSError, ValueError) as exc:
-                state = _mailbox_idle_tick(state, github_reachable=False)
+            except (OSError, ValueError, MailboxPolicyError) as exc:
+                try:
+                    if not load_runtime_control()["paused"]:
+                        state = _mailbox_idle_tick(state, github_reachable=False)
+                except MailboxPolicyError:
+                    pass
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
