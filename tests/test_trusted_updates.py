@@ -264,3 +264,75 @@ def test_unattended_blender_command_remains_headless(tmp_path):
     import pytest
     with pytest.raises(RuntimeError, match="stop test"):
         bridge.run_task("forest_preview", project_name="headless_test")
+
+
+def test_telegram_notifications_disabled_until_paired(monkeypatch, tmp_path):
+    from local_agent import studio_server as studio
+    monkeypatch.setattr(studio, "_TELEGRAM_OUTBOX", tmp_path / "telegram_pending")
+    monkeypatch.setattr(studio, "_telegram_credentials", lambda: (None, None))
+    assert studio.telegram_status()["enabled"] is False
+    assert studio.telegram_queue_event("job:test1", "Test message") is False
+    assert not (tmp_path / "telegram_pending").exists()
+
+
+def test_telegram_queue_is_idempotent_and_can_retry(monkeypatch, tmp_path):
+    from local_agent import studio_server as studio
+    token = "123456:" + "A" * 35
+    sent = []
+    monkeypatch.setattr(studio, "_TELEGRAM_OUTBOX", tmp_path / "telegram_pending")
+    monkeypatch.setattr(studio, "_telegram_credentials", lambda: (token, "123"))
+    def mock_call(_token, method, data, **kwargs):
+        assert _token == token
+        assert method == "sendMessage"
+        sent.append(data)
+        return {"ok": True}
+    monkeypatch.setattr(studio, "_telegram_call", mock_call)
+    assert studio.telegram_queue_event("scene:abc", "Scene ready") is True
+    assert studio.telegram_queue_event("scene:abc", "Scene ready") is True
+    assert len(list((tmp_path / "telegram_pending").glob("*.json"))) == 1
+    assert studio.telegram_flush_outbox() == 1
+    assert sent == [{"chat_id": "123", "text": "Scene ready"}]
+    assert studio.telegram_flush_outbox() == 0
+
+
+def test_telegram_pair_only_recent_unique_private_start(monkeypatch):
+    import time
+    from local_agent import studio_server as studio
+    from local_agent import windows_credentials as creds
+    token = "123456:" + "A" * 35
+    values = {"token": token, "chat": None}
+    monkeypatch.setattr(studio, "_telegram_credentials",
+                        lambda: (values["token"], values["chat"]))
+    def fake_write(value, *, target):
+        if target == studio._TELEGRAM_CHAT_TARGET:
+            values["chat"] = value
+    monkeypatch.setattr(creds, "write_credential", fake_write)
+    sent = []
+    def fake_api(_token, method, data, **kwargs):
+        assert _token == token
+        if method == "getUpdates":
+            return {"ok": True, "result": [
+                {"message": {"date": int(time.time()), "text": "/start",
+                             "chat": {"id": 333, "type": "private"},
+                             "from": {"id": 333}}},
+                {"message": {"date": int(time.time()), "text": "/start",
+                             "chat": {"id": -888, "type": "group"},
+                             "from": {"id": 444}}},
+            ]}
+        if method == "sendMessage":
+            sent.append(data)
+            return {"ok": True}
+        raise AssertionError("Unapproved Telegram API method")
+    monkeypatch.setattr(studio, "_telegram_call", fake_api)
+    assert studio.telegram_pair_chat({})["paired"] is True
+    assert sent[0]["chat_id"] == "333"
+    assert values["chat"] == "333"
+
+
+def test_telegram_invalid_tokens_cannot_build_api_urls():
+    from local_agent import studio_server as studio
+    with pytest.raises(studio.TelegramAlertError):
+        studio._telegram_call("not-a-token", "sendMessage",
+                              {"chat_id": "1", "text": "test"})
+    with pytest.raises(studio.TelegramAlertError):
+        studio._telegram_call("123456:" + "A" * 35, "deleteWebhook", {})
