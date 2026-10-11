@@ -97,7 +97,14 @@ def save_settings(value: dict[str, bool]) -> dict[str, bool]:
 
 
 def discover_dropbox_root() -> Path | None:
-    """Recognize account folders reported by Dropbox Desktop or explicit local override."""
+    """Locate a real Windows Dropbox Desktop sync root without network tokens.
+
+    Prefer Dropbox's own account metadata. Some Windows Desktop builds store
+    info.json under LOCALAPPDATA instead of APPDATA. If the metadata is absent,
+    consider only standard Dropbox folder names under the current user profile,
+    AND only when the review folder that was created in Dropbox cloud already
+    exists. Never create or blindly assume a new folder is cloud-synced.
+    """
     override = os.environ.get("LOCAL_AGENT_DROPBOX_ROOT", "").strip()
     if override:
         candidate = Path(override).expanduser()
@@ -105,26 +112,42 @@ def discover_dropbox_root() -> Path | None:
         if not candidate.is_dir():
             return None
         return candidate.resolve()
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        config = Path(appdata) / "Dropbox" / "info.json"
-        if config.is_file() and not config.is_symlink():
-            try:
-                obj = json.loads(config.read_text(encoding="utf-8"))
-                if isinstance(obj, dict):
-                    for account in ("personal", "business"):
-                        info = obj.get(account)
-                        if isinstance(info, dict) and isinstance(info.get("path"), str):
-                            candidate = Path(info["path"])
-                            _safe_path(candidate)
-                            if candidate.is_dir():
-                                return candidate.resolve()
-            except (OSError, ValueError, TypeError, ReviewDeliveryError):
-                pass
-    # Avoid guessing a user folder: an unrelated directory named "Dropbox"
-    # could cause silently exporting private Blender scenes outside Dropbox.
-    return None
 
+    configs = []
+    for env in ("APPDATA", "LOCALAPPDATA"):
+        base = os.environ.get(env, "").strip()
+        if base:
+            configs.append(Path(base) / "Dropbox" / "info.json")
+    for config in configs:
+        if not config.is_file() or config.is_symlink() or config.stat().st_size > 65_536:
+            continue
+        try:
+            obj = json.loads(config.read_text(encoding="utf-8"))
+            if isinstance(obj, dict):
+                for account in ("personal", "business"):
+                    info = obj.get(account)
+                    if isinstance(info, dict) and isinstance(info.get("path"), str):
+                        candidate = Path(info["path"])
+                        _safe_path(candidate)
+                        if candidate.is_dir():
+                            return candidate.resolve()
+        except (OSError, ValueError, TypeError, ReviewDeliveryError):
+            continue
+
+    if os.name == "nt":
+        home = Path.home()
+        matches = []
+        for name in ("Dropbox", "Dropbox (Personal)", "Dropbox (Business)"):
+            candidate = home / name
+            reviews = candidate / REVIEW_FOLDER
+            if (candidate.is_dir() and reviews.is_dir()
+                    and not candidate.is_symlink() and not reviews.is_symlink()
+                    and not getattr(candidate, "is_junction", lambda: False)()
+                    and not getattr(reviews, "is_junction", lambda: False)()):
+                matches.append(candidate.resolve())
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 def review_status() -> dict[str, Any]:
     permitted = read_settings()["enabled"]
