@@ -336,3 +336,54 @@ def test_telegram_invalid_tokens_cannot_build_api_urls():
                               {"chat_id": "1", "text": "test"})
     with pytest.raises(studio.TelegramAlertError):
         studio._telegram_call("123456:" + "A" * 35, "deleteWebhook", {})
+
+
+
+def test_telegram_switch_blocks_send_and_deletes_old_queue(tmp_path, monkeypatch):
+    """Trusted-update smoke test: old Telegram pairing works without migration."""
+    from local_agent import studio_server as studio, mailbox_policy as policy
+    monkeypatch.setattr(policy, "_ROOT", tmp_path)
+    monkeypatch.setattr(policy, "POLICY_FILE", tmp_path / ".local_agent" / "mailbox_policy.json")
+    monkeypatch.setattr(policy, "TELEGRAM_NOTIFICATIONS", tmp_path / ".local_agent" / "telegram_notifications.json")
+    monkeypatch.setattr(studio, "_TELEGRAM_OUTBOX", tmp_path / ".local_agent" / "telegram_outbox")
+    monkeypatch.setattr(studio, "_telegram_credentials", lambda: ("dummy-token", "dummy-chat"))
+    sent = []
+    monkeypatch.setattr(studio, "_telegram_call",
+                        lambda _token, method, data, **kw: sent.append(data) or {"ok": True})
+    assert policy.load_telegram_notifications()["enabled"] is True
+    assert studio.telegram_queue_event("camera:before", "Notification pending")
+    assert len(list(studio._TELEGRAM_OUTBOX.glob("*.json"))) == 1
+    assert studio.telegram_set_notifications({"enabled": False})["notifications_enabled"] is False
+    assert len(list(studio._TELEGRAM_OUTBOX.glob("*.json"))) == 0
+    assert not studio.telegram_queue_event("camera:after", "Should not be queued")
+    assert studio.telegram_flush_outbox() == 0
+    assert not sent
+    assert studio.telegram_set_notifications({"enabled": True})["notifications_enabled"] is True
+    assert studio.telegram_queue_event("camera:new", "Allowed")
+    assert studio.telegram_flush_outbox() == 1
+    assert len(sent) == 1
+
+
+def test_mailbox_ten_minute_idle_notice_with_restart(tmp_path, monkeypatch):
+    """Trusted-update smoke test: idle is measured since new task, never since poll."""
+    from local_agent import poller, studio_server as studio
+    saved = []
+    queued = []
+    monkeypatch.setattr(poller, "_save_state", lambda value: saved.append(dict(value)))
+    monkeypatch.setattr(studio, "telegram_queue_event",
+                        lambda key, msg: queued.append((key, msg)) or True)
+    monkeypatch.setattr(studio, "telegram_flush_outbox", lambda **kw: 1)
+    state = poller._mailbox_idle_initialize({}, now=1000)
+    assert poller._mailbox_idle_tick(state, github_reachable=True, now=1599) == state
+    assert queued == []
+    state = poller._mailbox_idle_tick(state, github_reachable=True, now=1600)
+    assert state["mailbox_idle_notice_sent"] is True
+    assert "10 минут" in queued[-1][1]
+    assert poller._mailbox_idle_tick(state, github_reachable=True, now=2600) is state
+    assert poller._mailbox_idle_initialize(state, now=3000) is state
+    assert len(queued) == 1
+    state = poller._mailbox_idle_new_task(state, now=3001)
+    assert not state["mailbox_idle_notice_sent"]
+    state = poller._mailbox_idle_tick(state, github_reachable=True, now=3601)
+    assert state["mailbox_idle_notice_sent"] is True
+    assert len(queued) == 2
