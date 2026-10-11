@@ -1,6 +1,18 @@
 import asyncio
 
+import pytest
+
 from core.api.agnes_video import AgnesVideoAPI
+
+
+@pytest.fixture(autouse=True)
+def bypass_live_submit_throttle_for_mocked_http(monkeypatch):
+    """Unit tests mock HTTP, so they must not consume the real 1 RPM budget."""
+    class NoWaitLimiter:
+        def acquire(self):
+            return None
+
+    monkeypatch.setattr("core.api.agnes_video.get_video_submit_limiter", lambda: NoWaitLimiter())
 
 
 def test_submit_closes_http_response(monkeypatch):

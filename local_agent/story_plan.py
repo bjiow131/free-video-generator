@@ -16,7 +16,7 @@ def _text(value: Any, label: str, *, limit: int = MAX_TEXT, required: bool = Tru
 def validate_story_plan(data: Any) -> dict[str, Any]:
     """Validate story content as inert JSON data; never interpret it as executable code."""
     if not isinstance(data, dict): raise StoryPlanError("Story plan must be a JSON object.")
-    allowed = {"schema_version","project_name","title","logline","target_duration_seconds","language","character_bible","scenes","continuity_notes"}
+    allowed = {"schema_version","project_name","title","logline","target_duration_seconds","estimated_scene_duration_seconds","language","character_bible","scenes","continuity_notes"}
     if set(data)-allowed: raise StoryPlanError("Story plan contains unsupported top-level fields.")
     if isinstance(data.get("schema_version"), bool) or not isinstance(data.get("schema_version"), int) or data.get("schema_version") != 1: raise StoryPlanError("Unsupported story plan schema_version.")
     project_name=data.get("project_name")
@@ -66,6 +66,12 @@ def validate_story_plan(data: Any) -> dict[str, Any]:
           "sound":_text(scene.get("sound",""),f"Scene {index} sound",limit=600,required=False),"transition":_text(scene.get("transition","cut"),f"Scene {index} transition",limit=100),
           "visual_prompt":_text(scene.get("visual_prompt",""),f"Scene {index} visual_prompt",limit=2000,required=False)})
     if total>duration*2: raise StoryPlanError("Total scene duration is implausibly long compared with target_duration_seconds.")
+    # A saved validated plan contains this derived field. Accept it only when
+    # it matches a fresh calculation, so externally supplied totals cannot lie.
+    if "estimated_scene_duration_seconds" in data:
+        prior_total = data["estimated_scene_duration_seconds"]
+        if isinstance(prior_total, bool) or not isinstance(prior_total, int) or prior_total != total:
+            raise StoryPlanError("estimated_scene_duration_seconds conflicts with scenes.")
     result={"schema_version":1,"project_name":project_name,"title":title,"logline":logline,"target_duration_seconds":duration,"estimated_scene_duration_seconds":total,"language":language,"character_bible":bible,"scenes":scenes,"continuity_notes":notes}
     if len(json.dumps(result,ensure_ascii=False).encode("utf-8"))>MAX_PLAN_BYTES: raise StoryPlanError("Validated story plan exceeds the 48 KB limit.")
     return result

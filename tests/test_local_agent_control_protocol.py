@@ -74,14 +74,14 @@ def test_report_writer_creates_local_json(tmp_path: Path):
 
 
 def test_apply_patch_accepts_bounded_relative_diff():
-    patch = "diff --git a/example.txt b/example.txt\\n--- a/example.txt\\n+++ b/example.txt\\n@@ -1 +1 @@\\n-old\\n+new\\n"
+    patch = "diff --git a/local_agent/example.txt b/local_agent/example.txt\n--- a/local_agent/example.txt\n+++ b/local_agent/example.txt\n@@ -1 +1 @@\n-old\n+new\n"
     task = parse_task(valid_task(operation="apply_patch", arguments={"patch": patch}))
     assert task.operation == "apply_patch"
 
 
 @pytest.mark.parametrize("path", ["/outside.txt", "../outside.txt", "C:/outside.txt", ".git/config"])
 def test_apply_patch_rejects_unsafe_paths(path):
-    patch = f"diff --git a/{path} b/{path}\\n--- a/{path}\\n+++ b/{path}\\n@@ -1 +1 @@\\n-old\\n+new\\n"
+    patch = f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-old\n+new\n"
     with pytest.raises(ProtocolError):
         parse_task(valid_task(operation="apply_patch", arguments={"patch": patch}))
 

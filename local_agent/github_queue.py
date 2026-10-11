@@ -163,11 +163,28 @@ class GitHubQueueClient:
         except requests.RequestException as exc:
             raise QueueTransportError(f"GitHub request failed: {type(exc).__name__}") from exc
         if existing.status_code == 200:
+            # Task IDs are immutable. GitHub's contents API permits replacing a
+            # result when its blob SHA is supplied, but doing so would destroy
+            # the original completion evidence on retries or ID collisions.
             try:
-                body["sha"] = existing.json()["sha"]
-            except (ValueError, KeyError, TypeError) as exc:
-                raise QueueTransportError("Could not read existing result metadata.") from exc
-        elif existing.status_code != 404:
+                item = existing.json()
+                if item.get("type") != "file" or item.get("encoding") != "base64":
+                    raise ValueError("existing mailbox result is not a regular file")
+                existing_bytes = base64.b64decode(
+                    "".join(item["content"].split()), validate=True
+                )
+                existing_sha = str(item["sha"])
+            except (ValueError, KeyError, TypeError, UnicodeError) as exc:
+                raise QueueTransportError("Could not validate existing result content.") from exc
+            if existing_bytes != encoded_bytes:
+                raise QueueTransportError(
+                    "Immutable result ID already exists with different content; "
+                    "refusing to overwrite original evidence."
+                )
+            # Return a distinct reference, not an invented commit SHA. GitHub
+            # reports the existing file's blob SHA, not its original commit SHA.
+            return f"existing-result:{existing_sha}"
+        if existing.status_code != 404:
             raise QueueTransportError(f"GitHub API returned HTTP {existing.status_code}.")
         response = self._request("PUT", api_path, json=body)
         try:

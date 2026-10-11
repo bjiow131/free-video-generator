@@ -512,7 +512,7 @@ class TestTaskIdSafety:
 class TestLocalEntrypoints:
     def test_local_server_module_is_importable(self):
         from server import app
-        assert app.title == "AI Studio API"
+        assert app.title == "Agnes Video Generator"
 
 
 class TestSimpleVideoPersistence:
@@ -557,7 +557,9 @@ class TestLocalWindowsContracts:
     def test_start_windows_launcher_points_to_local_server(self):
         from pathlib import Path
         bat = Path("start_windows.bat").read_text(encoding="utf-8")
-        assert 'curl -s http://127.0.0.1:8765/health' in bat
+        assert 'curl -fsS --max-time 2 http://127.0.0.1:8765/health' in bat
+        assert 'WAIT_ATTEMPTS' in bat
+        assert ':startup_failed' in bat
         assert 'http://127.0.0.1:8765' in bat
         assert '.venv\\Scripts\\python.exe' in bat
         assert 'start "" /b ".venv\\Scripts\\python.exe" server.py' in bat
@@ -570,7 +572,7 @@ class TestLocalWindowsContracts:
 
 
 class TestTaskRecoveryNormalization:
-    def test_running_state_is_reset_to_pending_on_load(self, tmp_path, monkeypatch):
+    def test_running_state_is_not_rewritten_by_live_task_manager_load(self, tmp_path, monkeypatch):
         from core.task_manager import TaskManager
         from models.task import SimpleVideoTask
         monkeypatch.setattr("core.task_manager.get_working_dir", lambda: str(tmp_path))
@@ -578,7 +580,8 @@ class TestTaskRecoveryNormalization:
         tm = TaskManager("recover-1")
         tm.create(state)
         loaded = tm.load()
-        assert loaded.status == "pending"
+        # Ordinary reads must not treat a still-running task as a restart.
+        assert loaded.status == "running"
 
 
 # ═══════════════════════════════════════════════════
@@ -601,9 +604,9 @@ class TestAgnesCurrentVideoProtocol:
         image.write_bytes(b"fake-png")
         api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
 
-        async def fake_submit(payload, mode_desc):
+        async def fake_submit(payload, mode_desc, progress_callback=None):
             assert payload["model"] == "agnes-video-2.5-flash"
-            assert payload["mode"] == "img2video"
+            assert payload["mode"] == "keyframe"
             assert payload["seconds"] == "5"
             assert payload["size"] == "720P"
             assert payload["aspect_ratio"] == "16:9"
@@ -621,6 +624,7 @@ class TestAgnesCurrentVideoProtocol:
                 duration=5,
                 width=1152,
                 height=648,
+                mode="i2v",
             )
         )
         assert video_id == "video_test"
@@ -666,7 +670,7 @@ class TestAgnesModernVideoModes:
         from core.api.agnes_video import AgnesVideoAPI
         api = AgnesVideoAPI("test-key", model="agnes-video-2.5-flash")
         submitted = {}
-        async def fake_submit(payload, mode_desc):
+        async def fake_submit(payload, mode_desc, progress_callback=None):
             submitted.update(payload)
             return "video-test"
         monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
@@ -714,11 +718,16 @@ class TestAgnesCurrentImageDefaults:
                 return None
             def json(self):
                 return {"data": [{"url": "https://example.test/image.png"}]}
+            def close(self):
+                pass
 
         class FakeSession:
             def post(self, *args, **kwargs):
                 captured["payload"] = kwargs["json"]
                 return FakeResponse()
+
+            def close(self):
+                pass
 
         monkeypatch.setattr("core.api.agnes_image._make_session", lambda: FakeSession())
         monkeypatch.setattr(
@@ -737,10 +746,10 @@ class TestAgnesCurrentImageDefaults:
 class TestVideoInputValidation:
     def test_supported_dimensions_are_whitelisted(self):
         from server import SUPPORTED_VIDEO_DIMENSIONS, _validate_video_dimensions
-        assert (1152, 648) in SUPPORTED_VIDEO_DIMENSIONS
-        assert (768, 1152) in SUPPORTED_VIDEO_DIMENSIONS
-        assert (1024, 1024) in SUPPORTED_VIDEO_DIMENSIONS
-        _validate_video_dimensions(1152, 648)
+        assert {(1280, 720), (720, 1280), (720, 720)} == SUPPORTED_VIDEO_DIMENSIONS
+        _validate_video_dimensions(1280, 720)
+        _validate_video_dimensions(720, 1280)
+        _validate_video_dimensions(720, 720)
 
     def test_unsupported_dimensions_are_rejected(self):
         import pytest
@@ -824,5 +833,6 @@ class TestLocalSecurityContracts:
 
     def test_loopback_host_policy_is_explicit(self):
         import server
-        assert "127.0.0.1:8765" in server._LOCAL_ALLOWED_HOSTS
-        assert "localhost:8765" in server._LOCAL_ALLOWED_HOSTS
+        assert server._request_host_allowed("127.0.0.1:8765")
+        assert server._request_host_allowed("localhost:8765")
+        assert not server._request_host_allowed("untrusted.example:8765")

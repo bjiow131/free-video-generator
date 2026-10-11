@@ -4,7 +4,11 @@ from core.pipelines import BasePipeline
 
 
 def test_generate_subtitles_uses_thread_for_ffprobe(monkeypatch, tmp_path):
-    pipeline = object.__new__(BasePipeline)
+    class DummyPipeline(BasePipeline):
+        async def run(self, state):
+            return ""
+
+    pipeline = object.__new__(DummyPipeline)
     pipeline.task_manager = type("TM", (), {"task_dir": str(tmp_path)})()
     called = {"to_thread": False}
 

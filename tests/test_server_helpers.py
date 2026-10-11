@@ -89,7 +89,8 @@ def test_cancel_after_acquire_releases_slot_without_resetting_running_state(monk
         task = asyncio.create_task(
             server._run_pipeline_with_concurrency(pipeline, state, manager)
         )
-        await started.wait()
+        # Fail with a useful assertion instead of hanging the entire CI suite.
+        await asyncio.wait_for(started.wait(), timeout=3)
         task.cancel()
 
         with pytest.raises(asyncio.CancelledError):

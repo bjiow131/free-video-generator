@@ -7,7 +7,7 @@ from core.pipelines.simple_video import SimpleVideoPipeline
 
 def test_save_task_removes_partial_file_on_write_failure(monkeypatch, tmp_path):
     pipeline = object.__new__(SimpleVideoPipeline)
-    pipeline.working_dir = str(tmp_path)
+    pipeline.task_manager = type("TM", (), {"task_dir": str(tmp_path)})()
 
     real_dump = json.dump
     def fail_dump(*args, **kwargs):

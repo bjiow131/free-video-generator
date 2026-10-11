@@ -135,8 +135,8 @@ async def test_upload_magic_and_content_type_validation(tmp_path, monkeypatch):
 
 
 def test_bg_color_parsing():
-    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 128)
-    assert server._parse_bg_color("black@50") == (0, 0, 0, 128)
+    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 127)
+    assert server._parse_bg_color("black@50") == (0, 0, 0, 127)
     assert server._parse_bg_color("(1, 2, 3, 4)") == (1, 2, 3, 4)
     assert server._parse_bg_color([1, 2, 3]) == (1, 2, 3)
     assert server._parse_bg_color("transparent") is None
@@ -325,7 +325,10 @@ def test_history_ui_does_not_embed_task_id_in_inline_javascript():
     html = Path(__file__).resolve().parents[1] / "static" / "ai-studio.html"
     source = html.read_text(encoding="utf-8")
     assert 'onclick="openResult' not in source
-    assert "escapeHtml(x.status)" in source
+    assert "escapeHtml(statusText)" in source
+    assert "data-task-id=" in source
+    assert "escapeHtml(x.task_id)" in source
+    assert "document.addEventListener('click',event=>" in source
 
 
 def test_concat_audio_overlay_tracks_original_source_clips():
