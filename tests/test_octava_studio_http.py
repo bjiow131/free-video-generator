@@ -143,6 +143,35 @@ class LocalKeyHTTPTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("error", data)
 
+    def test_agent_restart_local_origin_only(self):
+        with patch("local_agent.studio_server.request_runtime_restart",
+                   return_value={"restart_pending": True}) as request:
+            status, _ = self.fetch("POST", "/api/agent-restart", {}, include_origin=False)
+            self.assertEqual(status, 403)
+            request.assert_not_called()
+            status, data = self.fetch("POST", "/api/agent-restart", {})
+            self.assertEqual(status, 202)
+            self.assertEqual(data, {"restart_pending": True})
+            request.assert_called_once_with({})
+
+    def test_agent_pause_local_origin_only(self):
+        with patch("local_agent.studio_server.set_runtime_pause",
+                   return_value={"paused": True}) as pause:
+            status, _ = self.fetch("POST", "/api/agent-pause", {"paused": True},
+                                   include_origin=False)
+            self.assertEqual(status, 403)
+            pause.assert_not_called()
+            status, data = self.fetch("POST", "/api/agent-pause", {"paused": True})
+            self.assertEqual(status, 200)
+            self.assertEqual(data, {"paused": True})
+
+    def test_agent_control_rejects_extra_fields(self):
+        with patch("local_agent.studio_server.set_runtime_pause") as pause:
+            status, _ = self.fetch("POST", "/api/agent-pause",
+                                   {"paused": True, "command": "powershell.exe"})
+            self.assertEqual(status, 400)
+            pause.assert_not_called()
+
     def test_extra_fields_forbidden(self):
         with patch("local_agent.studio_server.replace_key") as save:
             status, _ = self.fetch("POST", "/api/octava-key", {"api_key": "secret-123456789", "command": "rm -rf"})
