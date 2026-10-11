@@ -26,7 +26,7 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
 if not exist "%BLENDER_EXECUTABLE%" (
   echo [ERROR] Blender was not found at:
   echo %BLENDER_EXECUTABLE%
-  echo Edit BLENDER_EXECUTABLE in run_blender_agent.bat if Blender is installed elsewhere.
+  echo Set BLENDER_EXECUTABLE to the full path of blender.exe and retry.
   pause
   exit /b 1
 )
