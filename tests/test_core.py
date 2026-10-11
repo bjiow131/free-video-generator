@@ -512,7 +512,7 @@ class TestTaskIdSafety:
 class TestLocalEntrypoints:
     def test_local_server_module_is_importable(self):
         from server import app
-        assert app.title == "AI Studio API"
+        assert app.title == "Agnes Video Generator"
 
 
 class TestSimpleVideoPersistence:
