@@ -118,6 +118,31 @@ class LocalKeyHTTPTests(unittest.TestCase):
             self.assertEqual(data, {"enabled": enabled})
             save.assert_called_once_with({"enabled": enabled})
 
+    def test_telegram_notifications_status_and_toggle(self):
+        with patch("local_agent.studio_server.load_notifications", return_value={"enabled": False}):
+            status, data = self.fetch("GET", "/api/telegram-notifications")
+        self.assertEqual(status, 200)
+        self.assertEqual(data, {"notifications_enabled": False})
+        with patch("local_agent.studio_server.telegram_set_notifications",
+                   return_value={"notifications_enabled": True}) as setter:
+            status, data = self.fetch("POST", "/api/telegram-notifications", {"enabled": True})
+        self.assertEqual(status, 200)
+        self.assertEqual(data, {"notifications_enabled": True})
+        setter.assert_called_once_with({"enabled": True})
+
+    def test_telegram_notification_toggle_requires_same_origin(self):
+        with patch("local_agent.studio_server.telegram_set_notifications") as setter:
+            status, _ = self.fetch("POST", "/api/telegram-notifications",
+                                   {"enabled": False}, include_origin=False)
+        self.assertEqual(status, 403)
+        setter.assert_not_called()
+
+    def test_telegram_notification_toggle_rejects_extra_fields(self):
+        status, data = self.fetch("POST", "/api/telegram-notifications",
+                                  {"enabled": False, "bot_token": "should-not-store"})
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
+
     def test_extra_fields_forbidden(self):
         with patch("local_agent.studio_server.replace_key") as save:
             status, _ = self.fetch("POST", "/api/octava-key", {"api_key": "secret-123456789", "command": "rm -rf"})
