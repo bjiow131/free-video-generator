@@ -10,8 +10,8 @@ $shortcut.TargetPath = $target
 $shortcut.WorkingDirectory = $root
 $shortcut.Description = 'Start the local Blender Work Agent; no remote connection.'
 $shortcut.WindowStyle = 1
-$blender = 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe'
-if (Test-Path -LiteralPath $blender) { $shortcut.IconLocation = $blender + ',0' }
+$blender = $env:BLENDER_EXECUTABLE
+if ($blender -and (Test-Path -LiteralPath $blender -PathType Leaf)) { $shortcut.IconLocation = $blender + ',0' }
 $shortcut.Save()
 Write-Host ''
 Write-Host 'Autostart installed for the current Windows user.'
