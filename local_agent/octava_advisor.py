@@ -44,9 +44,16 @@ def request_advice(prompt: str, *, transport=None) -> dict:
     The transport hook is for deterministic offline tests.
     """
     question = validate_prompt(prompt)
-    if os.environ.get("LOCAL_AGENT_ALLOW_OCTAVA") != "1":
+    # Re-read the Windows vault on EACH request, including in a long-running
+    # GitHub poller process. A locally saved key is explicit user opt-in.
+    # Legacy environment-only use retains its explicit opt-in flag.
+    from local_agent.octava_credentials import OctavaKeyError, read_key
+    try:
+        key, source = read_key()
+    except OctavaKeyError:
+        raise OctavaAdviceError("OctavAPI credential storage is unavailable") from None
+    if source != "windows_vault" and os.environ.get("LOCAL_AGENT_ALLOW_OCTAVA") != "1":
         raise OctavaAdviceError("OctavAPI calls are disabled until LOCAL_AGENT_ALLOW_OCTAVA=1")
-    key = os.environ.get("OCTAVA_API_KEY", "")
     if not key or key != key.strip() or any(c in key for c in "\n\r"):
         raise OctavaAdviceError("OCTAVA_API_KEY is missing or malformed")
     model = os.environ.get("OCTAVA_MODEL", "gpt-6-luna")
