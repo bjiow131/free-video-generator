@@ -249,6 +249,8 @@ def test_apply_patch_runs_tests_and_commits_only_in_isolated_worktree(tmp_path, 
     git("commit", "-m", "base")
     base = git("rev-parse", "HEAD").stdout.strip()
     monkeypatch.setattr(poller, "ROOT", project)
+    # The isolated fixture intentionally contains a single smoke test.
+    monkeypatch.setattr(poller, "test_command", lambda suite, root: [sys.executable, "-m", "pytest", "-q", "tests/test_smoke_repair.py"])
 
     patch = (
         "diff --git a/tests/test_smoke_repair.py b/tests/test_smoke_repair.py\n"
