@@ -1,0 +1,139 @@
+"""Offline tests for opt-in, manifest integrity, rollback and replay safety."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from local_agent import trusted_updates as update
+
+
+@pytest.fixture
+def location(monkeypatch, tmp_path):
+    monkeypatch.setattr(update, "ROOT", tmp_path)
+    monkeypatch.setattr(update, "OPT_IN", tmp_path / ".local_agent" / "trusted_updates_enabled.json")
+    monkeypatch.setattr(update, "STATE_DIR", tmp_path / ".local_agent" / "trusted_updates")
+    monkeypatch.setattr(update, "RECOVERY", tmp_path / ".local_agent" / "trusted_update_recovery.json")
+    return tmp_path
+
+
+def manifest(files=None, **overrides):
+    now = datetime.now(timezone.utc)
+    data = {
+        "schema_version": 1,
+        "update_id": "trust-test-01",
+        "created_at": (now - timedelta(minutes=1)).isoformat(),
+        "expires_at": (now + timedelta(minutes=10)).isoformat(),
+        "source_repo": update.SOURCE_REPO,
+        "commit_sha": "a" * 40,
+        "files": files or [{"path": "run_github_mailbox_agent.bat", "sha256": "b" * 64}],
+    }
+    data.update(overrides)
+    return data
+
+
+def test_disabled_by_default_until_explicit_local_ui_consent(location):
+    assert update.get_opt_in() == {"enabled": False}
+    assert update.set_opt_in({"enabled": True}) == {"enabled": True}
+    assert update.get_opt_in()["enabled"]
+    assert update.set_opt_in({"enabled": False}) == {"enabled": False}
+
+
+@pytest.mark.parametrize("value", [{}, {"enabled": 1}, {"enabled": "true"},
+                                   {"enabled": True, "command": "cmd"}, None])
+def test_reject_bad_opt_in_value(location, value):
+    with pytest.raises(update.TrustedUpdateError):
+        update.set_opt_in(value)
+
+
+def test_manifest_restricts_file_paths_and_untrusted_sources():
+    valid = manifest()
+    assert update.parse_manifest(json.dumps(valid).encode())["update_id"] == "trust-test-01"
+    for changed in [
+        manifest(source_repo="attacker/repo"),
+        manifest(commit_sha="main"),
+        manifest(update_id="../unsafe"),
+        manifest(files=[{"path": "../../Windows/System32/cmd.exe", "sha256": "b"*64}]),
+        manifest(files=[{"path": "local_agent/windows_credentials.py", "sha256": "b"*64}]),
+        manifest(files=[{"path": "run_github_mailbox_agent.bat", "sha256": "invalid"}]),
+        manifest(files=[{"path": "run_github_mailbox_agent.bat", "sha256": "b"*64}]*2),
+        manifest(expires_at=(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat()),
+    ]:
+        with pytest.raises(update.TrustedUpdateError):
+            update.parse_manifest(json.dumps(changed).encode())
+
+
+def test_update_stages_and_keeps_backup(location):
+    target = location / "run_github_mailbox_agent.bat"
+    target.write_bytes(b"old safe launcher")
+    payload = b"@echo off\nset LOCAL_AGENT_WORKSPACE=C:\\AI-Agent-Workspace\n"
+    params = manifest(files=[{"path": "run_github_mailbox_agent.bat",
+                               "sha256": hashlib.sha256(payload).hexdigest()}])
+    out = update.apply_update(params, fetch_file=lambda *args: payload, run_tests=False)
+    assert out["status"] == "completed"
+    assert out["restart_needed"] is True
+    assert target.read_bytes() == payload
+    assert (location / ".local_agent" / "trusted_updates" / "trust-test-01" /
+            "backup" / "run_github_mailbox_agent.bat").read_bytes() == b"old safe launcher"
+    assert not update.RECOVERY.exists()
+
+
+def test_failed_postinstall_tests_restore_original_files(location, monkeypatch):
+    target = location / "run_github_mailbox_agent.bat"
+    target.write_bytes(b"old original")
+    payload = b"@echo off\nexit /b 0\n"
+    params = manifest(files=[{"path": "run_github_mailbox_agent.bat",
+                               "sha256": hashlib.sha256(payload).hexdigest()}])
+    monkeypatch.setattr(update.subprocess, "run",
+                        lambda *_a, **_kw: SimpleNamespace(returncode=1))
+    with pytest.raises(update.TrustedUpdateError, match="tests failed"):
+        update.apply_update(params, fetch_file=lambda *args: payload)
+    assert target.read_bytes() == b"old original"
+    assert not update.RECOVERY.exists()
+
+
+def test_recovery_after_interrupted_update(location):
+    dest = location / "run_github_mailbox_agent.bat"
+    dest.write_text("new-broken")
+    backup = location / ".local_agent" / "trusted_updates" / "trust-test-01" / "backup"
+    backup.mkdir(parents=True)
+    (backup / dest.name).write_text("old-working")
+    update._write_json(update.RECOVERY, {"update_id": "trust-test-01",
+                                        "files": [{"path": dest.name, "existed": True}]})
+    assert update.recover_interrupted() is True
+    assert dest.read_text() == "old-working"
+    assert update.recover_interrupted() is False
+
+
+def test_update_disallowed_with_no_local_consent(location, monkeypatch):
+    class NoRemote:
+        def __getattr__(self, _n):
+            raise AssertionError("Must not poll when disabled")
+    assert update.process_pending(NoRemote()) is None
+
+
+def test_update_id_cannot_be_replayed(location, monkeypatch):
+    update.set_opt_in({"enabled": True})
+    m = manifest()
+    state = update.STATE_DIR / "trust-test-01.json"
+    update._write_json(state, {"manifest_sha": "sha-one", "status": "completed"})
+    monkeypatch.setattr(update, "_fetch_manifest", lambda c: (m, "sha-one"))
+    assert update.process_pending(object()) is None
+    monkeypatch.setattr(update, "_fetch_manifest", lambda c: (m, "different-sha"))
+    with pytest.raises(update.TrustedUpdateError, match="reused"):
+        update.process_pending(object())
+
+
+def test_refuses_symlinked_permission(location):
+    external = location.parent / (location.name + "-external")
+    external.write_text('{"enabled":true}')
+    try:
+        update.OPT_IN.symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("Windows account cannot create symlinks")
+    with pytest.raises(update.TrustedUpdateError):
+        update.get_opt_in()
