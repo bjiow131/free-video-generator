@@ -15,7 +15,6 @@ from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[1]
 POLICY_FILE = _ROOT / '.local_agent' / 'mailbox_policy.json'
-_CALLS_FILE = _ROOT / '.local_agent' / 'octava_call_limit.json'
 _LOCK = threading.RLock()
 _POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests'}
 READ_ONLY_OPERATIONS = frozenset({
@@ -31,7 +30,6 @@ BLENDER_OPERATIONS = frozenset({
 TEST_OPERATIONS = frozenset({'test'})
 # Never allow unattended: apply_patch, open GUI, start/stop, backup, logs,
 # remotely provided code, unreviewed repair packages, or unknown operations.
-MAX_OCTAVA_CALLS_PER_UTC_DAY = 20
 
 
 class MailboxPolicyError(ValueError):
@@ -128,40 +126,11 @@ def is_auto_authorized(operation: str, policy: dict[str, bool] | None = None) ->
     return False
 
 
-def reserve_octava_call(now=None) -> int:
-    """Reserve a local, durable daily slot *before* the network API request.
+def reserve_octava_call(now=None) -> None:
+    """Backward-compatible no-op: no ChatGPT-side daily OctavAPI call limit.
 
-    Reservations are intentionally not refunded after network errors: the
-    provider may still have charged tokens. All jobs share the same local counter.
+    Authorization remains governed by the locally saved allow_octava policy.
+    The third-party provider may independently charge for tokens or impose
+    its own limits. Kept as a no-op for older poller/test integrations.
     """
-    from datetime import datetime, timezone
-    day = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).date().isoformat()
-    with _LOCK:
-        directory = _safe_directory()
-        _safe_file(_CALLS_FILE)
-        try:
-            blob = _CALLS_FILE.read_bytes()
-        except FileNotFoundError:
-            blob = b''
-        except OSError as exc:
-            raise MailboxPolicyError('Не удалось прочесть лимит запросов OctavAPI') from exc
-        if len(blob) > 1024:
-            raise MailboxPolicyError('Поврежден счётчик OctavAPI')
-        if blob:
-            try:
-                data = json.loads(blob)
-                if (not isinstance(data, dict) or set(data) != {'day', 'calls'} or
-                        not isinstance(data['day'], str) or type(data['calls']) is not int or
-                        data['calls'] < 0 or data['calls'] > MAX_OCTAVA_CALLS_PER_UTC_DAY):
-                    raise ValueError('invalid counter')
-            except (ValueError, TypeError, UnicodeError) as exc:
-                raise MailboxPolicyError('Поврежден счётчик OctavAPI; запрос заблокирован') from exc
-        else:
-            data = {'day': day, 'calls': 0}
-        if data['day'] != day:
-            data = {'day': day, 'calls': 0}
-        if data['calls'] >= MAX_OCTAVA_CALLS_PER_UTC_DAY:
-            raise MailboxPolicyError('Достигнут суточный лимит автоматических запросов OctavAPI (20)')
-        data['calls'] += 1
-        _atomic_write(_CALLS_FILE, (json.dumps(data) + '\n').encode('utf-8'))
-        return data['calls']
+    return None
