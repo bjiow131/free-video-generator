@@ -241,7 +241,7 @@ def test_checkpoint_rejects_project_directory_symlink_escape(tmp_path):
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("Directory symlinks are not available in this environment")
-    with pytest.raises(ValueError, match="outside the configured workspace"):
+    with pytest.raises(ValueError, match="must not be a symlink"):
         CheckpointStore(workspace, "symlink-test")
 
 
