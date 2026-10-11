@@ -5,6 +5,8 @@ cd /d "%~dp0"
 
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\github-venv"
 set "LOCAL_AGENT_ENABLE_GITHUB_MAILBOX=1"
+if not defined LOCAL_AGENT_WORKSPACE set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
+if not exist "%LOCAL_AGENT_WORKSPACE%" mkdir "%LOCAL_AGENT_WORKSPACE%" 2>nul
 if not defined LOCAL_AGENT_GITHUB_REPO set "LOCAL_AGENT_GITHUB_REPO=bjiow131/local-agent-mailbox"
 if not defined LOCAL_AGENT_GITHUB_REF set "LOCAL_AGENT_GITHUB_REF=main"
 
