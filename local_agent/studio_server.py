@@ -7,6 +7,7 @@ import binascii
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -136,7 +137,35 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path.startswith("/api/studio-video/"):
             try:
                 video = self.server.jobs.video(path.removeprefix("/api/studio-video/"))
-                return self._send(200, video.read_bytes(), "video/mp4")
+                size = video.stat().st_size
+                range_header = self.headers.get("Range", "")
+                start, end = 0, size - 1
+                if range_header:
+                    matched = re.fullmatch(r"bytes=(\d+)-(\d*)", range_header)
+                    if not matched:
+                        return self._json(416, {"error": "Invalid range"})
+                    start = int(matched.group(1))
+                    end = int(matched.group(2)) if matched.group(2) else size - 1
+                    if start >= size or end >= size or end < start:
+                        return self._json(416, {"error": "Out of range"})
+                self.send_response(206 if range_header else 200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(end - start + 1))
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}") if range_header else None
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                with video.open("rb") as stream:
+                    stream.seek(start)
+                    remaining = end - start + 1
+                    while remaining > 0:
+                        chunk = stream.read(min(65536, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+                return
             except StudioJobError as exc:
                 return self._json(404, {"error": str(exc)})
         if path == "/api/render-status":
@@ -203,6 +232,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if body.get("revision") != state["revision"]:
                     raise StudioConflict("Save edits before rendering")
                 return self._json(202, self.server.jobs.start(state, body.get("scene_id")))
+            if path == "/api/render-project":
+                state = self.server.store.load()
+                if body.get("revision") != state["revision"]:
+                    raise StudioConflict("Save edits before project assembly")
+                return self._json(202, self.server.jobs.compose(state))
             if path == "/api/cancel-scene":
                 return self._json(200, self.server.jobs.cancel(body.get("job_id")))
             if path == "/api/prepare":

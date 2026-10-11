@@ -19,7 +19,7 @@ foreach ($line in Get-Content (Join-Path $backupRoot 'new-files.txt') -Encoding 
     if (Test-Path $dest -PathType Leaf) { Remove-Item $dest -Force }
 }
 Get-ChildItem -LiteralPath $backupRoot -Recurse -File | Where-Object { $_.Name -ne 'new-files.txt' } | ForEach-Object {
-    $relative = [IO.Path]::GetRelativePath($backupRoot, $_.FullName)
+    $relative = $_.FullName.Substring($backupRoot.TrimEnd('\').Length + 1)
     $destination = Join-Path $targetRoot $relative
     New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
     Copy-Item $_.FullName $destination -Force

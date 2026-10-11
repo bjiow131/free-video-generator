@@ -105,10 +105,10 @@ class StudioJobs:
             directory = self._path(job_id)
             directory.mkdir(mode=0o700)
             (directory / "manifest.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
-            info = {"job_id": job_id, "scene_id": scene_id, "state": "queued",
+            info = {"job_id": job_id, "scene_id": scene_id, "kind": "scene", "state": "queued",
                     "message": "Ожидает Blender", "progress_percent": 0,
                     "rendered_frames": 0, "total_frames": plan["duration"] * plan["fps"],
-                    "label": plan["label"], "output": str(directory), "video_url": ""}
+                    "label": plan["label"], "created_at": time.time(), "output": str(directory), "video_url": ""}
             self._write(directory, info)
             latest_temp = self.root / (".latest-" + uuid.uuid4().hex + ".tmp")
             latest_temp.write_text(json.dumps({"job_id": job_id}), encoding="utf-8")
@@ -174,6 +174,100 @@ class StudioJobs:
                 self.cancelled.discard(job_id)
                 self._write(d, info)
 
+    def compose(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Assemble existing completed scene MP4s in saved storyboard order."""
+        scenes = state.get("scenes", [])
+        if not isinstance(scenes, list) or not 2 <= len(scenes) <= 80:
+            raise StudioJobError("Для монтажа требуется минимум две сцены")
+        with self.lock:
+            if self.active is not None:
+                raise StudioJobError("Другой рендер уже выполняется")
+            # Resolve only previously persisted, successfully completed scene jobs.
+            chosen = {}
+            for directory in sorted(self.root.iterdir(), key=lambda p: p.name):
+                if not directory.is_dir() or directory.is_symlink() or len(directory.name) != 32:
+                    continue
+                try:
+                    job = self.status(directory.name)
+                    if job.get("state") != "completed" or job.get("kind", "scene") != "scene":
+                        continue
+                    previous = chosen.get(job["scene_id"])
+                    if previous is None or job.get("created_at", 0) > previous[1].get("created_at", 0):
+                        chosen[job["scene_id"]] = (directory, job)
+                except (StudioJobError, ValueError, OSError, KeyError):
+                    continue
+            video_paths = []
+            configurations = []
+            for scene in scenes:
+                scene_id = scene["id"]
+                if scene_id not in chosen:
+                    raise StudioJobError(f"Сцена {scene_id} ещё не имеет готового MP4")
+                directory, job = chosen[scene_id]
+                video_paths.append(self.video(job["job_id"]))
+                configurations.append(json.loads((directory / "manifest.json").read_text(encoding="utf-8")))
+            settings = {(x["fps"], x["resolution"]) for x in configurations}
+            if len(settings) != 1:
+                raise StudioJobError("Для монтажа все сцены должны иметь одинаковые FPS и разрешение")
+            ffmpeg = shutil.which("ffmpeg")
+            if not ffmpeg:
+                raise StudioJobError("FFmpeg не найден в PATH")
+            job_id = uuid.uuid4().hex
+            directory = self._path(job_id)
+            directory.mkdir(mode=0o700)
+            total_frames = sum(x["fps"] * x["duration"] for x in configurations)
+            info = {"job_id": job_id, "scene_id": "project", "kind": "assembly", "state": "queued",
+                    "message": "Монтаж готовых сцен", "progress_percent": 0,
+                    "rendered_frames": 0, "total_frames": total_frames,
+                    "label": "Проект из готовых сцен", "created_at": time.time(), "output": str(directory), "video_url": ""}
+            self._write(directory, info)
+            latest_temp = self.root / (".latest-" + uuid.uuid4().hex + ".tmp")
+            latest_temp.write_text(json.dumps({"job_id": job_id}), encoding="utf-8")
+            os.replace(latest_temp, self.root / "latest.json")
+            self.active = job_id
+            threading.Thread(target=self._assemble, args=(info, video_paths, ffmpeg), daemon=True).start()
+            return dict(info)
+
+    def _assemble(self, info: dict[str, Any], video_paths: list[Path], ffmpeg: str):
+        job_id = info["job_id"]
+        directory = self._path(job_id)
+        try:
+            with self.lock:
+                info.update(state="running", message="FFmpeg собирает сцены по порядку")
+                self._write(directory, info)
+            cmd = [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+            for video in video_paths:
+                cmd.extend(["-i", str(video)])
+            inputs = "".join(f"[{i}:v:0]" for i in range(len(video_paths)))
+            cmd.extend(["-filter_complex", f"{inputs}concat=n={len(video_paths)}:v=1:a=0[outv]",
+                        "-map", "[outv]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart", str(directory / "scene.mp4")])
+            with (directory / "ffmpeg.log").open("w", encoding="utf-8", errors="replace") as log:
+                proc = subprocess.Popen(cmd, cwd=str(directory), stdin=subprocess.DEVNULL,
+                                        stdout=log, stderr=subprocess.STDOUT, shell=False)
+                with self.lock:
+                    self.process = proc
+                try:
+                    code = proc.wait(timeout=1800)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    raise StudioJobError("Монтаж превысил 30 минут")
+            if job_id in self.cancelled:
+                raise StudioJobError("Cancelled")
+            video = directory / "scene.mp4"
+            if code != 0 or not video.is_file() or video.stat().st_size < 100:
+                raise StudioJobError("FFmpeg не смог объединить сцены; см. ffmpeg.log")
+            info.update(state="completed", message="Все сцены собраны в MP4", progress_percent=100,
+                        rendered_frames=info["total_frames"], video_url="/api/studio-video/"+job_id)
+        except Exception as exc:
+            info.update(state="cancelled" if job_id in self.cancelled else "failed", message=str(exc)[:500])
+        finally:
+            with self.lock:
+                self.process = None
+                self.active = None
+                self.cancelled.discard(job_id)
+                self._write(directory, info)
+
     def cancel(self, job_id: str) -> dict[str, Any]:
         with self.lock:
             if self.active != job_id:
@@ -190,6 +284,6 @@ class StudioJobs:
         p = self._path(job_id) / "scene.mp4"
         if p.is_symlink() or not p.is_file() or not p.resolve().is_relative_to(self.root.resolve()):
             raise StudioJobError("Video missing or unsafe")
-        if p.stat().st_size > 500_000_000:
+        if p.stat().st_size > 100_000_000:
             raise StudioJobError("Video file too large")
         return p
