@@ -76,8 +76,59 @@ def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
 
 
 
+def doctor_with_supervisor() -> dict[str, Any]:
+    """Read-only Windows watchdog health; never reveal account names or secrets."""
+    result = doctor()
+    if os.name != "nt":
+        return result
+    autostart = False
+    scheduled = False
+    recent = []
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+            value, _ = winreg.QueryValueEx(key, "BlenderOctavaStudioSupervisor")
+        autostart = (isinstance(value, str) and
+                     "run_github_mailbox_agent.bat" in value.casefold() and
+                     str(ROOT).casefold() in value.casefold())
+    except (OSError, ImportError, ValueError):
+        pass
+    try:
+        found = subprocess.run(
+            ["schtasks.exe", "/Query", "/TN", "BlenderOctavaStudioSupervisor"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, timeout=8, check=False, shell=False)
+        scheduled = found.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    logfile = ROOT / ".local_agent" / "octava_supervisor.log"
+    if logfile.is_file() and not logfile.is_symlink():
+        try:
+            with logfile.open("rb") as stream:
+                stream.seek(max(0, logfile.stat().st_size - 5000))
+                # Only event categories, not arbitrary on-disk message text.
+                tail = stream.read(5000).decode("utf-8", errors="replace")
+            tags = ("Started mailbox service", "Started studio service",
+                    "Per-user Windows login autostart registered",
+                    "Scheduled supervisor recovery installed",
+                    "Scheduled recovery unavailable",
+                    "Trusted update installed; controlled restart")
+            recent = [tag for tag in tags if tag in tail]
+        except OSError:
+            pass
+    result["windows_supervisor"] = {
+        "autostart_after_user_login": autostart,
+        "scheduled_recovery_registered": scheduled,
+        "log_detected": logfile.is_file(),
+        "recent_event_types": recent,
+        "service_restart_check_seconds": 2,
+    }
+    return result
+
+
 SUPPORTED_HANDLERS = {
-    "doctor": doctor,
+    "doctor": doctor_with_supervisor,
     "preflight": preflight,
     "status": status,
     "logs": tail_logs,
