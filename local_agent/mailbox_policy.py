@@ -216,3 +216,79 @@ def telegram_notifications_enabled() -> bool:
         return load_telegram_notifications()["enabled"]
     except MailboxPolicyError:
         return False
+
+
+# Durable local controls shared across Studio, Telegram supervisor and mailbox worker.
+# These files contain no credentials or remote-provided shell commands.
+RUNTIME_CONTROL_FILE = _ROOT / ".local_agent" / "runtime_control.json"
+_MAX_RESTART_ID = 2**53 - 1
+
+
+def _validate_runtime_control(value: Any) -> dict[str, Any]:
+    expected = {"paused", "restart_requested", "restart_acknowledged"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise MailboxPolicyError("Некорректные параметры управления агентом")
+    if type(value["paused"]) is not bool:
+        raise MailboxPolicyError("Некорректный параметр паузы")
+    requested, acknowledged = value["restart_requested"], value["restart_acknowledged"]
+    if (type(requested) is not int or type(acknowledged) is not int or
+            not (0 <= acknowledged <= requested <= _MAX_RESTART_ID)):
+        raise MailboxPolicyError("Некорректное состояние перезапуска")
+    return {"paused": value["paused"], "restart_requested": requested,
+            "restart_acknowledged": acknowledged}
+
+
+def load_runtime_control() -> dict[str, Any]:
+    with _LOCK:
+        _safe_directory()
+        _safe_file(RUNTIME_CONTROL_FILE)
+        try:
+            raw = RUNTIME_CONTROL_FILE.read_bytes()
+        except FileNotFoundError:
+            return {"paused": False, "restart_requested": 0, "restart_acknowledged": 0}
+        except OSError as exc:
+            raise MailboxPolicyError("Не удалось прочитать состояние агента") from exc
+        if len(raw) > 256:
+            raise MailboxPolicyError("Состояние агента превышает допустимый размер")
+        try:
+            return _validate_runtime_control(json.loads(raw.decode("utf-8")))
+        except (ValueError, TypeError, UnicodeError) as exc:
+            raise MailboxPolicyError("Повреждено состояние агента") from exc
+
+
+def _save_runtime(value: dict[str, Any]) -> dict[str, Any]:
+    validated = _validate_runtime_control(value)
+    _atomic_write(RUNTIME_CONTROL_FILE,
+                  (json.dumps(validated, sort_keys=True) + "\n").encode("utf-8"))
+    return validated
+
+
+def set_runtime_pause(value: dict) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {"paused"} or type(value["paused"]) is not bool:
+        raise MailboxPolicyError("Ожидается paused: true/false")
+    with _LOCK:
+        return _save_runtime({**load_runtime_control(), "paused": value["paused"]})
+
+
+def request_runtime_restart(value: dict) -> dict[str, Any]:
+    if value != {}:
+        raise MailboxPolicyError("Запрос на перезапуск не должен содержать параметров")
+    with _LOCK:
+        current = load_runtime_control()
+        # Coalesce multiple outstanding clicks/commands into one controlled restart.
+        if current["restart_requested"] == current["restart_acknowledged"]:
+            if current["restart_requested"] >= _MAX_RESTART_ID:
+                raise MailboxPolicyError("Исчерпаны идентификаторы перезапуска")
+            current["restart_requested"] += 1
+            current = _save_runtime(current)
+        return {"restart_pending": True}
+
+
+def acknowledge_runtime_restart() -> bool:
+    """Return True only if a new restart request was consumed."""
+    with _LOCK:
+        current = load_runtime_control()
+        if current["restart_requested"] == current["restart_acknowledged"]:
+            return False
+        _save_runtime({**current, "restart_acknowledged": current["restart_requested"]})
+        return True

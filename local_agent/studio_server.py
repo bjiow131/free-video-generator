@@ -27,6 +27,7 @@ from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, save_policy,
     load_telegram_notifications, save_telegram_notifications,
     telegram_notifications_enabled,
+    load_runtime_control, set_runtime_pause, request_runtime_restart,
     get_trusted_update_opt_in as get_opt_in,
     set_trusted_update_opt_in as set_opt_in,
 )
@@ -716,6 +717,13 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, {"notifications_enabled": load_telegram_notifications()["enabled"]})
             except MailboxPolicyError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/agent-runtime":
+            try:
+                current = load_runtime_control()
+                return self._json(200, {"paused": current["paused"],
+                                        "restart_pending": current["restart_requested"] != current["restart_acknowledged"]})
+            except MailboxPolicyError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/telegram-transport":
             try:
                 return self._json(200, telegram_transport_settings())
@@ -800,7 +808,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -810,7 +818,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications") and length > 240):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and length > 240):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -830,6 +838,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             if path == "/api/dropbox-review":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
+            if path == "/api/agent-pause":
+                with self.server.mailbox_policy_lock:
+                    result = set_runtime_pause(body)
+                return self._json(200, {"paused": result["paused"]})
+            if path == "/api/agent-restart":
+                with self.server.mailbox_policy_lock:
+                    return self._json(202, request_runtime_restart(body))
             if path == "/api/telegram-notifications":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, telegram_set_notifications(body))

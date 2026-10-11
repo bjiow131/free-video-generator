@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import threading
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,10 @@ from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
 )
 from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, process_pending, recover_interrupted
+from local_agent.mailbox_policy import (
+    load_runtime_control, set_runtime_pause, request_runtime_restart,
+    acknowledge_runtime_restart,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -1388,6 +1393,32 @@ def _acquire_instance_lock(path: Path):
 # Task inactivity is not the same thing as a GitHub outage. A valid, previously
 # handled manifest must NOT reset this timer during routine polling.
 _MAILBOX_IDLE_SECONDS = 10 * 60
+_MAILBOX_HEARTBEAT = ROOT / ".local_agent" / "mailbox_loop_heartbeat"
+_MAILBOX_STALE_SECONDS = 15 * 60
+
+
+def _touch_mailbox_heartbeat() -> None:
+    """Supervisor checks this even when the GitHub API is unreachable."""
+    base = _ensure_agent_dir()
+    path = _MAILBOX_HEARTBEAT
+    if path.parent.resolve() != base or path.is_symlink():
+        raise RuntimeError("Unsafe mailbox heartbeat path")
+    path.touch(exist_ok=True)
+
+
+def _mailbox_is_stale(*, now_wall: float, started_at_wall: float) -> bool:
+    """Do not kill slow-but-bounded GitHub retries or a just-started worker."""
+    if now_wall - started_at_wall < _MAILBOX_STALE_SECONDS:
+        return False
+    try:
+        if _MAILBOX_HEARTBEAT.is_symlink():
+            return True
+        stamp = _MAILBOX_HEARTBEAT.stat().st_mtime
+    except OSError:
+        return True
+    return now_wall - stamp >= _MAILBOX_STALE_SECONDS
+
+
 
 
 def _mailbox_idle_initialize(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
@@ -1434,6 +1465,48 @@ def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
     except (ImportError, OSError, RuntimeError, ValueError):
         # Never stop GitHub task processing because Telegram is unavailable.
         return state
+
+
+
+def _legacy_supervisor_telegram_loop(stop_event: threading.Event) -> None:
+    """Compatibility: existing supervisors keep old code until relaunched.
+
+    The upgraded supervisor passes an env flag to avoid competing consumers.
+    """
+    while not stop_event.is_set():
+        try:
+            state = _load_state()
+            task_id = str(state.get("last_task_id", "нет"))[:100]
+            control = load_runtime_control()
+            _supervisor_telegram_poll_once(
+                "GitHub-агент работает. Приём задач: " +
+                ("пауза" if control["paused"] else "активен"),
+                "Последняя задача: " + task_id,
+                "Журнал supervisor доступен после перезапуска Windows-supervisor.",
+            )
+        except (RuntimeError, OSError, ValueError, ImportError, MailboxPolicyError):
+            pass
+        stop_event.wait(12)
+
+
+def _worker_restart_due() -> bool:
+    """Old supervisor understands exit code 75 and restarts both workers."""
+    state = load_runtime_control()
+    if state["restart_requested"] == state["restart_acknowledged"]:
+        return False
+    try:
+        from urllib.request import urlopen
+        port = int(os.environ.get("LOCAL_AGENT_STUDIO_PORT", "55313"))
+        if not 1024 <= port <= 65535:
+            return False
+        with urlopen(f"http://127.0.0.1:{port}/api/studio-latest", timeout=2) as response:
+            job = json.load(response).get("job") or {}
+        if job.get("state") in ("running", "queued"):
+            return False
+    except (OSError, ValueError, TypeError):
+        # Studio itself may be down; a restart should restore it.
+        pass
+    return acknowledge_runtime_restart()
 
 
 def main() -> int:
@@ -1486,9 +1559,25 @@ def main() -> int:
     print("Local Studio policy controls unattended tasks; unreviewed code patches are NEVER auto-approved.")
     print("Run Blender integration tests on the Windows computer before production use.")
 
+    fallback_stop = threading.Event()
+    fallback_thread = None
+    if os.environ.get("LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE") != "1":
+        fallback_thread = threading.Thread(
+            target=_legacy_supervisor_telegram_loop, args=(fallback_stop,),
+            name="octava-telegram-worker-compat", daemon=True,
+        )
+        fallback_thread.start()
+    if fallback_thread is not None:
+        _telegram_signal("mailbox-online", str(int(time.time())),
+                         "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
+
     try:
         while True:
             try:
+                _touch_mailbox_heartbeat()
+                if _worker_restart_due():
+                    print("Controlled operator restart requested; returning code 75.")
+                    return 75
                 result_outbox = _result_outbox()
                 pending_before_flush = result_outbox.pending_task_ids()
                 pending_results = result_outbox.flush(client)
@@ -1498,7 +1587,7 @@ def main() -> int:
                 if fetched is not None:
                     task, manifest_sha = fetched
                     decision = classify_manifest(state, task.task_id, manifest_sha)
-                    if decision == "new":
+                    if decision == "new" and not load_runtime_control()["paused"]:
                         state = _mailbox_idle_new_task(state)
                         # Persist a claim before doing any local work. If the process
                         # dies or result publication fails, never blindly replay it.
@@ -1575,8 +1664,9 @@ def main() -> int:
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
                         last_sha = manifest_sha
-                state = _poll_repair_once(client, state)
-                state = _mailbox_idle_tick(state, github_reachable=True)
+                if not load_runtime_control()["paused"]:
+                    state = _poll_repair_once(client, state)
+                    state = _mailbox_idle_tick(state, github_reachable=True)
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -1603,18 +1693,175 @@ def main() -> int:
                 print("\nPoller stopped.")
                 return 0
             except QueueTransportError as exc:
-                state = _mailbox_idle_tick(state, github_reachable=False)
+                if not load_runtime_control()["paused"]:
+                    state = _mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
-            except (OSError, ValueError) as exc:
-                state = _mailbox_idle_tick(state, github_reachable=False)
+            except (OSError, ValueError, MailboxPolicyError) as exc:
+                try:
+                    if not load_runtime_control()["paused"]:
+                        state = _mailbox_idle_tick(state, github_reachable=False)
+                except MailboxPolicyError:
+                    pass
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
     
     finally:
+        fallback_stop.set()
         lock_handle.close()
+
+
+
+# Telegram is a command console only for the private chat already paired in Studio.
+# This poller runs in the INDEPENDENT supervisor, not the mailbox worker.
+_TELEGRAM_UPDATES_STATE = ROOT / ".local_agent" / "telegram_updates_state.json"
+
+
+def _read_telegram_offset(identity: str | None = None) -> int:
+    path = _TELEGRAM_UPDATES_STATE
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise RuntimeError("Unsafe Telegram cursor")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise RuntimeError("Telegram command cursor is unreadable") from exc
+    if not isinstance(data, dict) or set(data) not in ({"next_offset"}, {"next_offset", "identity"}):
+        raise RuntimeError("Telegram command cursor is invalid")
+    if (type(data["next_offset"]) is not int or
+            not (0 <= data["next_offset"] <= 2**63 - 1)):
+        raise RuntimeError("Telegram command cursor is invalid")
+    if identity is not None and data.get("identity") != identity:
+        return 0  # Pairing a DIFFERENT bot/chat must not inherit an old cursor.
+    return data["next_offset"]
+
+
+def _save_telegram_offset(next_offset: int, identity: str | None = None) -> None:
+    if type(next_offset) is not int or not 0 <= next_offset <= 2**63 - 1:
+        raise RuntimeError("Invalid Telegram cursor")
+    path = _TELEGRAM_UPDATES_STATE
+    directory = _ensure_agent_dir()
+    if path.parent.resolve() != directory or path.is_symlink():
+        raise RuntimeError("Unsafe Telegram cursor path")
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=directory, prefix=".telegram-offset-",
+            suffix=".tmp", delete=False,
+        ) as out:
+            tmp = Path(out.name)
+            data = {"next_offset": next_offset}
+            if identity is not None:
+                data["identity"] = identity
+            json.dump(data, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+
+
+def _telegram_command_response(update: Any, paired_chat: str, *,
+                               status_line: str, tasks_line: str,
+                               logs_line: str, now: int | None = None) -> str | None:
+    """Validate BOTH sender and private chat. Never evaluate free-form commands."""
+    if not isinstance(update, dict):
+        return None
+    msg = update.get("message")
+    if not isinstance(msg, dict):
+        return None
+    chat, sender = msg.get("chat"), msg.get("from")
+    if not isinstance(chat, dict) or not isinstance(sender, dict):
+        return None
+    # str(int) normalization intentionally accepts only Telegram integer IDs.
+    if (chat.get("type") != "private" or type(chat.get("id")) is not int
+            or type(sender.get("id")) is not int or chat["id"] != sender["id"]
+            or str(chat["id"]) != paired_chat):
+        return None
+    stamp = msg.get("date")
+    current = int(time.time()) if now is None else now
+    if type(stamp) is not int or not 0 <= current - stamp <= 180:
+        return None  # Expired commands must not restart the machine after downtime.
+    raw = msg.get("text")
+    if not isinstance(raw, str) or not 1 <= len(raw) <= 120:
+        return None
+    parts = raw.strip().split()
+    if len(parts) != 1 or not parts[0].startswith("/"):
+        return ("Поддерживаются только команды. /help — список команд.")
+    # Commands with @bot suffix remain private and must not contain arguments.
+    command = parts[0].split("@", 1)[0].lower()
+    if command in ("/start", "/help"):
+        return ("Blender AI Agent — команды:\n/status — состояние служб\n"
+                "/tasks — последняя задача\n/logs — события запуска\n"
+                "/pause — остановить приём задач\n/resume — возобновить\n"
+                "/restart — перезапустить службы\n"
+                "/notifications_on и /notifications_off — уведомления.")
+    if command == "/status":
+        return status_line
+    if command == "/tasks":
+        return tasks_line
+    if command == "/logs":
+        return logs_line
+    if command == "/pause":
+        set_runtime_pause({"paused": True})
+        return "Приём новых задач GitHub приостановлен. /resume — возобновить."
+    if command == "/resume":
+        set_runtime_pause({"paused": False})
+        return "Приём новых задач GitHub возобновлён."
+    if command == "/restart":
+        request_runtime_restart({})
+        return ("Перезапуск Studio и GitHub-агента запрошен. "
+                "Если идёт рендер, дождёмся безопасной точки.")
+    if command in ("/notifications_off", "/notifications_on"):
+        from local_agent.studio_server import telegram_set_notifications
+        on = command == "/notifications_on"
+        telegram_set_notifications({"enabled": on})
+        return ("Автоматические уведомления включены." if on
+                else "Автоматические уведомления выключены. Команды работают.")
+    return "Неизвестная команда. Напишите /help."
+
+
+def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
+                                   logs_line: str) -> None:
+    """Read commands using existing Render relay, with atomic at-most-once cursor."""
+    from local_agent.studio_server import _telegram_credentials, _telegram_call
+    token, paired = _telegram_credentials()
+    if not token or not paired:
+        return
+    import hashlib
+    identity = hashlib.sha256((token + ":" + paired).encode("utf-8")).hexdigest()[:24]
+    next_offset = _read_telegram_offset(identity)
+    response = _telegram_call(token, "getUpdates",
+                              {"offset": next_offset, "limit": 20, "timeout": 0,
+                               "allowed_updates": ["message"]}, timeout=8)
+    updates = response.get("result")
+    if not isinstance(updates, list):
+        return
+    for update in updates[:20]:
+        if not isinstance(update, dict) or type(update.get("update_id")) is not int:
+            continue
+        update_id = update["update_id"]
+        if update_id < next_offset or update_id >= 2**63 - 1:
+            continue
+        next_offset = update_id + 1
+        # A command is claimed before dispatch so /restart is never replayed
+        # from Telegram after a supervisor crash.
+        _save_telegram_offset(next_offset, identity)
+        try:
+            reply = _telegram_command_response(
+                update, paired, status_line=status_line, tasks_line=tasks_line,
+                logs_line=logs_line,
+            )
+            if reply is not None:
+                # Explicit replies must work even when automatic alerts are off.
+                _telegram_call(token, "sendMessage",
+                               {"chat_id": paired, "text": reply[:1300]}, timeout=8)
+        except (MailboxPolicyError, OSError, RuntimeError, ValueError):
+            continue
 
 
 def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
@@ -1636,6 +1883,7 @@ def supervise_windows() -> int:
     import winreg
     import webbrowser
     import urllib.request
+    import threading
 
     state_dir = _ensure_agent_dir()
     lock_path = state_dir / "octava_supervisor.lock"
@@ -1737,6 +1985,7 @@ def supervise_windows() -> int:
     env["PYTHONIOENCODING"] = "utf-8"
     worker_env = dict(env)
     worker_env["LOCAL_AGENT_MAILBOX_WORKER"] = "1"
+    worker_env["LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE"] = "1"
     command = {
         "mailbox": [sys.executable, "-m", "local_agent.poller"],
         "studio": [sys.executable, "-m", "local_agent.studio_server",
@@ -1748,6 +1997,7 @@ def supervise_windows() -> int:
     started_at: dict[str, float] = {}
     failures: dict[str, int] = {"mailbox": 0, "studio": 0}
     next_start: dict[str, float] = {"mailbox": 0.0, "studio": 0.0}
+    pending_stalled_warning = False
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     def launch(name: str) -> None:
@@ -1792,6 +2042,53 @@ def supervise_windows() -> int:
         except (OSError, ValueError, TypeError, KeyError):
             return False
 
+    telegram_stop = threading.Event()
+    # Telegram control stays in the supervisor. It survives a crashed mailbox
+    # worker and never blocks the two-second process health checks.
+    def telegram_loop() -> None:
+        while not telegram_stop.is_set():
+            try:
+                def alive(name: str) -> str:
+                    p = processes.get(name)
+                    return "работает" if p is not None and p.poll() is None else "не запущена"
+                control = load_runtime_control()
+                state_label = "пауза" if control["paused"] else "активен"
+                status_line = ("Blender AI Agent:\nGitHub-агент: " + alive("mailbox") +
+                               "\nStudio: " + alive("studio") +
+                               "\nПриём заданий: " + state_label)
+                try:
+                    manifest = _load_state()
+                    task_id = manifest.get("last_task_id")
+                    task_id = task_id if isinstance(task_id, str) and len(task_id) <= 128 else "нет"
+                    record = manifest.get("processed_tasks", {}).get(task_id, {})
+                    outcome = str(record.get("status", "ожидание"))[:40] if isinstance(record, dict) else "неизвестно"
+                    tasks_line = ("Последняя задача: " + task_id +
+                                  "\nСостояние: " + outcome)
+                except (OSError, RuntimeError, ValueError):
+                    tasks_line = "Состояние задач временно недоступно."
+                logs_line = "Последние события supervisor:\n"
+                try:
+                    lines = events_file.read_text(encoding="utf-8").splitlines()[-80:]
+                    # No arbitrary stdout, commands or environment data go to Telegram.
+                    safe = [line[:150] for line in lines if
+                            any(word in line for word in (
+                                "Started mailbox service", "Started studio service",
+                                "auto-restarting", "controlled restart",
+                                "Scheduled supervisor recovery", "supervisor active",
+                                "Supervisor stopped"))]
+                    logs_line += "\n".join(safe[-5:]) or "Пока нет событий."
+                except OSError:
+                    logs_line += "Журнал недоступен."
+                _supervisor_telegram_poll_once(status_line, tasks_line, logs_line)
+            except (ImportError, OSError, RuntimeError, ValueError):
+                pass
+            telegram_stop.wait(12)
+
+    thread = threading.Thread(target=telegram_loop, name="octava-telegram-commands",
+                              daemon=True)
+    pending_restored_notice = "запуска Windows-supervisor"
+    thread.start()
+
     try:
         for name in command:
             launch(name)
@@ -1801,6 +2098,48 @@ def supervise_windows() -> int:
         while True:
             time.sleep(2)
             now = time.monotonic()
+            try:
+                control = load_runtime_control()
+                if (control["restart_requested"] != control["restart_acknowledged"]
+                        and not studio_render_active()):
+                    if acknowledge_runtime_restart():
+                        log("Manual controlled restart requested by locally authorized operator")
+                        stop("mailbox")
+                        stop("studio")
+                        failures = {"mailbox": 0, "studio": 0}
+                        next_start = {"mailbox": 0.0, "studio": 0.0}
+                        pending_restored_notice = "ручного перезапуска"
+                        pending_stalled_warning = False
+            except MailboxPolicyError:
+                log("Invalid runtime control preferences; manual restart refused")
+            # A live process may still be stuck. Avoid interrupting a render or
+            # a claimed task; those require a deliberate /restart.
+            worker = processes.get("mailbox")
+            if worker is not None and worker.poll() is None and _mailbox_is_stale(
+                now_wall=time.time(),
+                started_at_wall=time.time() - max(0.0, now - started_at.get("mailbox", now)),
+            ):
+                try:
+                    manifest = _load_state()
+                    last_id = manifest.get("last_task_id")
+                    item = manifest.get("processed_tasks", {}).get(last_id, {})
+                    claimed = isinstance(item, dict) and item.get("status") == "in_progress"
+                except (RuntimeError, OSError, ValueError, TypeError):
+                    claimed = True
+                if not claimed and not studio_render_active():
+                    log("Mailbox heartbeat stale; supervisor restarting worker")
+                    stop("mailbox")
+                    failures["mailbox"] = 0
+                    next_start["mailbox"] = 0.0
+                    pending_restored_notice = "восстановления зависшей службы GitHub"
+                    pending_stalled_warning = False
+                elif not pending_stalled_warning:
+                    log("Mailbox heartbeat stale while task/render active; manual /restart available")
+                    _telegram_signal("worker-hung", str(int(time.time() // 3600)),
+                                     "Blender AI Agent: нет отклика от GitHub-агента; активную задачу не прерываем. Можно отправить /restart.")
+                    pending_stalled_warning = True
+            else:
+                pending_stalled_warning = False
             for name in command:
                 p = processes.get(name)
                 if p is not None and p.poll() is not None:
@@ -1816,18 +2155,29 @@ def supervise_windows() -> int:
                         stop("studio")
                         failures = {"mailbox": 0, "studio": 0}
                         next_start = {"mailbox": 0.0, "studio": 0.0}
+                        pending_restored_notice = "установки обновления"
                         continue
                     failures[name] = 0 if runtime >= 10 else failures[name] + 1
                     next_start[name] = now + _supervisor_restart_delay(failures[name], runtime)
                     log(f"{name} exited code={code}; auto-restarting")
+                    pending_restored_notice = "автоматического восстановления после сбоя"
                     _telegram_signal("service-restart", name + "-" + str(int(time.time() // 3600)),
                                      "Blender AI Agent: служба " + name + " завершилась. Автоматический перезапуск.")
                 if name not in processes and now >= next_start[name]:
                     launch(name)
+            if pending_restored_notice and all(
+                processes.get(name) is not None and processes[name].poll() is None
+                for name in ("mailbox", "studio")
+            ):
+                reason = pending_restored_notice
+                pending_restored_notice = None
+                _telegram_signal("service-online", str(int(time.time())),
+                                 "Blender AI Agent: службы Studio и GitHub запущены после " + reason + ".")
     except KeyboardInterrupt:
         log("Supervisor stopped on local keyboard request")
         return 0
     finally:
+        telegram_stop.set()
         stop("studio")
         stop("mailbox")
         try:
