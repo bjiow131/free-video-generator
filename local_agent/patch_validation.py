@@ -68,6 +68,12 @@ def validate_patch_paths(patch: str) -> None:
         if in_hunk:
             # Patch body content is not metadata. Git apply checks hunk syntax.
             continue
+        # Existing symlink/submodule/executable blobs can be identified by the
+        # optional mode in the index header even without a mode-change line.
+        if line.startswith("index "):
+            parts = line.split()
+            if len(parts) > 2 and parts[-1] != "100644":
+                raise PatchValidationError("binary, symlink, and submodule patches are prohibited")
         if line.startswith(_UNSAFE_METADATA):
             raise PatchValidationError("renames and copies are not supported")
         if line.startswith(("old mode ", "new mode ")):
