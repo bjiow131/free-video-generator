@@ -75,13 +75,30 @@ def probe_key(key: str, *, transport=None) -> None:
         with sender(request, timeout=18) as response:
             raw = response.read(65537)
     except HTTPError as exc:
-        if exc.code in (401, 403):
-            raise OctavaKeyError("Ключ OctavAPI отклонён (401/403)") from None
-        if exc.code == 402:
-            raise OctavaKeyError("На ключе OctavAPI закончились токены (402)") from None
-        if exc.code == 429:
-            raise OctavaKeyError("Лимит запросов OctavAPI. Попробуйте позже (429)") from None
-        raise OctavaKeyError("OctavAPI вернул ошибку HTTP") from None
+        # Never include the provider response body or raw exception: either may
+        # echo the bearer token or private request details. The numeric status
+        # alone is sufficient for first-line diagnosis of Happ/proxy failures.
+        code = exc.code if type(exc.code) is int and 400 <= exc.code <= 599 else None
+        reasons = {
+            400: "Сервер отклонил параметры запроса или модель",
+            401: "Ключ OctavAPI не принят",
+            402: "Недостаточно токенов на ключе OctavAPI",
+            403: "Доступ отклонён (возможно, ограничение IP/VPN)",
+            404: "Адрес API или выбранная модель не найдены",
+            405: "Сервер не поддерживает метод запроса",
+            407: "Прокси требует авторизацию — проверьте Happ",
+            408: "Время ожидания запроса истекло",
+            422: "Сервер отклонил параметры модели",
+            429: "Превышен лимит запросов или баланс недоступен",
+            451: "Доступ ограничен для текущего сетевого маршрута",
+            500: "Ошибка сервера OctavAPI",
+            502: "Шлюз или сервер модели недоступен",
+            503: "Сервис OctavAPI временно недоступен",
+            504: "Время ожидания вышестоящего сервера истекло",
+        }
+        if code is not None:
+            raise OctavaKeyError(f"OctavAPI: HTTP {code} — {reasons.get(code, 'ошибка HTTP-сервера')}. Ключ не изменён") from None
+        raise OctavaKeyError("OctavAPI: HTTP-ошибка без допустимого кода. Ключ не изменён") from None
     except (URLError, TimeoutError, OSError):
         raise OctavaKeyError("Не удалось подключиться к OctavAPI для проверки") from None
     if len(raw) > 65536:
