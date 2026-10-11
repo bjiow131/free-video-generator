@@ -528,6 +528,77 @@ def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
                 "message": str(exc)[:160], "mode": "procedural_camera_fixture",
                 "project": project, "job_id": job_id}
 
+def _reexport_existing_camera_qa(workspace: str) -> dict[str, Any]:
+    """Retry only Dropbox delivery of a previously completed fixed QA MP4.
+
+    Never rerenders Blender or touches a user's story projects. Accepts no
+    filesystem path or shell command from the incoming GitHub task.
+    """
+    import shutil
+    from local_agent.studio_server import export_review, read_settings
+    root = Path(workspace).expanduser().resolve()
+    if not read_settings()["enabled"]:
+        return {"status": "failed", "reason": "dropbox_review_permission_disabled"}
+    if not root.is_dir() or root.is_symlink():
+        return {"status": "failed", "reason": "workspace_unavailable"}
+    candidates = []
+    for project in root.glob("agent_camera_qa_*"):
+        if (not project.is_dir() or project.is_symlink()
+                or getattr(project, "is_junction", lambda: False)()):
+            continue
+        jobs = project / "studio_jobs"
+        if not jobs.is_dir() or jobs.is_symlink():
+            continue
+        for job in jobs.iterdir():
+            if (not job.is_dir() or job.is_symlink()
+                    or getattr(job, "is_junction", lambda: False)()
+                    or len(job.name) != 32
+                    or any(ch not in "0123456789abcdef" for ch in job.name)):
+                continue
+            video = job / "scene.mp4"
+            planfile = job / "manifest.json"
+            if (not video.is_file() or video.is_symlink()
+                    or not planfile.is_file() or planfile.is_symlink()
+                    or not 100 <= video.stat().st_size <= 32_000_000
+                    or planfile.stat().st_size > 20_000):
+                continue
+            try:
+                plan = json.loads(planfile.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if (not isinstance(plan, dict) or plan.get("scene_id") != "camera_qa"
+                    or plan.get("actor_kind") != "procedural_test_fixture"
+                    or plan.get("camera") != "follow"
+                    or plan.get("fps") != 12 or plan.get("duration") != 3):
+                continue
+            candidates.append((video.stat().st_mtime, job))
+    if not candidates:
+        return {"status": "failed", "reason": "no_completed_camera_qa_video"}
+    candidates.sort(key=lambda pair: pair[0], reverse=True)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return {"status": "failed", "reason": "ffmpeg_missing"}
+    for _, job in candidates[:10]:
+        try:
+            result = export_review(
+                job,
+                {"job_id": job.name, "scene_id": "camera_qa",
+                 "kind": "scene", "total_frames": 36},
+                ffmpeg,
+            )
+        except (OSError, ValueError) as exc:
+            # A previously exported review may be present. Try the next
+            # completed QA job, but do not overwrite any Dropbox files.
+            if "already exists" in str(exc):
+                continue
+            return {"status": "failed", "reason": type(exc).__name__,
+                    "message": str(exc)[:180], "job_id": job.name}
+        return {"status": "completed", "mode": "existing_camera_qa_export",
+                "job_id": job.name, "review_delivery": result,
+                "cloud_sync_verified": False}
+    return {"status": "failed", "reason": "camera_reviews_already_exported"}
+
+
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
     # The Studio launcher configures LOCAL_AGENT_WORKSPACE, but the GitHub
@@ -536,6 +607,10 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     if not workspace:
         workspace = str(ROOT.parent / "AI-Agent-Workspace")
+    if arguments["project_name"].startswith("qa_export_"):
+        review = _reexport_existing_camera_qa(workspace)
+        return {"status": review["status"], "task": "blender_forest_preview",
+                "camera_video_qa": review}
     from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
     executable = find_blender_executable()
     if executable is None:
