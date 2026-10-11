@@ -77,7 +77,7 @@ jobs:
         # GNU timeout prevents a stalled pytest child from consuming CI for hours.
         run: |
           timeout --signal=TERM --kill-after=20s 12m \
-            python -m pytest -vv -x --tb=short -o faulthandler_timeout=90 tests
+            python -m pytest -vv --tb=short -o faulthandler_timeout=60 tests
 
       - name: 8. Build Docker image
         id: docker
