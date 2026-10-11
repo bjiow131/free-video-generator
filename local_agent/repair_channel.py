@@ -40,19 +40,28 @@ def _parse_time(value: Any) -> datetime:
 
 
 def _validate_one_path(raw_path: str, *, allow_null: bool = False) -> None:
-    path = raw_path.strip()
+    if raw_path != raw_path.strip() or any(ord(c) < 32 or ord(c) == 127 for c in raw_path):
+        raise RepairProtocolError("patch contains an unsafe path")
+    path = raw_path
     if allow_null and path in {"/dev/null", "dev/null"}:
         return
     if path.startswith(("a/", "b/")):
         path = path[2:]
     if (not path or path.startswith("/") or "\\" in path or ":" in path
-            or ".." in path.split("/") or path == ".git" or path.startswith(".git/")):
+            or any(part in {"", ".", "..", ".git"} for part in path.split("/"))):
         raise RepairProtocolError("patch contains an unsafe path")
     if not (path.startswith(_ALLOWED_PREFIXES) or path in _ALLOWED_ROOT_FILES):
         raise RepairProtocolError("patch path is outside the repair allowlist")
 
 
 def _validate_patch_paths(patch: str) -> None:
+    if not isinstance(patch, str) or not patch.startswith("diff --git "):
+        raise RepairProtocolError("repair patch is not a unified Git diff")
+    if any(marker in patch for marker in (
+        "GIT binary patch", "Binary files ", "new file mode 120000",
+        "old mode 120000", "new file mode 160000", "old mode 160000",
+    )):
+        raise RepairProtocolError("binary, symlink, and submodule patches are prohibited")
     headers = [line for line in patch.splitlines() if line.startswith("diff --git ")]
     if not headers:
         raise RepairProtocolError("patch has no git diff headers")
