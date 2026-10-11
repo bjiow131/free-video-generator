@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import threading
 import subprocess
 import sys
 import tempfile
@@ -1466,6 +1467,48 @@ def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
         return state
 
 
+
+def _legacy_supervisor_telegram_loop(stop_event: threading.Event) -> None:
+    """Compatibility: existing supervisors keep old code until relaunched.
+
+    The upgraded supervisor passes an env flag to avoid competing consumers.
+    """
+    while not stop_event.is_set():
+        try:
+            state = _load_state()
+            task_id = str(state.get("last_task_id", "нет"))[:100]
+            control = load_runtime_control()
+            _supervisor_telegram_poll_once(
+                "GitHub-агент работает. Приём задач: " +
+                ("пауза" if control["paused"] else "активен"),
+                "Последняя задача: " + task_id,
+                "Журнал supervisor доступен после перезапуска Windows-supervisor.",
+            )
+        except (RuntimeError, OSError, ValueError, ImportError, MailboxPolicyError):
+            pass
+        stop_event.wait(12)
+
+
+def _worker_restart_due() -> bool:
+    """Old supervisor understands exit code 75 and restarts both workers."""
+    state = load_runtime_control()
+    if state["restart_requested"] == state["restart_acknowledged"]:
+        return False
+    try:
+        from urllib.request import urlopen
+        port = int(os.environ.get("LOCAL_AGENT_STUDIO_PORT", "55313"))
+        if not 1024 <= port <= 65535:
+            return False
+        with urlopen(f"http://127.0.0.1:{port}/api/studio-latest", timeout=2) as response:
+            job = json.load(response).get("job") or {}
+        if job.get("state") in ("running", "queued"):
+            return False
+    except (OSError, ValueError, TypeError):
+        # Studio itself may be down; a restart should restore it.
+        pass
+    return acknowledge_runtime_restart()
+
+
 def main() -> int:
     # Remote task intake is deliberately opt-in; the normal local Blender launcher
     # never starts a GitHub polling loop by accident.
@@ -1516,10 +1559,24 @@ def main() -> int:
     print("Local Studio policy controls unattended tasks; unreviewed code patches are NEVER auto-approved.")
     print("Run Blender integration tests on the Windows computer before production use.")
 
+    fallback_stop = threading.Event()
+    fallback_thread = None
+    if os.environ.get("LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE") != "1":
+        fallback_thread = threading.Thread(
+            target=_legacy_supervisor_telegram_loop, args=(fallback_stop,),
+            name="octava-telegram-worker-compat", daemon=True,
+        )
+        fallback_thread.start()
+    _telegram_signal("mailbox-online", str(int(time.time())),
+                     "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
+
     try:
         while True:
             try:
                 _touch_mailbox_heartbeat()
+                if _worker_restart_due():
+                    print("Controlled operator restart requested; returning code 75.")
+                    return 75
                 result_outbox = _result_outbox()
                 pending_before_flush = result_outbox.pending_task_ids()
                 pending_results = result_outbox.flush(client)
@@ -1651,6 +1708,7 @@ def main() -> int:
                 backoff = min(max(interval, backoff * 2), 300)
     
     finally:
+        fallback_stop.set()
         lock_handle.close()
 
 
@@ -1919,6 +1977,7 @@ def supervise_windows() -> int:
     env["PYTHONIOENCODING"] = "utf-8"
     worker_env = dict(env)
     worker_env["LOCAL_AGENT_MAILBOX_WORKER"] = "1"
+    worker_env["LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE"] = "1"
     command = {
         "mailbox": [sys.executable, "-m", "local_agent.poller"],
         "studio": [sys.executable, "-m", "local_agent.studio_server",
