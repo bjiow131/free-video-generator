@@ -100,12 +100,12 @@ def test_patch_rejects_noncanonical_diff_path_prefixes(header):
     "local_agent/sub/.git/hooks/pre-commit",
     "tests//duplicate.py",
     "tests/./normalized.py",
-    "tests/with\\rcontrol.py",
+    "tests/with\rcontrol.py",
     "tests/with trailing space ",
 ])
 def test_patch_rejects_metadata_and_noncanonical_paths(path):
     with pytest.raises(RepairProtocolError, match="unsafe path"):
-        _validate_patch_paths(f"diff --git a/{path} b/{path}\\n")
+        _validate_patch_paths(f"diff --git a/{path} b/{path}\n")
 
 
 @pytest.mark.parametrize("special_header", [
@@ -118,8 +118,8 @@ def test_patch_rejects_metadata_and_noncanonical_paths(path):
 ])
 def test_patch_rejects_binary_symlink_submodule_and_special_modes(special_header):
     patch = (
-        "diff --git a/tests/example.py b/tests/example.py\\n"
-        + special_header + "\\n"
+        "diff --git a/tests/example.py b/tests/example.py\n"
+        + special_header + "\n"
     )
     with pytest.raises(RepairProtocolError, match="binary, symlink, and submodule"):
         _validate_patch_paths(patch)
