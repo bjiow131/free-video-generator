@@ -31,7 +31,7 @@ GitHub CLI для этого mailbox не требуется: клиент ис�
 
 Выполните:
 
-    & "$env:LOCALAPPDATA\BlenderWorkAgent\github-venv\Scripts\python.exe" scripts/check_github_connection.py
+    & "$env:LOCALAPPDATA\BlenderWorkAgent\github-venv\Scripts\python.exe" -m scripts.check_github_connection
 
 Скрипт проверяет доступ к приватному репозиторию и записывает безвредный результат проверки в queue/results/connection-check-<UTC-время>.json. Он не читает и не выполняет queue/desired_task.json. При успехе будет status=connected; при ошибке выводятся только тип ошибки и короткое сообщение.
 
