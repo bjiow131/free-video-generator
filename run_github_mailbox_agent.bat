@@ -22,8 +22,14 @@ echo Repository: %LOCAL_AGENT_GITHUB_REPO%
 echo Branch: %LOCAL_AGENT_GITHUB_REF%
 echo Task confirmations depend on the locally saved Studio policy.
 echo Unattended operations run without YES only after enabling the checkbox in Studio Settings.
+:run_loop
 "%AGENT_VENV%\Scripts\python.exe" -m local_agent.poller
 set "AGENT_EXIT=%ERRORLEVEL%"
+if "%AGENT_EXIT%"=="75" (
+  echo Trusted update was applied. Restarting agent with updated code...
+  timeout /t 2 /nobreak >nul
+  goto run_loop
+)
 if not "%AGENT_EXIT%"=="0" (
   echo GitHub mailbox agent exited with code %AGENT_EXIT%.
   pause
