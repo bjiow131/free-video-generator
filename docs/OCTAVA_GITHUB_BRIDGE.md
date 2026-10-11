@@ -13,7 +13,7 @@ Date: 2026-10-11. Branch: `feature/octava-agent-bridge-20261011`.
 1. User asks ChatGPT to analyze a scene. ChatGPT may (on explicit user instruction) place one JSON task in the dedicated **private** mailbox `queue/desired_task.json` through the GitHub connector.
 2. Local Windows poller reads that task using its own GitHub credential; `local_agent.control_protocol` validates operation `octava_advice`, UTC expiry, size and approval requirement.
 3. On the Windows console, the current poller requires the user to type **YES**. Without an interactive console the task is blocked; no unattended remote approval has been enabled.
-4. **Only** when `LOCAL_AGENT_ALLOW_OCTAVA=1` and `OCTAVA_API_KEY` are set in that local process, `local_agent.octava_advisor` sends the approved ≤1600-character prompt over TLS to OctavAPI with `max_tokens=320`.
+4. When the OctavAPI key has been saved once in the Studio UI, `local_agent.octava_advisor` re-reads that Windows vault entry on **every request**, without restarting. The previously supported environment-only mode still requires `LOCAL_AGENT_ALLOW_OCTAVA=1` and `OCTAVA_API_KEY`. The approved ≤1600-character prompt is sent over TLS with `max_tokens=320`.
 5. The third-party answer is treated as **inert advice** (≤2500 characters), never as Python, shell commands, patches or Blender actions. The agent saves a sanitized result to `queue/results/<task_id>.json`.
 6. When the user asks ChatGPT to inspect the task, this chat can read the result using the connected GitHub integration. GitHub mailbox polling is **not** a push notification into this chat.
 
@@ -32,23 +32,37 @@ py -3.11 -m unittest discover -s tests -p test_octava_mailbox.py -v
 
 The GitHub mailbox token remains in Windows Credential Manager, provisioned by the existing `python -m local_agent.credentials_cli set` procedure. Never paste it or the OctavAPI key into a chat, repository, committed `.env`, terminal logs or result JSON.
 
-For one interactive live test only, in the **same PowerShell process** as the poller:
+### One-time Windows installation and every subsequent rotation
+
+On the actual Windows PC, update/launch this branch once and open Studio:
+
+```powershell
+cd C:\\AI-Agent-Octava-Stage
+py -3.11 -m unittest discover -s tests -p test_octava_credentials.py -v
+py -3.11 -m unittest discover -s tests -p test_octava_studio_http.py -v
+py -3.11 -m local_agent.studio_server --workspace C:\\AI-Agent-Workspace
+```
+
+Inside the local browser: **Настройки → OctavAPI → Вставить новый API-ключ → ОК · Проверить и сохранить**. The UI:
+- validates the candidate via one short **token-consuming** HTTPS request;
+- leaves the old key intact if validation fails (401/402/429/network issues);
+- writes a valid key to a separate Windows Credential Manager entry `LocalAgent/OctavAPI/api-key` (not into GitHub, disk JSON, browser storage or startup environment);
+- never echoes the raw key or its suffix to a GET status response;
+- causes all subsequent local agent requests to use the new key without restarting the poller or the UI process.
+
+Repeat **only the UI paste + OK** when the temporary token budget runs out. Keep the SAME Windows user account for the Studio and GitHub poller so both processes can read the same vault. The model, GitHub mailbox and other configuration stay unchanged. The GitHub credential remains under `LocalAgent/GitHub/mailbox-token`.
+
+The GitHub poller still uses its existing fine-grained GitHub token, *not* the OctavAPI key:
 
 ```powershell
 $env:LOCAL_AGENT_GITHUB_REPO = 'bjiow131/local-agent-mailbox'
 $env:LOCAL_AGENT_GITHUB_REF = 'main'
 $env:LOCAL_AGENT_ENABLE_GITHUB_MAILBOX = '1'
-$env:LOCAL_AGENT_ALLOW_OCTAVA = '1'
-$env:LOCAL_AGENT_POLL_SECONDS = '10'
-# Enter the OctavAPI key privately via hidden PowerShell input.
-$secure = Read-Host 'OctavAPI key' -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try { $env:OCTAVA_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
-finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 py -3.11 -m local_agent.poller
 ```
 
-The key remains in the local process environment for that session (not a guaranteed secure enclave). Close the shell to stop polling and clear that environment. Do not store a permanent cleartext key in batch files. If the Windows Python process does not see the existing GitHub Credential Manager entry, stop and run the credential setup in that same Windows account.
+The current poller requires **YES at the Windows console for each remote task**. A stored OctavAPI key does not bypass this. The separate GitHub connection remains operational when OctavAPI reports that tokens are exhausted. The Studio status indicates a saved key, **not** a guarantee of its remaining token balance.
+
 
 ## Message ChatGPT can publish for opt-in live testing
 
@@ -70,6 +84,6 @@ Ensure the previous mailbox task is expired or completed, never reuse an immutab
 
 ## Verified and unverified
 
-- Verified here: GitHub private mailbox accessible, historic Windows `doctor` result accessible, adapter and mailbox routing code committed; 5 isolated offline advisor tests passed with mocked HTTP responses.
-- Not yet verified: full GitHub branch test suite, Windows OctavAPI key install, live third-party request from Windows, current private mailbox round-trip, actual Blender 5.2.2 animation or fully unattended remote execution.
+- Verified here: GitHub private mailbox accessible, historic Windows `doctor` result accessible, adapter and mailbox routing code committed; 6 isolated offline key-rotation tests passed in Linux with mocked HTTP responses; Studio JS syntax validated in V8.
+- Not yet verified: full GitHub branch test suite, new Studio HTTP regression suite on exact branch, Windows OctavAPI key install, live third-party request from Windows, current private mailbox round-trip, actual Blender 5.2.2 animation or fully unattended remote execution.
 - Scope limitation: this adds one opt-in text-advice operation only. The unrestricted free-text → arbitrary rigged 3D animation pipeline is **not** implemented by this bridge.
