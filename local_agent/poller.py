@@ -67,6 +67,12 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
     """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
     import re
 
+    # Both mailbox entry points must enforce the same path and file-type restrictions.
+    # Do this before creating a branch or worktree, even for a direct apply_patch task.
+    try:
+        _validate_patch_paths(patch)
+    except (RepairProtocolError, TypeError):
+        return {"status": "rejected", "reason": "unsafe_or_malformed_patch"}
     if not (ROOT / ".git").exists():
         return {"status": "blocked", "reason": "project_root_is_not_a_git_checkout"}
     safe_id = re.sub(r"[^A-Za-z0-9._-]", "-", task_id)[:80]
@@ -99,6 +105,8 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
             text=True, timeout=timeout, check=False, shell=False,
         )
 
+    worktree_created = False
+    creation_attempted = False
     try:
         head = run_git(["rev-parse", "--verify", "HEAD"])
         if head.returncode != 0:
@@ -114,13 +122,17 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
                 "branch": branch,
             }
 
+        creation_attempted = True
         created = run_git(["worktree", "add", "-b", branch, str(worktree), base_sha], timeout=120)
         if created.returncode != 0:
             return {
-                "status": "error",
-                "reason": "could_not_create_isolated_worktree",
+                "status": "failed_needs_user",
+                "reason": "worktree_creation_failed_inspect_for_partial_worktree_or_branch",
+                "worktree": str(worktree),
+                "branch": branch,
                 "stderr_tail": [line[:500] for line in created.stderr.splitlines()[-20:]],
             }
+        worktree_created = True
 
         checked = run_git(["apply", "--check"], cwd=worktree, input_text=patch)
         if checked.returncode != 0:
@@ -230,22 +242,54 @@ def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None)
             "active_checkout_modified": False,
             "pushed_to_remote": False,
         }
-    except subprocess.TimeoutExpired:
-        return {"status": "timeout", "reason": "git_operation_timed_out"}
-    except OSError as exc:
-        return {"status": "error", "error_type": type(exc).__name__}
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        failure = {
+            "status": "timeout" if isinstance(exc, subprocess.TimeoutExpired) else "error",
+            "reason": "git_operation_timed_out" if isinstance(exc, subprocess.TimeoutExpired) else "git_operation_failed",
+            "error_type": type(exc).__name__,
+        }
+        if worktree_created:
+            return _discard_failed_worktree(run_git, worktree, branch, failure)
+        if creation_attempted:
+            return {
+                "status": "failed_needs_user",
+                "reason": "worktree_creation_interrupted_inspect_for_partial_worktree_or_branch",
+                "original_failure": failure,
+                "worktree": str(worktree),
+                "branch": branch,
+            }
+        return failure
 
 
 def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[str, Any]) -> dict[str, Any]:
     """Remove only the disposable worktree created for this task after a failure."""
-    remove = run_git(["worktree", "remove", "--force", str(worktree)], timeout=120)
-    delete_branch = run_git(["branch", "-D", branch], timeout=60)
-    if remove.returncode != 0 or delete_branch.returncode != 0:
+    try:
+        remove = run_git(["worktree", "remove", "--force", str(worktree)], timeout=120)
+        # Never delete a branch while its worktree removal is unconfirmed.
+        if remove.returncode != 0:
+            return {
+                "status": "failed_needs_user",
+                "reason": "failed_task_worktree_removal",
+                "original_failure": result,
+                "worktree_remove_return_code": remove.returncode,
+                "worktree": str(worktree),
+                "branch": branch,
+            }
+        delete_branch = run_git(["branch", "-D", branch], timeout=60)
+    except (subprocess.TimeoutExpired, OSError) as exc:
         return {
             "status": "failed_needs_user",
-            "reason": "failed_task_cleanup_not_fully_verified",
+            "reason": "failed_task_cleanup_interrupted",
             "original_failure": result,
-            "worktree_remove_return_code": remove.returncode,
+            "cleanup_error_type": type(exc).__name__,
+            "worktree": str(worktree),
+            "branch": branch,
+        }
+    if delete_branch.returncode != 0:
+        return {
+            "status": "failed_needs_user",
+            "reason": "failed_task_branch_removal",
+            "original_failure": result,
             "branch_delete_return_code": delete_branch.returncode,
             "worktree": str(worktree),
             "branch": branch,
