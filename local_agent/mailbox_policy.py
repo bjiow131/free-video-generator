@@ -171,3 +171,48 @@ def reserve_octava_call(now=None) -> None:
     its own limits. Kept as a no-op for older poller/test integrations.
     """
     return None
+
+
+# Shared with the Telegram sender in Studio and the Windows mailbox worker.
+# Default is enabled to preserve alerts for already paired bots on upgrade.
+TELEGRAM_NOTIFICATIONS = _ROOT / ".local_agent" / "telegram_notifications.json"
+
+
+def _validate_telegram_notifications(value: Any) -> dict[str, bool]:
+    if (not isinstance(value, dict) or set(value) != {"enabled"}
+            or type(value["enabled"]) is not bool):
+        raise MailboxPolicyError("Ожидается только enabled: true/false")
+    return {"enabled": value["enabled"]}
+
+
+def load_telegram_notifications() -> dict[str, bool]:
+    with _LOCK:
+        _safe_directory()
+        _safe_file(TELEGRAM_NOTIFICATIONS)
+        try:
+            data = TELEGRAM_NOTIFICATIONS.read_bytes()
+        except FileNotFoundError:
+            return {"enabled": True}
+        except OSError as exc:
+            raise MailboxPolicyError("Не удалось прочитать настройки уведомлений") from exc
+        if len(data) > 128:
+            raise MailboxPolicyError("Некорректные настройки уведомлений")
+        try:
+            return _validate_telegram_notifications(json.loads(data.decode("utf-8")))
+        except (UnicodeError, ValueError, TypeError) as exc:
+            raise MailboxPolicyError("Повреждены настройки уведомлений") from exc
+
+
+def save_telegram_notifications(value: dict) -> dict[str, bool]:
+    checked = _validate_telegram_notifications(value)
+    with _LOCK:
+        _atomic_write(TELEGRAM_NOTIFICATIONS, (json.dumps(checked) + "\n").encode("utf-8"))
+    return checked
+
+
+def telegram_notifications_enabled() -> bool:
+    """Stop all outgoing alerts if settings are damaged or notifications disabled."""
+    try:
+        return load_telegram_notifications()["enabled"]
+    except MailboxPolicyError:
+        return False
