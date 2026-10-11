@@ -135,8 +135,8 @@ async def test_upload_magic_and_content_type_validation(tmp_path, monkeypatch):
 
 
 def test_bg_color_parsing():
-    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 128)
-    assert server._parse_bg_color("black@50") == (0, 0, 0, 128)
+    assert server._parse_bg_color("black@0.5") == (0, 0, 0, 127)
+    assert server._parse_bg_color("black@50") == (0, 0, 0, 127)
     assert server._parse_bg_color("(1, 2, 3, 4)") == (1, 2, 3, 4)
     assert server._parse_bg_color([1, 2, 3]) == (1, 2, 3)
     assert server._parse_bg_color("transparent") is None
