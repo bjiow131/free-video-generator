@@ -661,7 +661,7 @@ def _reference_indices_for_character(card: dict[str, Any], prompt: str,
         own_end = name_at + len(name.casefold())
         previous_ends = [end for start, end, other in mentions if end <= name_at and other != name.casefold()]
         next_starts = [start for start, end, other in mentions if start > name_at and other != name.casefold()]
-        window_start = max(previous_ends) if previous_ends else max(0, name_at - 80)
+        window_start = max(previous_ends) if previous_ends else name_at
         window_end = min(next_starts) if next_starts else min(len(text), own_end + 140)
         window = text[window_start:window_end]
     else:
