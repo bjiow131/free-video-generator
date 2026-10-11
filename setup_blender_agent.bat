@@ -5,7 +5,14 @@ cd /d "%~dp0"
 
 title Blender Work Agent - Setup
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\venv"
-set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+if not defined BLENDER_EXECUTABLE (
+  for /f "delims=" %%B in ('where blender.exe 2^>nul') do if not defined BLENDER_EXECUTABLE set "BLENDER_EXECUTABLE=%%B"
+)
+if not defined BLENDER_EXECUTABLE (
+  for /d %%D in ("%ProgramFiles%\Blender Foundation\Blender *") do (
+    if exist "%%~fD\blender.exe" set "BLENDER_EXECUTABLE=%%~fD\blender.exe"
+  )
+)
 
 echo.
 echo ==========================================
