@@ -59,3 +59,14 @@ def test_compiler_resolves_assets_from_local_registry(tmp_path: Path):
     assert resolved["snail"]["path"] == "assets/snail.png"
     assert "blender_asset_importer_required" in compiled["requirements_not_implemented"]
     assert "asset_registry_required" not in compiled["requirements_not_implemented"]
+
+def test_dialogue_cues_fit_scene_and_remain_explicitly_nonexecuted():
+    plan = sample_plan()
+    plan["scenes"][0]["dialogue"].append({"speaker": "Улитка", "text": "Привет, Мия!"})
+    compiled = compile_story_plan(plan)
+    cues = compiled["scenes"][0]["dialogue_cues"]
+    assert len(cues) == 2
+    assert [(cue["start_seconds"], cue["end_seconds"]) for cue in cues] == [(0.0, 5.0), (5.0, 10.0)]
+    assert all(cue["mouth_motion"] == "open_close" for cue in cues)
+    assert all(cue["execution_status"] == "adapter_required" for cue in cues)
+    assert compiled["readiness"] == "planning_only"
