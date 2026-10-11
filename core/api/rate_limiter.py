@@ -80,8 +80,10 @@ class AgnesRateLimiter:
                 )
                 self.last_refill = now
 
-                if self.tokens >= 1.0:
-                    self.tokens -= 1.0
+                # Avoid microscopic re-waits caused by binary floating-point
+                # rounding at exactly one token (e.g. 0.4 + 0.6).
+                if self.tokens >= 1.0 - 1e-12:
+                    self.tokens = max(0.0, self.tokens - 1.0)
                     return
 
                 wait_time = (1.0 - self.tokens) / self.refill_rate
