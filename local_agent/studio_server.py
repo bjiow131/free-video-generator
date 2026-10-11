@@ -348,6 +348,7 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
         # Separate owner's HTTPS service is an explicit local opt-in. Unlike the
         # direct Telegram route, Render receives the bot token and message body.
         url = _TELEGRAM_RELAY_URL
+        timeout = max(timeout, 45)  # Free Render services can cold-start slowly.
         payload = json.dumps({"token": token, "method": method, "params": data},
                              ensure_ascii=False).encode("utf-8")
     else:
