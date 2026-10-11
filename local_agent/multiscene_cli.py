@@ -142,6 +142,54 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
         camera.location = chosen
     # Keyframe the corrected path; validate every frame again after baking.
     camera.keyframe_insert(data_path="location", frame=frame)
+# Smooth the baked path conservatively: accept each local average only if
+# the target remains inside the frame and the sight line stays unobstructed.
+# Rejected candidates retain their previously validated camera position.
+positions = {}
+for frame in range(scene.frame_start, scene.frame_end + 1):
+    scene.frame_set(frame)
+    positions[frame] = camera.location.copy()
+for _pass in range(2):
+    revised = {f: pos.copy() for f, pos in positions.items()}
+    for frame in range(scene.frame_start + 1, scene.frame_end):
+        candidate = (positions[frame - 1] + 2 * positions[frame] +
+                     positions[frame + 1]) / 4
+        scene.frame_set(frame)
+        camera.location = candidate
+        scene.view_layers.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        subject = obj.evaluated_get(depsgraph)
+        eye = camera.evaluated_get(depsgraph).matrix_world.translation.copy()
+        center = subject.matrix_world.translation.copy()
+        direction = center - eye
+        if direction.length <= 1e-5:
+            continue
+        blocked, _, _, _, blocker, _ = scene.ray_cast(
+            depsgraph, eye, direction.normalized(),
+            distance=max(0.0, direction.length - 1e-3))
+        if blocked and blocker.original != obj:
+            continue
+        corners = [subject.matrix_world @ Vector(corner)
+                   for corner in subject.bound_box]
+        projected = [world_to_camera_view(scene, camera, point)
+                     for point in corners]
+        if all(margin <= p.x <= 1 - margin and
+               margin <= p.y <= 1 - margin and p.z > 0
+               for p in projected):
+            revised[frame] = candidate.copy()
+    positions = revised
+# Remove camera location curves before baking the accepted per-frame path.
+# Otherwise earlier segment keys can distort the smoothed motion.
+if camera.animation_data and camera.animation_data.action:
+    action = camera.animation_data.action
+    if hasattr(action, "fcurves"):
+        for curve in list(action.fcurves):
+            if curve.data_path == "location":
+                action.fcurves.remove(curve)
+for frame, position in positions.items():
+    scene.frame_set(frame)
+    camera.location = position
+    camera.keyframe_insert(data_path="location", frame=frame)
 # Second pass catches new occlusions introduced by keyframe interpolation.
 for frame in range(scene.frame_start, scene.frame_end + 1):
     scene.frame_set(frame)
