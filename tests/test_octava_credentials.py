@@ -63,6 +63,20 @@ class TestRotation(unittest.TestCase):
         self.assertTrue(result["stored_locally"])
         self.assertNotIn("protected-secr3t", json.dumps(result))
 
+    def test_stored_key_switches_for_running_advisor_without_env_toggle(self):
+        from local_agent.octava_advisor import request_advice
+        seen = []
+        def fake_transport(req, timeout):
+            seen.append(req.get_header("Authorization"))
+            return Reply()
+        with patch.dict(keys.os.environ, {}, clear=True), \
+             patch.object(keys, "read_key", side_effect=[
+                 ("previous-vault-key-123", "windows_vault"),
+                 ("fresh-vault-key-456", "windows_vault")]):
+            request_advice("Поставь камеру", transport=fake_transport)
+            request_advice("Двигай персонажа", transport=fake_transport)
+        self.assertEqual(seen, ["Bearer previous-vault-key-123", "Bearer fresh-vault-key-456"])
+
     def test_read_after_rotation_on_every_request(self):
         with patch.object(keys.os, "name", "posix"), patch.dict(keys.os.environ, {"OCTAVA_API_KEY": "first-test-key-123"}):
             self.assertEqual(keys.read_key()[0], "first-test-key-123")
