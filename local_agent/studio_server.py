@@ -23,8 +23,11 @@ from local_agent.studio_state import StudioConflict, StudioError, StudioStore, t
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
-from local_agent.mailbox_policy import MailboxPolicyError, load_policy, save_policy
-from local_agent.trusted_updates import TrustedUpdateError, get_opt_in, set_opt_in
+from local_agent.mailbox_policy import (
+    MailboxPolicyError, load_policy, save_policy,
+    get_trusted_update_opt_in as get_opt_in,
+    set_trusted_update_opt_in as set_opt_in,
+)
 from datetime import datetime, timezone
 import tempfile
 import time
@@ -362,7 +365,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/trusted-updates":
             try:
                 return self._json(200, get_opt_in())
-            except TrustedUpdateError as exc:
+            except MailboxPolicyError as exc:
                 return self._json(503, {"error": str(exc)})
         if path == "/api/dropbox-review":
             try:
@@ -519,7 +522,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Unknown endpoint"})
         except StudioConflict as exc:
             return self._json(409, {"error": str(exc)})
-        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, TrustedUpdateError, ReviewDeliveryError, ValueError, TypeError, binascii.Error) as exc:
+        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, ReviewDeliveryError, ValueError, TypeError, binascii.Error) as exc:
             return self._json(400, {"error": str(exc)})
         except OSError as exc:
             return self._json(500, {"error": f"Local file error: {type(exc).__name__}"})
