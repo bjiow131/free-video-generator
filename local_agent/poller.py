@@ -53,6 +53,22 @@ def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
     return "pending_delivery" if task_id in pending_task_ids else "processed"
 
+def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
+    """Deterministic, isolated result key for a rejected immutable-ID collision.
+
+    Do not use the original task ID: that output must remain unchanged forever.
+    Deriving the ID from both values avoids path injection and makes delivery
+    idempotent even if the process exits before the local state is saved.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(
+        (task_id + "\\n" + manifest_sha).encode("utf-8")
+    ).hexdigest()[:32]
+    return f"task-id-reuse-{digest}"
+
+
+
 
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
@@ -1012,16 +1028,24 @@ def main() -> int:
                                 )
                                 _save_state(state)
                     elif decision == "reused_id":
-                        # Task IDs are immutable. A changed manifest with the same ID
-                        # is rejected, never silently re-executed.
-                        _publish_result_durable(client, task.task_id, {
-                            "task_id": task.task_id,
-                            "status": "rejected",
-                            "reason": "task_id_reused_with_different_manifest",
-                        })
-                        last_sha = manifest_sha
+                        # Preserve the original queue/results/<task_id>.json. Its
+                        # immutable contents must NEVER be overwritten by an
+                        # attacker-controlled replacement manifest with the same ID.
+                        incident_id = _manifest_collision_result_id(task.task_id, manifest_sha)
+                        try:
+                            _publish_result_durable(client, incident_id, {
+                                "task_id": task.task_id,
+                                "incident_id": incident_id,
+                                "status": "rejected",
+                                "reason": "task_id_reused_with_different_manifest",
+                            })
+                        except QueueTransportError:
+                            # The incident is already persisted in the local
+                            # outbox; the next poll will retry publication.
+                            print(f"Rejected task-ID reuse for {task.task_id}; incident delivery queued.")
                         state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
                         _save_state(state)
+                        last_sha = manifest_sha
                 state = _poll_repair_once(client, state)
                 backoff = interval
                 time.sleep(interval)
