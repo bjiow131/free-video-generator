@@ -5,6 +5,11 @@ cd /d "%~dp0"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 if not defined LOCAL_AGENT_WORKSPACE set "LOCAL_AGENT_WORKSPACE=C:\AI-Agent-Workspace"
+rem Studio imports the trusted update preferences, whose updater depends on
+rem requests. Use the isolated GitHub Python environment if it is installed.
+rem The Studio server remains local-only and does not require internet to run.
+set "AGENT_PY=%LOCALAPPDATA%\BlenderWorkAgent\github-venv\Scripts\python.exe"
+if exist "%AGENT_PY%" goto run
 set "AGENT_PY=%LOCALAPPDATA%\BlenderWorkAgent\venv\Scripts\python.exe"
 if exist "%AGENT_PY%" goto run
 where py >nul 2>nul
