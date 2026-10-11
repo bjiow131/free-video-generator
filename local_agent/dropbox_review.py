@@ -186,8 +186,11 @@ def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "files": ["preview.mp4", "frames.jpg"],
         }
-        (destination / "camera.json").write_text(
-            json.dumps(details, ensure_ascii=False, indent=2)[:8192], encoding="utf-8")
+        packed = json.dumps(details, ensure_ascii=False, indent=2)
+        if len(packed.encode("utf-8")) > 8192:
+            details["camera"] = None
+            packed = json.dumps(details, ensure_ascii=False, indent=2)
+        (destination / "camera.json").write_text(packed + "\n", encoding="utf-8")
         (destination / "complete.json").write_text(
             json.dumps({"status": "completed", "job_id": job_id}) + "\n", encoding="utf-8")
         return {"status": "exported_to_local_dropbox", "folder": REVIEW_FOLDER + "/" + job_id,
