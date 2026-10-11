@@ -11,6 +11,7 @@ import re
 import subprocess
 import tempfile
 from typing import Any
+from local_agent.blender_locator import find_blender_executable
 
 
 PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -125,14 +126,13 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     """Create a separate skeleton prototype without overwriting the blockout."""
     if not isinstance(project_name, str) or not PROJECT_RE.fullmatch(project_name):
         return {"status": "rejected", "reason": "invalid_project_name"}
-    executable = os.environ.get("BLENDER_EXECUTABLE", "").strip()
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
-    if not executable or not workspace_value:
+    if not workspace_value:
         return {"status": "blocked", "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
-    blender = Path(executable).expanduser().resolve()
-    workspace = Path(workspace_value).expanduser().resolve()
-    if not blender.is_file():
+    blender = find_blender_executable()
+    if blender is None:
         return {"status": "blocked", "reason": "blender_executable_not_found"}
+    workspace = Path(workspace_value).expanduser().resolve()
     project = (workspace / project_name).resolve()
     if not project.is_relative_to(workspace) or project == workspace:
         return {"status": "rejected", "reason": "project_outside_workspace"}
