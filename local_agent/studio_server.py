@@ -23,6 +23,7 @@ from local_agent.studio_state import StudioConflict, StudioError, StudioStore, t
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key
+from local_agent.mailbox_policy import MailboxPolicyError, load_policy, save_policy
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
@@ -39,6 +40,7 @@ class StudioHTTPServer(ThreadingHTTPServer):
         self.jobs = StudioJobs(store)
         self.render_lock = threading.Lock()
         self.octava_lock = threading.Lock()
+        self.mailbox_policy_lock = threading.Lock()
         self.render_status = {"state": "idle", "message": "Рендер ещё не запускался."}
 
     def start_demo(self, source: str, lens: float) -> dict:
@@ -129,6 +131,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, key_status())
             except OctavaKeyError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/mailbox-policy":
+            try:
+                return self._json(200, load_policy())
+            except MailboxPolicyError as exc:
+                return self._json(503, {"error": str(exc)})
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -208,7 +215,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path == "/api/octava-key" and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/mailbox-policy") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -218,7 +225,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/mailbox-policy" and length > 300):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -229,6 +236,9 @@ class StudioHandler(BaseHTTPRequestHandler):
                     raise StudioError("Укажите только новый API-ключ")
                 with self.server.octava_lock:
                     return self._json(200, replace_key(body["api_key"]))
+            if path == "/api/mailbox-policy":
+                with self.server.mailbox_policy_lock:
+                    return self._json(200, save_policy(body))
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
@@ -270,7 +280,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "Unknown endpoint"})
         except StudioConflict as exc:
             return self._json(409, {"error": str(exc)})
-        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, ValueError, TypeError, binascii.Error) as exc:
+        except (StudioError, StudioJobError, PromptError, StoryPlanError, OctavaKeyError, MailboxPolicyError, ValueError, TypeError, binascii.Error) as exc:
             return self._json(400, {"error": str(exc)})
         except OSError as exc:
             return self._json(500, {"error": f"Local file error: {type(exc).__name__}"})
