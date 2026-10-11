@@ -93,7 +93,7 @@ async def test_runner_passes_final_frame_to_next_scene(tmp_path):
     assert state["status"] == "completed"
     assert len(backend.calls) == 2
     assert backend.calls[0]["input_image"] == str(start)
-    assert backend.calls[1]["input_image"].endswith("s1/attempt_01_last.png")
+    assert tuple(Path(backend.calls[1]["input_image"]).parts[-2:]) == ("s1", "attempt_01_last.png")
     assert Path(state["final_video_path"]).read_bytes() == b"final-mp4"
     assert state["scenes"]["s1"]["video_sha256"]
     assert state["scenes"]["s1"]["frame_sha256"]
@@ -114,7 +114,7 @@ async def test_runner_retries_scene_without_skipping_chain(tmp_path):
     assert state["status"] == "completed"
     assert len(backend.calls) == 3
     assert backend.calls[1]["input_image"] == str(start)
-    assert backend.calls[2]["input_image"].endswith("s1/attempt_02_last.png")
+    assert tuple(Path(backend.calls[2]["input_image"]).parts[-2:]) == ("s1", "attempt_02_last.png")
 
 
 def test_checkpoint_survives_reload(tmp_path):
@@ -438,7 +438,7 @@ async def test_regenerating_upstream_scene_invalidates_downstream_frame_chain(tm
     # Regenerated scene 1 must start from the original initial image;
     # regenerated scene 2 must consume the NEW scene-1 final frame.
     assert backend.calls[2]["input_image"] == str(start)
-    assert backend.calls[3]["input_image"].endswith("s1/attempt_02_last.png")
+    assert tuple(Path(backend.calls[3]["input_image"]).parts[-2:]) == ("s1", "attempt_02_last.png")
     assert resumed["scenes"]["s2"]["input_frame_sha256"] == resumed["scenes"]["s1"]["frame_sha256"]
 
 
