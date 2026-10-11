@@ -16,6 +16,7 @@ from local_agent.multiscene_timeline import Segment, compile_timeline
 BLENDER_SCRIPT = r'''
 import bpy, json, sys
 from pathlib import Path
+from mathutils import Vector
 
 config = json.loads(Path(sys.argv[sys.argv.index("--") + 1]).read_text(encoding="utf-8"))
 bpy.ops.wm.open_mainfile(filepath=config["source"])
@@ -39,6 +40,9 @@ tracking.name = "Multiscene subject tracking"
 tracking.target = obj
 tracking.track_axis = "TRACK_NEGATIVE_Z"
 tracking.up_axis = "UP_Y"
+# Keep a stable, user-configurable composition without changing the subject mesh.
+# Lens adjustment alone cannot guarantee visibility when geometry occludes the subject.
+camera.data.lens = config["camera_lens_mm"]
 base_cam = camera.location.copy()
 base_obj = obj.location.copy()
 scene.frame_start = 1
@@ -73,6 +77,8 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="New output directory")
     parser.add_argument("--object", default="Animation_Test_Object")
     parser.add_argument("--fps", type=int, default=12)
+    parser.add_argument("--camera-lens-mm", type=float, default=60.0,
+                        help="Camera focal length in millimeters (18-100)")
     parser.add_argument("--blender")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
@@ -82,6 +88,8 @@ def main() -> int:
         parser.error("--source must be an existing .blend file")
     if output.exists():
         parser.error("--output must be a new directory (no overwriting)")
+    if not 18.0 <= args.camera_lens_mm <= 100.0:
+        parser.error("--camera-lens-mm must be between 18 and 100")
     if not args.object or len(args.object) > 100:
         parser.error("invalid object name")
     blender = Path(args.blender).resolve() if args.blender else find_blender_executable()
@@ -97,6 +105,7 @@ def main() -> int:
     frames.mkdir()
     config = {
         "source": str(source), "object_name": args.object,
+        "camera_lens_mm": args.camera_lens_mm,
         "fps": args.fps, "total_frames": timeline[-1].end_frame,
         "segments": [vars(s) for s in timeline],
         "frame_prefix": str(frames / "frame_"),
