@@ -137,3 +137,48 @@ def test_refuses_symlinked_permission(location):
         pytest.skip("Windows account cannot create symlinks")
     with pytest.raises(update.TrustedUpdateError):
         update.get_opt_in()
+
+
+def test_studio_review_is_local_opt_in_and_does_not_assume_cloud_sync(tmp_path, monkeypatch):
+    from local_agent import studio_server as studio
+    monkeypatch.setattr(studio, "SETTINGS", tmp_path / "review.json")
+    root = tmp_path / "Dropbox"
+    root.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(root))
+    assert studio.read_settings() == {"enabled": False}
+    assert studio.review_status()["desktop_folder_detected"] is True
+    assert studio.review_status()["sync_verified"] is False
+    with pytest.raises(studio.ReviewDeliveryError):
+        studio.save_settings({"enabled": "yes"})
+    studio.save_settings({"enabled": True})
+    assert studio.read_settings()["enabled"] is True
+
+
+def test_studio_visual_review_exports_only_after_local_permission(tmp_path, monkeypatch):
+    from local_agent import studio_server as studio
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(studio, "SETTINGS", tmp_path / "review.json")
+    dropbox = tmp_path / "Dropbox"
+    dropbox.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(dropbox))
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "scene.mp4").write_bytes(b"x" * 1024)
+    info = {"job_id": "e" * 32, "state": "completed", "total_frames": 120}
+    assert studio.export_review(job, info, "ffmpeg") == {"status": "disabled"}
+
+    studio.save_settings({"enabled": True})
+    def ffmpeg_fake(args, **_):
+        Path(args[-1]).write_bytes(b"\xff\xd8" + b"p" * 600)
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(studio.subprocess, "run", ffmpeg_fake)
+    result = studio.export_review(job, info, "ffmpeg")
+    assert result["status"] == "exported_to_local_dropbox"
+    directory = dropbox / "AI-Agent-Reviews" / ("e" * 32)
+    assert (directory / "preview.mp4").read_bytes() == b"x" * 1024
+    assert (directory / "frames.jpg").is_file()
+    assert json.loads((directory / "camera.json").read_text())["job_id"] == ("e" * 32)
+    assert json.loads((directory / "complete.json").read_text())["status"] == "completed"
+    with pytest.raises(studio.ReviewDeliveryError, match="already exists"):
+        studio.export_review(job, info, "ffmpeg")
