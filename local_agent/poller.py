@@ -26,6 +26,9 @@ from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
 from local_agent.blender_locator import find_blender_executable
+from local_agent.mailbox_policy import (
+    MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -632,19 +635,36 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
-    print("Supported work: local diagnostics and tests, plus allowlisted Blender workflows. Every task requires approval on this computer.")
+    # Remote tasks cannot grant themselves permission: the protocol always
+    # requires local approval, satisfied either interactively or by an explicit
+    # standing authorization stored only in the local Studio UI.
     if getattr(task, "requires_local_approval", True) is not True:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_disabled"}
         commit_sha = _publish_result_durable(client, task.task_id, result)
         print(f"Remote approval is disabled. Result commit: {commit_sha}")
         return
-    if not sys.stdin.isatty():
-        result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
-        commit_sha = _publish_result_durable(client, task.task_id, result)
-        print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
+    try:
+        policy = load_policy()
+    except MailboxPolicyError:
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "local_approval_policy_invalid"}
+        _publish_result_durable(client, task.task_id, result)
         return
-    answer = input("Approve this local operation? Type YES to run: ").strip()
-    if answer != "YES":
+    unattended = policy["enabled"]
+    if unattended and not is_auto_authorized(task.operation, policy):
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
+        _publish_result_durable(client, task.task_id, result)
+        print("Automatic task blocked by local allowlist; no console approval requested.")
+        return
+    if unattended:
+        print("Authorized by persistent local Studio policy. No per-task YES needed.")
+        approved = True
+    else:
+        if not sys.stdin.isatty():
+            result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
+            _publish_result_durable(client, task.task_id, result)
+            return
+        approved = input("Approve this local operation? Type YES to run: ").strip() == "YES"
+    if not approved:
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
         # Re-read the desired manifest after local approval. If a newer task
@@ -707,6 +727,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
             elif task.operation == "octava_advice":
+                if unattended:
+                    # Reserve BEFORE any paid call; restart/retry cannot bypass
+                    # daily spending guard. The provider may charge on failure.
+                    reserve_octava_call()
                 details = _run_octava_advice(task.arguments)
             else:
                 details = handler()
@@ -841,6 +865,23 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     print("Patch paths are restricted to local_agent/, tests/, docs/, scripts/, and approved root files.")
     # Path validation is not a sandbox: pytest will execute patched Python code.
     # Show the EXACT vetted patch before interactive local approval.
+    try:
+        # Never prompt unattended users for repair approval. Unknown patch code
+        # could execute in pytest even if its paths are allowlisted.
+        if load_policy()["enabled"]:
+            result = {"task_id": f"repair-{repair_id}", "status": "blocked",
+                      "reason": "repairs_always_require_interactive_review"}
+            publish_repair_result(result)
+            state = record("blocked")
+            _save_state(state)
+            return state
+    except MailboxPolicyError:
+        result = {"task_id": f"repair-{repair_id}", "status": "blocked",
+                  "reason": "local_approval_policy_invalid"}
+        publish_repair_result(result)
+        state = record("blocked")
+        _save_state(state)
+        return state
     print("\n=== BEGIN REPAIR PATCH (REVIEW BEFORE APPROVING) ===")
     print(patch)
     print("=== END REPAIR PATCH ===")
@@ -998,7 +1039,8 @@ def main() -> int:
     last_seen = state.get("last_task_id")
     last_sha = state.get("manifest_sha")
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports local diagnostics and Blender workflows. Run Blender integration tests on the target Windows computer before production use.")
+    print("Local Studio policy controls unattended tasks; unreviewed code patches are NEVER auto-approved.")
+    print("Run Blender integration tests on the Windows computer before production use.")
 
     try:
         while True:
