@@ -43,7 +43,7 @@ def export_animation_to_mp4(blend_path: str | Path, output_path: str | Path, pre
         raise VideoExportError("Исполняемый файл Blender не найден.")
     if out.suffix.lower() != ".mp4":
         raise VideoExportError("Для видео выберите расширение .mp4.")
-    if out == blend or out.exists():
+    if out == blend or out.exists() or out.is_symlink():
         raise VideoExportError("Файл назначения уже существует или совпадает с проектом. Выберите другое имя.")
     out.parent.mkdir(parents=True, exist_ok=True)
     log = out.with_name(out.stem + "_export.log")
