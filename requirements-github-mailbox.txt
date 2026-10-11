@@ -2,3 +2,4 @@
 requests>=2.28.0,<3.0.0
 # _apply_patch runs 'python -m pytest' inside this dedicated environment.
 pytest>=8.0,<10.0
+pytest-asyncio>=1.0,<2.0
