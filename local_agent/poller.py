@@ -1330,6 +1330,29 @@ def supervise_windows() -> int:
         except OSError:
             pass
 
+    # Remove only the legacy startup shortcut created by our old installer.
+    # That shortcut starts an interactive Blender helper instead of the
+    # supervised Studio + mailbox. Do not remove unrelated user shortcuts.
+    legacy_startup = (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
+                      / "Start Menu" / "Programs" / "Startup" / "Blender Work Agent.lnk")
+    if os.environ.get("APPDATA") and legacy_startup.is_file():
+        ps_lnk = str(legacy_startup).replace("'", "''")
+        ps_target = str(root / "run_blender_agent.bat").replace("'", "''")
+        ps = ("$shell=New-Object -ComObject WScript.Shell;"
+              "$shortcut=$shell.CreateShortcut('" + ps_lnk + "');"
+              "if ($shortcut.TargetPath -ieq '" + ps_target + "') {"
+              "Remove-Item -LiteralPath '" + ps_lnk + "' -Force;}")
+        try:
+            completed = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps],
+                timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False, shell=False,
+            )
+            if completed.returncode == 0 and not legacy_startup.exists():
+                log("Legacy interactive Blender autostart shortcut retired")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
     # Current-user autostart; never add SYSTEM tasks or request elevation.
     try:
         run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
