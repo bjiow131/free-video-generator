@@ -406,8 +406,8 @@ def _run_studio_camera_qa(workspace: str) -> dict[str, Any]:
                     if line.startswith(("Traceback", "File ", "RuntimeError:",
                                         "AttributeError:", "ValueError:", "TypeError:",
                                         "KeyError:", "Error:", "Exception:")):
-                        import re
-                        line = re.sub(r"(?i)([a-z]:\\users\\)[^\\\s]+", r"\\1[USER]", line)
+                        # This fixed test fixture only needs error type and message.
+                        line = line.replace(str(store.workspace), "[WORKSPACE]")
                         error_lines.append(line[:180])
         except OSError:
             pass
