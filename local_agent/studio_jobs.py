@@ -38,8 +38,8 @@ def _prepare_studio_blender_script(source: Path, job_dir: Path) -> Path:
         raise StudioJobError("Unexpected Blender scene compatibility signature")
     repaired = original.replace(
         marker,
-        '    if scene.world is None:\\n'
-        '        scene.world = bpy.data.worlds.new("Studio Camera QA World")\\n'
+        '    if scene.world is None:\n'
+        '        scene.world = bpy.data.worlds.new("Studio Camera QA World")\n'
         + marker,
     )
     # The replacement is fixed code, not a remote task field. Reject malformed
