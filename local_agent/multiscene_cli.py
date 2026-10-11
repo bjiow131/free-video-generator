@@ -17,6 +17,7 @@ BLENDER_SCRIPT = r'''
 import bpy, json, sys
 from pathlib import Path
 from mathutils import Vector
+from bpy_extras.object_utils import world_to_camera_view
 
 config = json.loads(Path(sys.argv[sys.argv.index("--") + 1]).read_text(encoding="utf-8"))
 bpy.ops.wm.open_mainfile(filepath=config["source"])
@@ -65,6 +66,34 @@ for segment in config["segments"]:
     obj.location.x += segment["object_x"]
     camera.keyframe_insert(data_path="location", frame=frame)
     obj.keyframe_insert(data_path="location", frame=frame)
+# Bake per-frame framing corrections after tracking constraints are evaluated.
+# Object bounds are projected into normalized camera coordinates.
+# If the subject does not fit, widen the lens within safe limits.
+scene.view_layers.update()
+margin = 0.08
+min_lens = 18.0
+for frame in range(scene.frame_start, scene.frame_end + 1):
+    scene.frame_set(frame)
+    camera.data.lens = config["camera_lens_mm"]
+    scene.view_layers.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    world_corners = [evaluated.matrix_world @ Vector(corner) for corner in evaluated.bound_box]
+    # Include evaluated mesh origin for very small/degenerate bounds.
+    world_corners.append(evaluated.matrix_world.translation.copy())
+    for _ in range(28):
+        scene.view_layers.update()
+        coords = [world_to_camera_view(scene, camera, corner) for corner in world_corners]
+        fits = all(margin <= p.x <= 1 - margin and
+                   margin <= p.y <= 1 - margin and p.z > 0 for p in coords)
+        if fits:
+            break
+        if camera.data.lens <= min_lens:
+            raise RuntimeError("Subject cannot fit inside camera frame at frame %d" % frame)
+        camera.data.lens = max(min_lens, camera.data.lens * 0.90)
+    camera.data.keyframe_insert(data_path="lens", frame=frame)
+# Preserve the frame-1 camera settings in the saved file.
+scene.frame_set(scene.frame_start)
 bpy.ops.wm.save_as_mainfile(filepath=config["blend_output"])
 bpy.ops.render.render(animation=True)
 print("MULTISCENE_RENDER_COMPLETED")
