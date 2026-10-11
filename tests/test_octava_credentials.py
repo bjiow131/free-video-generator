@@ -44,6 +44,24 @@ class TestRotation(unittest.TestCase):
                 keys.replace_key("new-secret-test-123456", transport=unauthorized)
             writer.assert_not_called()
 
+    def test_http_error_codes_are_actionable_and_secret_never_leaks(self):
+        cases = {400: 'параметры', 404: 'модель', 407: 'Happ', 502: 'Шлюз', 503: 'недоступен'}
+        secret = 'private-key-DO-NOT-EXPOSE-123456789'
+        with patch.object(keys.os, "name", "nt"), patch.object(keys, "store_key") as writer:
+            for code, fragment in cases.items():
+                def reject(req, timeout):
+                    # Provider response/error may echo the key: never display it.
+                    raise HTTPError(req.full_url, code, secret, {},
+                                    io.BytesIO(secret.encode('utf-8')))
+                with self.subTest(code=code):
+                    with self.assertRaises(keys.OctavaKeyError) as raised:
+                        keys.replace_key(secret, transport=reject)
+                    message = str(raised.exception)
+                    self.assertIn(f'HTTP {code}', message)
+                    self.assertIn(fragment, message)
+                    self.assertNotIn(secret, message)
+                    writer.assert_not_called()
+
     def test_no_persistence_on_nonwindows(self):
         with patch.object(keys.os, "name", "posix"), patch.object(keys, "store_key") as writer:
             with self.assertRaisesRegex(keys.OctavaKeyError, "Windows"):
