@@ -240,3 +240,27 @@ def test_fixed_blender_scene_uses_original_script(tmp_path):
     fixed = tmp_path / "scene.py"
     fixed.write_text("def main():\n    pass\n", encoding="utf-8")
     assert _prepare_studio_blender_script(fixed, tmp_path) == fixed
+
+
+def test_supervisor_rapid_recovery_and_bounded_backoff():
+    from local_agent.poller import _supervisor_restart_delay
+    assert _supervisor_restart_delay(0, 15) == 2
+    assert _supervisor_restart_delay(1, 1) == 4
+    assert _supervisor_restart_delay(7, 0) == 60
+
+
+def test_unattended_blender_command_remains_headless(tmp_path):
+    from local_agent.blender_bridge import BlenderBridge
+    from unittest.mock import Mock
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"fake")
+    workspace = tmp_path / "workspace"
+    def reject_after_assert(command, **kwargs):
+        assert "--background" in command
+        assert "--disable-autoexec" in command
+        assert "--offline-mode" in command
+        raise RuntimeError("stop test before launching Blender")
+    bridge = BlenderBridge(blender, workspace, popen=reject_after_assert)
+    import pytest
+    with pytest.raises(RuntimeError, match="stop test"):
+        bridge.run_task("forest_preview", project_name="headless_test")
