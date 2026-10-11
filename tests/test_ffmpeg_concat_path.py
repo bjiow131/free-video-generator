@@ -14,7 +14,7 @@ def test_anchor_concat_escapes_apostrophe_and_backslash(monkeypatch, tmp_path):
             return SimpleNamespace(stdout="5.0")
         concat_file = tmp_path / "_anchor_concat.txt"
         content = concat_file.read_text(encoding="utf-8")
-        assert "clip'\\\\''s.mp4" in content
+        assert r"clip'\''s.mp4" in content
         raise RuntimeError("stop")
 
     monkeypatch.setattr("subprocess.run", fail)
