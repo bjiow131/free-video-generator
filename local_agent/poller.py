@@ -128,6 +128,24 @@ def doctor_with_supervisor() -> dict[str, Any]:
             recent = [tag for tag in tags if tag in tail]
         except OSError:
             pass
+    # Check only Telegram's official public hostname. No bot token is used.
+    import socket
+    network = {"dns": "unknown", "tcp_443": "unknown"}
+    try:
+        addresses = socket.getaddrinfo("api.telegram.org", 443,
+                                        type=socket.SOCK_STREAM)
+        network["dns"] = "ok" if addresses else "failed"
+    except socket.gaierror:
+        network["dns"] = "failed"
+    except OSError:
+        network["dns"] = "error"
+    if network["dns"] == "ok":
+        try:
+            with socket.create_connection(("api.telegram.org", 443), timeout=5):
+                network["tcp_443"] = "ok"
+        except (OSError, TimeoutError):
+            network["tcp_443"] = "failed"
+    result["telegram_network"] = network
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
         "scheduled_recovery_registered": scheduled,
