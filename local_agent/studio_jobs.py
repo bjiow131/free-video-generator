@@ -1,6 +1,7 @@
 """Durable, bounded localhost Blender scene jobs; no cloud execution."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -14,6 +15,24 @@ from typing import Any
 from local_agent.prompt_interpreter import interpret_scene
 
 _TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
+
+
+def scene_fingerprint(state: dict[str, Any], scene: dict[str, Any]) -> str:
+    """Version the exact scene inputs that could affect a rendered clip.
+
+    Ignore unrelated project edits. Reject legacy jobs without a fingerprint
+    rather than silently composing footage for a different script.
+    """
+    characters = set(scene.get("characters", []))
+    props = set(scene.get("props", []))
+    payload = {
+        "scene": scene,
+        "settings": state.get("settings", {}),
+        "characters": [v for v in state.get("characters", []) if v.get("id") in characters],
+        "props": [v for v in state.get("props", []) if v.get("id") in props],
+    }
+    packed = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(packed.encode("utf-8")).hexdigest()
 
 
 class StudioJobError(ValueError):
@@ -108,7 +127,8 @@ class StudioJobs:
             info = {"job_id": job_id, "scene_id": scene_id, "kind": "scene", "state": "queued",
                     "message": "Ожидает Blender", "progress_percent": 0,
                     "rendered_frames": 0, "total_frames": plan["duration"] * plan["fps"],
-                    "label": plan["label"], "created_at": time.time(), "output": str(directory), "video_url": ""}
+                    "label": plan["label"], "created_at": time.time(), "output": str(directory), "video_url": "",
+                    "scene_fingerprint": scene_fingerprint(state, scene)}
             self._write(directory, info)
             latest_temp = self.root / (".latest-" + uuid.uuid4().hex + ".tmp")
             latest_temp.write_text(json.dumps({"job_id": job_id}), encoding="utf-8")
@@ -218,6 +238,11 @@ class StudioJobs:
                 if scene_id not in chosen:
                     raise StudioJobError(f"Сцена {scene_id} ещё не имеет готового MP4")
                 directory, job = chosen[scene_id]
+                if job.get("scene_fingerprint") != scene_fingerprint(state, scene):
+                    raise StudioJobError(
+                        f"Сцена {scene_id} изменена после рендера или создана старой версией. "
+                        "Пересоздайте MP4 этой сцены."
+                    )
                 video_paths.append(self.video(job["job_id"]))
                 configurations.append(json.loads((directory / "manifest.json").read_text(encoding="utf-8")))
             settings = {(x["fps"], x["resolution"]) for x in configurations}
