@@ -85,7 +85,7 @@ return `${header('Настройки подключений','Замена кл�
 ${mailboxOption('enabled','Выполнять доверенные задания GitHub без подтверждения YES','Диагностика, проверка Blender, чтение ресурсов и компиляция плана сцены')}
 ${mailboxOption('allow_blender','Разрешить создание тестовых Blender-сцен','Ограниченные задачи в рабочей папке: 3D-заготовки и сохранение плана')}
 ${mailboxOption('allow_tests','Разрешить автоматические тесты Python','Только уже установленный код; запуск тестов может занимать время')}
-${mailboxOption('allow_octava','Разрешить короткие запросы OctavAPI','Расход временных токенов: максимум 20 автоматических вызовов за сутки')}
+${mailboxOption('allow_octava','Разрешить короткие запросы OctavAPI','Без локального суточного лимита: провайдер может списывать оплату за каждый запрос')}
 <button class="btn-primary credential-save" type="button" data-action="save-mailbox-policy" ${mailboxSaving?'disabled':''}>${mailboxSaving?'Сохранение…':'Сохранить разрешения'}</button>
 <p class="section-note">Произвольные команды и неподтверждённые патчи заблокированы. Доверенные обновления программы разрешаются отдельным переключателем ниже.</p></div></section>
 <section class="card credential-card"><div class="card-head"><div class="header-title">${icon('settings')}<h2>GitHub · автоматические исправления программы</h2></div><span class="hint">Отдельное локальное разрешение</span></div><div class="editor-content">
