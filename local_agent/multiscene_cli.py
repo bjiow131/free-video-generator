@@ -69,6 +69,24 @@ for segment in config["segments"]:
 # Bake per-frame framing corrections after tracking constraints are evaluated.
 # Object bounds are projected into normalized camera coordinates.
 # If the subject does not fit, widen the lens within safe limits.
+def visibility_blocker(eye, evaluated_subject, depsgraph):
+    """Check center and inset bounding-box samples for foreground obstacles."""
+    matrix = evaluated_subject.matrix_world
+    center = matrix.translation.copy()
+    corners = [matrix @ Vector(corner) for corner in evaluated_subject.bound_box]
+    # Inset points avoid unstable grazing hits at exact mesh bounds.
+    points = [center] + [center.lerp(corner, 0.75) for corner in corners]
+    for point in points:
+        direction = point - eye
+        if direction.length <= 1e-5:
+            return "camera overlaps subject"
+        hit, _, _, _, blocker, _ = scene.ray_cast(
+            depsgraph, eye, direction.normalized(),
+            distance=max(0.0, direction.length - 1e-3))
+        if hit and blocker.original != obj:
+            return blocker.name
+    return None
+
 scene.view_layers.update()
 margin = 0.08
 min_lens = 18.0
@@ -103,9 +121,8 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     distance = ray.length
     if distance <= 1e-5:
         raise RuntimeError("Camera overlaps subject at frame %d" % frame)
-    hit, hit_location, hit_normal, hit_index, hit_obj, hit_matrix = scene.ray_cast(
-        depsgraph, eye, ray.normalized(), distance=max(0.0, distance - 1e-3))
-    if hit and hit_obj.original != obj:
+    blocker_name = visibility_blocker(eye, evaluated, depsgraph)
+    if blocker_name is not None:
         # Try bounded lateral/elevated alternatives, retaining TRACK_TO.
         # Use the preceding corrected position to reduce camera jumps.
         original_eye = camera.location.copy()
@@ -123,10 +140,7 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
             length = direction.length
             if length <= 1e-5:
                 continue
-            blocked, _, _, _, blocker, _ = scene.ray_cast(
-                depsgraph, eye2, direction.normalized(),
-                distance=max(0.0, length - 1e-3))
-            if blocked and blocker.original != obj:
+            if visibility_blocker(eye2, evaluated, depsgraph) is not None:
                 continue
             projected = [world_to_camera_view(scene, camera, corner)
                          for corner in world_corners]
@@ -138,7 +152,7 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
         if chosen is None:
             raise RuntimeError(
                 "Subject occluded at frame %d by %s; no safe camera position found" %
-                (frame, hit_obj.name))
+                (frame, blocker_name))
         camera.location = chosen
     # Keyframe the corrected path; validate every frame again after baking.
     camera.keyframe_insert(data_path="location", frame=frame)
@@ -164,10 +178,7 @@ for _pass in range(2):
         direction = center - eye
         if direction.length <= 1e-5:
             continue
-        blocked, _, _, _, blocker, _ = scene.ray_cast(
-            depsgraph, eye, direction.normalized(),
-            distance=max(0.0, direction.length - 1e-3))
-        if blocked and blocker.original != obj:
+        if visibility_blocker(eye, subject, depsgraph) is not None:
             continue
         corners = [subject.matrix_world @ Vector(corner)
                    for corner in subject.bound_box]
@@ -200,12 +211,10 @@ for frame in range(scene.frame_start, scene.frame_end + 1):
     direction = center - eye
     if direction.length <= 1e-5:
         raise RuntimeError("Camera overlaps subject at frame %d" % frame)
-    blocked, _, _, _, blocker, _ = scene.ray_cast(
-        depsgraph, eye, direction.normalized(),
-        distance=max(0.0, direction.length - 1e-3))
-    if blocked and blocker.original != obj:
+    blocker_name = visibility_blocker(eye, obj.evaluated_get(depsgraph), depsgraph)
+    if blocker_name is not None:
         raise RuntimeError("Camera path still occluded at frame %d by %s" %
-                           (frame, blocker.name))
+                           (frame, blocker_name))
 # Preserve the frame-1 camera settings in the saved file.
 scene.frame_set(scene.frame_start)
 bpy.ops.wm.save_as_mainfile(filepath=config["blend_output"])
