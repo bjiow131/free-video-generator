@@ -34,14 +34,38 @@ def test_not_expired_rejects_timestamp_without_timezone():
 
 
 
-def test_blender_preview_is_blocked_without_local_configuration(monkeypatch):
-    from local_agent.poller import _run_blender_forest_preview
+def test_blender_preview_is_blocked_without_blender_install(monkeypatch):
+    from local_agent import poller
 
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
-    result = _run_blender_forest_preview({"project_name": "mia"})
+    monkeypatch.setattr(poller, "find_blender_executable", lambda: None)
+    result = poller._run_blender_forest_preview({"project_name": "mia"})
     assert result["status"] == "blocked"
+    assert result["reason"] == "blender_executable_not_found"
     assert result["remote_paths_or_commands_accepted"] is False
+
+
+def test_blender_preview_uses_local_default_workspace_when_unset(monkeypatch, tmp_path):
+    from local_agent import poller
+    import local_agent.blender_bridge as bridge_module
+
+    calls = []
+    class FakeBridge:
+        def __init__(self, exe, workspace):
+            calls.append((exe, workspace))
+        def run_task(self, operation, **kwargs):
+            calls.append((operation, kwargs))
+            return {"status": "completed", "blend_path": "local-test"}
+
+    monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
+    monkeypatch.setattr(poller, "ROOT", tmp_path / "BlenderStudio")
+    monkeypatch.setattr(poller, "find_blender_executable", lambda: tmp_path / "blender.exe")
+    monkeypatch.setattr(bridge_module, "BlenderBridge", FakeBridge)
+    result = poller._run_blender_forest_preview({"project_name": "mia_test", "render": False})
+    assert result["status"] == "completed"
+    assert calls[0][1] == str(tmp_path / "AI-Agent-Workspace")
+    assert calls[1][0] == "forest_preview"
 
 
 
