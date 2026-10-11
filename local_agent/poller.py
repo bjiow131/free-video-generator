@@ -793,7 +793,9 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     def record(status: str) -> dict[str, Any]:
         updated = dict(processed)
         updated[repair_id] = {"manifest_sha": manifest_sha, "status": status}
-        return {**state, "processed_repairs": dict(list(updated.items())[-100:])}
+        if len(updated) > 2000:
+            raise RuntimeError("Repair replay history capacity reached; refusing to evict repair IDs")
+        return {**state, "processed_repairs": updated}
 
     print(f"\nNew repair available: {repair_id}")
     print(f"Target base commit: {manifest['base_commit_sha']}")
