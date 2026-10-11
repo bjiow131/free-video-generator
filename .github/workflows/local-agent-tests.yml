@@ -102,4 +102,13 @@ jobs:
             tests/test_scene_compiler.py \
             tests/test_asset_registry.py \
             tests/test_preflight.py \
-            tests/test_notifications.py
+            tests/test_notifications.py \
+            tests/test_blender_knowledge.py \
+            tests/test_blender_open_project.py \
+            tests/test_blender_preview_validation.py \
+            tests/test_blender_rigging.py \
+            tests/test_blender_workflow.py \
+            tests/test_error_knowledge.py \
+            tests/test_local_agent_core.py \
+            tests/test_local_agent_examples.py \
+            tests/test_manifest_security.py
