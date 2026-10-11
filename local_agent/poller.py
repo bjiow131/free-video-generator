@@ -368,6 +368,12 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
 
 
+def _run_octava_advice(arguments: dict[str, Any]) -> dict[str, Any]:
+    """One user-approved, locally opt-in advisory call, never executable code."""
+    from local_agent.octava_advisor import request_advice
+    return request_advice(arguments["prompt"])
+
+
 def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
     """Store a validated creative plan locally; do not launch Blender or execute plan text."""
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
@@ -616,7 +622,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -700,6 +706,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "octava_advice":
+                details = _run_octava_advice(task.arguments)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
