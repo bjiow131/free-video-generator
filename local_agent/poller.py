@@ -776,6 +776,13 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     print(f"\nNew repair available: {repair_id}")
     print(f"Target base commit: {manifest['base_commit_sha']}")
     print("Patch paths are restricted to local_agent/, tests/, docs/, scripts/, and approved root files.")
+    # Path validation is not a sandbox: pytest will execute patched Python code.
+    # Show the EXACT vetted patch before interactive local approval.
+    print("\n=== BEGIN REPAIR PATCH (REVIEW BEFORE APPROVING) ===")
+    print(patch)
+    print("=== END REPAIR PATCH ===")
+    print("WARNING: tests may execute code from this patch with your local user permissions.")
+    print("Do not approve code you have not reviewed.")
     try:
         head = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
@@ -805,7 +812,7 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
         state = record("blocked")
         _save_state(state)
         return state
-    answer = input("Apply this repair in a separate Git worktree and run tests? Type YES: ").strip()
+    answer = input("After reviewing the full patch, apply in an isolated worktree and run tests? Type YES: ").strip()
     if answer != "YES":
         result = {"task_id": f"repair-{repair_id}", "status": "declined", "reason": "local_user_declined"}
         publish_repair_result(result)
