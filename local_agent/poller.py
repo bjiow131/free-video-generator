@@ -342,13 +342,12 @@ def _discard_failed_worktree(run_git, worktree: Path, branch: str, result: dict[
 
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
+    # The Studio launcher configures LOCAL_AGENT_WORKSPACE, but the GitHub
+    # mailbox launcher may be started independently. Reuse the installation's
+    # sibling workspace rather than refusing every otherwise safe Blender job.
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     if not workspace:
-        return {
-            "status": "blocked",
-            "reason": "set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally",
-            "remote_paths_or_commands_accepted": False,
-        }
+        workspace = str(ROOT.parent / "AI-Agent-Workspace")
     from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
     executable = find_blender_executable()
     if executable is None:
