@@ -1289,10 +1289,10 @@ def supervise_windows() -> int:
     lock_path = state_dir / "octava_supervisor.lock"
     if lock_path.is_symlink():
         raise RuntimeError("Unsafe supervisor lock file")
-    lock_stream = lock_path.open("a+b")
-    lock_stream.seek(0)
-    lock_stream.write(b"1")
-    lock_stream.flush()
+    lock_stream = lock_path.open("r+b" if lock_path.exists() else "w+b")
+    if lock_path.stat().st_size == 0:
+        lock_stream.write(b"1")
+        lock_stream.flush()
     lock_stream.seek(0)
     try:
         msvcrt.locking(lock_stream.fileno(), msvcrt.LK_NBLCK, 1)
@@ -1320,7 +1320,8 @@ def supervise_windows() -> int:
         # No user prompts, tokens, full command lines or process environment.
         from datetime import datetime, timezone
         item = f"{datetime.now(timezone.utc).isoformat()} {message}\n"
-        print(item.rstrip(), flush=True)
+        if sys.stdout is not None:
+            print(item.rstrip(), flush=True)
         try:
             if events_file.exists() and events_file.stat().st_size > 400_000:
                 events_file.replace(events_file.with_suffix(".old.log"))
@@ -1334,7 +1335,7 @@ def supervise_windows() -> int:
         run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
         with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_SET_VALUE) as key:
             winreg.SetValueEx(key, "BlenderOctavaStudioSupervisor", 0, winreg.REG_SZ,
-                              f'"{launcher}"')
+                              f'cmd.exe /d /c ""{launcher}""')
         log("Per-user Windows login autostart registered")
     except OSError:
         log("Windows login autostart registration failed; running for this session")
