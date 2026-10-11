@@ -14,6 +14,8 @@ import shutil
 import tempfile
 from typing import Any
 
+from local_agent.original_reference_manifest import (OriginalReferenceError, verify_original_reference)
+
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _ALLOWED_IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 _MAX_PASSPORT_BYTES = 2 * 1024 * 1024
@@ -98,6 +100,8 @@ def import_character_passport(
     display_name: str | None = None,
     reference_paths: tuple[str | Path, ...] | list[str | Path] = (),
     blend_path: str | Path | None = None,
+    original_reference_manifests: tuple[str | Path, ...] | list[str | Path] = (),
+    original_asset_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Import a passport, preserving prior reference paths and version history."""
     source = _regular_file(passport_path, suffixes={".json"}, max_bytes=_MAX_PASSPORT_BYTES)
@@ -112,9 +116,22 @@ def import_character_passport(
         raise CharacterPassportImportError("Папка библиотеки не должна быть символической ссылкой.")
     library.mkdir(parents=True, exist_ok=True)
     library = library.resolve()
+    if reference_paths:
+        raise CharacterPassportImportError("Use original_reference_manifests for verified project images.")
+    if original_reference_manifests and original_asset_root is None:
+        raise CharacterPassportImportError("original_asset_root is required.")
+    verified_references = []
+    for manifest in original_reference_manifests:
+        try:
+            entry = verify_original_reference(manifest, original_asset_root)
+        except OriginalReferenceError as exc:
+            raise CharacterPassportImportError(str(exc)) from exc
+        if entry["asset_id"] != character_id:
+            raise CharacterPassportImportError("Reference asset ID does not match passport.")
+        verified_references.append(entry)
     validated_references = [
         _regular_file(raw, suffixes=_ALLOWED_IMAGES, max_bytes=_MAX_IMAGE_BYTES)
-        for raw in reference_paths
+        for raw in (entry["file"] for entry in verified_references)
     ]
     blend = _regular_file(blend_path, suffixes={".blend"}, max_bytes=_MAX_BLEND_BYTES) if blend_path else None
     card_dir = library / character_id
@@ -149,12 +166,15 @@ def import_character_passport(
 
     refs_added: list[str] = []
     refs_dir = card_dir / "references"
-    for image in validated_references:
-        destination = refs_dir / f"{len(refs_added) + 1:02d}_{image.name}"
+    verified_metadata = []
+    for entry, image in zip(verified_references, validated_references):
+        destination = refs_dir / f"{entry['view']}_{entry['sha256'][:12]}{image.suffix.lower()}"
         refs_dir.mkdir(parents=True, exist_ok=True)
         if destination.exists():
             destination = refs_dir / f"{len(refs_added) + 1:02d}_{_sha256(image)[:10]}_{image.name}"
-        shutil.copy2(image, destination)
+        if not destination.exists():
+            shutil.copy2(image, destination)
+        verified_metadata.append({"view": entry["view"], "file": str(destination), "sha256": entry["sha256"], "origin": "project_generated", "provenance_claim_verified": False})
         refs_added.append(str(destination))
 
     copied_blend = None
@@ -203,7 +223,8 @@ def import_character_passport(
             "profile_type": card.get("profile_type", "Человек"),
             "visual_style": card.get("visual_style", "По референсам / смешанный"),
             "description": card.get("description", ""),
-            "references": list(card.get("references", [])) + refs_added,
+            "references": list(dict.fromkeys(list(card.get("references", [])) + refs_added)),
+            "original_reference_metadata": list(card.get("original_reference_metadata", [])) + verified_metadata,
             "passport_path": str(version_path),
             "passport_version": next_version,
             "passport_status": status,
