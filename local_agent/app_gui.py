@@ -212,7 +212,7 @@ class BlenderAgentApp(tk.Tk):
         ttk.Label(title_block, text="Независимые карточки героев для любых будущих проектов — мультфильмов, животных, существ и реалистичных сцен.", foreground=self.colors["muted"]).pack(anchor="w")
         ttk.Button(top, text="Подготовить библиотеку сезона 1…", command=self._prepare_season1_library).pack(side="right", padx=(8, 0))
         ttk.Button(top, text="Импортировать паспорт…", command=self._import_character_passport).pack(side="right", padx=(8, 0))
-        ttk.Button(top, text="Референсы сцены 01…", command=self._download_scene01_references).pack(side="right", padx=(8, 0))
+        # Third-party Scene 01 downloads are not offered in original-only mode.
         ttk.Button(top, text="+  Новая карточка", style="Accent.TButton", command=self._add_character).pack(side="right", padx=(14, 0))
         split = ttk.Panedwindow(self.library_tab, orient="horizontal")
         split.pack(fill="both", expand=True)
@@ -243,7 +243,7 @@ class BlenderAgentApp(tk.Tk):
         self.character_detail.pack(fill="both", expand=True)
         actions = ttk.Frame(right)
         actions.pack(fill="x", pady=(10, 0))
-        ttk.Button(actions, text="Добавить изображение-референс…", command=self._add_reference).pack(side="left")
+        ttk.Button(actions, text="Добавить оригинальный референс…", command=self._add_reference).pack(side="left")
         ttk.Button(actions, text="Открыть изображение", command=self._open_reference).pack(side="left", padx=8)
         ttk.Button(actions, text="Изменить описание", command=self._edit_character).pack(side="left")
         ttk.Button(actions, text="Удалить карточку", command=self._delete_character).pack(side="right")
@@ -634,7 +634,7 @@ class BlenderAgentApp(tk.Tk):
         heading = ttk.Frame(frame)
         heading.pack(fill="x", pady=(0, 10))
         ttk.Label(heading, text=f"Референсы персонажа «{card.get('name', '')}»", style="Title.TLabel").pack(side="left")
-        ttk.Button(heading, text="Добавить референсы…", command=lambda cid=card_id: self._add_reference_to_card(cid)).pack(side="right")
+        ttk.Button(heading, text="Импортировать оригинальный референс…", command=lambda cid=card_id: self._add_reference_to_card(cid)).pack(side="right")
         tree = ttk.Treeview(frame, columns=("pose", "path"), show="headings", selectmode="browse")
         tree.heading("pose", text="Поза / вид")
         tree.heading("path", text="Файл")
@@ -753,42 +753,32 @@ class BlenderAgentApp(tk.Tk):
         self._refresh_characters(card_id)
 
     def _add_reference_to_card(self, card_id: str) -> None:
+        """Import only project-generated images with validated local manifests."""
         card = next((item for item in self._load_characters() if item.get("id") == card_id), None)
         if not card:
             return
-        paths = filedialog.askopenfilenames(title=f"Добавить референсы для «{card['name']}»",
-            filetypes=[("Изображения", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff")], parent=self)
-        if not paths:
+        manifest_path = filedialog.askopenfilename(
+            title="Манифест оригинального референса (JSON)",
+            filetypes=[("JSON манифест", "*.json")], parent=self)
+        if not manifest_path:
             return
-        allowed = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
-        folder = CHARACTER_DIR / card_id
-        folder.mkdir(parents=True, exist_ok=True)
-        added = []
-        for raw in paths:
-            src = Path(raw)
-            try:
-                if src.suffix.lower() not in allowed or src.stat().st_size > 30 * 1024 * 1024:
-                    continue
-                index = len(card.get("references", [])) + len(added) + 1
-                destination = folder / f"{index:02d}_{src.name}"
-                if destination.exists():
-                    destination = folder / f"{index:02d}_{int(time.time())}_{src.name}"
-                shutil.copy2(src, destination)
-                added.append(str(destination))
-            except OSError:
-                continue
-        if not added:
-            messagebox.showwarning("Нет добавленных файлов", "Не удалось добавить изображения. Поддерживаются изображения до 30 МБ.", parent=self)
+        passport_path = card.get("passport_path")
+        if not passport_path or not Path(passport_path).is_file():
+            messagebox.showerror("Нет паспорта", "Сначала импортируйте паспорт персонажа.", parent=self)
             return
-        data = self._load_characters()
-        for item in data:
-            if item.get("id") == card_id:
-                item.setdefault("references", []).extend(added)
-        self._save_characters(data)
-        updated = next(item for item in data if item.get("id") == card_id)
-        self._refresh_reference_tab(updated)
+        try:
+            result = import_character_passport(
+                passport_path, CHARACTER_DIR, character_id=card_id,
+                original_reference_manifests=[manifest_path],
+                original_asset_root=Path(manifest_path).parent)
+        except (CharacterPassportImportError, OSError, ValueError) as exc:
+            messagebox.showerror("Референс отклонён", str(exc), parent=self)
+            return
+        updated = next((item for item in self._load_characters() if item.get("id") == card_id), None)
+        if updated:
+            self._refresh_reference_tab(updated)
         self._refresh_characters(card_id)
-        self._set_status(f"Добавлено референсов: {len(added)} для {card['name']}.")
+        self._set_status(f"Проверенный референс добавлен для {card['name']}: {result['references_added']}.")
 
     def _open_reference_from_tab(self, card_id: str) -> None:
         frame = self.reference_tabs.get(card_id)
