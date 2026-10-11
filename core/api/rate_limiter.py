@@ -85,7 +85,7 @@ class AgnesRateLimiter:
                     return
 
                 wait_time = (1.0 - self.tokens) / self.refill_rate
-                self.tokens = 0.0
+                # Keep the fractional balance while the clock advances.
 
                 if wait_time > 0.05:
                     self._total_waits += 1
@@ -95,8 +95,8 @@ class AgnesRateLimiter:
                         f"(累计等待 {self._total_waits} 次, "
                         f"{self._total_wait_seconds:.0f}s)"
                     )
+                # On the next iteration, elapsed sleep time refills the bucket.
                 time.sleep(wait_time)
-                self.last_refill = time.monotonic()
 
     @timed_step
     async def acquire_async(self) -> None:
