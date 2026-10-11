@@ -5,7 +5,6 @@ cd /d "%~dp0"
 
 title Blender Work Agent - Setup
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\venv"
-set "BLENDER_EXECUTABLE=C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
 
 echo.
 echo ==========================================
@@ -32,10 +31,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "%BLENDER_EXECUTABLE%" (
-  echo [ERROR] Blender was not found at:
-  echo %BLENDER_EXECUTABLE%
-  echo Edit BLENDER_EXECUTABLE in run_blender_agent.bat and this script.
+echo.
+echo Checking a local Blender installation without a fixed version path...
+py -3.11 -m local_agent.blender_locator --check
+if errorlevel 1 (
+  echo [ERROR] Blender is not available yet.
+  echo Install Blender or set the BLENDER_EXECUTABLE environment variable.
   pause
   exit /b 1
 )
