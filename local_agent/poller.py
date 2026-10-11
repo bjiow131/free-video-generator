@@ -1264,5 +1264,202 @@ def main() -> int:
     finally:
         lock_handle.close()
 
+
+def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
+    """Fast crash recovery, with bounded backoff for persistent start failures."""
+    return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 5)))
+
+
+def supervise_windows() -> int:
+    """Maintain Studio and the private mailbox worker for the signed-in user.
+
+    This process is not an elevated Windows service. It registers a per-user
+    login start and (best effort) a one-minute scheduled recovery trigger.
+    Worker status is checked every two seconds; a trusted code update (75)
+    restarts BOTH services. All Blender rendering remains local.
+    """
+    if os.name != "nt":
+        return main()
+    import msvcrt
+    import winreg
+    import webbrowser
+    import urllib.request
+
+    state_dir = _ensure_agent_dir()
+    lock_path = state_dir / "octava_supervisor.lock"
+    if lock_path.is_symlink():
+        raise RuntimeError("Unsafe supervisor lock file")
+    lock_stream = lock_path.open("a+b")
+    lock_stream.seek(0)
+    lock_stream.write(b"1")
+    lock_stream.flush()
+    lock_stream.seek(0)
+    try:
+        msvcrt.locking(lock_stream.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        # Another supervisor owns the user session. Scheduled recovery task
+        # can start each minute without creating duplicate Studio processes.
+        lock_stream.close()
+        return 0
+
+    root = ROOT.resolve()
+    launcher = root / "run_github_mailbox_agent.bat"
+    if not launcher.is_file():
+        raise RuntimeError("Mailbox supervisor launcher missing")
+    os.environ.setdefault("LOCAL_AGENT_GITHUB_REPO", "bjiow131/local-agent-mailbox")
+    os.environ.setdefault("LOCAL_AGENT_GITHUB_REF", "main")
+    os.environ.setdefault("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX", "1")
+    os.environ.setdefault("LOCAL_AGENT_WORKSPACE", str(root.parent / "AI-Agent-Workspace"))
+
+    events_file = state_dir / "octava_supervisor.log"
+    port = int(os.environ.get("LOCAL_AGENT_STUDIO_PORT", "55313"))
+    if not 1024 <= port <= 65535:
+        raise RuntimeError("Invalid Studio supervisor port")
+    browser_url = f"http://127.0.0.1:{port}/"
+    def log(message: str) -> None:
+        # No user prompts, tokens, full command lines or process environment.
+        from datetime import datetime, timezone
+        item = f"{datetime.now(timezone.utc).isoformat()} {message}\n"
+        print(item.rstrip(), flush=True)
+        try:
+            if events_file.exists() and events_file.stat().st_size > 400_000:
+                events_file.replace(events_file.with_suffix(".old.log"))
+            with events_file.open("a", encoding="utf-8") as fh:
+                fh.write(item)
+        except OSError:
+            pass
+
+    # Current-user autostart; never add SYSTEM tasks or request elevation.
+    try:
+        run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "BlenderOctavaStudioSupervisor", 0, winreg.REG_SZ,
+                              f'"{launcher}"')
+        log("Per-user Windows login autostart registered")
+    except OSError:
+        log("Windows login autostart registration failed; running for this session")
+
+    # If Windows permits per-user scheduled tasks, also resurrect a crashed
+    # supervisor within a minute. The process-wide file lock prevents clones.
+    try:
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        program = pythonw if pythonw.is_file() else Path(sys.executable)
+        trigger = f'"{program}" -m local_agent.poller --supervise'
+        completed = subprocess.run(
+            ["schtasks.exe", "/Create", "/F", "/SC", "MINUTE", "/MO", "1",
+             "/TN", "BlenderOctavaStudioSupervisor", "/TR", trigger],
+            cwd=root, timeout=15, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, check=False, shell=False,
+        )
+        log("Scheduled supervisor recovery installed" if completed.returncode == 0
+            else "Scheduled recovery unavailable; login autostart remains")
+    except (OSError, subprocess.TimeoutExpired):
+        log("Scheduled recovery unavailable; login autostart remains")
+
+    env = dict(os.environ)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    worker_env = dict(env)
+    worker_env["LOCAL_AGENT_MAILBOX_WORKER"] = "1"
+    command = {
+        "mailbox": [sys.executable, "-m", "local_agent.poller"],
+        "studio": [sys.executable, "-m", "local_agent.studio_server",
+                   "--workspace", env["LOCAL_AGENT_WORKSPACE"],
+                   "--project", "mia_story", "--port", str(port),
+                   "--no-browser"],
+    }
+    processes: dict[str, subprocess.Popen] = {}
+    started_at: dict[str, float] = {}
+    failures: dict[str, int] = {"mailbox": 0, "studio": 0}
+    next_start: dict[str, float] = {"mailbox": 0.0, "studio": 0.0}
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    def launch(name: str) -> None:
+        output = state_dir / ("octava_" + name + ".log")
+        try:
+            if output.is_file() and output.stat().st_size > 1_000_000:
+                output.replace(output.with_suffix(".old.log"))
+            with output.open("ab") as stream:
+                p = subprocess.Popen(command[name], cwd=root,
+                                     env=worker_env if name == "mailbox" else env,
+                                     stdin=subprocess.DEVNULL, stdout=stream,
+                                     stderr=subprocess.STDOUT, creationflags=flags,
+                                     shell=False, close_fds=True)
+            processes[name] = p
+            started_at[name] = time.monotonic()
+            log(f"Started {name} service pid={p.pid}")
+        except OSError as exc:
+            failures[name] += 1
+            next_start[name] = time.monotonic() + min(60, 2 ** min(failures[name] + 1, 5))
+            log(f"Failed to start {name}: {type(exc).__name__}")
+
+    def stop(name: str) -> None:
+        p = processes.pop(name, None)
+        if p is None or p.poll() is not None:
+            return
+        try:
+            p.terminate()
+            p.wait(timeout=8)
+        except (OSError, subprocess.TimeoutExpired):
+            try:
+                p.kill()
+                p.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+    def studio_render_active() -> bool:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/studio-latest", timeout=2) as response:
+                current = json.load(response)
+            job = current.get("job") or {}
+            return job.get("state") in ("queued", "running")
+        except (OSError, ValueError, TypeError, KeyError):
+            return False
+
+    try:
+        for name in command:
+            launch(name)
+        # Stable port lets the existing browser tab reconnect after a restart.
+        webbrowser.open(browser_url)
+        log("Studio and mailbox supervisor active; worker heartbeat every 2s")
+        while True:
+            time.sleep(2)
+            now = time.monotonic()
+            for name in command:
+                p = processes.get(name)
+                if p is not None and p.poll() is not None:
+                    code = p.returncode
+                    runtime = now - started_at.get(name, now)
+                    processes.pop(name, None)
+                    if name == "mailbox" and code == 75:
+                        log("Trusted update installed; controlled restart of Studio + mailbox")
+                        # Avoid terminating an active video render mid-export.
+                        render_wait_deadline = time.monotonic() + 600
+                        while studio_render_active() and time.monotonic() < render_wait_deadline:
+                            time.sleep(3)
+                        stop("studio")
+                        failures = {"mailbox": 0, "studio": 0}
+                        next_start = {"mailbox": 0.0, "studio": 0.0}
+                        continue
+                    failures[name] = 0 if runtime >= 10 else failures[name] + 1
+                    next_start[name] = now + _supervisor_restart_delay(failures[name], runtime)
+                    log(f"{name} exited code={code}; auto-restarting")
+                if name not in processes and now >= next_start[name]:
+                    launch(name)
+    except KeyboardInterrupt:
+        log("Supervisor stopped on local keyboard request")
+        return 0
+    finally:
+        stop("studio")
+        stop("mailbox")
+        try:
+            lock_stream.seek(0)
+            msvcrt.locking(lock_stream.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+        lock_stream.close()
+
 if __name__ == "__main__":
+    if "--supervise" in sys.argv[1:] or (os.name == "nt" and os.environ.get("LOCAL_AGENT_MAILBOX_WORKER") != "1"):
+        raise SystemExit(supervise_windows())
     raise SystemExit(main())
