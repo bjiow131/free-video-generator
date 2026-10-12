@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent",
+    "restart_agent", "mia_model_review",
 })
 
 
@@ -1436,6 +1436,30 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_model_review":
+                # Fixed existing static-only mesh workflow; no video, no new model
+                # prompt, no arbitrary external code or paths from the mailbox.
+                from local_agent.blender_workflow import create_reference_mia_model
+                from local_agent.studio_server import telegram_send_mia_review_photos
+                try:
+                    _publish_result_durable(client, task.task_id + "-accepted", {
+                        "task_id": task.task_id, "status": "accepted",
+                        "operation": "mia_model_review", "animation_rendered": False,
+                        "visual_acceptance": "pending",
+                    })
+                except QueueTransportError:
+                    print("Static model task acknowledgement queued locally.")
+                details = create_reference_mia_model(task_id=task.task_id)
+                if details.get("status") == "completed":
+                    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+                    details["telegram_photo_delivery"] = telegram_send_mia_review_photos(workspace, task.task_id)
+                    details["mailbox_preview_delivery"] = {
+                        "status": "included_in_result",
+                        "views": sorted(details.get("thumbnail_jpeg_base64", {})),
+                        "public_repository_upload": False,
+                    }
+                    details["visual_acceptance"] = "pending_user_review"
+                    details["production_ready"] = False
             elif task.operation == "octava_advice":
                 if unattended:
                     # Legacy hook is deliberately a no-op: the user removed the
@@ -1844,6 +1868,38 @@ def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
 
 
 
+# Owner policy: do not send idle reminders in the actual worker loop.
+# Retain the old pure handler for compatibility with older diagnostics/tests.
+_MAILBOX_IDLE_NOTICES_ENABLED = False
+
+
+def _maybe_mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
+                             now: float | None = None) -> dict[str, Any]:
+    if not _MAILBOX_IDLE_NOTICES_ENABLED:
+        return state
+    return _mailbox_idle_tick(state, github_reachable=github_reachable, now=now)
+
+
+def _purge_idle_telegram_outbox() -> int:
+    """Remove only old queued idle reminders so restart cannot deliver them."""
+    root = ROOT / ".local_agent" / "telegram_outbox"
+    if root.is_symlink() or getattr(root, "is_junction", lambda: False)() or not root.is_dir():
+        return 0
+    removed = 0
+    for path in root.glob("*.json"):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2048:
+            continue
+        try:
+            event = json.loads(path.read_text(encoding="utf-8"))
+            if (isinstance(event, dict) and
+                    isinstance(event.get("event"), str) and
+                    event["event"].startswith("mailbox-idle:")):
+                path.unlink()
+                removed += 1
+        except (ValueError, OSError, TypeError):
+            continue
+    return removed
+
 
 def _legacy_supervisor_telegram_loop(stop_event: threading.Event) -> None:
     """Compatibility: existing supervisors keep old code until relaunched.
@@ -1925,6 +1981,12 @@ def main() -> int:
         print(f"Cannot recover previous trusted update: {exc}")
         return 2
 
+    # Remove any undelivered historic idle notices before regular notification
+    # delivery resumes. No other message classes are touched.
+    try:
+        _purge_idle_telegram_outbox()
+    except (OSError, ValueError):
+        pass
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
     next_update_check = time.monotonic()
@@ -2045,7 +2107,7 @@ def main() -> int:
                         last_sha = manifest_sha
                 if not load_runtime_control()["paused"]:
                     state = _poll_repair_once(client, state)
-                    state = _mailbox_idle_tick(state, github_reachable=True)
+                    state = _maybe_mailbox_idle_tick(state, github_reachable=True)
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -2073,14 +2135,14 @@ def main() -> int:
                 return 0
             except QueueTransportError as exc:
                 if not load_runtime_control()["paused"]:
-                    state = _mailbox_idle_tick(state, github_reachable=False)
+                    state = _maybe_mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError, MailboxPolicyError) as exc:
                 try:
                     if not load_runtime_control()["paused"]:
-                        state = _mailbox_idle_tick(state, github_reachable=False)
+                        state = _maybe_mailbox_idle_tick(state, github_reachable=False)
                 except MailboxPolicyError:
                     pass
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
