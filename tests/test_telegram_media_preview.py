@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from local_agent import poller, studio_server, telegram_media, telegram_relay_server
+from local_agent import poller, studio_server, telegram_relay_server
+
+# Asset selection lives inside this pre-authorized trusted-update target.
+telegram_media = studio_server
 
 
 TOKEN = "12345:" + "a" * 30
