@@ -936,15 +936,34 @@ def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
     """Create and validate fixed Mia blockouts; allow guarded retry only for the Episode 1 release."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
     project_name = arguments.get("project_name")
-    overwrite = False
-    if set(arguments) == {"project_name", "overwrite"}:
-        if project_name != "S01E01_SC01_RELEASE" or type(arguments.get("overwrite")) is not bool or not arguments["overwrite"]:
-            return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
-        overwrite = True
-    elif set(arguments) != {"project_name"}:
+    duration_seconds = arguments.get("duration_seconds", 5)
+    allowed_keys = {"project_name", "duration_seconds", "overwrite", "allow_full_render"}
+    if set(arguments) - allowed_keys or "project_name" not in arguments:
         return {"status": "rejected", "reason": "invalid_blockout_arguments"}
+    if type(duration_seconds) is not int or duration_seconds not in (5, 60):
+        return {"status": "rejected", "reason": "duration_must_be_5_second_review_or_60_second_final"}
+    overwrite = arguments.get("overwrite", False)
+    if type(overwrite) is not bool:
+        return {"status": "rejected", "reason": "overwrite_must_be_boolean"}
+    if overwrite and project_name != "S01E01_SC01_RELEASE":
+        return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
+    allow_full_render = arguments.get("allow_full_render", False)
+    if type(allow_full_render) is not bool:
+        return {"status": "rejected", "reason": "allow_full_render_must_be_boolean"}
+    if duration_seconds == 60 and (project_name != "S01E01_SC01_RELEASE" or not allow_full_render):
+        return {"status": "rejected", "reason": "60_second_render_requires_explicit_full_render_flag"}
+    if duration_seconds == 5 and allow_full_render:
+        return {"status": "rejected", "reason": "full_render_flag_only_applies_to_60_second_render"}
     try:
-        return create_mia_blockout(project_name, overwrite=overwrite)
+        result = create_mia_blockout(project_name, overwrite=overwrite, duration_seconds=duration_seconds)
+        if (result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE"
+                and duration_seconds == 5):
+            from pathlib import Path
+            preview = Path(result.get("preview_path", ""))
+            if (preview.is_file() and not preview.is_symlink() and preview.stat().st_size <= 512_000):
+                import base64
+                result["preview_png_base64"] = base64.b64encode(preview.read_bytes()).decode("ascii")
+        return result
     except BlenderWorkflowError as exc:
         return {"status": "rejected", "reason": str(exc)[:1000]}
     except OSError as exc:
