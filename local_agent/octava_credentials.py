@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
+import threading
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -19,6 +22,8 @@ DEFAULT_MODEL = "gpt-6-luna"
 SIMPLE_MODEL = "gpt-6-luna"
 COMPLEX_MODEL = "gpt-6.1-sol"
 MODEL_TIERS = frozenset({"default", "simple", "complex"})
+MODEL_SETTINGS = Path(__file__).resolve().parents[1] / ".local_agent" / "octava_default_model.json"
+_MODEL_LOCK = threading.RLock()
 KEY_PATTERN = re.compile(r"[!-~]{12,2048}\Z", re.ASCII)
 MODEL_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 
@@ -37,10 +42,74 @@ def normalize_key(value: str) -> str:
 
 
 def configured_model() -> str:
-    model = os.environ.get("OCTAVA_MODEL", DEFAULT_MODEL)
-    if not MODEL_PATTERN.fullmatch(model):
-        raise OctavaKeyError("Некорректная модель OctavAPI в настройках")
-    return model
+    """Get the locally selected default; existing env setting works until changed."""
+    path = MODEL_SETTINGS
+    with _MODEL_LOCK:
+        if (path.is_symlink() or getattr(path, "is_junction", lambda: False)()
+                or path.parent.is_symlink()
+                or getattr(path.parent, "is_junction", lambda: False)()):
+            raise OctavaKeyError("Небезопасная конфигурация OctavAPI")
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError:
+            model = os.environ.get("OCTAVA_MODEL", DEFAULT_MODEL)
+            if not MODEL_PATTERN.fullmatch(model):
+                raise OctavaKeyError("Некорректная модель OctavAPI в настройках")
+            return model
+        except OSError:
+            raise OctavaKeyError("Не удалось прочитать выбор модели") from None
+        if len(raw) > 128:
+            raise OctavaKeyError("Некорректный размер конфигурации модели")
+        try:
+            obj = json.loads(raw)
+        except (ValueError, UnicodeError):
+            raise OctavaKeyError("Некорректная конфигурация модели") from None
+        if not isinstance(obj, dict) or set(obj) != {"model"} or obj["model"] not in (SIMPLE_MODEL, COMPLEX_MODEL):
+            raise OctavaKeyError("Некорректная конфигурация модели")
+        return obj["model"]
+
+
+def set_default_model(data: dict, *, transport=None) -> dict:
+    """Verify chosen model *before* atomically updating local default.
+
+    One bounded billable probe is performed by explicit user action. No
+    credentials are stored in this config and no existing key is replaced.
+    """
+    if not isinstance(data, dict) or set(data) != {"model"}:
+        raise OctavaKeyError("Ожидается только поле model")
+    model = data["model"]
+    if type(model) is not str or model not in (SIMPLE_MODEL, COMPLEX_MODEL):
+        raise OctavaKeyError("Модель OctavAPI не разрешена")
+    key, source = read_key()
+    if not key or source != "windows_vault":
+        raise OctavaKeyError("Сначала сохраните ключ OctavAPI в Windows")
+    if configured_model() == model:
+        return key_status()
+    probe_key(key, transport=transport, model=model)
+    path = MODEL_SETTINGS
+    with _MODEL_LOCK:
+        if (path.is_symlink() or getattr(path, "is_junction", lambda: False)()
+                or path.parent.is_symlink()
+                or getattr(path.parent, "is_junction", lambda: False)()):
+            raise OctavaKeyError("Небезопасная папка настроек модели")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=".octava-model-", suffix=".tmp",
+                mode="w", encoding="utf-8", delete=False,
+            ) as output:
+                temp = Path(output.name)
+                json.dump({"model": model}, output)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temp, path)
+        except OSError:
+            raise OctavaKeyError("Не удалось сохранить модель OctavAPI") from None
+        finally:
+            if temp is not None:
+                temp.unlink(missing_ok=True)
+    return key_status()
 
 
 def model_for_tier(tier: str = "default") -> str:
@@ -82,10 +151,13 @@ def key_status() -> dict:
             "validation": "not_checked"}
 
 
-def probe_key(key: str, *, transport=None) -> None:
+def probe_key(key: str, *, transport=None, model: str | None = None) -> None:
     """A short *paid* live request verifies the candidate before vault replacement."""
     candidate = normalize_key(key)
-    payload = json.dumps({"model": configured_model(),
+    selected = configured_model() if model is None else model
+    if selected not in (SIMPLE_MODEL, COMPLEX_MODEL) or type(selected) is not str:
+        raise OctavaKeyError("Неизвестная модель для проверки")
+    payload = json.dumps({"model": selected,
                           "messages": [{"role": "user", "content": "Ответь ровно: OK"}],
                           "max_tokens": 12}, ensure_ascii=False).encode("utf-8")
     request = Request(API_URL, data=payload, method="POST",
