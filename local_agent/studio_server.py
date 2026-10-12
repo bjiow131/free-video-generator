@@ -50,6 +50,39 @@ _JOB_RE = re.compile(r"[a-f0-9]{32}\Z")
 _LOCK = threading.RLock()
 
 
+_OCTAVA_RESUME_LOCK = threading.Lock()
+
+
+def _resume_octava_waiting_projects(workspace: Path) -> None:
+    """Best-effort one-shot resume; all durable state remains in local files.
+
+    Only sessions paused due to invalid/exhausted keys are retried, never
+    arbitrary code, shell commands or third-party tool calls.
+    """
+    if not _OCTAVA_RESUME_LOCK.acquire(blocking=False):
+        return
+    try:
+        from local_agent.mailbox_policy import OctavaProjectMemory, MemoryErrorSafe
+        from local_agent.octava_advisor import OctavaAdviceError
+        from local_agent.poller import _run_octava_advice
+        try:
+            policy = load_policy()
+            if not (policy["enabled"] and policy["allow_octava"]):
+                return
+            projects = OctavaProjectMemory.waiting_projects(workspace, limit=3)
+        except (MemoryErrorSafe, MailboxPolicyError):
+            return
+        # Explicit workspace: never mutate process-global environment from a thread.
+        for project_id in projects:
+            try:
+                _run_octava_advice({"project_id": project_id, "resume_pending": True},
+                                   workspace=str(workspace))
+            except (OctavaAdviceError, MemoryErrorSafe):
+                continue  # preserved for later explicit resume
+    finally:
+        _OCTAVA_RESUME_LOCK.release()
+
+
 class ReviewDeliveryError(ValueError):
     pass
 
@@ -834,7 +867,19 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if set(body) != {"api_key"}:
                     raise StudioError("Укажите только новый API-ключ")
                 with self.server.octava_lock:
-                    return self._json(200, replace_key(body["api_key"]))
+                    result = replace_key(body["api_key"])
+                try:
+                    project_policy = load_policy()
+                except MailboxPolicyError:
+                    project_policy = {"enabled": False, "allow_octava": False}
+                if (project_policy["enabled"] and project_policy["allow_octava"]
+                        and hasattr(self.server, "store")):
+                    threading.Thread(
+                        target=_resume_octava_waiting_projects,
+                        args=(self.server.store.workspace,),
+                        name="octava-rotate-resume", daemon=True,
+                    ).start()
+                return self._json(200, result)
             if path == "/api/mailbox-policy":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_policy(body))
@@ -845,6 +890,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
             if path == "/api/agent-pause":
+                if set(body) != {"paused"} or type(body.get("paused")) is not bool:
+                    raise StudioError("Ожидается только поле paused: true/false")
                 with self.server.mailbox_policy_lock:
                     result = set_runtime_pause(body)
                 return self._json(200, {"paused": result["paused"]})
