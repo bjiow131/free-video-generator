@@ -70,9 +70,12 @@ def mat(name, color, roughness=0.72):
     return m
 
 skin=mat("Mia | warm skin",(0.78,0.49,0.32))
-hair=mat("Mia | chestnut hair",(0.12,0.045,0.025))
-dress=mat("Mia | teal dress",(0.12,0.42,0.39))
-shoe=mat("Mia | dark shoes",(0.09,0.07,0.06))
+hair=mat("Mia | light brown hair",(0.36,0.20,0.10))
+jacket=mat("Mia | teal-blue jacket",(0.035,0.32,0.40))
+pants=mat("Mia | brown trousers",(0.24,0.13,0.075))
+backpack=mat("Mia | mustard-yellow backpack",(0.78,0.48,0.055))
+helmet=mat("Mia | riding helmet",(0.92,0.67,0.08))
+shoe=mat("Mia | sturdy ankle boots",(0.16,0.085,0.045))
 white=mat("Eyes | ivory",(0.95,0.88,0.73))
 iris=mat("Eyes | brown",(0.19,0.08,0.035))
 yellow=mat("Scooter | sunny yellow",(1.0,0.62,0.05),0.38)
@@ -96,21 +99,23 @@ def between(name, a, b, radius, material):
 uv("Mia | head",(0,0,3.12),(0.53,0.47,0.58),skin)
 uv("Mia | hair cap",(0,0.035,3.48),(0.55,0.48,0.32),hair)
 uv("Mia | back hair",(0,0.23,3.13),(0.48,0.28,0.62),hair)
+# Simple helmet and backpack are continuity blockout cues, not final models.
+uv("Mia | riding helmet",(0,-0.005,3.76),(0.51,0.48,0.16),helmet)
+uv("Mia | mustard backpack",(0,0.32,2.31),(0.27,0.16,0.34),backpack)
 uv("Mia | fringe left",(-0.24,-0.405,3.43),(0.25,0.12,0.19),hair)
 uv("Mia | fringe right",(0.08,-0.425,3.45),(0.24,0.11,0.17),hair)
 for x in (-0.19,0.19):
     uv("Mia | eye white",(x,-0.438,3.17),(0.09,0.045,0.105),white,20,12)
     uv("Mia | iris",(x,-0.478,3.16),(0.044,0.022,0.058),iris,16,10)
 uv("Mia | nose",(0,-0.49,3.02),(0.045,0.04,0.05),skin,16,10)
-uv("Mia | torso",(0,0,2.22),(0.37,0.27,0.57),dress)
-uv("Mia | skirt",(0,0,1.88),(0.48,0.34,0.24),dress)
+uv("Mia | jacket torso",(0,0,2.22),(0.37,0.29,0.57),jacket)
 uv("Mia | neck",(0,0,2.77),(0.13,0.13,0.17),skin)
 for side in (-1,1):
     hip=(side*0.19,0,1.72); knee=(side*0.21,-0.015,1.05); ankle=(side*0.22,-0.02,0.48)
-    between("Mia | leg",hip,knee,0.105,skin); between("Mia | lower leg",knee,ankle,0.085,skin)
+    between("Mia | trouser leg",hip,knee,0.105,pants); between("Mia | trouser cuff",knee,ankle,0.085,pants)
     uv("Mia | shoe",(side*0.22,-0.10,0.34),(0.15,0.24,0.10),shoe)
     shoulder=(side*0.32,0,2.55); elbow=(side*0.48,-0.015,2.22); hand=(side*0.52,-0.04,2.03)
-    between("Mia | upper arm",shoulder,elbow,0.105,skin); between("Mia | forearm",elbow,hand,0.075,skin)
+    between("Mia | jacket sleeve",shoulder,elbow,0.105,jacket); between("Mia | jacket cuff",elbow,hand,0.075,jacket)
     uv("Mia | hand",hand,(0.09,0.08,0.10),skin)
 # Yellow scooter to preserve the character bible.
 between("Scooter | deck",(-0.2,-0.72,0.35),(0.62,-0.72,0.35),0.055,yellow)
