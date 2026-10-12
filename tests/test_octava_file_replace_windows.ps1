@@ -38,7 +38,7 @@ try {
     [System.IO.File]::WriteAllText($to, "BEFORE")
     AtomicCopy $from $to
     Assert ([System.IO.File]::ReadAllText($to) -eq "AFTER") 'V4 file replace content mismatch'
-    Assert (-not [System.IO.File]::Exists($from)) 'Atomic copy leaked source staging file?'
+    Assert ([System.IO.File]::Exists($from)) 'Source download must be preserved for retries and rollback'
     Assert (@(Get-ChildItem $dir -Filter ".octava-*").Count -eq 0) 'Temp files not cleaned'
     Write-Host "V4 Windows atomic file replacement: PASS"
 } finally {
