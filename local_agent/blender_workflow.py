@@ -289,6 +289,212 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 
 
 
+def _episode1_animation_script() -> str:
+    """Fixed silent animatic pass; inputs are local paths constructed by this module."""
+    return r'''
+import bpy, json, math, os, sys, hashlib
+from mathutils import Vector
+args=sys.argv[sys.argv.index("--")+1:]
+cfg=json.load(open(args[0],encoding="utf-8"))
+out=os.path.realpath(cfg["output_dir"])
+bpy.ops.wm.open_mainfile(filepath=os.path.join(out,"mia_blockout.blend"),load_ui=False)
+scene=bpy.context.scene
+scene.frame_start=1; scene.frame_end=720; scene.render.fps=12
+scene.render.resolution_x=720; scene.render.resolution_y=1280; scene.render.resolution_percentage=100
+scene.render.image_settings.file_format="PNG"
+scene.render.filepath=os.path.join(out,"preview.png")
+def aim(camera, point):
+    camera.rotation_euler=(Vector(point)-camera.location).to_track_quat("-Z","Y").to_euler()
+camera=scene.camera
+camera.data.type="ORTHO"; camera.data.ortho_scale=9.5
+camera.location=(-0.25,-12.5,4.7); aim(camera,(-0.25,0.1,1.85))
+helmet=bpy.data.objects.get("Mia | riding helmet")
+backpack=bpy.data.objects.get("Mia | mustard backpack")
+if not helmet or not backpack: raise RuntimeError("Mia helmet/backpack proxy is missing")
+def material(name, rgba):
+    m=bpy.data.materials.get(name)
+    if m is None:
+        m=bpy.data.materials.new(name); m.diffuse_color=rgba; m.use_nodes=True
+        bs=m.node_tree.nodes.get("Principled BSDF")
+        if bs: bs.inputs["Base Color"].default_value=rgba
+    return m
+gold=material("Mia | mustard strap",(0.90,0.56,0.08,1))
+dark=material("Mia | helmet strap",(0.12,0.11,0.09,1))
+def bar(name,a,b,r,mat):
+    vec=Vector(b)-Vector(a); mid=(Vector(a)+Vector(b))*0.5
+    bpy.ops.mesh.primitive_cylinder_add(vertices=12,radius=r,depth=vec.length,location=mid)
+    o=bpy.context.object; o.name=name; o.data.materials.append(mat)
+    o.rotation_euler=vec.to_track_quat("Z","Y").to_euler(); return o
+for sign in (-1,1):
+    bar("Mia | visible backpack shoulder strap",(sign*0.25,-0.31,2.56),(sign*0.19,-0.31,2.05),0.055,gold)
+    bar("Mia | helmet chin strap",(sign*0.39,-0.30,3.69),(0,-0.35,2.90),0.025,dark)
+skin=material("Guardian | neutral",(0.48,0.31,0.22,1))
+coat=material("Guardian | muted coat",(0.22,0.29,0.31,1))
+def box(name,loc,dims,mat):
+    bpy.ops.mesh.primitive_cube_add(size=1,location=loc)
+    o=bpy.context.object; o.name=name; o.dimensions=dims
+    bpy.ops.object.transform_apply(location=False,rotation=False,scale=True); o.data.materials.append(mat); return o
+def sphere(name,loc,scale,mat):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20,ring_count=12,location=loc)
+    o=bpy.context.object; o.name=name; o.scale=scale; o.data.materials.append(mat); return o
+gx,gy=1.85,2.05
+box("Adult guardian proxy | torso",(gx,gy,1.62),(0.72,0.42,1.2),coat)
+sphere("Adult guardian proxy | head",(gx,gy,2.55),(0.30,0.29,0.36),skin)
+for s in (-1,1):
+    box("Adult guardian proxy | leg",(gx+s*0.20,gy,0.62),(0.22,0.25,0.82),coat)
+    bar("Adult guardian proxy | arm",(gx+s*0.39,gy,2.05),(gx+s*0.48,gy-0.05,1.45),0.09,coat)
+mouth_mat=material("Face | mouth",(0.055,0.018,0.014,1))
+def mouth_for(prefix,x,y,z):
+    return sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
+mia_mouth=mouth_for("Mia",0,-0.475,2.96)
+step_mouth=mouth_for("Stepa",-2.05,-0.47,2.96)
+def animate_mouth(obj, intervals):
+    for start,end in intervals:
+        for frame,scale in ((start,(1,1,0.15)),(start+3,(1,1,1)),(end-3,(1,1,1)),(end,(1,1,0.15))):
+            obj.scale=scale; obj.keyframe_insert(data_path="scale",frame=frame)
+    if obj.animation_data and obj.animation_data.action:
+        for fc in obj.animation_data.action.fcurves:
+            for key in fc.keyframe_points: key.interpolation="CONSTANT"
+animate_mouth(step_mouth,[(20,125),(270,330),(390,475)])
+animate_mouth(mia_mouth,[(130,255),(340,385),(485,545)])
+def parent_group(prefixes,name):
+    root=bpy.data.objects.new(name,None); scene.collection.objects.link(root)
+    root.empty_display_type="PLAIN_AXES"; root.empty_display_size=0.5
+    for obj in list(scene.objects):
+        if any(obj.name.startswith(prefix) for prefix in prefixes) or obj.name in ("Mia_Rig","Stepa_Rig"):
+            if obj is root: continue
+            world=obj.matrix_world.copy(); obj.parent=root; obj.matrix_world=world
+    return root
+mia_root=parent_group(("Mia |","Scooter |"),"Mia_Root_animated")
+step_root=parent_group(("Stepa |",),"Stepa_Root_animated")
+for frame,x in ((1,0),(480,0),(540,0.25),(600,0.5),(720,0.5)):
+    mia_root.location.x=x; mia_root.keyframe_insert(data_path="location",frame=frame)
+for frame,tilt in ((1,0),(90,0),(120,0.06),(150,0),(300,0),(340,-0.05),(380,0),(720,0)):
+    step_root.rotation_euler.z=tilt; step_root.keyframe_insert(data_path="rotation_euler",frame=frame)
+for obj in scene.objects:
+    if obj.name=="Scooter | wheel":
+        for frame,angle in ((1,0),(480,0),(600,-math.pi*2),(720,-math.pi*2)):
+            obj.rotation_euler.y=angle; obj.keyframe_insert(data_path="rotation_euler",frame=frame)
+for frame,loc,scale in ((1,(-0.25,-12.5,4.7),9.5),(180,(-0.25,-12.3,4.6),9.5),
+                        (360,(-0.25,-11.8,4.4),9.2),(540,(-0.25,-11.5,4.2),9.0),
+                        (720,(-0.25,-12.0,4.4),9.5)):
+    camera.location=loc; camera.data.ortho_scale=scale; aim(camera,(-0.25,0.1,1.85))
+    camera.keyframe_insert(data_path="location",frame=frame)
+    camera.keyframe_insert(data_path="rotation_euler",frame=frame)
+    camera.data.keyframe_insert(data_path="ortho_scale",frame=frame)
+asset_root=os.path.realpath(cfg["asset_root"])
+ref_meta={}
+for key,rel in (("mia_passport","characters/passports/mia.json"),
+                ("stepa_passport","characters/passports/stepa.json"),
+                ("draft_board","references/episode-01-reference-board.png")):
+    path=os.path.realpath(os.path.join(asset_root,rel))
+    if os.path.commonpath((asset_root,path))!=asset_root or not os.path.isfile(path):
+        raise RuntimeError("Required pinned Episode 1 reference asset is missing")
+    with open(path,"rb") as f: raw=f.read()
+    ref_meta[key]={"relative_path":rel,"sha256":hashlib.sha256(raw).hexdigest()}
+    if key.endswith("passport"):
+        data=json.loads(raw.decode("utf-8"))
+        if data.get("status")!="awaiting_original_references":
+            raise RuntimeError("Unexpected passport status")
+    else:
+        image=bpy.data.images.load(path,check_existing=True); image.pack()
+        empty=bpy.data.objects.new("REFERENCE ONLY | generated draft board",None)
+        scene.collection.objects.link(empty); empty.empty_display_type="IMAGE"; empty.data=image
+        empty.location=(100,100,0); empty.hide_render=True; empty["status"]="draft_not_approved"
+scene["episode_id"]="S01E01"; scene["scene_id"]="S01_SC01"
+scene["asset_status"]="procedural proxies; passports verified; generated board is draft"
+scene["reference_sha256_json"]=json.dumps(ref_meta,sort_keys=True)
+scene["audio_policy"]="silent; no voice, music, or subtitles"
+scene.frame_set(1)
+scene.render.image_settings.file_format="PNG"
+scene.render.filepath=os.path.join(out,"preview.png")
+bpy.ops.render.render(write_still=True)
+scene.render.image_settings.file_format="FFMPEG"
+scene.render.ffmpeg.format="MPEG4"; scene.render.ffmpeg.codec="H264"
+scene.render.ffmpeg.constant_rate_factor="MEDIUM"; scene.render.ffmpeg.video_bitrate=2500
+scene.render.ffmpeg.audio_codec="NONE"
+scene.render.filepath=os.path.join(out,"scene")
+blend=os.path.join(out,"mia_blockout.blend")
+bpy.ops.wm.save_as_mainfile(filepath=blend)
+bpy.ops.render.render(animation=True)
+video=os.path.join(out,"scene.mp4")
+if not os.path.isfile(video) or os.path.getsize(video)<1024:
+    raise RuntimeError("Silent MP4 render is missing or empty")
+with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
+    json.dump({"status":"completed","stage":"episode1_scene1_animated_animatic",
+               "blend_path":blend,"preview_path":os.path.join(out,"preview.png"),
+               "video_path":video,"duration_seconds":60,"fps":12,"frame_count":720,
+               "object_count":len(scene.objects),"audio":"none","subtitles":"none",
+               "asset_provenance":ref_meta,"production_models_available":False,
+               "manual_visual_review_required":True},f,ensure_ascii=False)
+'''
+
+
+def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> dict[str, Any]:
+    """Render only the fixed Episode 1 scene folder; never overwrite existing files."""
+    if project.name != "S01E01_SC01_RELEASE":
+        return {"status": "rejected", "reason": "episode1_release_project_not_allowlisted"}
+    asset_root = workspace / "episode1" / "assets"
+    required = [
+        asset_root / "characters" / "passports" / "mia.json",
+        asset_root / "characters" / "passports" / "stepa.json",
+        asset_root / "references" / "episode-01-reference-board.png",
+    ]
+    if any(is_link_or_junction(p) or not p.is_file() for p in required):
+        return {"status": "blocked", "reason": "pinned_episode1_reference_assets_missing"}
+    if (project / "scene.mp4").exists():
+        return {"status": "blocked", "reason": "release_video_exists_no_overwrite"}
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix=".mia-release-", dir=project) as temp:
+        script = Path(temp) / "episode1_animation.py"
+        cfg = Path(temp) / "release.json"
+        script.write_text(_episode1_animation_script(), encoding="utf-8")
+        cfg.write_text(json.dumps({"output_dir": str(project), "asset_root": str(asset_root)},
+                                  ensure_ascii=False), encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [str(blender), "--background", "--disable-autoexec", "--offline-mode",
+                 "--python-exit-code", "1", "--python", str(script), "--", str(cfg)],
+                cwd=str(project), capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=2400, check=False, shell=False,
+            )
+        except subprocess.TimeoutExpired:
+            return {"status": "timeout", "reason": "episode1_animation_render_timeout"}
+        except OSError as exc:
+            return {"status": "error", "error_type": type(exc).__name__}
+    if proc.returncode != 0:
+        return {"status": "failed", "reason": "episode1_animation_render_failed",
+                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2500:]}
+    manifest = project / "blender_result.json"
+    blend = project / "mia_blockout.blend"
+    preview = project / "preview.png"
+    video = project / "scene.mp4"
+    if any(is_link_or_junction(p) or not p.is_file() or p.stat().st_size == 0
+           for p in (manifest, blend, preview, video)):
+        return {"status": "failed", "reason": "episode1_release_output_missing"}
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"status": "failed", "reason": "episode1_release_manifest_invalid"}
+    png_ok, png_reason, dimensions = _validate_png(preview, (720, 1280))
+    if not png_ok:
+        return {"status": "failed", "reason": png_reason}
+    if (data.get("status") != "completed" or data.get("stage") != "episode1_scene1_animated_animatic"
+            or data.get("duration_seconds") != 60 or data.get("frame_count") != 720
+            or data.get("audio") != "none" or data.get("subtitles") != "none"):
+        return {"status": "failed", "reason": "episode1_release_manifest_validation_failed"}
+    with video.open("rb") as stream: header = stream.read(16)
+    if b"ftyp" not in header or video.stat().st_size > 32_000_000:
+        return {"status": "failed", "reason": "episode1_release_video_invalid_or_too_large"}
+    return {"status": "completed", "task": "blender_mia_blockout",
+            "stage": data["stage"], "project_dir": str(project),
+            "blend_path": str(blend), "preview_path": str(preview),
+            "video_path": str(video), "resolution": dimensions,
+            "duration_seconds": 60, "fps": 12, "frame_count": 720,
+            "object_count": data.get("object_count"), "manual_review_required": True,
+            "note": "Silent procedural animatic; concept board remains a draft and production models are not approved."}
+
+
 def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str, list[int] | None]:
     """Validate PNG chunk boundaries, CRCs, required chunks, and expected dimensions."""
     try:
@@ -367,6 +573,8 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
         raise BlenderWorkflowError("Project folder must not be a symlink or junction.")
     project.mkdir(parents=True, exist_ok=True)
     outputs = [project / "mia_blockout.blend", project / "mia_blockout.png", project / "blender_result.json"]
+    if project_name == "S01E01_SC01_RELEASE":
+        outputs.append(project / "scene.mp4")
     if any(is_link_or_junction(p) for p in outputs + [project / "blender_stdout.log", project / "blender_stderr.log"]):
         raise BlenderWorkflowError("Output files must not be symlinks or junctions.")
     if not overwrite and any(p.exists() for p in outputs):
@@ -431,6 +639,8 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     completed = False
     try:
         result = generate()
+        if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":
+            result = _render_episode1_release(project, workspace, blender)
         completed = result.get("status") == "completed"
         return result
     finally:
