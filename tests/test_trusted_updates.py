@@ -75,6 +75,9 @@ def test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_
         "tests/test_github_asset_sync.py",
         "tests/test_github_asset_sync_resume.py",
         "tests/test_asset_sync_protocol.py",
+        "local_agent/mailbox_policy.py",
+        "local_agent/studio_static/app.js",
+        "tests/test_mailbox_policy.py",
     ]
     valid = manifest(files=[{"path": path, "sha256": "b"*64} for path in paths])
     parsed = update.parse_manifest(json.dumps(valid).encode())
