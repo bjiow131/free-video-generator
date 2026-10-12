@@ -71,21 +71,13 @@ def _resume_octava_waiting_projects(workspace: Path) -> None:
             projects = ProjectMemory.waiting_projects(workspace, limit=3)
         except (MemoryErrorSafe, MailboxPolicyError):
             return
-        # The Studio workspace may be supplied only as a CLI arg, not env.
-        # request_advice is the single, bounded caller and saves checkpoints.
-        previous = os.environ.get("LOCAL_AGENT_WORKSPACE")
-        os.environ["LOCAL_AGENT_WORKSPACE"] = str(workspace)
-        try:
-            for project_id in projects:
-                try:
-                    request_advice(project_id=project_id, resume_pending=True)
-                except (OctavaAdviceError, MemoryErrorSafe):
-                    continue  # preserved for later explicit resume
-        finally:
-            if previous is None:
-                os.environ.pop("LOCAL_AGENT_WORKSPACE", None)
-            else:
-                os.environ["LOCAL_AGENT_WORKSPACE"] = previous
+        # Explicit workspace: never mutate process-global environment from a thread.
+        for project_id in projects:
+            try:
+                request_advice(project_id=project_id, resume_pending=True,
+                               workspace=str(workspace))
+            except (OctavaAdviceError, MemoryErrorSafe):
+                continue  # preserved for later explicit resume
     finally:
         _OCTAVA_RESUME_LOCK.release()
 
@@ -880,7 +872,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if load_policy()["enabled"] and load_policy()["allow_octava"]:
                     threading.Thread(
                         target=_resume_octava_waiting_projects,
-                        args=(self.server.store.root,),
+                        args=(self.server.store.workspace,),
                         name="octava-rotate-resume", daemon=True,
                     ).start()
                 return self._json(200, result)
