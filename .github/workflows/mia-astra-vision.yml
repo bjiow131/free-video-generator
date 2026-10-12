@@ -1,7 +1,7 @@
 name: Mia Astra visual identity review
 on:
   push:
-    branches: [feature/mia-astra-visual-review-20261013, feature/mia-identity-shape-pass2-20261013]
+    branches: [feature/mia-astra-visual-review-20261013, feature/mia-identity-shape-pass2-20261013, feature/mia-hair-identity-pass3-20261013]
     paths:
       - "local_agent/control_protocol.py"
       - "local_agent/mailbox_policy.py"
@@ -9,6 +9,7 @@ on:
       - "local_agent/blender_workflow.py"
       - "tests/test_mia_astra_pass1.py"
       - "tests/test_mia_identity_shape_pass2.py"
+      - "tests/test_mia_hair_identity_pass3.py"
       - "tests/test_mia_astra_vision.py"
       - ".github/workflows/mia-astra-vision.yml"
   workflow_dispatch:
@@ -29,4 +30,4 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -r requirements-github-mailbox.txt
       - run: python -m compileall -q local_agent
-      - run: python -m pytest -q tests/test_mia_astra_vision.py tests/test_mia_astra_pass1.py tests/test_mia_identity_shape_pass2.py tests/test_control_protocol.py tests/test_mailbox_policy.py tests/test_octava_mailbox.py tests/test_mia_model_review_delivery.py tests/test_unattended_poller.py
+      - run: python -m pytest -q tests/test_mia_astra_vision.py tests/test_mia_astra_pass1.py tests/test_mia_identity_shape_pass2.py tests/test_mia_hair_identity_pass3.py tests/test_control_protocol.py tests/test_mailbox_policy.py tests/test_octava_mailbox.py tests/test_mia_model_review_delivery.py tests/test_unattended_poller.py
