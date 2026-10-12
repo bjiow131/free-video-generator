@@ -14,6 +14,11 @@ from urllib.request import Request, urlopen
 TARGET = "LocalAgent/OctavAPI/api-key"
 API_URL = "https://octavapi.shop/v1/chat/completions"
 DEFAULT_MODEL = "gpt-6-luna"
+# Selection is an explicit task routing decision; no hidden model fallback or
+# automatic increase in spend when a provider rejects a request.
+SIMPLE_MODEL = "gpt-6-luna"
+COMPLEX_MODEL = "gpt-6.1-sol"
+MODEL_TIERS = frozenset({"default", "simple", "complex"})
 KEY_PATTERN = re.compile(r"[!-~]{12,2048}\Z", re.ASCII)
 MODEL_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 
@@ -38,6 +43,21 @@ def configured_model() -> str:
     return model
 
 
+def model_for_tier(tier: str = "default") -> str:
+    """Pick one known model per request; default retains legacy configuration.
+
+    'complex' is not enabled by guesswork from free-form text; only a locally
+    approved structured task may request the higher-cost model.
+    """
+    if not isinstance(tier, str) or tier not in MODEL_TIERS:
+        raise OctavaKeyError("Недопустимая категория модели OctavAPI")
+    if tier == "simple":
+        return SIMPLE_MODEL
+    if tier == "complex":
+        return COMPLEX_MODEL
+    return configured_model()
+
+
 def read_key() -> tuple[str | None, str | None]:
     """Re-read vault for every request: new keys work without process restart."""
     if os.name == "nt":
@@ -57,6 +77,7 @@ def key_status() -> dict:
     key, source = read_key()
     return {"configured": bool(key), "stored_locally": source == "windows_vault",
             "provider": "OctavAPI", "model": configured_model(),
+            "simple_model": SIMPLE_MODEL, "complex_model": COMPLEX_MODEL,
             "github_connection_independent": True,
             "validation": "not_checked"}
 
