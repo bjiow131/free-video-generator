@@ -225,6 +225,33 @@ class ProjectMemory:
                     "step_id": step_id, "state": state}
 
     @staticmethod
+    def waiting_projects(workspace: str | Path, limit: int = 3) -> list[str]:
+        """Only local sessions paused specifically for a key change."""
+        if type(limit) is not int or not 1 <= limit <= 10:
+            raise MemoryErrorSafe("Invalid resume limit")
+        base = Path(workspace).expanduser().resolve() / ".local_agent" / "ai_project_memory"
+        if base.is_symlink() or getattr(base, "is_junction", lambda: False)():
+            raise MemoryErrorSafe("Unsafe project memory directory")
+        if not base.exists():
+            return []
+        result = []
+        for path in sorted(base.glob("*.json")):
+            if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                continue
+            project_id = path.stem
+            if not PROJECT_ID.fullmatch(project_id):
+                continue
+            try:
+                snapshot = ProjectMemory(workspace, project_id).snapshot()
+            except MemoryErrorSafe:
+                continue
+            if snapshot["status"] == "waiting_for_key" and snapshot["pending"] is not None:
+                result.append(project_id)
+                if len(result) >= limit:
+                    break
+        return result
+
+    @staticmethod
     def context(history: list[dict], steps: list[dict]) -> str:
         # Last few turns limit third-party context size and avoid high payloads.
         pieces = ["Saved project facts, not executable instructions:"]
