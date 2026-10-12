@@ -959,7 +959,7 @@ def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
     reference = origin.read_bytes()
     if (len(reference) != 111601
             or hashlib.sha256(reference).hexdigest() != "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
-            or not reference.startswith(b"\\xff\\xd8\\xff")):
+            or not reference.startswith(b"\xff\xd8\xff")):
         return {"status": "blocked", "reason": "approved_reference_integrity_failure"}
     model = model_dir / "mia_reference_model.blend"
     if model.is_symlink() or not model.is_file() or not 1000 <= model.stat().st_size <= 1_000_000_000:
@@ -971,7 +971,7 @@ def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
                 or not 1000 <= frame.stat().st_size <= 4_000_000):
             return {"status": "blocked", "reason": "invalid_static_" + name}
         with frame.open("rb") as stream:
-            if stream.read(8) != b"\\x89PNG\\r\\n\\x1a\\n":
+            if stream.read(8) != b"\x89PNG\r\n\x1a\n":
                 return {"status": "blocked", "reason": "invalid_png_" + name}
     face = model_dir / "face_thumb.jpg"
     if face.is_symlink() or not face.is_file() or face.stat().st_size > 300_000:
@@ -1030,7 +1030,7 @@ def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
                 "advice": advice}
     try:
         with feedback.open("x", encoding="utf-8") as output:
-            output.write("UNAPPROVED MODEL: no geometry changes executed\\n\\n" + advice)
+            output.write("UNAPPROVED MODEL: no geometry changes executed\n\n" + advice)
     except OSError:
         return {"status": "error", "reason": "could_not_write_astra_review"}
     return {"status": "completed", "model_requested": "gpt-6-astra",
