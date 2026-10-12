@@ -626,8 +626,9 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     if (project_name == "S01E01_SC01_RELEASE"
             and all(p.is_file() for p in outputs[:3])
             and not (project / "scene.mp4").exists()
-            and not (project / "preview.png").exists()
             and not overwrite):
+        # A preview may exist from a prior animation attempt that failed during
+        # video setup. The source blockout remains valid and can be animated in place.
         return _render_episode1_release(project, workspace, blender)
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
