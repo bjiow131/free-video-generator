@@ -7,6 +7,7 @@ after an explicit opt-in stored on the Windows computer.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import uuid
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +123,91 @@ def _ffmpeg(cmd: list[str], *, timeout: int) -> None:
         raise ReviewDeliveryError("FFmpeg export could not finish") from exc
     if p.returncode:
         raise ReviewDeliveryError("FFmpeg preview export failed")
+
+
+def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[str, Any]:
+    """Copy only the fixed Episode 1 draft .blend and PNG to opted-in Dropbox Sync.
+
+    This is an explicit local Dropbox-review export. It accepts no arbitrary
+    source paths, does not include story text, and never overwrites an earlier
+    review folder. Dropbox cloud delivery must still be verified separately.
+    """
+    if project_name != "S01E01_SC01_DRAFT":
+        raise ReviewDeliveryError("Only the fixed Episode 1 draft project can be exported")
+    if not read_settings()["enabled"]:
+        return {"status": "disabled", "reason": "dropbox_review_permission_disabled"}
+
+    workspace_root = Path(workspace).expanduser()
+    _safe_path(workspace_root)
+    if not workspace_root.is_dir():
+        raise ReviewDeliveryError("Workspace is unavailable")
+    workspace_root = workspace_root.resolve()
+    project = _safe_path(workspace_root / project_name)
+    if not project.is_dir() or not project.resolve().is_relative_to(workspace_root):
+        raise ReviewDeliveryError("Episode 1 draft project is unavailable or outside the workspace")
+
+    sources = (
+        ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
+        ("preview.png", _safe_path(project / "mia_blockout.png"), 20_000_000),
+    )
+    metadata = []
+    for name, source, limit in sources:
+        if not source.is_file():
+            raise ReviewDeliveryError("Required scene artifact is missing")
+        size = source.stat().st_size
+        if size <= 0 or size > limit:
+            raise ReviewDeliveryError("Scene artifact is empty or exceeds its export size limit")
+        digest = hashlib.sha256()
+        with source.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        metadata.append({"name": name, "size_bytes": size, "sha256": digest.hexdigest()})
+
+    root = discover_dropbox_root()
+    if root is None:
+        raise ReviewDeliveryError("Dropbox Desktop folder was not detected; sign in to Dropbox desktop")
+    review_root = _safe_path(root / REVIEW_FOLDER)
+    review_root.mkdir(exist_ok=True)
+    if len(list(review_root.iterdir())) >= MAX_REVIEW_JOBS:
+        raise ReviewDeliveryError("Review folder limit reached; manually archive older reviews")
+    job_id = uuid.uuid4().hex
+    destination = _safe_path(review_root / job_id)
+    if destination.exists():
+        raise ReviewDeliveryError("Review job already exists; refusing to overwrite")
+    destination.mkdir()
+    try:
+        for (name, source, _), item in zip(sources, metadata):
+            shutil.copyfile(source, destination / name)
+            # Re-hash the copied bytes so the published manifest describes
+            # the actual Dropbox-sync files, not only the source files.
+            copied = hashlib.sha256()
+            with (destination / name).open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    copied.update(chunk)
+            if copied.hexdigest() != item["sha256"]:
+                raise ReviewDeliveryError("Scene artifact changed during export")
+        manifest = {
+            "status": "draft",
+            "scene_id": "S01_SC01",
+            "project_name": project_name,
+            "manual_visual_review_required": True,
+            "files": metadata,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+        (destination / "scene_manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+        (destination / "complete.json").write_text(
+            json.dumps({"status": "completed", "job_id": job_id}) + "\\n", encoding="utf-8")
+        return {
+            "status": "exported_to_local_dropbox",
+            "folder": REVIEW_FOLDER + "/" + job_id,
+            "files": [item["name"] for item in metadata] + ["scene_manifest.json", "complete.json"],
+            "sha256": {item["name"]: item["sha256"] for item in metadata},
+            "cloud_sync_verified": False,
+        }
+    except BaseException:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
 
 
 def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[str, Any]:
