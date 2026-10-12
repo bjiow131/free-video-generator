@@ -402,7 +402,8 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
 
 
 
-# Keep media selection here because this file is already allowlisted by the\n# installed trusted updater; adding a new Python module would not deploy.\n_JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
+# Keep media selection in this trusted-update-allowlisted module.
+_JOB_ID = re.compile(r"[a-f0-9]{32}\Z")
 _MEDIA_ID = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
 _FRAME_ID = re.compile(r"frame_[0-9]{4,6}\.png\Z")
 _MAX_STATUS = 16_384
@@ -526,7 +527,9 @@ def resolve_media(kind: str) -> tuple[Path, str, str]:
         file = _safe_file(project, Path("studio_media") / ref, _MAX_IMAGE)
         return file, "sendPhoto", "Мия · референс из локальной карточки персонажа"
     raise TelegramMediaError("Неизвестная команда медиа")
-\n\ndef telegram_upload_local_media(token: str, chat: str, method: str,
+
+
+def telegram_upload_local_media(token: str, chat: str, method: str,
                                 file: Path, caption: str) -> dict:
     """Send one pre-validated local Studio asset via direct Telegram multipart.
 
@@ -535,7 +538,7 @@ def resolve_media(kind: str) -> tuple[Path, str, str]:
     """
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
-    from local_agent.telegram_media import TelegramMediaError
+    # Media helpers are defined locally in this updater-allowlisted module.
     if method not in ("sendPhoto", "sendVideo"):
         raise TelegramAlertError("Недопустимая операция с медиа")
     if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
@@ -621,7 +624,7 @@ def resolve_media(kind: str) -> tuple[Path, str, str]:
 
 def telegram_send_studio_media(kind: str) -> None:
     """Explicit private-chat command; works even when automatic notices are off."""
-    from local_agent.telegram_media import resolve_media, TelegramMediaError
+    # Media helpers are defined locally in this updater-allowlisted module.
     token, chat = _telegram_credentials()
     if not token or not chat:
         raise TelegramAlertError("Сначала привяжите Telegram-чат")
@@ -800,7 +803,7 @@ class ReviewStudioJobs(StudioJobs):
         # A Telegram transport or network failure must never change render status.
         try:
             if info.get("kind", "scene") == "scene" and telegram_notifications_enabled():
-                from local_agent.telegram_media import media_for_job
+                # Media helpers are defined locally in this updater-allowlisted module.
                 token, chat = _telegram_credentials()
                 if token and chat:
                     file, method, caption = media_for_job(self.store.root, job_id, "preview", info)
