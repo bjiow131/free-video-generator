@@ -8,6 +8,99 @@ import pytest
 from local_agent.poller import _not_expired
 
 
+def test_mailbox_failure_diagnostics_exports_only_crash_metadata(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    state = tmp_path / ".local_agent"
+    state.mkdir()
+    (state / "octava_supervisor.log").write_text(
+        "mailbox exited code=1; auto-restarting\n"
+        "Trusted update installed; controlled restart\n", encoding="utf-8")
+    (state / "octava_mailbox.log").write_text(
+        'Traceback (most recent call last):\n'
+        '  File "C:\\private\\local_agent\\poller.py", line 123, in main\n'
+        '    secret = "DO_NOT_EXPORT"\n'
+        'RuntimeError: DO_NOT_EXPORT\n', encoding="utf-8")
+    result = poller._mailbox_failure_diagnostics()
+    assert result["last_mailbox_exit_code"] == 1
+    assert result["last_exception_type"] == "RuntimeError"
+    assert result["last_poller_frame"] == {"line": 123, "function": "main"}
+    assert result["controlled_update_restart_count_in_log_tail"] == 1
+    assert "DO_NOT_EXPORT" not in str(result)
+    assert "private" not in str(result)
+
+
+def test_mailbox_failure_diagnostics_handles_absent_logs(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    result = poller._mailbox_failure_diagnostics()
+    assert result["last_exception_type"] is None
+    assert result["last_mailbox_exit_code"] is None
+
+
+def test_mailbox_failure_diagnostics_rejects_log_symlink(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    (tmp_path / ".local_agent").mkdir()
+    outside = tmp_path / "other.log"
+    outside.write_text("RuntimeError: private\n", encoding="utf-8")
+    try:
+        (tmp_path / ".local_agent" / "octava_mailbox.log").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    assert poller._mailbox_failure_diagnostics()["last_exception_type"] is None
+
+
+def test_supervisor_recovery_enters_install_directory_before_import(tmp_path, monkeypatch):
+    from local_agent import poller
+    import subprocess
+    import json
+    root = tmp_path / "Studio folder's name"
+    root.mkdir()
+    monkeypatch.setattr(poller.subprocess, "list2cmdline", lambda args: args)
+    args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
+    (root / "local_agent").mkdir()
+    (root / "local_agent" / "__init__.py").write_text("")
+    (root / "local_agent" / "poller.py").write_text(
+        "import os,sys,json; print(json.dumps([os.getcwd(),sys.argv[1:]]))")
+    completed = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert json.loads(completed.stdout) == [str(root), ["--supervise"]]
+
+
+def test_mailbox_process_diagnostics_never_exports_commands(monkeypatch):
+    from local_agent import poller
+    monkeypatch.setattr(poller.os, "name", "nt")
+    monkeypatch.setattr(poller.subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout='[{"pid":1,"parent_pid":2,"role":"mailbox","CommandLine":"SECRET"},{"pid":3,"parent_pid":2,"role":"unknown"}]'))
+    assert poller._mailbox_process_diagnostics() == [{"pid": 1, "parent_pid": 2, "role": "mailbox"}]
+
+
+def test_duplicate_poller_waits_for_owner_instead_of_exiting(monkeypatch, tmp_path):
+    from local_agent import poller
+    owner = object()
+    attempts = []
+    waits = []
+    def acquire(path):
+        attempts.append(path)
+        if len(attempts) < 3:
+            raise poller.PollerAlreadyRunning("busy")
+        return owner
+    monkeypatch.setattr(poller, "_acquire_instance_lock", acquire)
+    monkeypatch.setattr(poller.time, "sleep", waits.append)
+    assert poller._wait_for_instance_lock(tmp_path / "poller.lock") is owner
+    assert waits == [10, 10]
+
+
+def test_standby_poller_does_not_hide_unsafe_lock_path(monkeypatch, tmp_path):
+    from local_agent import poller
+    def acquire(path):
+        raise RuntimeError("unsafe path")
+    monkeypatch.setattr(poller, "_acquire_instance_lock", acquire)
+    monkeypatch.setattr(poller.time, "sleep", lambda _: pytest.fail("unsafe error retried"))
+    with pytest.raises(RuntimeError, match="unsafe path"):
+        poller._wait_for_instance_lock(tmp_path / "poller.lock")
+
+
 @pytest.fixture(autouse=True)
 def _agent_interactive_console_for_tests(monkeypatch):
     # Simulate an interactive local terminal for approval-path unit tests.
@@ -847,8 +940,63 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
     })["status"] == "rejected"
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_RELEASE", "overwrite": False
-    })["status"] == "rejected"
-    assert len(calls) == 1
+    })["status"] == "completed"
+    assert calls[-1] == ("S01E01_SC01_RELEASE", False, 5, None)
+    assert len(calls) == 2
+
+
+def test_five_second_retry_options_pass_mailbox_protocol():
+    import json
+    from local_agent.control_protocol import parse_task, ProtocolError
+    value = {"protocol_version": 1, "task_id": "five-second-retry",
+             "operation": "blender_mia_blockout",
+             "created_at": "2026-10-12T16:00:00Z", "expires_at": "2026-10-12T18:00:00Z",
+             "requires_local_approval": True,
+             "arguments": {"project_name": "S01E01_SC01_RELEASE", "duration_seconds": 5, "overwrite": True}}
+    assert parse_task(json.dumps(value)).arguments == value["arguments"]
+    for changes in ({"project_name": "different_project"}, {"duration_seconds": True},
+                    {"duration_seconds": 60}, {"overwrite": "yes"},
+                    {"allow_full_render": True}, {"command": "anything"}):
+        changed = {**value, "arguments": {**value["arguments"], **changes}}
+        with pytest.raises(ProtocolError):
+            parse_task(json.dumps(changed))
+
+
+def test_generated_rig_skips_mesh_without_a_bone_selection():
+    import ast
+    from local_agent.blender_workflow import _scene_script
+    tree = ast.parse(_scene_script())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "build_rig")
+    # Execute the actual guard with Blender's string-only membership contract.
+    guard = next(node for node in ast.walk(function) if isinstance(node, ast.If)
+                 and any(isinstance(part, ast.Compare) and any(isinstance(op, ast.NotIn) for op in part.ops)
+                         for part in ast.walk(node.test)))
+    class Bones:
+        def __contains__(self, key):
+            if not isinstance(key, str):
+                raise TypeError("Blender requires a bone name")
+            return key == "head"
+    data = SimpleNamespace(bones=Bones())
+    expression = compile(ast.Expression(guard.test), "rig-guard", "eval")
+    assert eval(expression, {"bone": None, "data": data}) is True
+    assert eval(expression, {"bone": "missing", "data": data}) is True
+    assert eval(expression, {"bone": "head", "data": data}) is False
+
+
+def test_five_second_animation_reads_blender5_channelbag_curves():
+    import ast
+    from local_agent.blender_workflow import _episode1_animation_script
+    tree = ast.parse(_episode1_animation_script())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "action_fcurves")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "action-curves", "exec"), namespace)
+    first, second = object(), object()
+    modern = SimpleNamespace(layers=[SimpleNamespace(strips=[
+        SimpleNamespace(channelbags=[SimpleNamespace(fcurves=[first]), SimpleNamespace(fcurves=[second])])])])
+    curves = namespace["action_fcurves"]
+    assert list(curves(modern)) == [first, second]
+    assert list(curves(SimpleNamespace(fcurves=[first]))) == [first]
+    assert list(curves(SimpleNamespace(layers=[]))) == []
 
 
 def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():

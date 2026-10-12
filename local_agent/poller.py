@@ -143,6 +143,72 @@ def _telegram_signal(event: str, identifier: str, message: str) -> None:
         return
 
 
+def _mailbox_failure_diagnostics() -> dict[str, Any]:
+    """Return bounded crash metadata only; never export log messages or source lines."""
+    def tail(name: str) -> str:
+        path = ROOT / ".local_agent" / name
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            return ""
+        try:
+            with path.open("rb") as stream:
+                stream.seek(max(0, path.stat().st_size - 65536))
+                return stream.read(65536).decode("utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    events = tail("octava_supervisor.log")
+    exits = re.findall(r"mailbox exited code=(-?\d+); auto-restarting", events)
+    worker = tail("octava_mailbox.log")
+    exceptions = re.findall(r"^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))(?::|$)", worker, re.MULTILINE)
+    frames = re.findall(r'File "[^"\r\n]*[\\/]local_agent[\\/]poller\.py", line (\d+), in ([A-Za-z_][A-Za-z0-9_]*)', worker)
+    startup = [label for label in (
+        "another local agent poller is already running",
+        "Cannot load poller replay state",
+        "Cannot recover previous trusted update",
+        "GitHub mailbox polling is disabled",
+        "Cannot start mailbox poller",
+    ) if label in worker]
+    return {
+        "last_mailbox_exit_code": int(exits[-1]) if exits else None,
+        "mailbox_exit_count_in_log_tail": len(exits),
+        "last_exception_type": exceptions[-1] if exceptions else None,
+        "last_poller_frame": {"line": int(frames[-1][0]), "function": frames[-1][1]} if frames else None,
+        "startup_failure_categories": startup,
+        "controlled_update_restart_count_in_log_tail": events.count("Trusted update installed; controlled restart"),
+    }
+
+
+def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
+    """Classify Windows Python workers without returning command lines or secrets."""
+    if os.name != "nt":
+        return []
+    script = (
+        "@(Get-CimInstance Win32_Process | Where-Object {"
+        "$_.Name -match '^pythonw?\\.exe$' -and "
+        "$_.CommandLine -match '-m\\s+local_agent\\.(poller|studio_server)(\\s|$)'"
+        "} | ForEach-Object {"
+        "$role=if($_.CommandLine -match 'studio_server'){'studio'}"
+        "elseif($_.CommandLine -match '--supervise'){'supervisor'}else{'mailbox'};"
+        "[pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;role=$role}"
+        "}) | ConvertTo-Json -Compress")
+    try:
+        found = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            timeout=10, check=False, text=True)
+        if found.returncode or len(found.stdout) > 8192:
+            return []
+        items = json.loads(found.stdout or "[]")
+        if isinstance(items, dict):
+            items = [items]
+        return [{key: item[key] for key in ("pid", "parent_pid", "role")}
+                for item in items[:30] if isinstance(item, dict)
+                and type(item.get("pid")) is int and type(item.get("parent_pid")) is int
+                and item.get("role") in ("mailbox", "studio", "supervisor")]
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
+        return []
+
+
 def doctor_with_supervisor() -> dict[str, Any]:
     """Read-only Windows watchdog health; never reveal account names or secrets."""
     result = doctor()
@@ -258,6 +324,8 @@ def doctor_with_supervisor() -> dict[str, Any]:
         "log_detected": logfile.is_file(),
         "recent_event_types": recent,
         "service_restart_check_seconds": 2,
+        "mailbox_failures": _mailbox_failure_diagnostics(),
+        "agent_processes": _mailbox_process_diagnostics(),
     }
     return result
 
@@ -1300,6 +1368,19 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_preflight":
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
+                # Separate immutable acknowledgement lets the remote operator
+                # distinguish task intake from a still-running render.
+                try:
+                    _publish_result_durable(client, task.task_id + "-accepted", {
+                        "task_id": task.task_id,
+                        "status": "accepted",
+                        "operation": task.operation,
+                        "project_name": task.arguments["project_name"],
+                        "duration_seconds": task.arguments.get("duration_seconds", 5),
+                        "render_completion_confirmed": False,
+                    })
+                except QueueTransportError:
+                    print("Task acknowledgement queued for later delivery.")
                 details = _run_blender_mia_blockout(task.arguments, task_id=task.task_id)
             elif task.operation == "blender_open_mia_project":
                 details = _run_blender_open_mia_project(task.arguments)
@@ -1561,6 +1642,23 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     return state
 
 
+class PollerAlreadyRunning(RuntimeError):
+    """Another process owns the mailbox; this is contention, not a worker crash."""
+
+
+def _wait_for_instance_lock(path: Path):
+    """Remain a standby without reading tasks until the existing owner releases it."""
+    announced = False
+    while True:
+        try:
+            return _acquire_instance_lock(path)
+        except PollerAlreadyRunning:
+            if not announced:
+                print("Another mailbox worker owns the lock; waiting without executing tasks.", flush=True)
+                announced = True
+            time.sleep(10)
+
+
 def _acquire_instance_lock(path: Path):
     """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -1580,13 +1678,19 @@ def _acquire_instance_lock(path: Path):
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as exc:
-                raise RuntimeError("another local agent poller is already running") from exc
+                import errno
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                raise PollerAlreadyRunning("another local agent poller is already running") from exc
         else:
             import fcntl
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as exc:
-                raise RuntimeError("another local agent poller is already running") from exc
+                import errno
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                raise PollerAlreadyRunning("another local agent poller is already running") from exc
         handle.seek(0)
         handle.truncate()
         handle.write(str(os.getpid()).encode("ascii"))
@@ -1749,7 +1853,9 @@ def main() -> int:
         return 2
 
     try:
-        lock_handle = _acquire_instance_lock(STATE_PATH.with_name("poller.lock"))
+        lock_handle = _wait_for_instance_lock(STATE_PATH.with_name("poller.lock"))
+    except KeyboardInterrupt:
+        return 0
     except RuntimeError as exc:
         print(f"Cannot start poller: {exc}")
         return 2
@@ -2094,6 +2200,13 @@ def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
     return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 6)))
 
 
+def _supervisor_recovery_command(program: Path, root: Path) -> str:
+    """Make Task Scheduler startup independent of its default System32 directory."""
+    code = ("import os,runpy;os.chdir(" + repr(str(root)) + ");"
+            "runpy.run_module('local_agent.poller',run_name='__main__')")
+    return subprocess.list2cmdline([str(program), "-c", code, "--supervise"])
+
+
 def supervise_windows() -> int:
     """Maintain Studio and the private mailbox worker for the signed-in user.
 
@@ -2193,7 +2306,7 @@ def supervise_windows() -> int:
     try:
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         program = pythonw if pythonw.is_file() else Path(sys.executable)
-        trigger = f'"{program}" -m local_agent.poller --supervise'
+        trigger = _supervisor_recovery_command(program, root)
         completed = subprocess.run(
             ["schtasks.exe", "/Create", "/F", "/SC", "MINUTE", "/MO", "1",
              "/TN", "BlenderOctavaStudioSupervisor", "/TR", trigger],

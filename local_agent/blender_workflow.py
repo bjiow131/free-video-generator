@@ -225,7 +225,7 @@ def build_rig(name, prefix, origin, bones):
             elif "head" in label: bone="head"
             elif "stalk" in label or "eye" in label:
                 bone="eye.L" if relative_x<0.34 else "eye.R"
-        if bone not in data.bones:
+        if bone is None or bone not in data.bones:
             continue
         group=obj.vertex_groups.new(name=bone)
         if len(obj.data.vertices): group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
@@ -495,10 +495,20 @@ for frame,loc,scale in ((1,(3.3,-12.5,4.7),9.5),(180,(3.3,-12.3,4.6),9.5),
     camera.data.keyframe_insert(data_path="ortho_scale",frame=frame)
 # The five-second test preserves the same story beats by compressing the full
 # animatic timing; its 60 frames therefore show the complete action.
+def action_fcurves(action):
+    # Blender 5 stores animation curves on channelbags, not Action.fcurves.
+    layers=getattr(action,"layers",())
+    if layers:
+        for layer in layers:
+            for strip in layer.strips:
+                for bag in getattr(strip,"channelbags",()):
+                    yield from bag.fcurves
+    else:
+        yield from getattr(action,"fcurves",())
 if duration_seconds != 60:
     ratio=duration_seconds/60.0
     for action in bpy.data.actions:
-        for curve in action.fcurves:
+        for curve in action_fcurves(action):
             for point in curve.keyframe_points:
                 point.co.x=1+(point.co.x-1)*ratio
                 point.handle_left.x=1+(point.handle_left.x-1)*ratio
@@ -948,7 +958,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
     try:
         result = generate()
         if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":
-            result = _render_episode1_release(project, workspace, blender, duration_seconds)
+            result = _render_episode1_release(project, workspace, blender, duration_seconds, task_id)
         completed = result.get("status") == "completed"
         return result
     finally:
