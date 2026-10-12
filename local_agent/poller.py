@@ -1777,7 +1777,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
-    if task.operation != "doctor":
+    if task.operation not in ("doctor", "mia_astra_autoloop_100"):
         label = str(task.operation).replace("_", " ")[:48]
         if outcome == "completed":
             _telegram_signal("task-ok", task.task_id,
