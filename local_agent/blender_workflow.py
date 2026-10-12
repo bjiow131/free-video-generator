@@ -1991,3 +1991,43 @@ with open(os.path.join(out,"model_result.json"),"w",encoding="utf-8") as f:
     json.dump({"cycle":p["cycle"],"changed_vertices_or_materials":count,
                "animation":False,"area":area,"delta":d},f)
 '''
+
+
+_MIA_AUTOLOOP_SYSTEM = """You are Astra, a relentless identity-fidelity 3D correction controller.
+Input Image #1 is the ONE immutable user-approved three-angle visual reference of Mia, a four-year-old girl. Image #2 is the latest FRONT Blender render of the SAME editable 3D model. Your task is to make this specific Mia maximally faithful, NOT to generate a different cute girl or to make a video. Assess face, iris-to-eye ratio, cheeks/chin, light-brown side-swept hair, forehead/hairline, brows and child-like proportions. Preserve the approved teal jacket, mustard backpack and identity; do not alter clothes. NEVER claim success without actually seeing both images. Choose ONE small measurable adjustment in ONE permitted group. Allowed groups with their fixed effects: eyes=complete eye+eyelid scale; iris=iris/pupil scale; lower_face=lower jaw/cheek width; side_fringe=hair swept position; hair_volume=upper hair silhouette; brows=eyebrow height; hair_tone=hair brightness. Signed delta range -0.025 to 0.025 with absolute value >=0.0005. Prefer a sequence of conservative well-reasoned edits, avoid cumulative overcorrection, and reverse a previous bad edit if necessary. Always respond using ONLY valid JSON with exactly keys area, delta, reason, score. Example: {"area":"side_fringe","delta":-0.008,"reason":"The left swept bang is too low vs approved front view","score":32}. Score is an indicative subjective 0-100 estimate, not a calibrated identity guarantee. NO scripts, Python, commands, paths or explanations outside JSON. No animation, rigs, image synthesis, object replacement, scene or video. Do not exit early merely because the likeness looks reasonable: the owner requested 100 correction iterations, bounded by safe constraints.
+"""
+
+def _mia_autoloop_astra(api_key: str, approved_jpeg64: str,
+                        current_png: bytes, cycle: int, history: dict[str, Any]) -> dict[str, Any]:
+    """Fixed OctavAPI multimodal request. Exactly reference + newest FRONT."""
+    import base64
+    from urllib.request import Request, urlopen
+    if len(current_png) > 4_000_000 or current_png[:8]!=b"\x89PNG\r\n\x1a\n":
+        raise BlenderWorkflowError("invalid_current_front_render")
+    previous=history.get("previous_command")
+    instruction=("Cycle %03d/100. Current FRONT is the latest image. "
+                 "Previous bounded edit: %s. Choose NEXT safe edit for greater identity."
+                 % (cycle, json.dumps(previous,ensure_ascii=False)[:350]))
+    content=[
+        {"type":"text","text":instruction},
+        {"type":"image_url","image_url":{"url":"data:image/jpeg;base64,"+approved_jpeg64,"detail":"high"}},
+        {"type":"image_url","image_url":{"url":"data:image/png;base64,"+
+                        base64.b64encode(current_png).decode("ascii"),"detail":"high"}},
+    ]
+    payload=json.dumps({
+       "model":"gpt-6-astra",
+       "messages":[{"role":"system","content":_MIA_AUTOLOOP_SYSTEM},
+                   {"role":"user","content":content}],
+       "max_tokens":350,"temperature":0.2
+    },ensure_ascii=False).encode("utf-8")
+    if len(payload)>8_000_000:
+        raise BlenderWorkflowError("image_request_exceeds_limit")
+    req=Request("https://octavapi.shop/v1/chat/completions",
+                data=payload,method="POST",
+                headers={"Authorization":"Bearer "+api_key,"Content-Type":"application/json"})
+    with urlopen(req,timeout=115) as response:
+        raw=response.read(65537)
+    if len(raw)>65536:
+        raise BlenderWorkflowError("provider_response_exceeds_limit")
+    data=json.loads(raw.decode("utf-8"))
+    return _mia_autoloop_command(data["choices"][0]["message"]["content"])
