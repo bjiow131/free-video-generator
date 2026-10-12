@@ -489,3 +489,16 @@ def test_trusted_update_diagnostics_requires_existing_tests_permission():
     policy["enabled"] = False
     policy["allow_tests"] = True
     assert not is_auto_authorized("trusted_update_diagnostics", policy)
+
+
+def test_episode_scene_review_export_dispatch_is_blender_gated():
+    from local_agent import poller
+    from local_agent.mailbox_policy import default_policy, is_auto_authorized
+
+    operation = "export_mia_scene_review"
+    assert operation in poller._SPECIALIZED_OPERATIONS
+    policy = default_policy()
+    policy.update(enabled=True, allow_blender=True)
+    assert is_auto_authorized(operation, policy)
+    policy["allow_blender"] = False
+    assert not is_auto_authorized(operation, policy)
