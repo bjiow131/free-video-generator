@@ -1,27 +1,15 @@
 # Approved asset sync
 
-The mailbox operation `sync_approved_assets` accepts only `{"project_name":"episode1"}`. With the ordinary interactive mailbox policy, the poller asks for local `YES` approval before execution. If the unattended policy is enabled, this operation is blocked unless the local policy explicitly authorizes it; this feature does not add that standing authorization. The task must set `requires_local_approval: true`.
+The mailbox operation `sync_approved_assets` accepts only `{"project_name":"episode1"}`. Every task must set `requires_local_approval: true`. The ordinary interactive policy asks for local approval. In unattended mode, the operation is blocked unless the owner has enabled both the general unattended setting and the separate `allow_asset_sync` checkbox in the local Studio UI. Incoming GitHub tasks cannot change this local setting.
 
-The manifest is pinned at `docs/season1/asset_sync_manifest.json`; callers cannot provide an alternate repository, commit, URL, or destination. The synchronizer checks GitHub metadata, the pinned raw download host/path, and SHA-256. It resumes interrupted `.part` files with HTTP Range, treats matching local files as duplicates, and preserves different existing files as conflicts. Downloads stay below the selected project's `assets/` directory. No mailbox or GitHub credential is forwarded to the public asset source.
+The permission is off by default and stored only on the computer. It authorizes this bounded pinned-asset operation; it does not authorize Blender scene creation, code updates, arbitrary commands, or other mailbox operations. Older four-field policy files migrate with `allow_asset_sync: false`, preserving existing settings.
 
-The current manifest contains three character/animal passports. The source asset catalog is empty for approved generated references, and no episode reference images, props, environment assets, or Blender-ready rigs were found. Add only reviewed assets with a pinned commit and SHA-256 before expanding the manifest.
+The manifest is pinned at `docs/season1/asset_sync_manifest.json`; callers cannot provide an alternate repository, commit, URL, project name, or destination. The synchronizer checks GitHub metadata, the pinned raw download host/path, file size, and SHA-256. It resumes interrupted `.part` files with HTTP Range, treats matching local files as duplicates, and preserves different existing files as conflicts. Downloads stay below the selected project's `assets/` directory. No mailbox or GitHub credential is forwarded to the public asset source.
+
+The current manifest contains three character/animal passports and one generated Episode 1 concept board. The board is a draft reference only; it is not an approved character design, production model, or rig. The source library contains no approved 3D character models, rigs, prop models, or environment model. Do not present missing original references as available.
 
 ## Trusted updater status
 
-The current trusted updater does not allowlist `local_agent/control_protocol.py`, `local_agent/github_asset_sync.py`, or `docs/season1/asset_sync_manifest.json`. This feature must not be placed in `queue/desired_update.json` until its file paths are accepted by the updater through a separately reviewed bootstrap. The updater itself is excluded from self-updates. No allowlist is bypassed here. The existing `desired_update.json` currently contains a different active update and is left untouched.
+The installed updater deliberately excludes self-updates and does not yet trust the new sync protocol/module/manifest paths. This feature must not be placed in `queue/desired_update.json` until an independent review and separately approved bootstrap extend the updater's trusted file allowlist. Do not bypass its allowlist, local update consent, backups, hash verification, or rollback checks.
 
-After the bootstrap is installed and approved locally, the code update and the later `sync_approved_assets` mailbox task must be delivered separately. Create the asset task only after code installation is confirmed; use a fresh ID, short expiry, and `requires_local_approval: true`. Do not put private story scripts or private-bible content in the asset manifest.
-
-Example future task envelope:
-
-```json
-{
-  "protocol_version": 1,
-  "task_id": "asset-sync-episode1-REPLACE",
-  "operation": "sync_approved_assets",
-  "created_at": "CURRENT_UTC_TIME",
-  "expires_at": "CURRENT_UTC_TIME_PLUS_10_MINUTES",
-  "requires_local_approval": true,
-  "arguments": {"project_name": "episode1"}
-}
-```
+After that bootstrap is installed and the code update is confirmed, enable `allow_asset_sync` once in local Studio if desired. Then submit the asset-sync mailbox task separately with a fresh ID, short expiry, fixed arguments, and `requires_local_approval: true`. Confirm the local agent reports completion and verify the downloaded checksums before using assets in Blender. Never include private scripts, dialogue, tokens, or story-bible contents in the public asset manifest.
