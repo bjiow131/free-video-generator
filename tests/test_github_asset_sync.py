@@ -141,7 +141,7 @@ def test_rejects_redirects_and_bad_digest_without_creating_target(tmp_path):
 
 def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tmp_path, monkeypatch):
     private_commit = "a" * 40
-    private_path = "characters/mia/references/mia_turnaround_approved_20261012.jpeg"
+    private_path = "private_assets/mia/mia_turnaround_approved_20261012.jpeg"
     destination = "assets/references/mia_turnaround_approved_20261012.jpeg"
     image_bytes = b"approved-mia-reference"
     digest = hashlib.sha256(image_bytes).hexdigest()
@@ -150,7 +150,7 @@ def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tm
     data["assets"] = [{
         "category": "character_reference",
         "asset_id": "mia-turnaround-20261012",
-        "source_repository": "bjiow131/season1-private-bible",
+        "source_repository": "bjiow131/local-agent-mailbox",
         "path": private_path,
         "destination": destination,
         "commit_sha": private_commit,
