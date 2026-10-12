@@ -99,3 +99,37 @@ def test_changed_manifest_does_not_run(monkeypatch, tmp_path):
     monkeypatch.setitem(poller.SUPPORTED_HANDLERS, 'doctor', lambda: pytest.fail('stale task executed'))
     poller._run_one(client, client.task, 'original-manifest')
     assert client.results[-1][1]['status'] == 'superseded'
+
+
+def test_mia_blockout_defaults_to_five_second_review(monkeypatch, tmp_path):
+    from local_agent import blender_workflow
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(poller, 'load_policy', lambda: policy(allow_blender=True))
+    preview = tmp_path / 'preview.png'
+    preview.write_bytes(b'preview')
+    seen = []
+    monkeypatch.setattr(blender_workflow, 'create_mia_blockout',
+                        lambda name, **kw: seen.append((name, kw)) or {
+                            'status': 'completed', 'preview_path': str(preview), 'duration_seconds': 5})
+    result = poller._run_blender_mia_blockout({'project_name': 'S01E01_SC01_RELEASE'})
+    assert seen == [('S01E01_SC01_RELEASE', {'overwrite': False, 'duration_seconds': 5})]
+    assert result['duration_seconds'] == 5
+    assert result['preview_png_base64']
+
+
+def test_mia_full_render_requires_explicit_flag(monkeypatch, tmp_path):
+    from local_agent import blender_workflow
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(poller, 'load_policy', lambda: policy(allow_blender=True))
+    called = []
+    monkeypatch.setattr(blender_workflow, 'create_mia_blockout',
+                        lambda *a, **kw: called.append(True) or {'status': 'completed'})
+    blocked = poller._run_blender_mia_blockout({
+        'project_name': 'S01E01_SC01_RELEASE', 'duration_seconds': 60})
+    assert blocked['status'] == 'rejected'
+    assert not called
+    result = poller._run_blender_mia_blockout({
+        'project_name': 'S01E01_SC01_RELEASE', 'duration_seconds': 60,
+        'allow_full_render': True})
+    assert result['status'] == 'completed'
+    assert called == [True]

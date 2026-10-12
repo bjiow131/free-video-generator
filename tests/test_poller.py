@@ -835,12 +835,13 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
     calls = []
     monkeypatch.setattr(
         "local_agent.blender_workflow.create_mia_blockout",
-        lambda project_name, *, overwrite=False: calls.append((project_name, overwrite)) or {"status": "completed"},
+        lambda project_name, *, overwrite=False, duration_seconds=5, task_id=None:
+            calls.append((project_name, overwrite, duration_seconds, task_id)) or {"status": "completed"},
     )
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_RELEASE", "overwrite": True
     })["status"] == "completed"
-    assert calls == [("S01E01_SC01_RELEASE", True)]
+    assert calls == [("S01E01_SC01_RELEASE", True, 5, None)]
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_DRAFT", "overwrite": True
     })["status"] == "rejected"
@@ -848,3 +849,99 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
         "project_name": "S01E01_SC01_RELEASE", "overwrite": False
     })["status"] == "rejected"
     assert len(calls) == 1
+
+
+def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
+    import json
+    from local_agent import poller, github_queue
+    from local_agent.control_protocol import ProtocolError
+
+    envelope = {
+        "protocol_version": 1,
+        "task_id": "codex-restart-20261012",
+        "operation": "restart_agent",
+        "created_at": "2026-10-12T16:00:00Z",
+        "expires_at": "2026-10-12T16:10:00Z",
+        "requires_local_approval": True,
+        "arguments": {},
+    }
+    parsed = github_queue.parse_task(json.dumps(envelope))
+    assert parsed.operation == "restart_agent"
+    assert parsed.arguments == {}
+    assert parsed.requires_local_approval is True
+
+    envelope["arguments"] = {"command": "anything"}
+    with pytest.raises(ProtocolError, match="no arguments"):
+        github_queue.parse_task(json.dumps(envelope))
+
+    envelope["arguments"] = {}
+    envelope["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval"):
+        github_queue.parse_task(json.dumps(envelope))
+
+
+def test_remote_restart_needs_persistent_opt_in_or_local_launcher(monkeypatch):
+    from local_agent import poller
+
+    monkeypatch.delenv("LOCAL_AGENT_ALLOW_REMOTE_RESTART", raising=False)
+    monkeypatch.setattr(poller, "get_opt_in", lambda: {"enabled": False})
+    assert poller._remote_restart_enabled() is False
+
+    monkeypatch.setattr(poller, "get_opt_in", lambda: {"enabled": True})
+    assert poller._remote_restart_enabled() is True
+
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_REMOTE_RESTART", "0")
+    assert poller._remote_restart_enabled() is False
+
+
+def test_remote_restart_opens_only_fixed_loopback_studio(monkeypatch):
+    from local_agent import poller
+
+    opened = []
+    monkeypatch.setenv("LOCAL_AGENT_STUDIO_PORT", "55313")
+    monkeypatch.setattr(poller, "request_runtime_restart", lambda _: {"restart_pending": True})
+    monkeypatch.setattr(
+        poller.webbrowser, "open",
+        lambda url, new=0, autoraise=True: opened.append((url, new, autoraise)) or True,
+    )
+    result = poller._request_restart_and_open_studio()
+    assert result["restart_pending"] is True
+    assert result["browser_open_requested"] is True
+    assert opened == [("http://127.0.0.1:55313/", 2, True)]
+
+    monkeypatch.setenv("LOCAL_AGENT_STUDIO_PORT", "99999")
+    poller._request_restart_and_open_studio()
+    assert opened[-1][0] == "http://127.0.0.1:55313/"
+
+def test_remote_blender_task_cancel_signal_is_scoped_to_active_task(tmp_path, monkeypatch):
+    from local_agent import studio_jobs
+    root = tmp_path / ".local_agent"
+    monkeypatch.setattr(studio_jobs, "_AGENT_CONTROL_ROOT", root)
+    monkeypatch.setattr(studio_jobs, "_AGENT_ACTIVE_TASK", root / "active_agent_task.json")
+    monkeypatch.setattr(studio_jobs, "_AGENT_CANCEL_TASK", root / "cancel_agent_task.json")
+    monkeypatch.setattr(studio_jobs, "_agent_control_dir", lambda: root.mkdir(parents=True, exist_ok=True) or root)
+    active = studio_jobs.begin_agent_task("task-cancel-001", "blender_mia_blockout", "S01E01_SC01_RELEASE")
+    assert active["state"] == "running"
+    assert studio_jobs.agent_task_status()["state"] == "running"
+    requested = studio_jobs.request_agent_task_cancel("task-cancel-001")
+    assert requested["state"] == "cancelling"
+    assert studio_jobs.agent_task_status()["state"] == "cancelling"
+    assert studio_jobs.agent_task_cancel_requested("task-cancel-001")
+    assert not studio_jobs.agent_task_cancel_requested("other-task")
+    studio_jobs.finish_agent_task("task-cancel-001")
+    assert studio_jobs.agent_task_status() == {"state": "idle"}
+
+
+def test_cancelable_blender_process_stops_on_signal(monkeypatch, tmp_path):
+    import sys
+    from local_agent import blender_workflow
+    seen = []
+    monkeypatch.setattr(blender_workflow, "_agent_cancel_requested",
+                        lambda task_id: seen.append(task_id) is None)
+    completed, cancelled, timed_out, _extra, error_type = blender_workflow._run_cancellable_process(
+        [sys.executable, "-c", "import time; time.sleep(10)"],
+        cwd=tmp_path, timeout=20, task_id="task-cancel-002",
+    )
+    assert cancelled and not timed_out and error_type is None
+    assert completed.returncode is not None
+    assert seen and set(seen) == {"task-cancel-002"}

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -365,3 +366,103 @@ class StudioJobs:
         if p.stat().st_size > 100_000_000:
             raise StudioJobError("Video file too large")
         return p
+
+_AGENT_CONTROL_ROOT = Path(__file__).resolve().parents[1] / ".local_agent"
+_AGENT_ACTIVE_TASK = _AGENT_CONTROL_ROOT / "active_agent_task.json"
+_AGENT_CANCEL_TASK = _AGENT_CONTROL_ROOT / "cancel_agent_task.json"
+_AGENT_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
+
+def _agent_control_dir() -> Path:
+    root = Path(__file__).resolve().parents[1]
+    directory = _AGENT_CONTROL_ROOT
+    if (root.is_symlink() or getattr(root, "is_junction", lambda: False)()
+            or directory.is_symlink() or getattr(directory, "is_junction", lambda: False)()):
+        raise StudioJobError("Unsafe agent control directory")
+    directory.mkdir(parents=True, exist_ok=True)
+    if not directory.resolve().is_relative_to(root.resolve()):
+        raise StudioJobError("Agent control directory leaves installation")
+    return directory
+
+def _read_agent_control(path: Path) -> dict[str, Any] | None:
+    _agent_control_dir()
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise StudioJobError("Unsafe agent control file")
+    try:
+        if path.stat().st_size > 4096:
+            raise StudioJobError("Agent control file is too large")
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise StudioJobError("Agent control file cannot be read") from exc
+    if (not isinstance(value, dict) or not isinstance(value.get("task_id"), str)
+            or not _AGENT_TASK_ID.fullmatch(value["task_id"])):
+        raise StudioJobError("Agent control file is invalid")
+    return value
+
+def _write_agent_control(path: Path, value: dict[str, Any]) -> None:
+    directory = _agent_control_dir()
+    if path.parent.resolve() != directory.resolve() or path.is_symlink():
+        raise StudioJobError("Unsafe agent control target")
+    temporary = directory / (".agent-control-" + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+def agent_task_status() -> dict[str, Any]:
+    active = _read_agent_control(_AGENT_ACTIVE_TASK)
+    if active is None:
+        return {"state": "idle"}
+    started = active.get("started_at")
+    if isinstance(started, (int, float)) and time.time() - started > 7200:
+        return {**active, "state": "interrupted",
+                "message": "Задача не сообщала о состоянии более двух часов."}
+    cancel = _read_agent_control(_AGENT_CANCEL_TASK)
+    if cancel and cancel.get("task_id") == active["task_id"]:
+        active = {**active, "state": "cancelling"}
+    return active
+
+def begin_agent_task(task_id: str, operation: str, project_name: str | None = None) -> dict[str, Any]:
+    if not isinstance(task_id, str) or not _AGENT_TASK_ID.fullmatch(task_id):
+        raise StudioJobError("Invalid agent task ID")
+    current = agent_task_status()
+    if current.get("state") in ("running", "cancelling"):
+        raise StudioJobError("Another agent task is already active")
+    _agent_control_dir()
+    cancel = _read_agent_control(_AGENT_CANCEL_TASK)
+    if cancel is not None:
+        _AGENT_CANCEL_TASK.unlink(missing_ok=True)
+    active = {"task_id": task_id, "operation": str(operation)[:80],
+              "project_name": str(project_name or "")[:80], "state": "running",
+              "pid": os.getpid(), "started_at": time.time()}
+    _write_agent_control(_AGENT_ACTIVE_TASK, active)
+    return active
+
+def finish_agent_task(task_id: str) -> None:
+    active = _read_agent_control(_AGENT_ACTIVE_TASK)
+    if active and active.get("task_id") == task_id:
+        _AGENT_ACTIVE_TASK.unlink(missing_ok=True)
+    cancel = _read_agent_control(_AGENT_CANCEL_TASK)
+    if cancel and cancel.get("task_id") == task_id:
+        _AGENT_CANCEL_TASK.unlink(missing_ok=True)
+
+def request_agent_task_cancel(task_id: str) -> dict[str, Any]:
+    if not isinstance(task_id, str) or not _AGENT_TASK_ID.fullmatch(task_id):
+        raise StudioJobError("Invalid agent task ID")
+    active = _read_agent_control(_AGENT_ACTIVE_TASK)
+    if active is None or active.get("task_id") != task_id or active.get("state") != "running":
+        raise StudioJobError("Agent task is not running")
+    request = {"task_id": task_id, "requested_at": time.time()}
+    _write_agent_control(_AGENT_CANCEL_TASK, request)
+    return {**active, "state": "cancelling"}
+
+def agent_task_cancel_requested(task_id: str | None) -> bool:
+    if not isinstance(task_id, str) or not task_id:
+        return False
+    request = _read_agent_control(_AGENT_CANCEL_TASK)
+    return bool(request and request.get("task_id") == task_id)

@@ -9,7 +9,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import struct
+import tempfile
+import time
 import subprocess
 import zlib
 from typing import Any
@@ -74,7 +77,6 @@ hair=mat("Mia | light brown hair",(0.36,0.20,0.10))
 jacket=mat("Mia | teal-blue jacket",(0.035,0.32,0.40))
 pants=mat("Mia | brown trousers",(0.24,0.13,0.075))
 backpack=mat("Mia | mustard-yellow backpack",(0.78,0.48,0.055))
-helmet=mat("Mia | riding helmet",(0.92,0.67,0.08))
 shoe=mat("Mia | sturdy ankle boots",(0.16,0.085,0.045))
 white=mat("Eyes | ivory",(0.95,0.88,0.73))
 iris=mat("Eyes | brown",(0.19,0.08,0.035))
@@ -115,17 +117,29 @@ def box(name, loc, dims, material):
 uv("Mia | head",(0,0,3.12),(0.53,0.47,0.58),skin)
 uv("Mia | hair cap",(0,0.035,3.48),(0.55,0.48,0.32),hair)
 uv("Mia | back hair",(0,0.23,3.13),(0.48,0.28,0.62),hair)
-# Simple helmet and backpack are continuity blockout cues, not final models.
-uv("Mia | riding helmet",(0,-0.005,3.76),(0.51,0.48,0.16),helmet)
+# The approved Mia turnaround has a loose low bun and no helmet.
+uv("Mia | low bun",(0,0.39,3.13),(0.25,0.22,0.23),hair)
+for i, (dx,dz) in enumerate(((-0.12,0.02),(-0.05,0.13),(0.05,0.14),(0.13,0.04),(0.02,-0.10),(-0.10,-0.09))):
+    uv("Mia | bun curl %02d" % i,(dx,0.47,3.13+dz),(0.105,0.11,0.105),hair,16,10)
 uv("Mia | mustard backpack",(0,0.32,2.31),(0.27,0.16,0.34),backpack)
 uv("Mia | fringe left",(-0.24,-0.405,3.43),(0.25,0.12,0.19),hair)
 uv("Mia | fringe right",(0.08,-0.425,3.45),(0.24,0.11,0.17),hair)
-for x in (-0.19,0.19):
-    uv("Mia | eye white",(x,-0.438,3.17),(0.09,0.045,0.105),white,20,12)
-    uv("Mia | iris",(x,-0.478,3.16),(0.044,0.022,0.058),iris,16,10)
-uv("Mia | nose",(0,-0.49,3.02),(0.045,0.04,0.05),skin,16,10)
+for x in (-0.21,0.21):
+    uv("Mia | eye white",(x,-0.423,3.16),(0.125,0.065,0.15),white,24,16)
+    uv("Mia | iris",(x,-0.477,3.15),(0.071,0.036,0.092),iris,20,12)
+    uv("Mia | pupil",(x,-0.508,3.15),(0.039,0.022,0.058),mat("Mia | pupil black",(0.035,0.018,0.012)),16,10)
+    uv("Mia | eye catchlight",(x-0.025,-0.528,3.19),(0.019,0.012,0.024),white,12,8)
+for x in (-0.21,0.21):
+    brow=uv("Mia | soft eyebrow",(x,-0.425,3.36),(0.105,0.04,0.032),hair,16,10)
+    brow.rotation_euler[1]=0.10 if x < 0 else -0.10
+for x in (-0.34,0.34):
+    uv("Mia | rosy cheek",(x,-0.394,3.01),(0.095,0.035,0.055),mat("Mia | rosy skin",(0.92,0.40,0.32)),16,10)
+uv("Mia | nose",(0,-0.49,3.02),(0.055,0.045,0.06),skin,16,10)
+uv("Mia | smile",(0,-0.466,2.91),(0.095,0.025,0.027),mat("Mia | warm smile",(0.36,0.09,0.075)),16,10)
 uv("Mia | jacket torso",(0,0,2.22),(0.37,0.29,0.57),jacket)
 uv("Mia | neck",(0,0,2.77),(0.13,0.13,0.17),skin)
+between("Mia | hoodie zipper",(0,-0.294,1.80),(0,-0.294,2.60),0.012,mat("Mia | zipper brass",(0.84,0.51,0.12)))
+uv("Mia | hood",(0,0.16,2.57),(0.31,0.18,0.22),jacket)
 for side in (-1,1):
     hip=(side*0.19,0,1.72); knee=(side*0.21,-0.015,1.05); ankle=(side*0.22,-0.02,0.48)
     between("Mia | trouser leg",hip,knee,0.105,pants); between("Mia | trouser cuff",knee,ankle,0.085,pants)
@@ -196,13 +210,16 @@ def build_rig(name, prefix, origin, bones):
         side=".L" if relative_x>=0 else ".R"
         bone=None
         if prefix in ("Mia","Stepa"):
-            if any(w in label for w in ("head","hair","fringe","eye","iris","nose","helmet")): bone="head"
+            if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
+            elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
             elif "neck" in label: bone="neck"
             elif any(w in label for w in ("backpack","torso")): bone="spine"
             elif "sleeve" in label: bone="upper_arm"+side
-            elif any(w in label for w in ("cuff","hand")): bone="forearm"+side
+            elif "hand" in label: bone="hand"+side
+            elif "cuff" in label: bone="forearm"+side
             elif "trouser leg" in label: bone="thigh"+side
-            elif any(w in label for w in ("trouser cuff","shoe")): bone="shin"+side
+            elif "trouser cuff" in label: bone="shin"+side
+            elif "shoe" in label: bone="foot"+side
         else:
             if "body" in label or "shell" in label: bone="body"
             elif "head" in label: bone="head"
@@ -221,14 +238,21 @@ child_bones=[
     ("spine",(0,0,1.78),(0,0,2.35),"pelvis"),
     ("neck",(0,0,2.35),(0,0,2.65),"spine"),
     ("head",(0,0,2.65),(0,0,3.35),"neck"),
+    ("jaw",(0,-0.08,2.90),(0,-0.10,3.04),"head"),
+    ("eye.L",(0.08,-0.39,3.12),(0.18,-0.39,3.12),"head"),
+    ("eye.R",(-0.08,-0.39,3.12),(-0.18,-0.39,3.12),"head"),
     ("upper_arm.L",(0.30,0,2.25),(0.62,0,1.93),"spine"),
     ("forearm.L",(0.62,0,1.93),(0.78,0,1.60),"upper_arm.L"),
+    ("hand.L",(0.52,-0.04,2.03),(0.60,-0.04,1.96),"forearm.L"),
     ("upper_arm.R",(-0.30,0,2.25),(-0.62,0,1.93),"spine"),
     ("forearm.R",(-0.62,0,1.93),(-0.78,0,1.60),"upper_arm.R"),
+    ("hand.R",(-0.52,-0.04,2.03),(-0.60,-0.04,1.96),"forearm.R"),
     ("thigh.L",(0.18,0,1.48),(0.20,0,0.88),"pelvis"),
     ("shin.L",(0.20,0,0.88),(0.20,0,0.22),"thigh.L"),
+    ("foot.L",(0.22,-0.10,0.34),(0.22,-0.30,0.30),"shin.L"),
     ("thigh.R",(-0.18,0,1.48),(-0.20,0,0.88),"pelvis"),
     ("shin.R",(-0.20,0,0.88),(-0.20,0,0.22),"thigh.R"),
+    ("foot.R",(-0.22,-0.10,0.34),(-0.22,-0.30,0.30),"shin.R"),
 ]
 mia_rig,mia_bound=build_rig("Mia_Rig","Mia",(0,0,0),child_bones)
 stepa_rig,stepa_bound=build_rig("Stepa_Rig","Stepa",(-2.05,0,0),child_bones)
@@ -292,25 +316,73 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 def _episode1_animation_script() -> str:
     """Fixed silent animatic pass; inputs are local paths constructed by this module."""
     return r'''
-import bpy, json, math, os, sys, hashlib
+import bpy, json, math, os, sys, hashlib, shutil, subprocess, tempfile
 from mathutils import Vector
 args=sys.argv[sys.argv.index("--")+1:]
 cfg=json.load(open(args[0],encoding="utf-8"))
 out=os.path.realpath(cfg["output_dir"])
 bpy.ops.wm.open_mainfile(filepath=os.path.join(out,"mia_blockout.blend"),load_ui=False)
 scene=bpy.context.scene
-scene.frame_start=1; scene.frame_end=720; scene.render.fps=12
+duration_seconds=int(cfg.get("duration_seconds",60))
+frame_count=duration_seconds*12
+scene.frame_start=1; scene.frame_end=frame_count; scene.render.fps=12
 scene.render.resolution_x=720; scene.render.resolution_y=1280; scene.render.resolution_percentage=100
 scene.render.image_settings.file_format="PNG"
 scene.render.filepath=os.path.join(out,"preview.png")
+# Upgrade the already-saved 13-bone blockout in place. This keeps the existing
+# scene and its user data while adding the new face, hand and foot controls.
+def upgrade_child_rig(rig_name,prefix):
+    rig=scene.objects.get(rig_name)
+    if rig is None or rig.type!="ARMATURE": raise RuntimeError("Child rig missing: "+rig_name)
+    controls=[
+        ("jaw",(0,-0.08,2.90),(0,-0.10,3.04),"head"),
+        ("eye.L",(0.08,-0.39,3.12),(0.18,-0.39,3.12),"head"),
+        ("eye.R",(-0.08,-0.39,3.12),(-0.18,-0.39,3.12),"head"),
+        ("hand.L",(0.52,-0.04,2.03),(0.60,-0.04,1.96),"forearm.L"),
+        ("hand.R",(-0.52,-0.04,2.03),(-0.60,-0.04,1.96),"forearm.R"),
+        ("foot.L",(0.22,-0.10,0.34),(0.22,-0.30,0.30),"shin.L"),
+        ("foot.R",(-0.22,-0.10,0.34),(-0.22,-0.30,0.30),"shin.R"),
+    ]
+    bpy.ops.object.select_all(action="DESELECT"); rig.select_set(True); bpy.context.view_layer.objects.active=rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name,head,tail,parent in controls:
+        if name not in rig.data.edit_bones:
+            bone=rig.data.edit_bones.new(name); bone.head=head; bone.tail=tail
+            bone.parent=rig.data.edit_bones.get(parent)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for obj in list(scene.objects):
+        if obj.type!="MESH" or not obj.name.startswith(prefix+" | "): continue
+        label=obj.name[len(prefix)+2:].lower(); relx=obj.matrix_world.translation.x-rig.location.x
+        side=".L" if relx>=0 else ".R"
+        if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
+        elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
+        elif "neck" in label: bone="neck"
+        elif any(w in label for w in ("backpack","torso")): bone="spine"
+        elif "sleeve" in label: bone="upper_arm"+side
+        elif "hand" in label: bone="hand"+side
+        elif "cuff" in label: bone="forearm"+side
+        elif "trouser leg" in label: bone="thigh"+side
+        elif "trouser cuff" in label: bone="shin"+side
+        elif "shoe" in label: bone="foot"+side
+        else: continue
+        for group in list(obj.vertex_groups): obj.vertex_groups.remove(group)
+        group=obj.vertex_groups.new(name=bone)
+        if obj.data.vertices: group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
+        modifier=next((m for m in obj.modifiers if m.type=="ARMATURE"),None)
+        if modifier is None: modifier=obj.modifiers.new(name=rig_name+" rigid proxy binding",type="ARMATURE")
+        modifier.object=rig
+    missing={"jaw","eye.L","eye.R","hand.L","hand.R","foot.L","foot.R"}-set(rig.data.bones.keys())
+    if missing: raise RuntimeError("Child rig upgrade incomplete: "+",".join(sorted(missing)))
+    return len(rig.data.bones)
+mia_bone_count=upgrade_child_rig("Mia_Rig","Mia")
+stepa_bone_count=upgrade_child_rig("Stepa_Rig","Stepa")
 def aim(camera, point):
     camera.rotation_euler=(Vector(point)-camera.location).to_track_quat("-Z","Y").to_euler()
 camera=scene.camera
 camera.data.type="ORTHO"; camera.data.ortho_scale=9.5
 camera.location=(3.3,-12.5,4.7); aim(camera,(-0.25,0.1,1.85))
-helmet=bpy.data.objects.get("Mia | riding helmet")
 backpack=bpy.data.objects.get("Mia | mustard backpack")
-if not helmet or not backpack: raise RuntimeError("Mia helmet/backpack proxy is missing")
+if not backpack: raise RuntimeError("Mia backpack proxy is missing")
 def material(name, rgba):
     m=bpy.data.materials.get(name)
     if m is None:
@@ -319,24 +391,13 @@ def material(name, rgba):
         if bs: bs.inputs["Base Color"].default_value=rgba
     return m
 gold=material("Mia | mustard strap",(0.90,0.56,0.08,1))
-dark=material("Mia | helmet strap",(0.12,0.11,0.09,1))
 def bar(name,a,b,r,mat):
     vec=Vector(b)-Vector(a); mid=(Vector(a)+Vector(b))*0.5
     bpy.ops.mesh.primitive_cylinder_add(vertices=12,radius=r,depth=vec.length,location=mid)
     o=bpy.context.object; o.name=name; o.data.materials.append(mat)
     o.rotation_euler=vec.to_track_quat("Z","Y").to_euler(); return o
-strap_objects=[]
 for sign in (-1,1):
     bar("Mia | visible backpack shoulder strap",(sign*0.25,-0.31,2.56),(sign*0.19,-0.31,2.05),0.055,gold)
-    strap_objects.append(bar("Mia | helmet chin strap",(sign*0.39,-0.30,3.69),(0,-0.35,2.90),0.025,dark))
-for strap in strap_objects:
-    for frame,scale in ((1,(1,1,0.01)),(75,(1,1,1)),(720,(1,1,1))):
-        strap.scale=scale; strap.keyframe_insert(data_path="scale",frame=frame)
-# The helmet is lifted into place before the controlled ride begins.
-helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=1)
-helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=25)
-helmet.location=(0,-0.005,3.76); helmet.keyframe_insert(data_path="location",frame=75)
-helmet.keyframe_insert(data_path="location",frame=720)
 skin=material("Guardian | neutral",(0.48,0.31,0.22,1))
 coat=material("Guardian | muted coat",(0.22,0.29,0.31,1))
 def box(name,loc,dims,mat):
@@ -352,9 +413,19 @@ sphere("Adult guardian proxy | head",(gx,gy,2.55),(0.30,0.29,0.36),skin)
 for s in (-1,1):
     box("Adult guardian proxy | leg",(gx+s*0.20,gy,0.62),(0.22,0.25,0.82),coat)
     bar("Adult guardian proxy | arm",(gx+s*0.39,gy,2.05),(gx+s*0.48,gy-0.05,1.45),0.09,coat)
+# Keep the guardian as a scene reference only; the approved framing keeps adults off camera.
+for obj in scene.objects:
+    if obj.name.startswith("Adult guardian proxy"):
+        obj.hide_render=True
 mouth_mat=material("Face | mouth",(0.055,0.018,0.014,1))
 def mouth_for(prefix,x,y,z):
-    return sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
+    obj=sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
+    rig=scene.objects.get(prefix+"_Rig")
+    if rig is None or "jaw" not in rig.data.bones: raise RuntimeError("Jaw control missing for "+prefix)
+    group=obj.vertex_groups.new(name="jaw")
+    if obj.data.vertices: group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
+    modifier=obj.modifiers.new(name=prefix+" jaw control",type="ARMATURE"); modifier.object=rig
+    return obj
 mia_mouth=mouth_for("Mia",0,-0.475,2.96)
 step_mouth=mouth_for("Stepa",-2.05,-0.47,2.96)
 def animate_mouth(obj, intervals):
@@ -379,6 +450,38 @@ for frame,x in ((1,0),(480,0),(540,0.25),(600,0.5),(720,0.5)):
     mia_root.location.x=x; mia_root.keyframe_insert(data_path="location",frame=frame)
 for frame,tilt in ((1,0),(90,0),(120,0.06),(150,0),(300,0),(340,-0.05),(380,0),(720,0)):
     step_root.rotation_euler.z=tilt; step_root.keyframe_insert(data_path="rotation_euler",frame=frame)
+
+# Pose controls animate actual rigid-bound character parts instead of moving
+# only the parent group. The proxies remain segmented; this is a controllable
+# scene rig, not a claim of production-quality smooth skinning.
+def animate_bone(rig_name,bone_name,axis,keys):
+    rig=scene.objects.get(rig_name)
+    if rig is None or rig.type!="ARMATURE" or bone_name not in rig.pose.bones:
+        raise RuntimeError("Required rig control is missing: "+rig_name+"/"+bone_name)
+    bone=rig.pose.bones[bone_name]; bone.rotation_mode="XYZ"
+    for frame,value in keys:
+        rotation=[0.0,0.0,0.0]; rotation[axis]=value
+        bone.rotation_euler=rotation
+        bone.keyframe_insert(data_path="rotation_euler",frame=frame,group=bone_name)
+
+animate_bone("Mia_Rig","upper_arm.L",1,((1,0),(28,0.28),(48,0.62),(72,0.72),(96,0.15),(120,0),(720,0)))
+animate_bone("Mia_Rig","upper_arm.R",1,((1,0),(28,-0.28),(48,-0.62),(72,-0.72),(96,-0.15),(120,0),(720,0)))
+animate_bone("Mia_Rig","forearm.L",2,((1,0),(42,-0.22),(72,-0.3),(100,0),(720,0)))
+animate_bone("Mia_Rig","forearm.R",2,((1,0),(42,0.22),(72,0.3),(100,0),(720,0)))
+animate_bone("Mia_Rig","head",2,((1,0),(72,0.04),(120,-0.08),(180,0),(380,0.09),(430,0),(720,0)))
+animate_bone("Mia_Rig","eye.L",2,((1,0),(160,0.08),(210,0),(400,-0.07),(450,0),(720,0)))
+animate_bone("Mia_Rig","eye.R",2,((1,0),(160,0.08),(210,0),(400,-0.07),(450,0),(720,0)))
+animate_bone("Mia_Rig","jaw",0,((1,0),(140,0.08),(250,0),(355,0.07),(385,0),(500,0.08),(545,0),(720,0)))
+animate_bone("Mia_Rig","foot.L",1,((1,0),(485,0.02),(540,0.04),(600,0.02),(720,0)))
+
+# Stepa marks the start and gives a short countdown gesture; Mia answers and
+# looks toward the route. These pose keys align with the existing dialogue cues.
+animate_bone("Stepa_Rig","upper_arm.L",1,((1,0),(20,0.35),(80,0.55),(125,0),(270,0),(300,0.5),(330,0),(720,0)))
+animate_bone("Stepa_Rig","forearm.L",2,((1,0),(25,-0.3),(70,0.35),(110,-0.2),(125,0),(270,0),(300,-0.5),(330,0),(720,0)))
+animate_bone("Stepa_Rig","upper_arm.R",1,((1,0),(270,-0.35),(305,-0.58),(340,0),(390,-0.35),(430,-0.58),(475,0),(720,0)))
+animate_bone("Stepa_Rig","forearm.R",2,((1,0),(270,0.3),(305,-0.35),(340,0),(390,0.3),(430,-0.35),(475,0),(720,0)))
+animate_bone("Stepa_Rig","head",2,((1,0),(120,0.08),(180,0),(300,-0.1),(360,0),(475,0.08),(520,0),(720,0)))
+animate_bone("Stepa_Rig","jaw",0,((1,0),(20,0),(45,0.08),(120,0),(270,0),(290,0.08),(330,0),(390,0),(410,0.08),(475,0),(720,0)))
 for obj in scene.objects:
     if obj.name=="Scooter | wheel":
         for frame,angle in ((1,0),(480,0),(600,-math.pi*2),(720,-math.pi*2)):
@@ -390,11 +493,23 @@ for frame,loc,scale in ((1,(3.3,-12.5,4.7),9.5),(180,(3.3,-12.3,4.6),9.5),
     camera.keyframe_insert(data_path="location",frame=frame)
     camera.keyframe_insert(data_path="rotation_euler",frame=frame)
     camera.data.keyframe_insert(data_path="ortho_scale",frame=frame)
+# The five-second test preserves the same story beats by compressing the full
+# animatic timing; its 60 frames therefore show the complete action.
+if duration_seconds != 60:
+    ratio=duration_seconds/60.0
+    for action in bpy.data.actions:
+        for curve in action.fcurves:
+            for point in curve.keyframe_points:
+                point.co.x=1+(point.co.x-1)*ratio
+                point.handle_left.x=1+(point.handle_left.x-1)*ratio
+                point.handle_right.x=1+(point.handle_right.x-1)*ratio
+            curve.update()
 asset_root=os.path.realpath(cfg["asset_root"])
 ref_meta={}
 for key,rel in (("mia_passport","characters/passports/mia.json"),
                 ("stepa_passport","characters/passports/stepa.json"),
-                ("draft_board","references/episode-01-reference-board.png")):
+                ("draft_board","references/episode-01-reference-board.png"),
+                ("approved_mia_turnaround","references/mia_turnaround_approved_20261012.jpeg")):
     path=os.path.realpath(os.path.join(asset_root,rel))
     if os.path.commonpath((asset_root,path))!=asset_root or not os.path.isfile(path):
         raise RuntimeError("Required pinned Episode 1 reference asset is missing")
@@ -409,11 +524,15 @@ for key,rel in (("mia_passport","characters/passports/mia.json"),
             raise RuntimeError("Mia passport age does not match continuity")
     else:
         image=bpy.data.images.load(path,check_existing=True); image.pack()
-        empty=bpy.data.objects.new("REFERENCE ONLY | generated draft board",None)
+        label=("REFERENCE ONLY | approved Mia turnaround" if key=="approved_mia_turnaround"
+               else "REFERENCE ONLY | generated draft board")
+        empty=bpy.data.objects.new(label,None)
         scene.collection.objects.link(empty); empty.empty_display_type="IMAGE"; empty.data=image
-        empty.location=(100,100,0); empty.hide_render=True; empty["status"]="draft_not_approved"
+        empty.location=(100,100,0); empty.hide_render=True
+        empty["status"]=("approved_visual_reference" if key=="approved_mia_turnaround"
+                         else "draft_not_approved")
 scene["episode_id"]="S01E01"; scene["scene_id"]="S01_SC01"
-scene["asset_status"]="procedural proxies; passports verified; generated board is draft"
+scene["asset_status"]="proxy character rejected for visual mismatch; approved Mia turnaround packed for replacement model"
 scene["reference_sha256_json"]=json.dumps(ref_meta,sort_keys=True)
 scene["audio_policy"]="silent; no voice, music, or subtitles"
 scene.frame_set(1)
@@ -423,7 +542,8 @@ bpy.ops.render.render(write_still=True)
 review_dir=os.path.join(out,"review_frames")
 os.makedirs(review_dir,exist_ok=True)
 review_frames=[]
-for frame in (180,360,540,720):
+review_frame_numbers=tuple(max(1,round(frame_count*f)) for f in (0.25,0.5,0.75,1.0))
+for frame in review_frame_numbers:
     scene.frame_set(frame)
     review_path=os.path.join(review_dir,"review-%04d.png" % frame)
     scene.render.filepath=review_path
@@ -434,11 +554,47 @@ scene.render.filepath=os.path.join(out,"preview.png")
 blend=os.path.join(out,"mia_blockout.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend)
 video=os.path.join(out,"scene.mp4")
-video_status="unsupported_by_blender_build"
+video_status="render_failed"
+video_error=None
 try:
     scene.render.image_settings.file_format="FFMPEG"
 except (TypeError, ValueError):
-    scene["video_export_status"]=video_status
+    ffmpeg=shutil.which("ffmpeg")
+    if not ffmpeg:
+        video_status="ffmpeg_not_found"
+    elif os.path.lexists(video):
+        video_status="blocked_existing_video"
+    else:
+        frame_dir=tempfile.mkdtemp(prefix=".scene-frames-",dir=out)
+        partial=os.path.join(out,"scene.partial.mp4")
+        try:
+            scene.render.image_settings.file_format="PNG"
+            scene.render.filepath=os.path.join(frame_dir,"frame_")
+            bpy.ops.render.render(animation=True)
+            command=[ffmpeg,"-hide_banner","-loglevel","error","-n","-framerate","12",
+                     "-start_number","1","-i",os.path.join(frame_dir,"frame_%04d.png"),
+                     "-frames:v","720","-c:v","libx264","-pix_fmt","yuv420p",
+                     "-movflags","+faststart","-crf","20","-preset","medium","-an",partial]
+            proc=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",
+                                timeout=900,check=False,shell=False)
+            if proc.returncode!=0:
+                video_error=(proc.stderr or "")[-1200:]
+            elif os.path.isfile(partial) and os.path.getsize(partial)>=1024:
+                with open(partial,"rb") as stream: header=stream.read(16)
+                if b"ftyp" in header and not os.path.lexists(video):
+                    os.replace(partial,video); video_status="exported"
+                else:
+                    video_status="invalid_or_existing_video"
+            else:
+                video_status="render_failed"
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+            video_status="ffmpeg_failed"
+            video_error=type(exc).__name__
+        finally:
+            if video_status=="exported":
+                shutil.rmtree(frame_dir,ignore_errors=True)
+            if os.path.isfile(partial) and video_status!="exported":
+                os.remove(partial)
 else:
     scene.render.ffmpeg.format="MPEG4"; scene.render.ffmpeg.codec="H264"
     scene.render.ffmpeg.constant_rate_factor="MEDIUM"; scene.render.ffmpeg.video_bitrate=2500
@@ -455,14 +611,94 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
                "review_frame_paths":review_frames,
                "video_path":video if video_status=="exported" else None,
                "video_export_status":video_status,
-               "duration_seconds":60,"fps":12,"frame_count":720,
+               "duration_seconds":duration_seconds,"fps":12,"frame_count":frame_count,
                "object_count":len(scene.objects),"audio":"none","subtitles":"none",
+               "mia_rig_bones":len(scene.objects["Mia_Rig"].data.bones),
+               "stepa_rig_bones":len(scene.objects["Stepa_Rig"].data.bones),
                "asset_provenance":ref_meta,"production_models_available":False,
-               "manual_visual_review_required":True},f,ensure_ascii=False)
+               "visual_acceptance":"rejected_proxy_mismatch; do not call this render final",
+               "manual_visual_review_required":True,"video_error":video_error},f,ensure_ascii=False)
 '''
 
 
-def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> dict[str, Any]:
+def _agent_cancel_requested(task_id: str | None) -> bool:
+    if not task_id:
+        return False
+    try:
+        from local_agent.studio_jobs import agent_task_cancel_requested
+        return agent_task_cancel_requested(task_id)
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        taskkill = shutil.which("taskkill.exe")
+        if taskkill:
+            try:
+                subprocess.run([taskkill, "/PID", str(int(process.pid)), "/T", "/F"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=12, check=False, shell=False)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        if process.poll() is None:
+            process.kill()
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except OSError:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            process.kill()
+        process.wait()
+
+def _run_cancellable_process(command: list[str], *, cwd: Path, timeout: int,
+                             task_id: str | None):
+    """Run Blender in its own process group and honor only this task's local cancel signal."""
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    started = time.monotonic()
+    with tempfile.TemporaryFile() as stdout_stream, tempfile.TemporaryFile() as stderr_stream:
+        try:
+            process = subprocess.Popen(
+                command, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                stdout=stdout_stream, stderr=stderr_stream, shell=False,
+                close_fds=True, creationflags=flags, start_new_session=(os.name != "nt"),
+            )
+        except OSError as exc:
+            return None, False, False, "", type(exc).__name__
+        cancelled = False
+        timed_out = False
+        while process.poll() is None:
+            if _agent_cancel_requested(task_id):
+                cancelled = True
+                _terminate_process_tree(process)
+                break
+            if time.monotonic() - started >= timeout:
+                timed_out = True
+                _terminate_process_tree(process)
+                break
+            time.sleep(0.25)
+        stdout_stream.flush()
+        stderr_stream.flush()
+        stdout_stream.seek(max(0, stdout_stream.tell() - 262_144))
+        stdout = stdout_stream.read().decode("utf-8", errors="replace")
+        stderr_stream.seek(max(0, stderr_stream.tell() - 262_144))
+        stderr = stderr_stream.read().decode("utf-8", errors="replace")
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        return completed, cancelled, timed_out, "", None
+
+def _render_episode1_release(project: Path, workspace: Path, blender: Path, duration_seconds: int, task_id: str | None = None) -> dict[str, Any]:
     """Render only the fixed Episode 1 scene folder; never overwrite existing files."""
     if project.name != "S01E01_SC01_RELEASE":
         return {"status": "rejected", "reason": "episode1_release_project_not_allowlisted"}
@@ -471,6 +707,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         asset_root / "characters" / "passports" / "mia.json",
         asset_root / "characters" / "passports" / "stepa.json",
         asset_root / "references" / "episode-01-reference-board.png",
+        asset_root / "references" / "mia_turnaround_approved_20261012.jpeg",
     ]
     guarded = [workspace / "episode1", asset_root, *required]
     if any(is_link_or_junction(p) for p in guarded) or any(not p.is_file() for p in required):
@@ -482,19 +719,28 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         script = Path(temp) / "episode1_animation.py"
         cfg = Path(temp) / "release.json"
         script.write_text(_episode1_animation_script(), encoding="utf-8")
-        cfg.write_text(json.dumps({"output_dir": str(project), "asset_root": str(asset_root)},
+        cfg.write_text(json.dumps({"output_dir": str(project), "asset_root": str(asset_root),
+                                   "duration_seconds": duration_seconds},
                                   ensure_ascii=False), encoding="utf-8")
         try:
-            proc = subprocess.run(
+            proc, cancelled, timed_out, _, error_type = _run_cancellable_process(
                 [str(blender), "--background", "--disable-autoexec", "--offline-mode",
                  "--python-exit-code", "1", "--python", str(script), "--", str(cfg)],
-                cwd=str(project), capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=2400, check=False, shell=False,
+                cwd=project, timeout=2400, task_id=task_id,
             )
-        except subprocess.TimeoutExpired:
-            return {"status": "timeout", "reason": "episode1_animation_render_timeout"}
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             return {"status": "error", "error_type": type(exc).__name__}
+        if error_type:
+            return {"status": "error", "error_type": error_type}
+        if cancelled:
+            (project / "scene.partial.mp4").unlink(missing_ok=True)
+            (project / "scene.mp4").unlink(missing_ok=True)
+            for temporary_frames in project.glob(".scene-frames-*"):
+                if temporary_frames.is_dir() and not is_link_or_junction(temporary_frames):
+                    shutil.rmtree(temporary_frames, ignore_errors=True)
+            return {"status": "cancelled", "reason": "cancelled_by_user", "task_id": task_id}
+        if timed_out:
+            return {"status": "timeout", "reason": "episode1_animation_render_timeout"}
     if proc.returncode != 0:
         return {"status": "failed", "reason": "episode1_animation_render_failed",
                 "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2500:]}
@@ -513,8 +759,9 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
     if not png_ok:
         return {"status": "failed", "reason": png_reason}
     if (data.get("status") != "completed" or data.get("stage") != "episode1_scene1_animated_animatic"
-            or data.get("duration_seconds") != 60 or data.get("frame_count") != 720
-            or data.get("audio") != "none" or data.get("subtitles") != "none"):
+            or data.get("duration_seconds") != duration_seconds or data.get("frame_count") != duration_seconds * 12
+            or data.get("audio") != "none" or data.get("subtitles") != "none"
+            or data.get("mia_rig_bones",0) < 20 or data.get("stepa_rig_bones",0) < 20):
         return {"status": "failed", "reason": "episode1_release_manifest_validation_failed"}
     if data.get("video_export_status") == "exported":
         if is_link_or_junction(video) or not video.is_file() or video.stat().st_size < 1024:
@@ -522,8 +769,10 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         with video.open("rb") as stream: header = stream.read(16)
         if b"ftyp" not in header or video.stat().st_size > 32_000_000:
             return {"status": "failed", "reason": "episode1_release_video_invalid_or_too_large"}
+    else:
+        return {"status": "failed", "reason": "episode1_video_export_" + str(data.get("video_export_status", "status_missing"))}
     review_frames = data.get("review_frame_paths", [])
-    expected_review_names = {f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)}
+    expected_review_names = {f"review-{round(duration_seconds * 12 * part):04d}.png" for part in (0.25, 0.5, 0.75, 1.0)}
     if not isinstance(review_frames, list) or {Path(p).name for p in review_frames} != expected_review_names:
         return {"status": "failed", "reason": "episode1_review_frame_manifest_invalid"}
     for frame_path in review_frames:
@@ -536,9 +785,10 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
             "video_path": str(video) if data.get("video_export_status") == "exported" else None,
             "video_export_status": data.get("video_export_status"),
             "review_frames": review_frames, "resolution": dimensions,
-            "duration_seconds": 60, "fps": 12, "frame_count": 720,
-            "object_count": data.get("object_count"), "manual_review_required": True,
-            "note": "Animated procedural scene; video availability depends on the installed Blender build. Concept board remains a draft and production models are not approved."}
+            "duration_seconds": duration_seconds, "fps": 12, "frame_count": duration_seconds * 12,
+            "object_count": data.get("object_count"), "mia_rig_bones": data.get("mia_rig_bones"),
+            "stepa_rig_bones": data.get("stepa_rig_bones"), "manual_review_required": True,
+            "note": "Animated courtyard animatic with 20-control segmented proxy rigs; smooth production skinning and final model approval remain outstanding."}
 
 
 def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str, list[int] | None]:
@@ -593,10 +843,12 @@ def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str
         return False, "preview_unreadable", None
 
 
-def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[str, Any]:
+def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_seconds: int = 5, task_id: str | None = None) -> dict[str, Any]:
     """Create a fixed Mia character/prop blockout, save .blend, and validate preview."""
     if not isinstance(project_name, str) or not project_name or len(project_name) > 48:
         raise BlenderWorkflowError("Invalid project name.")
+    if type(duration_seconds) is not int or duration_seconds not in (5, 60):
+        raise BlenderWorkflowError("Episode 1 duration must be 5 seconds for review or 60 seconds after review.")
     if not _PROJECT_NAME.fullmatch(project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
     blender = find_blender_executable()
@@ -629,7 +881,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
             and not overwrite):
         # A preview may exist from a prior animation attempt that failed during
         # video setup. The source blockout remains valid and can be animated in place.
-        return _render_episode1_release(project, workspace, blender)
+        return _render_episode1_release(project, workspace, blender, duration_seconds, task_id)
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
     import tempfile
@@ -654,15 +906,18 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
             cfg = temp_dir / "task.json"
             script.write_text(_scene_script(), encoding="utf-8")
             cfg.write_text(json.dumps({"output_dir": str(project)}, ensure_ascii=False), encoding="utf-8")
-            try:
-                proc = subprocess.run([str(blender), "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
-                                       "--python", str(script), "--", str(cfg)],
-                                      cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                      timeout=1200, check=False, shell=False)
-            except subprocess.TimeoutExpired:
+            proc, cancelled, timed_out, _, error_type = _run_cancellable_process(
+                [str(blender), "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                 "--python", str(script), "--", str(cfg)],
+                cwd=project, timeout=1200, task_id=task_id,
+            )
+            if error_type:
+                return {"status": "error", "error_type": error_type}
+            if cancelled:
+                return {"status": "cancelled", "reason": "cancelled_by_user", "task_id": task_id,
+                        "project_dir": str(project)}
+            if timed_out:
                 return {"status": "timeout", "reason": "blender_blockout_timeout", "project_dir": str(project)}
-            except OSError as exc:
-                return {"status": "error", "error_type": type(exc).__name__}
         (project / "blender_stdout.log").write_text((proc.stdout or "")[-262144:], encoding="utf-8")
         (project / "blender_stderr.log").write_text((proc.stderr or "")[-262144:], encoding="utf-8")
         if proc.returncode != 0:
@@ -693,10 +948,14 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     try:
         result = generate()
         if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":
-            result = _render_episode1_release(project, workspace, blender)
+            result = _render_episode1_release(project, workspace, blender, duration_seconds)
         completed = result.get("status") == "completed"
         return result
     finally:
+        if result.get("status") == "cancelled" and backup_dir is None:
+            for path in outputs:
+                if path.is_file() and not is_link_or_junction(path):
+                    path.unlink(missing_ok=True)
         if backup_dir is not None:
             if completed:
                 shutil.rmtree(backup_dir, ignore_errors=True)

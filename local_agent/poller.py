@@ -8,6 +8,7 @@ Service start/stop/backup operations are not implemented.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace as dataclass_replace
 import json
 import os
 import re
@@ -17,10 +18,13 @@ import subprocess
 import sys
 import tempfile
 import time
+import webbrowser
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
+from local_agent import github_queue as _github_queue
+from local_agent.control_protocol import ProtocolError
 from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
@@ -36,6 +40,52 @@ from local_agent.mailbox_policy import (
     load_runtime_control, set_runtime_pause, request_runtime_restart,
     acknowledge_runtime_restart,
 )
+
+# The pinned trusted updater intentionally cannot install a new protocol module.
+# Add one data-only operation here by routing it through the existing strict
+# envelope validator as the no-argument `status` operation, then restoring its
+# fixed operation name in the immutable parsed task.
+_parse_task_strict = _github_queue.parse_task
+
+def _parse_task_with_restart(raw: str):
+    try:
+        value=json.loads(raw)
+    except (ValueError,TypeError):
+        return _parse_task_strict(raw)
+    if not isinstance(value,dict) or value.get("operation")!="restart_agent":
+        return _parse_task_strict(raw)
+    if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
+        raise ProtocolError("restart_agent accepts no arguments and must keep local approval enabled.")
+    normalized=dict(value); normalized["operation"]="status"
+    task=_parse_task_strict(json.dumps(normalized,ensure_ascii=False,separators=(",",":")))
+    return dataclass_replace(task,operation="restart_agent")
+
+_github_queue.parse_task=_parse_task_with_restart
+
+def _remote_restart_enabled() -> bool:
+    """Require a persistent local software-update opt-in or a launcher opt-in."""
+    override=os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART")
+    if override=="0": return False
+    try:
+        opted_in=get_opt_in().get("enabled") is True
+    except TrustedUpdateError:
+        opted_in=False
+    return opted_in or override=="1"
+
+def _request_restart_and_open_studio() -> dict[str, Any]:
+    """Queue a controlled service restart and open only the fixed loopback Studio URL."""
+    result=request_runtime_restart({})
+    try:
+        port=int(os.environ.get("LOCAL_AGENT_STUDIO_PORT","55313"))
+    except (TypeError,ValueError):
+        port=55313
+    if not 1024<=port<=65535: port=55313
+    url=f"http://127.0.0.1:{port}/"
+    try:
+        opened=bool(webbrowser.open(url,new=2,autoraise=True))
+    except (webbrowser.Error,OSError,RuntimeError):
+        opened=False
+    return {**result,"studio_url":url,"browser_open_requested":opened}
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -278,6 +328,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
+    "restart_agent",
 })
 
 
@@ -881,19 +932,53 @@ def _run_blender_open_mia_project(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
-def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
+def _run_blender_mia_blockout(arguments: dict[str, Any], *, task_id: str | None = None) -> dict[str, Any]:
     """Create and validate fixed Mia blockouts; allow guarded retry only for the Episode 1 release."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
     project_name = arguments.get("project_name")
-    overwrite = False
-    if set(arguments) == {"project_name", "overwrite"}:
-        if project_name != "S01E01_SC01_RELEASE" or type(arguments.get("overwrite")) is not bool or not arguments["overwrite"]:
-            return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
-        overwrite = True
-    elif set(arguments) != {"project_name"}:
+    duration_seconds = arguments.get("duration_seconds", 5)
+    allowed_keys = {"project_name", "duration_seconds", "overwrite", "allow_full_render"}
+    if set(arguments) - allowed_keys or "project_name" not in arguments:
         return {"status": "rejected", "reason": "invalid_blockout_arguments"}
+    if type(duration_seconds) is not int or duration_seconds not in (5, 60):
+        return {"status": "rejected", "reason": "duration_must_be_5_second_review_or_60_second_final"}
+    overwrite = arguments.get("overwrite", False)
+    if type(overwrite) is not bool:
+        return {"status": "rejected", "reason": "overwrite_must_be_boolean"}
+    if overwrite and project_name != "S01E01_SC01_RELEASE":
+        return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
+    allow_full_render = arguments.get("allow_full_render", False)
+    if type(allow_full_render) is not bool:
+        return {"status": "rejected", "reason": "allow_full_render_must_be_boolean"}
+    if duration_seconds == 60 and (project_name != "S01E01_SC01_RELEASE" or not allow_full_render):
+        return {"status": "rejected", "reason": "60_second_render_requires_explicit_full_render_flag"}
+    if duration_seconds == 5 and allow_full_render:
+        return {"status": "rejected", "reason": "full_render_flag_only_applies_to_60_second_render"}
     try:
-        return create_mia_blockout(project_name, overwrite=overwrite)
+        if task_id is not None:
+            from local_agent.studio_jobs import (
+                StudioJobError, begin_agent_task, finish_agent_task,
+            )
+            try:
+                begin_agent_task(task_id, "blender_mia_blockout", project_name)
+            except StudioJobError as exc:
+                return {"status": "blocked", "reason": str(exc)[:300]}
+            try:
+                result = create_mia_blockout(project_name, overwrite=overwrite,
+                                             duration_seconds=duration_seconds, task_id=task_id)
+            finally:
+                finish_agent_task(task_id)
+        else:
+            result = create_mia_blockout(project_name, overwrite=overwrite,
+                                         duration_seconds=duration_seconds)
+        if (result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE"
+                and duration_seconds == 5):
+            from pathlib import Path
+            preview = Path(result.get("preview_path", ""))
+            if (preview.is_file() and not preview.is_symlink() and preview.stat().st_size <= 512_000):
+                import base64
+                result["preview_png_base64"] = base64.b64encode(preview.read_bytes()).decode("ascii")
+        return result
     except BlenderWorkflowError as exc:
         return {"status": "rejected", "reason": str(exc)[:1000]}
     except OSError as exc:
@@ -1103,6 +1188,13 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             "task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"
         })
         return
+    remote_restart = task.operation == "restart_agent" and _remote_restart_enabled()
+    if task.operation == "restart_agent" and not remote_restart:
+        _publish_result_durable(client, task.task_id, {
+            "task_id": task.task_id,"status": "blocked",
+            "reason": "remote_restart_not_opted_in_in_local_launcher",
+        })
+        return
     handler = SUPPORTED_HANDLERS.get(task.operation)
     if handler is None and task.operation not in _SPECIALIZED_OPERATIONS:
         _publish_result_durable(client, task.task_id, {
@@ -1129,12 +1221,15 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         _publish_result_durable(client, task.task_id, result)
         return
     unattended = policy["enabled"]
-    if unattended and not is_auto_authorized(task.operation, policy):
+    if unattended and not is_auto_authorized(task.operation, policy) and not remote_restart:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
         _publish_result_durable(client, task.task_id, result)
         print("Automatic task blocked by local allowlist; no console approval requested.")
         return
-    if unattended:
+    if remote_restart:
+        print("Controlled restart authorized by the local launcher; active renders will finish first.")
+        approved = True
+    elif unattended:
         print("Authorized by persistent local Studio policy. No per-task YES needed.")
         approved = True
     else:
@@ -1183,7 +1278,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
-            if task.operation == "apply_patch":
+            if task.operation == "restart_agent":
+                details = _request_restart_and_open_studio()
+                details.update({"status":"completed","reason":"controlled_restart_requested"})
+            elif task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"], task.task_id)
             elif task.operation == "blender_forest_preview":
                 details = _run_blender_forest_preview(task.arguments)
@@ -1202,7 +1300,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_preflight":
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
-                details = _run_blender_mia_blockout(task.arguments)
+                details = _run_blender_mia_blockout(task.arguments, task_id=task.task_id)
             elif task.operation == "blender_open_mia_project":
                 details = _run_blender_open_mia_project(task.arguments)
             elif task.operation == "blender_inspect_mia_project":

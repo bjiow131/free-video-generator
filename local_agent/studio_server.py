@@ -736,6 +736,12 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(500, {"error": str(exc)})
         if path == "/api/studio-latest":
             return self._json(200, {"job": self.server.jobs.latest()})
+        if path == "/api/agent-task":
+            try:
+                from local_agent.studio_jobs import agent_task_status
+                return self._json(200, agent_task_status())
+            except StudioJobError as exc:
+                return self._json(500, {"error": str(exc)})
         if path.startswith("/api/studio-job/"):
             try:
                 return self._json(200, self.server.jobs.status(path.removeprefix("/api/studio-job/")))
@@ -885,6 +891,11 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(202, self.server.jobs.compose(state))
             if path == "/api/cancel-scene":
                 return self._json(200, self.server.jobs.cancel(body.get("job_id")))
+            if path == "/api/cancel-agent-task":
+                if set(body) != {"task_id"}:
+                    raise StudioError("Expected only task_id")
+                from local_agent.studio_jobs import request_agent_task_cancel
+                return self._json(200, request_agent_task_cancel(body.get("task_id")))
             if path == "/api/prepare":
                 state = self.server.store.load()
                 if body.get("revision") != state["revision"]:
