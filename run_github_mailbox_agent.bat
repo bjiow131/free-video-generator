@@ -5,6 +5,7 @@ cd /d "%~dp0"
 
 set "AGENT_VENV=%LOCALAPPDATA%\BlenderWorkAgent\github-venv"
 set "LOCAL_AGENT_ENABLE_GITHUB_MAILBOX=1"
+set "LOCAL_AGENT_ALLOW_REMOTE_RESTART=1"
 if not defined LOCAL_AGENT_GITHUB_REPO set "LOCAL_AGENT_GITHUB_REPO=bjiow131/local-agent-mailbox"
 if not defined LOCAL_AGENT_GITHUB_REF set "LOCAL_AGENT_GITHUB_REF=main"
 
@@ -18,7 +19,7 @@ if not exist "%AGENT_VENV%\Scripts\python.exe" (
 echo Starting opt-in GitHub mailbox agent.
 echo Repository: %LOCAL_AGENT_GITHUB_REPO%
 echo Branch: %LOCAL_AGENT_GITHUB_REF%
-echo Remote tasks still require local approval.
+echo Remote tasks require local approval; the fixed Studio restart is enabled.
 "%AGENT_VENV%\Scripts\python.exe" -m local_agent.poller
 set "AGENT_EXIT=%ERRORLEVEL%"
 if not "%AGENT_EXIT%"=="0" (
