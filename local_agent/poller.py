@@ -381,6 +381,39 @@ def run_trusted_update_diagnostics() -> dict[str, Any]:
     return _parse_trusted_update_diagnostics(completed.stdout or "", completed.returncode)
 
 
+def octava_network_diagnostics() -> dict[str, Any]:
+    """Safe fixed-target connectivity check; no key, prompt or response body."""
+    import socket
+    import ssl
+    from urllib.request import Request, urlopen, getproxies
+    from urllib.error import HTTPError, URLError
+    target = "octavapi.shop"
+    result = {"status": "completed", "target": target, "api_key_sent": False}
+    result["https_proxy_configured"] = bool(getproxies().get("https"))
+    try:
+        result["dns"] = "ok" if socket.getaddrinfo(target, 443) else "empty"
+    except OSError:
+        result["dns"] = "failed"
+    try:
+        with urlopen(Request("https://octavapi.shop/v1", method="GET"), timeout=8) as reply:
+            result["https_status"] = int(reply.status)
+            result["https"] = "reachable"
+    except HTTPError as exc:
+        result["https_status"] = exc.code
+        result["https"] = "reachable"
+    except URLError as exc:
+        reason = exc.reason
+        result["https"] = (
+            "tls_error" if isinstance(reason, ssl.SSLError)
+            else "dns_error" if isinstance(reason, socket.gaierror)
+            else "timeout" if isinstance(reason, TimeoutError)
+            else "network_error"
+        )
+    except (OSError, TimeoutError):
+        result["https"] = "network_error"
+    return result
+
+
 SUPPORTED_HANDLERS = {
     "doctor": doctor_with_supervisor,
     "preflight": preflight,
@@ -388,6 +421,7 @@ SUPPORTED_HANDLERS = {
     "logs": tail_logs,
     "test": run_tests,
     "trusted_update_diagnostics": run_trusted_update_diagnostics,
+    "octava_connectivity": octava_network_diagnostics,
 }
 
 _SPECIALIZED_OPERATIONS = frozenset({
