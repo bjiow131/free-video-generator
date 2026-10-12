@@ -406,9 +406,8 @@ def telegram_upload_local_media(token: str, chat: str, method: str,
                                 file: Path, caption: str) -> dict:
     """Send one pre-validated local Studio asset via direct Telegram multipart.
 
-    Existing JSON Render relay does not implement media forwarding. Never
-    downgrade to a public file URL, disclose a local filename, or silently
-    bypass the user's selected relay transport.
+    When relay is selected, send bounded raw file bytes only to the owner's
+    fixed HTTPS gateway. Never expose public URLs or use remote paths.
     """
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
@@ -419,11 +418,6 @@ def telegram_upload_local_media(token: str, chat: str, method: str,
         raise TelegramAlertError("Недопустимый Telegram-токен")
     if not isinstance(chat, str) or not re.fullmatch(r"[0-9]{1,20}", chat):
         raise TelegramAlertError("Неизвестный личный Telegram-чат")
-    if telegram_transport_settings()["use_relay"]:
-        raise TelegramAlertError(
-            "Текущий Render relay поддерживает только текст. "
-            "Для изображений требуется прямой доступ к api.telegram.org "
-            "или отдельное обновление relay для передачи файлов.")
     suffix = file.suffix.lower()
     if method == "sendPhoto":
         if suffix not in (".png", ".jpg", ".webp"):
@@ -456,23 +450,35 @@ def telegram_upload_local_media(token: str, chat: str, method: str,
         raise TelegramAlertError("Расширение медиафайла не соответствует содержимому")
     if not isinstance(caption, str) or len(caption) > 600:
         raise TelegramAlertError("Недопустимая подпись")
-    boundary = uuid.uuid4().hex
-    mark = ("--" + boundary + "\r\n").encode("ascii")
-    def field_part(name: str, value: str) -> bytes:
-        return (mark + f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
-                + value.encode("utf-8") + b"\r\n")
-    payload = (
-        field_part("chat_id", chat) + field_part("caption", caption) + mark
-        + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\r\n'.encode("ascii")
-        + f"Content-Type: {mime}\r\n\r\n".encode("ascii")
-        + content + b"\r\n" + ("--" + boundary + "--\r\n").encode("ascii")
-    )
-    url = "https://api.telegram.org/bot" + token + "/" + method
-    request = Request(url, data=payload, method="POST", headers={
-        "Content-Type": "multipart/form-data; boundary=" + boundary
-    })
+    if telegram_transport_settings()["use_relay"]:
+        # HTTPS relay receives opaque bytes only; files are not stored or put
+        # on a public URL. Relay converts this bounded upload to Telegram multipart.
+        request = Request(
+            _TELEGRAM_RELAY_URL + "/media", data=content, method="POST", headers={
+                "Content-Type": "application/octet-stream",
+                "X-Telegram-Token": token,
+                "X-Telegram-Chat-Id": chat,
+                "X-Telegram-Method": method,
+                "X-Telegram-Caption": base64.urlsafe_b64encode(caption.encode("utf-8")).decode("ascii"),
+            })
+    else:
+        boundary = uuid.uuid4().hex
+        mark = ("--" + boundary + "\r\n").encode("ascii")
+        def field_part(name: str, value: str) -> bytes:
+            return (mark + f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
+                    + value.encode("utf-8") + b"\r\n")
+        payload = (
+            field_part("chat_id", chat) + field_part("caption", caption) + mark
+            + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\r\n'.encode("ascii")
+            + f"Content-Type: {mime}\r\n\r\n".encode("ascii")
+            + content + b"\r\n" + ("--" + boundary + "--\r\n").encode("ascii")
+        )
+        url = "https://api.telegram.org/bot" + token + "/" + method
+        request = Request(url, data=payload, method="POST", headers={
+            "Content-Type": "multipart/form-data; boundary=" + boundary
+        })
     try:
-        with urlopen(request, timeout=45) as response:
+        with urlopen(request, timeout=60) as response:
             raw = response.read(262145)
     except HTTPError as exc:
         raise TelegramAlertError("Telegram отклонил медиа: HTTP " + str(exc.code)) from None
@@ -672,7 +678,7 @@ class ReviewStudioJobs(StudioJobs):
             if info.get("kind", "scene") == "scene" and telegram_notifications_enabled():
                 from local_agent.telegram_media import media_for_job
                 token, chat = _telegram_credentials()
-                if token and chat and not telegram_transport_settings()["use_relay"]:
+                if token and chat:
                     file, method, caption = media_for_job(self.store.root, job_id, "preview", info)
                     telegram_upload_local_media(token, chat, method, file, caption)
         except (TelegramAlertError, OSError, ValueError):
