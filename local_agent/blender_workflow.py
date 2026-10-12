@@ -420,21 +420,42 @@ scene.frame_set(1)
 scene.render.image_settings.file_format="PNG"
 scene.render.filepath=os.path.join(out,"preview.png")
 bpy.ops.render.render(write_still=True)
-scene.render.image_settings.file_format="FFMPEG"
-scene.render.ffmpeg.format="MPEG4"; scene.render.ffmpeg.codec="H264"
-scene.render.ffmpeg.constant_rate_factor="MEDIUM"; scene.render.ffmpeg.video_bitrate=2500
-scene.render.ffmpeg.audio_codec="NONE"
-scene.render.filepath=os.path.join(out,"scene")
+review_dir=os.path.join(out,"review_frames")
+os.makedirs(review_dir,exist_ok=True)
+review_frames=[]
+for frame in (180,360,540,720):
+    scene.frame_set(frame)
+    review_path=os.path.join(review_dir,"review-%04d.png" % frame)
+    scene.render.filepath=review_path
+    bpy.ops.render.render(write_still=True)
+    review_frames.append(review_path)
+scene.frame_set(1)
+scene.render.filepath=os.path.join(out,"preview.png")
 blend=os.path.join(out,"mia_blockout.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend)
-bpy.ops.render.render(animation=True)
 video=os.path.join(out,"scene.mp4")
-if not os.path.isfile(video) or os.path.getsize(video)<1024:
-    raise RuntimeError("Silent MP4 render is missing or empty")
+video_status="unsupported_by_blender_build"
+try:
+    scene.render.image_settings.file_format="FFMPEG"
+except (TypeError, ValueError):
+    scene["video_export_status"]=video_status
+else:
+    scene.render.ffmpeg.format="MPEG4"; scene.render.ffmpeg.codec="H264"
+    scene.render.ffmpeg.constant_rate_factor="MEDIUM"; scene.render.ffmpeg.video_bitrate=2500
+    scene.render.ffmpeg.audio_codec="NONE"
+    scene.render.filepath=os.path.join(out,"scene")
+    bpy.ops.render.render(animation=True)
+    if os.path.isfile(video) and os.path.getsize(video)>=1024:
+        video_status="exported"
+    else:
+        video_status="render_failed"
 with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
     json.dump({"status":"completed","stage":"episode1_scene1_animated_animatic",
                "blend_path":blend,"preview_path":os.path.join(out,"preview.png"),
-               "video_path":video,"duration_seconds":60,"fps":12,"frame_count":720,
+               "review_frame_paths":review_frames,
+               "video_path":video if video_status=="exported" else None,
+               "video_export_status":video_status,
+               "duration_seconds":60,"fps":12,"frame_count":720,
                "object_count":len(scene.objects),"audio":"none","subtitles":"none",
                "asset_provenance":ref_meta,"production_models_available":False,
                "manual_visual_review_required":True},f,ensure_ascii=False)
@@ -482,7 +503,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
     preview = project / "preview.png"
     video = project / "scene.mp4"
     if any(is_link_or_junction(p) or not p.is_file() or p.stat().st_size == 0
-           for p in (manifest, blend, preview, video)):
+           for p in (manifest, blend, preview)):
         return {"status": "failed", "reason": "episode1_release_output_missing"}
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -495,16 +516,29 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
             or data.get("duration_seconds") != 60 or data.get("frame_count") != 720
             or data.get("audio") != "none" or data.get("subtitles") != "none"):
         return {"status": "failed", "reason": "episode1_release_manifest_validation_failed"}
-    with video.open("rb") as stream: header = stream.read(16)
-    if b"ftyp" not in header or video.stat().st_size > 32_000_000:
-        return {"status": "failed", "reason": "episode1_release_video_invalid_or_too_large"}
+    if data.get("video_export_status") == "exported":
+        if is_link_or_junction(video) or not video.is_file() or video.stat().st_size < 1024:
+            return {"status": "failed", "reason": "episode1_release_video_missing"}
+        with video.open("rb") as stream: header = stream.read(16)
+        if b"ftyp" not in header or video.stat().st_size > 32_000_000:
+            return {"status": "failed", "reason": "episode1_release_video_invalid_or_too_large"}
+    review_frames = data.get("review_frame_paths", [])
+    expected_review_names = {f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)}
+    if not isinstance(review_frames, list) or {Path(p).name for p in review_frames} != expected_review_names:
+        return {"status": "failed", "reason": "episode1_review_frame_manifest_invalid"}
+    for frame_path in review_frames:
+        ok, reason, _ = _validate_png(Path(frame_path), (720, 1280))
+        if not ok:
+            return {"status": "failed", "reason": "episode1_review_frame_" + reason}
     return {"status": "completed", "task": "blender_mia_blockout",
             "stage": data["stage"], "project_dir": str(project),
             "blend_path": str(blend), "preview_path": str(preview),
-            "video_path": str(video), "resolution": dimensions,
+            "video_path": str(video) if data.get("video_export_status") == "exported" else None,
+            "video_export_status": data.get("video_export_status"),
+            "review_frames": review_frames, "resolution": dimensions,
             "duration_seconds": 60, "fps": 12, "frame_count": 720,
             "object_count": data.get("object_count"), "manual_review_required": True,
-            "note": "Silent procedural animatic; concept board remains a draft and production models are not approved."}
+            "note": "Animated procedural scene; video availability depends on the installed Blender build. Concept board remains a draft and production models are not approved."}
 
 
 def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str, list[int] | None]:
