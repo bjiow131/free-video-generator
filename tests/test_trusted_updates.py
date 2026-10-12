@@ -523,6 +523,18 @@ def test_episode_scene_review_export_dispatch_is_blender_gated():
     assert not is_auto_authorized(operation, policy)
 
 
+def test_episode1_export_accepts_zstandard_blender_signature(tmp_path):
+    from local_agent.dropbox_review import _is_blender_project_file
+
+    zstd = tmp_path / "scene.blend"
+    zstd.write_bytes(bytes.fromhex("28b52ffd") + b"frame-data")
+    assert _is_blender_project_file(zstd, zstd.read_bytes()[:8])
+
+    unrelated = tmp_path / "unrelated.blend"
+    unrelated.write_bytes(bytes.fromhex("28b52f00") + b"data")
+    assert not _is_blender_project_file(unrelated, unrelated.read_bytes()[:8])
+
+
 def test_episode1_export_accepts_only_gzip_wrapped_blender_headers(tmp_path):
     import gzip
     from local_agent.dropbox_review import _is_blender_project_file
