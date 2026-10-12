@@ -5,6 +5,8 @@ separate HTTPS gateway. It forwards a fixed allowlist of Bot API methods and bou
 """
 from __future__ import annotations
 import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -45,6 +47,20 @@ def _limit() -> bool:
         return True
 
 
+def _owner_token_allowed(token: str, *, media: bool = False) -> bool:
+    """Match configured SHA-256 without persisting the raw BotFather token.
+
+    Old text-only relay stays compatible until configured; large uploads
+    require an explicit owner binding so strangers cannot consume bandwidth.
+    """
+    fingerprint = os.environ.get("TELEGRAM_RELAY_TOKEN_SHA256", "").strip().lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
+        return not media
+    return hmac.compare_digest(
+        hashlib.sha256(token.encode("utf-8")).hexdigest(), fingerprint)
+
+
+
 def forward(data: dict) -> tuple[int, dict]:
     if not isinstance(data, dict) or set(data) != {"token", "method", "params"}:
         return 400, {"ok": False, "description": "Invalid request"}
@@ -53,6 +69,8 @@ def forward(data: dict) -> tuple[int, dict]:
         return 400, {"ok": False, "description": "Invalid token format"}
     if method not in ALLOWED or not isinstance(params, dict):
         return 400, {"ok": False, "description": "Unsupported method"}
+    if not _owner_token_allowed(token):
+        return 403, {"ok": False, "description": "Unauthorized bot"}
     if method == "getMe" and params:
         return 400, {"ok": False, "description": "Unexpected parameters"}
     if method == "getUpdates":
@@ -121,6 +139,8 @@ def forward_media(token: str, chat: str, method: str,
         return 400, {"ok": False, "description": "Unsupported media method"}
     if not isinstance(chat, str) or not re.fullmatch(r"[0-9]{1,20}", chat):
         return 400, {"ok": False, "description": "Invalid private chat"}
+    if not _owner_token_allowed(token, media=True):
+        return 503, {"ok": False, "description": "Media relay not bound to owner bot"}
     if not isinstance(caption_header, str) or len(caption_header) > 1200:
         return 400, {"ok": False, "description": "Invalid caption"}
     try:
