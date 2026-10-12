@@ -502,3 +502,16 @@ def test_episode_scene_review_export_dispatch_is_blender_gated():
     assert is_auto_authorized(operation, policy)
     policy["allow_blender"] = False
     assert not is_auto_authorized(operation, policy)
+
+
+def test_episode1_export_accepts_only_gzip_wrapped_blender_headers(tmp_path):
+    import gzip
+    from local_agent.dropbox_review import _is_blender_project_file
+
+    valid = tmp_path / "valid.blend"
+    valid.write_bytes(gzip.compress(b"BLENDER-v500mock"))
+    assert _is_blender_project_file(valid, valid.read_bytes()[:8])
+
+    invalid = tmp_path / "invalid.blend"
+    invalid.write_bytes(gzip.compress(b"unrelated-private-data"))
+    assert not _is_blender_project_file(invalid, invalid.read_bytes()[:8])
