@@ -16,6 +16,9 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Callable
+from local_agent.blender_locator import (
+    is_supported_windows_blender, watch_unsupported_blender_dialogs,
+)
 
 _PROJECT_NAME = path_identifier_pattern(48)
 _ALLOWED_TASKS = {"forest_preview"}
@@ -322,6 +325,9 @@ class BlenderBridge:
             raise BlenderBridgeError("Unsupported Blender task. Allowed: forest_preview.")
         if not _PROJECT_NAME.fullmatch(project_name or ""):
             raise BlenderBridgeError("Project name must use 1-49 letters, digits, underscores, or hyphens.")
+        if (self._run is subprocess.Popen and os.name == "nt"
+                and not is_supported_windows_blender(self.executable)):
+            raise BlenderBridgeError("Configured Blender is not a supported 64-bit Windows executable.")
         requested_project_dir = self.workspace / project_name
         if is_link_or_junction(requested_project_dir):
             raise BlenderBridgeError("Project output directory must not be a symlink or junction.")
@@ -371,44 +377,52 @@ class BlenderBridge:
                 result_path = project_dir / "blender_result.json"
                 stdout_path = project_dir / "blender_stdout.log"
                 stderr_path = project_dir / "blender_stderr.log"
+                dismissed_dialogs: list[dict[str, object]] = []
                 try:
-                    with stdout_path.open("wb") as stdout_stream, stderr_path.open("wb") as stderr_stream:
-                        process = self._run(
-                            command, cwd=str(project_dir), stdin=subprocess.DEVNULL,
-                            stdout=stdout_stream, stderr=stderr_stream, shell=False,
-                        )
-                        deadline = time.monotonic() + self.timeout_seconds
-                        while True:
-                            if result_path.is_file() and result_path.stat().st_size > 0:
-                                try:
-                                    manifest = json.loads(result_path.read_text(encoding="utf-8"))
-                                except (OSError, ValueError):
-                                    manifest = {}
-                                if isinstance(manifest, dict) and manifest.get("status") == "completed":
-                                    break
-                            return_code = process.poll()
-                            if return_code is not None:
-                                stderr_tail = ""
-                                try:
-                                    stderr_tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-3000:]
-                                except OSError:
-                                    pass
-                                raise BlenderBridgeError(
-                                    f"Blender exited with code {return_code} before reporting task completion. "
-                                    f"See blender_stderr.log. {stderr_tail}"
-                                )
-                            if time.monotonic() >= deadline:
-                                process.terminate()
-                                try:
-                                    process.wait(timeout=5)
-                                except (subprocess.TimeoutExpired, OSError):
-                                    process.kill()
-                                raise BlenderBridgeError(
-                                    "Blender task timed out; the process was stopped and local logs were saved."
-                                )
-                            time.sleep(0.25)
+                    with watch_unsupported_blender_dialogs(self.executable, dismissed_dialogs):
+                        with stdout_path.open("wb") as stdout_stream, stderr_path.open("wb") as stderr_stream:
+                            process = self._run(
+                                command, cwd=str(project_dir), stdin=subprocess.DEVNULL,
+                                stdout=stdout_stream, stderr=stderr_stream, shell=False,
+                            )
+                            deadline = time.monotonic() + self.timeout_seconds
+                            while True:
+                                if result_path.is_file() and result_path.stat().st_size > 0:
+                                    try:
+                                        manifest = json.loads(result_path.read_text(encoding="utf-8"))
+                                    except (OSError, ValueError):
+                                        manifest = {}
+                                    if isinstance(manifest, dict) and manifest.get("status") == "completed":
+                                        break
+                                return_code = process.poll()
+                                if return_code is not None:
+                                    stderr_tail = ""
+                                    try:
+                                        stderr_tail = stderr_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+                                    except OSError:
+                                        pass
+                                    dialog_note = (" The matching Windows compatibility dialog was auto-closed."
+                                                   if dismissed_dialogs else "")
+                                    raise BlenderBridgeError(
+                                        f"Blender exited with code {return_code} before reporting task completion. "
+                                        f"See blender_stderr.log. {stderr_tail}{dialog_note}"
+                                    )
+                                if time.monotonic() >= deadline:
+                                    process.terminate()
+                                    try:
+                                        process.wait(timeout=5)
+                                    except (subprocess.TimeoutExpired, OSError):
+                                        process.kill()
+                                    raise BlenderBridgeError(
+                                        "Blender task timed out; the process was stopped and local logs were saved."
+                                    )
+                                time.sleep(0.25)
                 except OSError as exc:
-                    raise BlenderBridgeError(f"Could not launch Blender ({type(exc).__name__}).") from exc
+                    dialog_note = (" The matching Windows compatibility dialog was auto-closed."
+                                   if dismissed_dialogs else "")
+                    raise BlenderBridgeError(
+                        f"Could not launch Blender ({type(exc).__name__}).{dialog_note}"
+                    ) from exc
             else:
                 # Injectable synchronous runner retained for deterministic unit tests.
                 try:
