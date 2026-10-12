@@ -891,6 +891,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_settings(body))
             if path == "/api/agent-pause":
+                if set(body) != {"paused"} or type(body.get("paused")) is not bool:
+                    raise StudioError("Ожидается только поле paused: true/false")
                 with self.server.mailbox_policy_lock:
                     result = set_runtime_pause(body)
                 return self._json(200, {"paused": result["paused"]})
