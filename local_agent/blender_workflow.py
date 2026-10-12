@@ -307,7 +307,7 @@ def aim(camera, point):
     camera.rotation_euler=(Vector(point)-camera.location).to_track_quat("-Z","Y").to_euler()
 camera=scene.camera
 camera.data.type="ORTHO"; camera.data.ortho_scale=9.5
-camera.location=(-0.25,-12.5,4.7); aim(camera,(-0.25,0.1,1.85))
+camera.location=(3.3,-12.5,4.7); aim(camera,(-0.25,0.1,1.85))
 helmet=bpy.data.objects.get("Mia | riding helmet")
 backpack=bpy.data.objects.get("Mia | mustard backpack")
 if not helmet or not backpack: raise RuntimeError("Mia helmet/backpack proxy is missing")
@@ -361,9 +361,6 @@ def animate_mouth(obj, intervals):
     for start,end in intervals:
         for frame,scale in ((start,(1,1,0.15)),(start+3,(1,1,1)),(end-3,(1,1,1)),(end,(1,1,0.15))):
             obj.scale=scale; obj.keyframe_insert(data_path="scale",frame=frame)
-    if obj.animation_data and obj.animation_data.action:
-        for fc in obj.animation_data.action.fcurves:
-            for key in fc.keyframe_points: key.interpolation="CONSTANT"
 animate_mouth(step_mouth,[(20,125),(270,330),(390,475)])
 animate_mouth(mia_mouth,[(130,255),(340,385),(485,545)])
 def parent_group(prefixes,name):
@@ -384,9 +381,9 @@ for obj in scene.objects:
     if obj.name=="Scooter | wheel":
         for frame,angle in ((1,0),(480,0),(600,-math.pi*2),(720,-math.pi*2)):
             obj.rotation_euler.y=angle; obj.keyframe_insert(data_path="rotation_euler",frame=frame)
-for frame,loc,scale in ((1,(-0.25,-12.5,4.7),9.5),(180,(-0.25,-12.3,4.6),9.5),
-                        (360,(-0.25,-11.8,4.4),9.2),(540,(-0.25,-11.5,4.2),9.0),
-                        (720,(-0.25,-12.0,4.4),9.5)):
+for frame,loc,scale in ((1,(3.3,-12.5,4.7),9.5),(180,(3.3,-12.3,4.6),9.5),
+                        (360,(3.3,-11.8,4.4),9.2),(540,(3.3,-11.5,4.2),9.0),
+                        (720,(3.3,-12.0,4.4),9.5)):
     camera.location=loc; camera.data.ortho_scale=scale; aim(camera,(-0.25,0.1,1.85))
     camera.keyframe_insert(data_path="location",frame=frame)
     camera.keyframe_insert(data_path="rotation_euler",frame=frame)
@@ -403,8 +400,11 @@ for key,rel in (("mia_passport","characters/passports/mia.json"),
     ref_meta[key]={"relative_path":rel,"sha256":hashlib.sha256(raw).hexdigest()}
     if key.endswith("passport"):
         data=json.loads(raw.decode("utf-8"))
-        if data.get("status")!="awaiting_original_references":
-            raise RuntimeError("Unexpected passport status")
+        expected_id="mia" if key=="mia_passport" else "stepa"
+        if data.get("character_id")!=expected_id or data.get("status")!="awaiting_original_references":
+            raise RuntimeError("Unexpected character passport")
+        if key=="mia_passport" and data.get("age_or_species")!="4 года":
+            raise RuntimeError("Mia passport age does not match continuity")
     else:
         image=bpy.data.images.load(path,check_existing=True); image.pack()
         empty=bpy.data.objects.new("REFERENCE ONLY | generated draft board",None)
@@ -449,7 +449,8 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         asset_root / "characters" / "passports" / "stepa.json",
         asset_root / "references" / "episode-01-reference-board.png",
     ]
-    if any(is_link_or_junction(p) or not p.is_file() for p in required):
+    guarded = [workspace / "episode1", asset_root, *required]
+    if any(is_link_or_junction(p) for p in guarded) or any(not p.is_file() for p in required):
         return {"status": "blocked", "reason": "pinned_episode1_reference_assets_missing"}
     if (project / "scene.mp4").exists():
         return {"status": "blocked", "reason": "release_video_exists_no_overwrite"}
