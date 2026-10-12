@@ -171,6 +171,84 @@ uv("Snail | shell",(1.49,-0.11,0.48),(0.27,0.25,0.27),shell)
 for x in (1.79,1.91):
     between("Snail | eye stalk",(x,-0.1,0.55),(x,-0.1,0.67),0.025,snail)
     uv("Snail | eye",(x,-0.13,0.69),(0.035,0.03,0.04),white,12,8)
+# Rigid per-part proxy rigs for this scene blockout. These are editable
+# placeholders, not smooth production skinning.
+def build_rig(name, prefix, origin, bones):
+    data=bpy.data.armatures.new(name)
+    arm=bpy.data.objects.new(name,data)
+    bpy.context.scene.collection.objects.link(arm)
+    arm.location=origin
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active=arm; arm.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    made={}
+    for bone_name, head, tail, parent in bones:
+        b=data.edit_bones.new(bone_name); b.head=head; b.tail=tail; made[bone_name]=b
+    for bone_name, head, tail, parent in bones:
+        if parent: made[bone_name].parent=made[parent]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    arm.show_in_front=True; data.display_type="OCTAHEDRAL"
+    bound=[]
+    for obj in list(bpy.context.scene.objects):
+        if obj.type!="MESH" or not obj.name.startswith(prefix+" |"): continue
+        label=obj.name[len(prefix)+2:].lower()
+        relative_x=obj.matrix_world.translation.x-origin[0]
+        side=".L" if relative_x>=0 else ".R"
+        bone=None
+        if prefix in ("Mia","Stepa"):
+            if any(w in label for w in ("head","hair","fringe","eye","iris","nose","helmet")): bone="head"
+            elif "neck" in label: bone="neck"
+            elif any(w in label for w in ("backpack","torso")): bone="spine"
+            elif "sleeve" in label: bone="upper_arm"+side
+            elif any(w in label for w in ("cuff","hand")): bone="forearm"+side
+            elif "trouser leg" in label: bone="thigh"+side
+            elif any(w in label for w in ("trouser cuff","shoe")): bone="shin"+side
+        else:
+            if "body" in label or "shell" in label: bone="body"
+            elif "head" in label: bone="head"
+            elif "stalk" in label or "eye" in label:
+                bone="eye.L" if relative_x<0.34 else "eye.R"
+        if bone not in data.bones:
+            continue
+        group=obj.vertex_groups.new(name=bone)
+        if len(obj.data.vertices): group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
+        mod=obj.modifiers.new(name=name+" rigid proxy binding",type="ARMATURE"); mod.object=arm
+        bound.append(obj.name)
+    return arm,bound
+child_bones=[
+    ("root",(0,0,0.15),(0,0,0.55),None),
+    ("pelvis",(0,0,1.45),(0,0,1.78),"root"),
+    ("spine",(0,0,1.78),(0,0,2.35),"pelvis"),
+    ("neck",(0,0,2.35),(0,0,2.65),"spine"),
+    ("head",(0,0,2.65),(0,0,3.35),"neck"),
+    ("upper_arm.L",(0.30,0,2.25),(0.62,0,1.93),"spine"),
+    ("forearm.L",(0.62,0,1.93),(0.78,0,1.60),"upper_arm.L"),
+    ("upper_arm.R",(-0.30,0,2.25),(-0.62,0,1.93),"spine"),
+    ("forearm.R",(-0.62,0,1.93),(-0.78,0,1.60),"upper_arm.R"),
+    ("thigh.L",(0.18,0,1.48),(0.20,0,0.88),"pelvis"),
+    ("shin.L",(0.20,0,0.88),(0.20,0,0.22),"thigh.L"),
+    ("thigh.R",(-0.18,0,1.48),(-0.20,0,0.88),"pelvis"),
+    ("shin.R",(-0.20,0,0.88),(-0.20,0,0.22),"thigh.R"),
+]
+mia_rig,mia_bound=build_rig("Mia_Rig","Mia",(0,0,0),child_bones)
+stepa_rig,stepa_bound=build_rig("Stepa_Rig","Stepa",(-2.05,0,0),child_bones)
+snail_bones=[
+    ("root",(0,0,0.03),(0,0,0.16),None),
+    ("body",(0,0,0.16),(0.16,0,0.35),"root"),
+    ("head",(0.16,0,0.35),(0.31,0,0.55),"body"),
+    ("eye.L",(0.27,0,0.50),(0.27,0,0.74),"head"),
+    ("eye.R",(0.40,0,0.50),(0.40,0,0.74),"head"),
+]
+snail_rig,snail_bound=build_rig("Spiral_Rig","Snail",(1.5,-0.1,0),snail_bones)
+for rig in (mia_rig,stepa_rig):
+    bpy.context.view_layer.objects.active=rig
+    bpy.ops.object.mode_set(mode="POSE")
+    test_bone=rig.pose.bones["forearm.L"]; test_bone.rotation_mode="XYZ"
+    test_bone.rotation_euler[1]=0.12; bpy.context.view_layer.update()
+    test_bone.rotation_euler=(0.0,0.0,0.0); bpy.context.view_layer.update()
+    bpy.ops.object.mode_set(mode="OBJECT")
+proxy_rig_count=3
+proxy_bound_count=len(mia_bound)+len(stepa_bound)+len(snail_bound)
 # Yard stage: wide level route, grass edges, and a simple home facade.
 bpy.ops.mesh.primitive_plane_add(size=16, location=(0,0,0.01))
 bpy.context.object.name="Environment | ground"; bpy.context.object.data.materials.append(groundmat)
@@ -205,7 +283,8 @@ bpy.ops.render.render(write_still=True)
 with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
     json.dump({"status":"completed","blend_path":blend,"preview_path":scene.render.filepath,
                "resolution":[720,1280],"engine":scene.render.engine,
-               "object_count":len(bpy.context.scene.objects),"stage":"blockout"},f)
+               "object_count":len(bpy.context.scene.objects),"stage":"episode1_scene1_blockout",
+               "proxy_rig_count":proxy_rig_count,"bound_mesh_count":proxy_bound_count},f)
 '''
 
 
@@ -340,13 +419,14 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
         png_ok, png_reason, dimensions = _validate_png(preview, (360, 640))
         if not png_ok:
             return {"status": "failed", "reason": png_reason, "project_dir": str(project)}
-        if not isinstance(data, dict) or data.get("status") != "completed" or data.get("stage") != "blockout":
+        if not isinstance(data, dict) or data.get("status") != "completed" or data.get("stage") != "episode1_scene1_blockout" or data.get("proxy_rig_count") != 3 or data.get("bound_mesh_count", 0) < 30:
             return {"status": "failed", "reason": "output_manifest_validation_failed", "project_dir": str(project)}
-        return {"status": "completed", "task": "blender_mia_blockout", "stage": "blockout",
+        return {"status": "completed", "task": "blender_mia_blockout", "stage": "episode1_scene1_blockout",
                 "project_dir": str(project), "blend_path": str(blend), "preview_path": str(preview),
                 "resolution": dimensions, "object_count": data.get("object_count"),
+                "proxy_rig_count": data.get("proxy_rig_count"), "bound_mesh_count": data.get("bound_mesh_count"),
                 "engine": data.get("engine"), "manual_review_required": True,
-                "note": "Starter blockout only; not a finished or rigged production character."}
+                "note": "Episode 1 opening-scene proxy set with rigid placeholder rigs; visual review required."}
 
     completed = False
     try:
