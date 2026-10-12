@@ -837,6 +837,22 @@ def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
     return create_mia_skeleton(arguments["project_name"])
 
 
+def _run_export_mia_scene_review(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Export only the fixed Episode 1 draft to the locally opted-in Dropbox folder."""
+    if set(arguments) != {"project_name"} or arguments.get("project_name") != "S01E01_SC01_DRAFT":
+        return {"status": "rejected", "reason": "episode1_project_not_allowlisted"}
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        workspace = str(ROOT.parent / "AI-Agent-Workspace")
+    from local_agent.dropbox_review import ReviewDeliveryError, export_mia_scene_review
+    try:
+        return export_mia_scene_review(workspace, arguments["project_name"])
+    except ReviewDeliveryError as exc:
+        return {"status": "blocked", "reason": str(exc)[:500]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _run_sync_approved_assets(arguments: dict[str, Any]) -> dict[str, Any]:
     """Download only pinned assets after the existing local authorization."""
     if set(arguments) != {"project_name"}:
@@ -1109,6 +1125,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_scan_project_assets(task.arguments)
             elif task.operation == "sync_approved_assets":
                 details = _run_sync_approved_assets(task.arguments)
+            elif task.operation == "export_mia_scene_review":
+                details = _run_export_mia_scene_review(task.arguments)
             elif task.operation == "blender_knowledge_search":
                 details = _run_blender_knowledge_search(task.arguments)
             elif task.operation == "blender_preflight":
