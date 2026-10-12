@@ -30,6 +30,15 @@ _IMAGE_MIMES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
 _MAX_REQUEST = 4_600_000
 
 
+def _renders_idle(server) -> bool:
+    """Return true only when both supported Blender render paths are idle."""
+    with server.jobs.lock:
+        scene_render_active = server.jobs.active is not None
+    with server.render_lock:
+        demo_render_active = server.render_status.get("state") == "running"
+    return not scene_render_active and not demo_render_active
+
+
 class StudioHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -313,11 +322,7 @@ def main(argv=None):
                 continue
             if request is None:
                 continue
-            with server.jobs.lock:
-                scene_render_active = server.jobs.active is not None
-            with server.render_lock:
-                demo_render_active = server.render_status.get("state") == "running"
-            if scene_render_active or demo_render_active:
+            if not _renders_idle(server):
                 continue
             clear_restart_request(store.root, request["task_id"])
             restart_requested.set()
