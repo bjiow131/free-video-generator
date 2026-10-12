@@ -128,7 +128,7 @@ def test_exports_fixed_episode1_release_with_silent_mp4_and_hashes(isolated, mon
     project.mkdir(parents=True)
     blend = b"BLENDERmock-animated-project"
     preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
-    video = b"\\x00\\x00\\x00\\x18ftypisom" + b"silent-video"
+    video = bytes.fromhex("00000018") + b"ftypisom" + b"silent-video"
     (project / "mia_blockout.blend").write_bytes(blend)
     (project / "preview.png").write_bytes(preview)
     (project / "scene.mp4").write_bytes(video)
