@@ -27,7 +27,7 @@ def test_remote_operation_has_no_code_or_arbitrary_paths():
 
 
 def test_command_is_one_bounded_edit_and_never_python():
-    assert wf._mia_autoloop_command('{"area":"eyes","delta":-.01,"reason":"too large","score":40}')["area"]=="eyes"
+    assert wf._mia_autoloop_command('{"area":"eyes","delta":-0.01,"reason":"too large","score":40}')["area"]=="eyes"
     for invalid in ('{"script":"import os"}',
                     '{"area":"eyes","delta":1,"reason":"no","score":20}',
                     '{"area":"eyes","delta":0.0,"reason":"no","score":20}',
