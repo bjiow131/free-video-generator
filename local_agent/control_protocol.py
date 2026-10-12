@@ -174,21 +174,25 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
     if value["operation"] == "octava_advice":
         args = value["arguments"]
+        tier = args.get("tier", "default")
+        if type(tier) is not str or tier not in ("default", "simple", "complex"):
+            raise ProtocolError("octava_advice tier must be default, simple, or complex.")
+        fields = set(args) - {"tier"}
         prompt = args.get("prompt")
         project_id = args.get("project_id")
-        if set(args) == {"prompt"}:
+        if fields == {"prompt"}:
             if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
                 raise ProtocolError("octava_advice requires a 1-1600 character prompt.")
-        elif set(args) == {"prompt", "project_id"}:
+        elif fields == {"prompt", "project_id"}:
             if (not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600
                     or not isinstance(project_id, str) or not BLENDER_PROJECT_RE.fullmatch(project_id)):
                 raise ProtocolError("octava_advice requires a safe project_id and 1-1600 character prompt.")
-        elif set(args) == {"project_id", "resume_pending"}:
+        elif fields == {"project_id", "resume_pending"}:
             if (not isinstance(project_id, str) or not BLENDER_PROJECT_RE.fullmatch(project_id)
                     or args.get("resume_pending") is not True):
                 raise ProtocolError("Invalid octava_advice project resume request.")
         else:
-            raise ProtocolError("octava_advice accepts prompt, optional project_id, or project resume.")
+            raise ProtocolError("octava_advice accepts prompt, optional project_id/tier, or project resume.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
