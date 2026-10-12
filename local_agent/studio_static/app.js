@@ -47,6 +47,8 @@ return `<section class="approved-reference-panel" aria-label="Утверждён
 <div class="approved-reference-meta">
 <p class="section-note"><strong>${escapeText(desc)}</strong></p>
 <p class="hint">Статус: ${ready?'утверждённый визуальный эталон': 'требуется локальная синхронизация'}</p>
+<p class="hint">Этапы производства:</p>
+<ul class="reference-checklist">${(approvedMia?.readiness||[]).map(item=>`<li><span class="${item.status==='ready'?'done':'waiting'}">${item.status==='ready'?'✓':'○'}</span> ${escapeText(item.label)}</li>`).join('')}</ul>
 <p class="hint">3D-модель и риг ещё не утверждены. Изображение не считается готовой 3D-моделью.</p>
 <button class="btn-secondary" type="button" data-action="link-mia-reference" ${!ready||attached||approvedBusy||saving||dirty?'disabled':''}>${attached?'Эталон закреплён в паспорте':approvedBusy?'Подключение…':'Закрепить этот эталон в паспорте'}</button>
 <button class="btn-outline" type="button" data-action="refresh-approved-references">Обновить список референсов</button>
