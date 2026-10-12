@@ -158,8 +158,8 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
     source paths, does not include story text, and never overwrites an earlier
     review folder. Dropbox cloud delivery must still be verified separately.
     """
-    if project_name != "S01E01_SC01_DRAFT":
-        raise ReviewDeliveryError("Only the fixed Episode 1 draft project can be exported")
+    if project_name not in {"S01E01_SC01_DRAFT", "S01E01_SC01_RELEASE"}:
+        raise ReviewDeliveryError("Only fixed Episode 1 review projects can be exported")
     if not read_settings()["enabled"]:
         return {"status": "disabled", "reason": "dropbox_review_permission_disabled"}
 
@@ -172,10 +172,17 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
     if not project.is_dir() or not project.resolve().is_relative_to(workspace_root):
         raise ReviewDeliveryError("Episode 1 draft project is unavailable or outside the workspace")
 
-    sources = (
-        ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
-        ("preview.png", _safe_path(project / "mia_blockout.png"), 20_000_000),
-    )
+    if project_name == "S01E01_SC01_RELEASE":
+        sources = (
+            ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
+            ("preview.png", _safe_path(project / "preview.png"), 20_000_000),
+            ("preview.mp4", _safe_path(project / "scene.mp4"), MAX_VIDEO_BYTES),
+        )
+    else:
+        sources = (
+            ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
+            ("preview.png", _safe_path(project / "mia_blockout.png"), 20_000_000),
+        )
     metadata = []
     for name, source, limit in sources:
         if not source.is_file():
@@ -189,6 +196,8 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             raise ReviewDeliveryError("Scene project is not a Blender file")
         if name == "preview.png" and signature != bytes.fromhex("89504e470d0a1a0a"):
             raise ReviewDeliveryError("Scene preview is not a PNG file")
+        if name == "preview.mp4" and (b"ftyp" not in signature or size > MAX_VIDEO_BYTES):
+            raise ReviewDeliveryError("Scene video is not a bounded silent MP4")
         digest = hashlib.sha256()
         with source.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -223,6 +232,7 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             "scene_id": "S01_SC01",
             "project_name": project_name,
             "manual_visual_review_required": True,
+            "scene_status": "procedural_animatic_candidate" if project_name == "S01E01_SC01_RELEASE" else "procedural_blockout",
             "files": metadata,
             "exported_at": datetime.now(timezone.utc).isoformat(),
         }
