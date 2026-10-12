@@ -418,13 +418,10 @@ def agent_task_status() -> dict[str, Any]:
     active = _read_agent_control(_AGENT_ACTIVE_TASK)
     if active is None:
         return {"state": "idle"}
-    pid = active.get("pid")
-    if type(pid) is int and pid > 0:
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return {**active, "state": "interrupted",
-                    "message": "Агент завершился до конца задачи."}
+    started = active.get("started_at")
+    if isinstance(started, (int, float)) and time.time() - started > 7200:
+        return {**active, "state": "interrupted",
+                "message": "Задача не сообщала о состоянии более двух часов."}
     cancel = _read_agent_control(_AGENT_CANCEL_TASK)
     if cancel and cancel.get("task_id") == active["task_id"]:
         active = {**active, "state": "cancelling"}
