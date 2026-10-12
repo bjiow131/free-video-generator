@@ -882,10 +882,18 @@ def _run_blender_open_mia_project(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Create and validate the fixed Mia starter blockout using local Blender."""
+    """Create and validate fixed Mia blockouts; allow guarded retry only for the Episode 1 release."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
+    project_name = arguments.get("project_name")
+    overwrite = False
+    if set(arguments) == {"project_name", "overwrite"}:
+        if project_name != "S01E01_SC01_RELEASE" or type(arguments.get("overwrite")) is not bool or not arguments["overwrite"]:
+            return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
+        overwrite = True
+    elif set(arguments) != {"project_name"}:
+        return {"status": "rejected", "reason": "invalid_blockout_arguments"}
     try:
-        return create_mia_blockout(arguments["project_name"])
+        return create_mia_blockout(project_name, overwrite=overwrite)
     except BlenderWorkflowError as exc:
         return {"status": "rejected", "reason": str(exc)[:1000]}
     except OSError as exc:
