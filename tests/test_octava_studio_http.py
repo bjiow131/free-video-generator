@@ -63,6 +63,26 @@ class LocalKeyHTTPTests(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(body))
         self.assertIn("отклонён", body["error"])
 
+    def test_model_switch_origin_and_validation(self):
+        from local_agent.octava_credentials import OctavaKeyError
+        with patch("local_agent.studio_server.set_default_model",
+                   return_value={"configured": True, "model": "gpt-6.1-sol"}) as setter:
+            status, _ = self.fetch("POST", "/api/octava-model",
+                                   {"model": "gpt-6.1-sol"}, include_origin=False)
+            self.assertEqual(status, 403)
+            setter.assert_not_called()
+            status, result = self.fetch("POST", "/api/octava-model",
+                                        {"model": "gpt-6.1-sol"})
+            self.assertEqual(status, 200)
+            self.assertEqual(result["model"], "gpt-6.1-sol")
+            setter.assert_called_once_with({"model": "gpt-6.1-sol"})
+        with patch("local_agent.studio_server.set_default_model",
+                   side_effect=OctavaKeyError("Модель OctavAPI не разрешена")):
+            status, data = self.fetch("POST", "/api/octava-model",
+                                      {"model": "unknown"})
+            self.assertEqual(status, 400)
+            self.assertNotIn("api_key", json.dumps(data))
+
     def test_origin_required_for_key_rotation(self):
         with patch("local_agent.studio_server.replace_key") as save:
             status, _ = self.fetch("POST", "/api/octava-key", {"api_key": "secret-123456789"}, include_origin=False)

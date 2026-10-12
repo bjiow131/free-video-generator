@@ -37,7 +37,7 @@ def validate_prompt(prompt: str) -> str:
     return prompt.strip()
 
 
-def request_advice(prompt: str, *, transport=None) -> dict:
+def request_advice(prompt: str, *, transport=None, tier: str = "default") -> dict:
     """Request up to 320 tokens; requires explicit local opt-in and local key.
 
     Result is explanatory text only, never automatically parsed as a command.
@@ -47,7 +47,7 @@ def request_advice(prompt: str, *, transport=None) -> dict:
     # Re-read the Windows vault on EACH request, including in a long-running
     # GitHub poller process. A locally saved key is explicit user opt-in.
     # Legacy environment-only use retains its explicit opt-in flag.
-    from local_agent.octava_credentials import OctavaKeyError, read_key
+    from local_agent.octava_credentials import OctavaKeyError, read_key, model_for_tier
     try:
         key, source = read_key()
     except OctavaKeyError:
@@ -56,7 +56,10 @@ def request_advice(prompt: str, *, transport=None) -> dict:
         raise OctavaAdviceError("OctavAPI calls are disabled until LOCAL_AGENT_ALLOW_OCTAVA=1")
     if not key or key != key.strip() or any(c in key for c in "\n\r"):
         raise OctavaAdviceError("OCTAVA_API_KEY is missing or malformed")
-    model = os.environ.get("OCTAVA_MODEL", "gpt-6-luna")
+    try:
+        model = model_for_tier(tier)
+    except OctavaKeyError:
+        raise OctavaAdviceError("Invalid configured model tier") from None
     if not _MODEL.fullmatch(model):
         raise OctavaAdviceError("Invalid configured model ID")
     body = json.dumps({
@@ -104,6 +107,7 @@ def request_advice(prompt: str, *, transport=None) -> dict:
                       if k in ("prompt_tokens", "completion_tokens", "total_tokens")
                       and type(v) is int and 0 <= v <= 1_000_000}
         return {"status": "completed", "advice": answer, "model_requested": model,
+                "model_tier": tier,
                 "usage": safe_usage, "executed_anything": False,
                 "provider": "OctavAPI (third-party)",
                 "note": "Suggestion only; no Blender command or patch has been executed."}
