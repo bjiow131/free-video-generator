@@ -1799,7 +1799,12 @@ def _telegram_command_response(update: Any, paired_chat: str, *,
                 "/tasks — последняя задача\n/logs — события запуска\n"
                 "/pause — остановить приём задач\n/resume — возобновить\n"
                 "/restart — перезапустить службы\n"
+                "/preview — последний кадр сцены\n"
+                "/video — последний готовый MP4\n"
+                "/reference — референс Мии из карточки\n"
                 "/notifications_on и /notifications_off — уведомления.")
+    if command in ("/preview", "/video", "/reference"):
+        return "@telegram-media:" + command[1:]
     if command == "/status":
         return status_line
     if command == "/tasks":
@@ -1857,9 +1862,18 @@ def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
                 logs_line=logs_line,
             )
             if reply is not None:
-                # Explicit replies must work even when automatic alerts are off.
-                _telegram_call(token, "sendMessage",
-                               {"chat_id": paired, "text": reply[:1300]}, timeout=8)
+                if reply.startswith("@telegram-media:"):
+                    # Authentication and command syntax were already checked.
+                    from local_agent.studio_server import telegram_send_studio_media, TelegramAlertError
+                    try:
+                        telegram_send_studio_media(reply.removeprefix("@telegram-media:"))
+                    except TelegramAlertError as exc:
+                        _telegram_call(token, "sendMessage",
+                                       {"chat_id": paired, "text": str(exc)[:1000]}, timeout=8)
+                else:
+                    # Explicit replies must work even when automatic alerts are off.
+                    _telegram_call(token, "sendMessage",
+                                   {"chat_id": paired, "text": reply[:1300]}, timeout=8)
         except (MailboxPolicyError, OSError, RuntimeError, ValueError):
             continue
 
