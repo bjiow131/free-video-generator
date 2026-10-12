@@ -32,6 +32,10 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: python -m pip install -r requirements-github-mailbox.txt
+      - name: Windows PowerShell 5.1 atomic replacement canary
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\\tests\\test_octava_file_replace_windows.ps1
       - name: Compile local agent
         run: python -m compileall -q local_agent
       - name: Verify Studio JavaScript
