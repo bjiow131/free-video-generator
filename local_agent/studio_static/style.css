@@ -54,3 +54,41 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .reference-checklist li{font-size:13px;line-height:1.5;color:#ced9e3}
 .reference-checklist .done{color:#79d9b0;font-weight:700}
 .reference-checklist .waiting{color:#b1bac8}
+
+
+/* Distinct Studio sections: dashboard, screenplay editor, actor roster, actor passport. */
+.script-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.75fr);gap:14px}
+.script-writing .editor-content{display:flex;flex-direction:column;gap:12px}
+.script-editor{min-height:330px;resize:vertical;line-height:1.7;white-space:pre-wrap}
+.script-writing .tools{margin:0}
+.script-writing .editor-content>h2,.script-overview h2{margin:0}
+.script-overview .editor-content{display:flex;flex-direction:column;gap:13px}
+.script-metric{display:flex;align-items:center;gap:18px;border-bottom:1px solid #2c475c;padding:9px 2px}
+.script-metric strong{font-size:25px;min-width:72px}
+.script-metric span{font-size:12px;color:#a9c5d8}
+.script-scenes{grid-column:1/-1}
+.script-scene-list{display:grid;gap:1px;padding:0 12px 13px}
+.script-scene-row{display:grid;grid-template-columns:35px minmax(0,1fr) 54px;gap:13px;align-items:center;text-align:left;border:1px solid transparent;background:#102939;color:var(--text);padding:12px;border-radius:7px;margin:2px 0}
+.script-scene-row:hover{border-color:var(--cyan)}
+.script-scene-row>span:nth-child(2){min-width:0}
+.script-scene-row strong,.script-scene-row small{display:block}
+.script-scene-row small{font-size:12px;color:#94b6c7;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.script-scene-num{display:grid;place-items:center;width:30px;height:30px;border-radius:7px;background:#173e4a;color:#45dee9}
+.script-scene-time{font-size:12px;color:#bdccde}
+.roster-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:18px}
+.roster-tile{display:flex;flex-direction:column;text-align:left;padding:0;background:#0d2533;border:1px solid #375368;border-radius:12px;color:var(--text);overflow:hidden;min-width:0}
+.roster-tile:hover{border-color:var(--cyan);box-shadow:0 0 20px #0bd3e022}
+.roster-image{height:190px;display:grid;place-items:center;overflow:hidden;background:#102632}
+.roster-image img{width:100%;height:100%;object-fit:contain}
+.roster-caption{display:flex;flex-direction:column;gap:6px;padding:15px}
+.roster-caption strong{font-size:17px}
+.roster-caption span{font-size:12px;color:#b6d5e3}
+.roster-caption small{color:#a2baca;font-size:11px}
+.roster-caption .roster-open{color:#3cdbed;margin-top:8px}
+.reference-source-link{color:#4ae2ec;font-size:12px}
+.reference-source-link:hover{text-decoration:underline}
+/* Never silently cut off a child's head, feet or approved multi-angle board. */
+.person-cover,.asset-image,.avatar-preview{background:#102631}
+.person-cover img,.asset-image img,.avatar-preview img,.scene-thumb img{object-fit:contain}
+@media(max-width:1000px){.script-layout{grid-template-columns:1fr}.script-scenes{grid-column:1}}
+@media(max-width:540px){.roster-grid{grid-template-columns:1fr}.script-editor{min-height:235px}.script-scene-row{gap:7px;padding:9px}}
