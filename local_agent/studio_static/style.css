@@ -49,3 +49,8 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .approved-reference-meta p{margin:0}
 .approved-reference-meta button{width:100%;white-space:normal}
 @media(max-width:740px){.approved-reference-grid{grid-template-columns:1fr}}
+
+.reference-checklist{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.reference-checklist li{font-size:13px;line-height:1.5;color:#ced9e3}
+.reference-checklist .done{color:#79d9b0;font-weight:700}
+.reference-checklist .waiting{color:#b1bac8}
