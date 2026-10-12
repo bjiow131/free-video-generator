@@ -983,6 +983,22 @@ def test_generated_rig_skips_mesh_without_a_bone_selection():
     assert eval(expression, {"bone": "head", "data": data}) is False
 
 
+def test_five_second_animation_reads_blender5_channelbag_curves():
+    import ast
+    from local_agent.blender_workflow import _episode1_animation_script
+    tree = ast.parse(_episode1_animation_script())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "action_fcurves")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "action-curves", "exec"), namespace)
+    first, second = object(), object()
+    modern = SimpleNamespace(layers=[SimpleNamespace(strips=[
+        SimpleNamespace(channelbags=[SimpleNamespace(fcurves=[first]), SimpleNamespace(fcurves=[second])])])])
+    curves = namespace["action_fcurves"]
+    assert list(curves(modern)) == [first, second]
+    assert list(curves(SimpleNamespace(fcurves=[first]))) == [first]
+    assert list(curves(SimpleNamespace(layers=[]))) == []
+
+
 def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
     import json
     from local_agent import poller, github_queue
