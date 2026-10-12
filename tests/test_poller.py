@@ -999,6 +999,37 @@ def test_five_second_animation_reads_blender5_channelbag_curves():
     assert list(curves(SimpleNamespace(layers=[]))) == []
 
 
+def test_character_review_routes_to_separate_version_without_scene_overwrite(monkeypatch):
+    from local_agent import blender_workflow as workflow
+    seen = []
+    monkeypatch.setattr(workflow, "create_reference_mia_model", lambda **kw: seen.append(kw) or {"status": "completed", "production_ready": False})
+    result = workflow.create_mia_blockout("MIA_REFERENCE_REVIEW", task_id="review-001")
+    assert result["production_ready"] is False
+    assert seen == [{"task_id": "review-001"}]
+    with pytest.raises(workflow.BlenderWorkflowError):
+        workflow.create_mia_blockout("MIA_REFERENCE_REVIEW", overwrite=True)
+
+
+def test_character_review_refuses_unsafe_output_identity():
+    from local_agent import blender_workflow as workflow
+    with pytest.raises(workflow.BlenderWorkflowError):
+        workflow.create_reference_mia_model(task_id="../other")
+
+
+def test_mouth_animation_preserves_original_mesh_scale():
+    import ast
+    from local_agent.blender_workflow import _episode1_animation_script
+    function = next(node for node in ast.parse(_episode1_animation_script()).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "animate_mouth")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "mouth-animation", "exec"), namespace)
+    frames = []
+    obj = SimpleNamespace(scale=(0.105, 0.025, 0.025))
+    obj.keyframe_insert = lambda **kw: frames.append((kw["frame"], obj.scale))
+    namespace["animate_mouth"](obj, [(10, 30)])
+    assert all(scale[:2] == (0.105, 0.025) and 0 < scale[2] <= 0.025 for _, scale in frames)
+
+
 def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
     import json
     from local_agent import poller, github_queue
