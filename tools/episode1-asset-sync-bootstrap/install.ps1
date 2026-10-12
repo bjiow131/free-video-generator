@@ -5,25 +5,13 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'bjiow131/free-video-generator'
-$Commit = 'ee18d7e24a0eee67db7d8d9edef49ccfbb0b3dfa'
+$Commit = '05037b3034a60e873669f253c273de4eae047795'
 $Target = 'C:\AI-Agent-Studio-Octava'
 $Python = Join-Path $env:LOCALAPPDATA 'BlenderWorkAgent\github-venv\Scripts\python.exe'
 $Files = @(
-  @{ Path = 'docs/local-agent/asset-sync.md'; Blob = 'cf28f738651bb82c1c79b930dda37f71b64d4732' },
-  @{ Path = 'docs/season1/asset_sync_manifest.json'; Blob = '547166cf72d1bfc72ec420c975d7a0f3358412e6' },
-  @{ Path = 'local_agent/blender_rigging.py'; Blob = '3cc29237d2ad5f2412ccdd93bfe3a186d87a6172' },
-  @{ Path = 'local_agent/blender_workflow.py'; Blob = '60c758730ed25897267865496f19a83c864dbd5e' },
-  @{ Path = 'local_agent/control_protocol.py'; Blob = 'bcc971d296b3edad4a82c982c827cd620a03c538' },
-  @{ Path = 'local_agent/github_asset_sync.py'; Blob = '46502d433b8578ca10241eb76b119be6641824d2' },
-  @{ Path = 'local_agent/mailbox_policy.py'; Blob = '03f72c27a9784ae77453def03e4ced08711f7de9' },
-  @{ Path = 'local_agent/poller.py'; Blob = '5a53a33814363f623297438233ccd11444d1c429' },
-  @{ Path = 'local_agent/studio_static/app.js'; Blob = '699831111baa5968b73e5aafff42e44b7406cff8' },
-  @{ Path = 'local_agent/trusted_updates.py'; Blob = 'bb0b8932487cc1a9032e13786ba87cb0cb4cf570' },
-  @{ Path = 'tests/test_asset_sync_protocol.py'; Blob = 'dac894a15cb581e4554bbe40832c6d508b8140fe' },
-  @{ Path = 'tests/test_github_asset_sync.py'; Blob = 'd4688ab7a405134fb5e6b4dc7b4466b0ff4ae27b' },
-  @{ Path = 'tests/test_github_asset_sync_resume.py'; Blob = 'ea327cdb4a5ee85145da8bdb0c42e01d19b7bb10' },
-  @{ Path = 'tests/test_mailbox_policy.py'; Blob = 'bd4391ee88392f60391b2ec05cc4d4018c26a3c8' },
-  @{ Path = 'tests/test_trusted_updates.py'; Blob = 'f28c2764a493378d3c26ec2fd681f48e34e1a76b' }
+  @{ Path = 'local_agent/trusted_updates.py'; Blob = 'c76ae9b46fc6cdb968a8932cecbe3ed0431ebcd5' },
+  @{ Path = 'local_agent/dropbox_review.py'; Blob = '7fc21f75b05d1624c4a71026c9b99536d2c78662' },
+  @{ Path = 'tests/test_trusted_updates.py'; Blob = 'b8795ee69fc1378bfc0e1bd8ef6e6558407d852e' }
 )
 
 function Assert-NotReparsePoint([string] $Path) {
@@ -133,7 +121,7 @@ try {
 
   Push-Location $Target
   try {
-    & $Python -m pytest -q tests/test_unattended_poller.py tests/test_asset_sync_protocol.py tests/test_github_asset_sync.py tests/test_github_asset_sync_resume.py tests/test_mailbox_policy.py tests/test_trusted_updates.py::test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_update
+    & $Python -m pytest -q tests/test_unattended_poller.py tests/test_asset_sync_protocol.py tests/test_github_asset_sync.py tests/test_github_asset_sync_resume.py tests/test_mailbox_policy.py tests/test_trusted_updates.py::test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_update tests/test_trusted_updates.py::test_pinned_update_fetch_uses_rate_limit_free_raw_content tests/test_trusted_updates.py::test_episode1_export_accepts_only_gzip_wrapped_blender_headers
     if ($LASTEXITCODE -ne 0) { throw "Focused Windows tests failed: exit=$LASTEXITCODE" }
   } finally {
     Pop-Location
