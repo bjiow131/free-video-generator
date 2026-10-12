@@ -1422,49 +1422,66 @@ def _mailbox_is_stale(*, now_wall: float, started_at_wall: float) -> bool:
 
 
 def _mailbox_idle_initialize(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
-    """Initialize once, preserving the task clock across worker restarts."""
+    """Preserve idle and reminder clocks across restarts, including legacy state."""
     clock = time.time() if now is None else now
     last = state.get("mailbox_last_new_task_at")
     sent = state.get("mailbox_idle_notice_sent")
     if (type(last) not in (int, float) or not 0 < last <= clock + 60
             or type(sent) is not bool):
         return {**state, "mailbox_last_new_task_at": clock,
-                "mailbox_idle_notice_sent": False}
+                "mailbox_idle_notice_sent": False,
+                "mailbox_idle_last_notice_at": None}
+    missing = object()
+    notified = state.get("mailbox_idle_last_notice_at", missing)
+    if notified is missing:
+        # Pre-upgrade versions sent exactly one alert per idle period. Do not
+        # immediately duplicate it after an update/restart; begin a fresh window.
+        return {**state, "mailbox_idle_last_notice_at": clock if sent else None}
+    if notified is not None and (type(notified) not in (int, float)
+                                or not last <= notified <= clock + 60):
+        # Recover from corrupt or future wall-clock timestamps safely.
+        return {**state, "mailbox_idle_last_notice_at": None}
     return state
 
 
 def _mailbox_idle_new_task(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
-    """New unique GitHub task starts a new 10-minute idle period."""
+    """A new unique GitHub task resets the ten-minute reminder schedule."""
     return {**state, "mailbox_last_new_task_at": time.time() if now is None else now,
-            "mailbox_idle_notice_sent": False}
+            "mailbox_idle_notice_sent": False, "mailbox_idle_last_notice_at": None}
 
 
 def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
                        now: float | None = None) -> dict[str, Any]:
-    """Queue ONE notice for an idle period; never report an idle queue as an outage."""
+    """Repeat one idle reminder every ten minutes, without offline outbox buildup."""
     clock = time.time() if now is None else now
     state = _mailbox_idle_initialize(state, now=clock)
-    if (state["mailbox_idle_notice_sent"]
-            or clock - state["mailbox_last_new_task_at"] < _MAILBOX_IDLE_SECONDS):
+    latest = state["mailbox_idle_last_notice_at"]
+    since = latest if latest is not None else state["mailbox_last_new_task_at"]
+    if clock - since < _MAILBOX_IDLE_SECONDS:
         return state
     try:
         from local_agent.studio_server import telegram_queue_event, telegram_flush_outbox
         connection = ("Проверка GitHub работает." if github_reachable else
                       "Последняя проверка GitHub завершилась ошибкой подключения.")
-        message = ("Blender AI Agent: уже 10 минут не поступало новых заданий из GitHub. "
-                   + connection + " Агент продолжает проверять очередь.")
+        minutes = max(10, int((clock - state["mailbox_last_new_task_at"]) // 60))
+        message = (f"Blender AI Agent: новых заданий из GitHub нет уже {minutes} минут. "
+                   + connection + " Напоминание повторяется каждые 10 минут.")
+        # Stable for the CURRENT idle period: at most one pending notice when
+        # Telegram is offline, but fresh notices after each successful delivery.
         event_id = "mailbox-idle:" + str(int(state["mailbox_last_new_task_at"]))
         if not telegram_queue_event(event_id, message):
-            # Telegram disabled or not paired: don't mark as sent.
+            # Notifications disabled, unpaired, or outbox full. Retry later.
             return state
-        # Persist before delivery: if the process restarts, don't alert repeatedly.
-        updated = {**state, "mailbox_idle_notice_sent": True}
+        # Durable interval checkpoint before delivery prevents restart spam.
+        updated = {**state, "mailbox_idle_notice_sent": True,
+                   "mailbox_idle_last_notice_at": clock}
         _save_state(updated)
         telegram_flush_outbox(max_messages=2)
         return updated
     except (ImportError, OSError, RuntimeError, ValueError):
-        # Never stop GitHub task processing because Telegram is unavailable.
+        # Notification failures must not block GitHub tasks.
         return state
+
 
 
 
