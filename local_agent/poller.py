@@ -934,7 +934,7 @@ def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = Non
     from local_agent.mailbox_policy import OctavaProjectMemory, MemoryErrorSafe
     project_id = arguments.get("project_id")
     if project_id is None:
-        return request_advice(arguments["prompt"])
+        return request_advice(arguments["prompt"], tier=arguments.get("tier", "default"))
     root = workspace if workspace is not None else os.environ.get("LOCAL_AGENT_WORKSPACE", "")
     try:
         memory = OctavaProjectMemory(root, project_id)
@@ -953,7 +953,7 @@ def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = Non
     except MemoryErrorSafe as exc:
         raise OctavaAdviceError("Project checkpoint error: " + str(exc)) from None
     try:
-        result = request_advice(text)
+        result = request_advice(text, tier=arguments.get("tier", "default"))
     except OctavaAdviceError as exc:
         memory.fail("waiting_for_key" if (
             "insufficient balance" in str(exc) or "authorization failed" in str(exc)
