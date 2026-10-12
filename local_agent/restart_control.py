@@ -48,9 +48,9 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\\n") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
             json.dump(value, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -138,17 +138,20 @@ def peek_restart_request(project_root: str | Path) -> dict[str, Any] | None:
         return None
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-        created = datetime.fromisoformat(str(value.get("created_at", "")).replace("Z", "+00:00"))
-        valid = (
-            isinstance(value, dict)
-            and set(value) == {"schema_version", "operation", "task_id", "created_at"}
-            and value.get("schema_version") == 1
-            and value.get("operation") == "restart_agent"
-            and isinstance(value.get("task_id"), str)
-            and bool(_TASK_ID.fullmatch(value["task_id"]))
-            and created.tzinfo is not None
-            and (datetime.now(timezone.utc) - created).total_seconds() <= 3600
-        )
+        valid = isinstance(value, dict) and set(value) == {
+            "schema_version", "operation", "task_id", "created_at"
+        }
+        if valid:
+            created = datetime.fromisoformat(str(value.get("created_at", "")).replace("Z", "+00:00"))
+            age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
+            valid = (
+                value.get("schema_version") == 1
+                and value.get("operation") == "restart_agent"
+                and isinstance(value.get("task_id"), str)
+                and bool(_TASK_ID.fullmatch(value["task_id"]))
+                and created.tzinfo is not None
+                and 0 <= age_seconds <= 3600
+            )
     except (OSError, ValueError, TypeError, UnicodeError):
         valid = False
         value = None
@@ -214,9 +217,9 @@ def request_agent_restart(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
-        with path.open("x", encoding="utf-8", newline="\\n") as stream:
+        with path.open("x", encoding="utf-8", newline="\n") as stream:
             json.dump(request, stream, ensure_ascii=False, separators=(",", ":"))
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
     except FileExistsError as exc:
