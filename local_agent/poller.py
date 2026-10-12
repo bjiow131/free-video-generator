@@ -929,7 +929,8 @@ def _run_octava_advice(arguments: dict[str, Any]) -> dict[str, Any]:
     from local_agent.octava_advisor import request_advice
     return request_advice(arguments.get("prompt"),
                           project_id=arguments.get("project_id"),
-                          resume_pending=arguments.get("resume_pending", False))
+                          resume_pending=arguments.get("resume_pending", False),
+                          tier=arguments.get("tier", "default"))
 
 
 def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
