@@ -325,9 +325,18 @@ def bar(name,a,b,r,mat):
     bpy.ops.mesh.primitive_cylinder_add(vertices=12,radius=r,depth=vec.length,location=mid)
     o=bpy.context.object; o.name=name; o.data.materials.append(mat)
     o.rotation_euler=vec.to_track_quat("Z","Y").to_euler(); return o
+strap_objects=[]
 for sign in (-1,1):
     bar("Mia | visible backpack shoulder strap",(sign*0.25,-0.31,2.56),(sign*0.19,-0.31,2.05),0.055,gold)
-    bar("Mia | helmet chin strap",(sign*0.39,-0.30,3.69),(0,-0.35,2.90),0.025,dark)
+    strap_objects.append(bar("Mia | helmet chin strap",(sign*0.39,-0.30,3.69),(0,-0.35,2.90),0.025,dark))
+for strap in strap_objects:
+    for frame,scale in ((1,(1,1,0.01)),(75,(1,1,1)),(720,(1,1,1))):
+        strap.scale=scale; strap.keyframe_insert(data_path="scale",frame=frame)
+# The helmet is lifted into place before the controlled ride begins.
+helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=1)
+helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=25)
+helmet.location=(0,-0.005,3.76); helmet.keyframe_insert(data_path="location",frame=75)
+helmet.keyframe_insert(data_path="location",frame=720)
 skin=material("Guardian | neutral",(0.48,0.31,0.22,1))
 coat=material("Guardian | muted coat",(0.22,0.29,0.31,1))
 def box(name,loc,dims,mat):
@@ -361,7 +370,7 @@ def parent_group(prefixes,name):
     root=bpy.data.objects.new(name,None); scene.collection.objects.link(root)
     root.empty_display_type="PLAIN_AXES"; root.empty_display_size=0.5
     for obj in list(scene.objects):
-        if any(obj.name.startswith(prefix) for prefix in prefixes) or obj.name in ("Mia_Rig","Stepa_Rig"):
+        if any(obj.name.startswith(prefix) for prefix in prefixes) or obj.name == name.split("_",1)[0]+"_Rig":
             if obj is root: continue
             world=obj.matrix_world.copy(); obj.parent=root; obj.matrix_world=world
     return root
@@ -577,6 +586,11 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
         outputs.append(project / "scene.mp4")
     if any(is_link_or_junction(p) for p in outputs + [project / "blender_stdout.log", project / "blender_stderr.log"]):
         raise BlenderWorkflowError("Output files must not be symlinks or junctions.")
+    if (project_name == "S01E01_SC01_RELEASE"
+            and all(p.is_file() for p in outputs[:3])
+            and not (project / "scene.mp4").exists()
+            and not overwrite):
+        return _render_episode1_release(project, workspace, blender)
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
     import tempfile
