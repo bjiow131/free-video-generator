@@ -932,9 +932,17 @@ def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = Non
     """
     from local_agent.octava_advisor import request_advice, OctavaAdviceError, validate_prompt
     from local_agent.mailbox_policy import OctavaProjectMemory, MemoryErrorSafe
+    tier = arguments.get("tier", "default")
+    # Keep the original call shape for old integrations and mocked tests.
+    # An explicitly selected tier is passed only for routed tasks.
+    def _advice(text: str) -> dict[str, Any]:
+        if tier == "default":
+            return request_advice(text)
+        return request_advice(text, tier=tier)
+
     project_id = arguments.get("project_id")
     if project_id is None:
-        return request_advice(arguments["prompt"], tier=arguments.get("tier", "default"))
+        return _advice(arguments["prompt"])
     root = workspace if workspace is not None else os.environ.get("LOCAL_AGENT_WORKSPACE", "")
     try:
         memory = OctavaProjectMemory(root, project_id)
@@ -953,7 +961,7 @@ def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = Non
     except MemoryErrorSafe as exc:
         raise OctavaAdviceError("Project checkpoint error: " + str(exc)) from None
     try:
-        result = request_advice(text, tier=arguments.get("tier", "default"))
+        result = _advice(text)
     except OctavaAdviceError as exc:
         memory.fail("waiting_for_key" if (
             "insufficient balance" in str(exc) or "authorization failed" in str(exc)
