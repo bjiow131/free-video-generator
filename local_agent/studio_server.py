@@ -50,6 +50,46 @@ _JOB_RE = re.compile(r"[a-f0-9]{32}\Z")
 _LOCK = threading.RLock()
 
 
+_OCTAVA_RESUME_LOCK = threading.Lock()
+
+
+def _resume_octava_waiting_projects(workspace: Path) -> None:
+    """Best-effort one-shot resume; all durable state remains in local files.
+
+    Only sessions paused due to invalid/exhausted keys are retried, never
+    arbitrary code, shell commands or third-party tool calls.
+    """
+    if not _OCTAVA_RESUME_LOCK.acquire(blocking=False):
+        return
+    try:
+        from local_agent.octava_project_memory import ProjectMemory, MemoryErrorSafe
+        from local_agent.octava_advisor import request_advice, OctavaAdviceError
+        try:
+            policy = load_policy()
+            if not (policy["enabled"] and policy["allow_octava"]):
+                return
+            projects = ProjectMemory.waiting_projects(workspace, limit=3)
+        except (MemoryErrorSafe, MailboxPolicyError):
+            return
+        # The Studio workspace may be supplied only as a CLI arg, not env.
+        # request_advice is the single, bounded caller and saves checkpoints.
+        previous = os.environ.get("LOCAL_AGENT_WORKSPACE")
+        os.environ["LOCAL_AGENT_WORKSPACE"] = str(workspace)
+        try:
+            for project_id in projects:
+                try:
+                    request_advice(project_id=project_id, resume_pending=True)
+                except (OctavaAdviceError, MemoryErrorSafe):
+                    continue  # preserved for later explicit resume
+        finally:
+            if previous is None:
+                os.environ.pop("LOCAL_AGENT_WORKSPACE", None)
+            else:
+                os.environ["LOCAL_AGENT_WORKSPACE"] = previous
+    finally:
+        _OCTAVA_RESUME_LOCK.release()
+
+
 class ReviewDeliveryError(ValueError):
     pass
 
@@ -834,7 +874,16 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if set(body) != {"api_key"}:
                     raise StudioError("Укажите только новый API-ключ")
                 with self.server.octava_lock:
-                    return self._json(200, replace_key(body["api_key"]))
+                    result = replace_key(body["api_key"])
+                # A locally approved OctavAPI session may resume after rotation.
+                # Run outside the HTTP handler; key replacement stays responsive.
+                if load_policy()["enabled"] and load_policy()["allow_octava"]:
+                    threading.Thread(
+                        target=_resume_octava_waiting_projects,
+                        args=(self.server.store.root,),
+                        name="octava-rotate-resume", daemon=True,
+                    ).start()
+                return self._json(200, result)
             if path == "/api/mailbox-policy":
                 with self.server.mailbox_policy_lock:
                     return self._json(200, save_policy(body))
