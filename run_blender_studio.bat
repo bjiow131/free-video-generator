@@ -20,8 +20,10 @@ echo Blender AI Agent Studio - local only
 echo Workspace: %LOCAL_AGENT_WORKSPACE%
 echo The browser will open automatically. Keep this terminal running.
 %AGENT_PY% -m local_agent.studio_server --workspace "%LOCAL_AGENT_WORKSPACE%" --project mia_story
-if errorlevel 1 (
-  echo [ERROR] Studio failed. Copy the error displayed above.
+set "STUDIO_EXIT=%ERRORLEVEL%"
+if "%STUDIO_EXIT%"=="75" goto run
+if not "%STUDIO_EXIT%"=="0" (
+  echo [ERROR] Studio failed with exit code %STUDIO_EXIT%. Copy the error displayed above.
   pause
 )
 endlocal
