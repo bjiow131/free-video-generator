@@ -15,7 +15,7 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "restart_agent"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
@@ -73,11 +73,11 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("Task lifetime may not exceed 24 hours.")
     if not isinstance(value["requires_local_approval"], bool):
         raise ProtocolError("requires_local_approval must be a boolean.")
-    if value["requires_local_approval"] is False:
-        raise ProtocolError("Task must require local approval; remote approval is disabled.")
+    if value["requires_local_approval"] is False and value["operation"] != "restart_agent":
+        raise ProtocolError("Task must require local approval; remote approval is disabled except for the fixed restart operation.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
-    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup"} and value["arguments"]:
+    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "restart_agent"} and value["arguments"]:
         raise ProtocolError("This operation does not accept arguments.")
     if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
         raise ProtocolError("Task arguments exceed the size limit.")
