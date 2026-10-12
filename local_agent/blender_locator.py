@@ -93,7 +93,7 @@ def is_supported_windows_blender(path: str | os.PathLike[str]) -> bool:
                 return False
             stream.seek(offset)
             header = stream.read(6)
-        return (len(header) == 6 and header[:4] == b"PE\\0\\0"
+        return (len(header) == 6 and header[:4] == bytes((80, 69, 0, 0))
                 and int.from_bytes(header[4:6], "little") in _SUPPORTED_WINDOWS_MACHINES)
     except (OSError, ValueError):
         return False
@@ -110,8 +110,9 @@ def _matches_unsupported_16bit_dialog(title: str, body: str, executable: str | o
     }
     if normalized_title not in known_titles:
         return False
-    normalized_body = body.casefold().replace("/", "\\\\")
-    requested = str(Path(executable)).casefold().replace("/", "\\\\")
+    slash = chr(92)
+    normalized_body = body.casefold().replace("/", slash)
+    requested = str(Path(executable)).casefold().replace("/", slash)
     basename = Path(executable).name.casefold()
     if requested not in normalized_body and basename not in normalized_body:
         return False
@@ -142,11 +143,13 @@ def _dismiss_matching_dialogs(executable: str, events: list[dict[str, object]]) 
         if not title:
             return True
         child_text = []
+
         def visit_child(child, _child_param):
             value = window_text(child)
             if value:
                 child_text.append(value)
             return True
+
         child_callback = enum_proc_type(visit_child)
         user32.EnumChildWindows(hwnd, child_callback, 0)
         body = " ".join(child_text)
@@ -167,6 +170,7 @@ def watch_unsupported_blender_dialogs(executable: str | os.PathLike[str], events
         return
     stopped = threading.Event()
     resolved = str(Path(executable).resolve())
+
     def watch() -> None:
         while not stopped.is_set():
             try:
@@ -174,6 +178,7 @@ def watch_unsupported_blender_dialogs(executable: str | os.PathLike[str], events
             except (OSError, AttributeError):
                 pass
             stopped.wait(0.25)
+
     thread = threading.Thread(target=watch, name="blender-dialog-guard", daemon=True)
     thread.start()
     try:
