@@ -366,6 +366,8 @@ animate_mouth(mia_mouth,[(130,255),(340,385),(485,545)])
 def parent_group(prefixes,name):
     root=bpy.data.objects.new(name,None); scene.collection.objects.link(root)
     root.empty_display_type="PLAIN_AXES"; root.empty_display_size=0.5
+    if name.startswith("Stepa_"):
+        root.location.x=-2.05
     for obj in list(scene.objects):
         if any(obj.name.startswith(prefix) for prefix in prefixes) or obj.name == name.split("_",1)[0]+"_Rig":
             if obj is root: continue
@@ -590,6 +592,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     if (project_name == "S01E01_SC01_RELEASE"
             and all(p.is_file() for p in outputs[:3])
             and not (project / "scene.mp4").exists()
+            and not (project / "preview.png").exists()
             and not overwrite):
         return _render_episode1_release(project, workspace, blender)
     if not overwrite and any(p.exists() for p in outputs):
