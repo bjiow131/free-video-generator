@@ -79,24 +79,17 @@ try {
       throw 'Unsafe pinned file path.'
     }
     $encodedPath = (($File.Path -split '/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
-    $url = "https://api.github.com/repos/$Repo/contents/$encodedPath" + '?ref=' + $Commit
-    $response = Invoke-RestMethod -Method Get -Uri $url -TimeoutSec 30 -Headers @{
-      Accept = 'application/vnd.github+json'
-      'X-GitHub-Api-Version' = '2022-11-28'
-      'User-Agent' = 'blender-agent-local-bootstrap'
-    }
-    if ($response.type -ne 'file' -or $response.path -ne $File.Path -or
-        $response.encoding -ne 'base64' -or $response.sha -ne $File.Blob) {
-      throw "Pinned GitHub metadata mismatch: $($File.Path)"
-    }
-    $bytes = [Convert]::FromBase64String(($response.content -replace '\s',''))
-    if ($bytes.Length -lt 1 -or $bytes.Length -gt 500000 -or
-        $response.size -ne $bytes.Length -or (Get-GitBlobSha1 $bytes) -ne $File.Blob) {
-      throw "Pinned file verification failed: $($File.Path)"
-    }
     $stagePath = Join-Path $Stage ($File.Path.Replace('/', '\'))
     New-Item -ItemType Directory -Path (Split-Path -Parent $stagePath) -Force | Out-Null
-    [IO.File]::WriteAllBytes($stagePath, $bytes)
+    $url = "https://raw.githubusercontent.com/$Repo/$Commit/$encodedPath"
+    Invoke-WebRequest -Method Get -Uri $url -TimeoutSec 30 -Headers @{
+      'User-Agent' = 'blender-agent-local-bootstrap'
+    } -OutFile $stagePath -UseBasicParsing
+    $bytes = [IO.File]::ReadAllBytes($stagePath)
+    if ($bytes.Length -lt 1 -or $bytes.Length -gt 500000 -or
+        (Get-GitBlobSha1 $bytes) -ne $File.Blob) {
+      throw "Pinned file verification failed: $($File.Path)"
+    }
   }
 
   # Back up existing regular files and reject links before installing.
