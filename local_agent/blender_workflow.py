@@ -82,6 +82,17 @@ yellow=mat("Scooter | sunny yellow",(1.0,0.62,0.05),0.38)
 metal=mat("Scooter | metal",(0.20,0.23,0.24),0.4)
 snail=mat("Snail | soft green",(0.35,0.53,0.27))
 shell=mat("Snail | amber shell",(0.67,0.31,0.12))
+stepa_jacket=mat("Stepa | forest green top",(0.12,0.30,0.19))
+stepa_accent=mat("Stepa | muted orange accents",(0.72,0.28,0.09))
+stepa_pants=mat("Stepa | olive trousers",(0.24,0.25,0.14))
+pathmat=mat("Environment | flat path",(0.48,0.45,0.38))
+grassmat=mat("Environment | grass",(0.18,0.35,0.12))
+housemat=mat("Environment | house",(0.70,0.58,0.42))
+roofmat=mat("Environment | roof",(0.28,0.16,0.12))
+marker_orange=mat("Prop | marker orange",(0.90,0.24,0.06))
+marker_white=mat("Prop | marker white",(0.92,0.88,0.74))
+bookmat=mat("Prop | discovery book",(0.35,0.44,0.18))
+pencilmat=mat("Prop | pencils",(0.88,0.35,0.08))
 groundmat=mat("Ground | warm neutral",(0.26,0.30,0.25))
 def uv(name, loc, scale, material, segments=24, rings=16):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, location=loc)
@@ -95,6 +106,11 @@ def between(name, a, b, radius, material):
     o=cyl(name,mid,radius,vec.length,material)
     o.rotation_euler=vec.to_track_quat("Z","Y").to_euler()
     return o
+def box(name, loc, dims, material):
+    bpy.ops.mesh.primitive_cube_add(size=1, location=loc)
+    o=bpy.context.object; o.name=name; o.dimensions=dims
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    o.data.materials.append(material); return o
 # Mia: deliberately simple, editable proportions; not a finished production mesh.
 uv("Mia | head",(0,0,3.12),(0.53,0.47,0.58),skin)
 uv("Mia | hair cap",(0,0.035,3.48),(0.55,0.48,0.32),hair)
@@ -123,16 +139,51 @@ for x in (-0.12,0.55):
     o=cyl("Scooter | wheel",(x,-0.72,0.20),0.13,0.09,shoe,24); o.rotation_euler[0]=math.pi/2
 between("Scooter | stem",(0.52,-0.72,0.35),(0.57,-0.72,0.93),0.035,metal)
 between("Scooter | handle", (0.42,-0.72,0.93),(0.72,-0.72,0.93),0.035,yellow)
-# Friendly stylized snail companion.
+# Stepa: distinct preschool proxy with generated-draft color blocking.
+uv("Stepa | head",(-2.05,0,3.12),(0.52,0.46,0.57),skin)
+uv("Stepa | hair cap",(-2.05,0.035,3.47),(0.55,0.47,0.30),hair)
+uv("Stepa | back hair",(-2.05,0.23,3.12),(0.48,0.28,0.60),hair)
+for x in (-2.24,-1.86):
+    uv("Stepa | eye white",(x,-0.435,3.16),(0.09,0.045,0.10),white,20,12)
+    uv("Stepa | iris",(x,-0.475,3.15),(0.044,0.022,0.057),iris,16,10)
+uv("Stepa | jacket torso",(-2.05,0,2.22),(0.37,0.29,0.56),stepa_jacket)
+uv("Stepa | neck",(-2.05,0,2.76),(0.13,0.13,0.17),skin)
+for side in (-1,1):
+    hip=(-2.05+side*0.19,0,1.72); knee=(-2.05+side*0.21,-0.015,1.05); ankle=(-2.05+side*0.22,-0.02,0.48)
+    between("Stepa | trouser leg",hip,knee,0.105,stepa_pants); between("Stepa | trouser cuff",knee,ankle,0.085,stepa_pants)
+    uv("Stepa | shoe",(-2.05+side*0.22,-0.10,0.34),(0.15,0.24,0.10),shoe)
+    shoulder=(-2.05+side*0.32,0,2.55); elbow=(-2.05+side*0.48,-0.015,2.22); hand=(-2.05+side*0.52,-0.04,2.03)
+    between("Stepa | sleeve",shoulder,elbow,0.105,stepa_jacket); between("Stepa | orange cuff",elbow,hand,0.075,stepa_accent)
+    uv("Stepa | hand",hand,(0.09,0.08,0.10),skin)
+# Two simple race markers at the start line.
+for i, x in enumerate((-1.35, 1.35)):
+    bpy.ops.mesh.primitive_cone_add(vertices=16, radius1=0.17, radius2=0.035, depth=0.38, location=(x,-1.05,0.21))
+    cone=bpy.context.object; cone.name=f"Prop | race marker {i+1}"; cone.data.materials.append(marker_orange)
+    cyl(f"Prop | marker band {i+1}",(x,-1.05,0.22),0.125,0.08,marker_white,16)
+# Episode inventory proxies staged outside the first-scene camera.
+box("Prop | discovery book cover",(7,5,0.12),(0.55,0.42,0.08),bookmat)
+for i in range(3):
+    between(f"Prop | pencil {i+1}",(7.65+i*0.11,5,0.08),(7.65+i*0.11,5,0.42),0.025,pencilmat)
+# Friendly stylized snail companion; hidden from this opening race scene.
 uv("Snail | body",(1.55,-0.1,0.25),(0.42,0.20,0.16),snail)
 uv("Snail | head",(1.84,-0.1,0.43),(0.14,0.14,0.21),snail)
 uv("Snail | shell",(1.49,-0.11,0.48),(0.27,0.25,0.27),shell)
 for x in (1.79,1.91):
     between("Snail | eye stalk",(x,-0.1,0.55),(x,-0.1,0.67),0.025,snail)
     uv("Snail | eye",(x,-0.13,0.69),(0.035,0.03,0.04),white,12,8)
+# Yard stage: wide level route, grass edges, and a simple home facade.
+bpy.ops.mesh.primitive_plane_add(size=16, location=(0,0,0.01))
+bpy.context.object.name="Environment | ground"; bpy.context.object.data.materials.append(groundmat)
+box("Environment | flat yard path",(0,0,0.045),(12,2.8,0.08),pathmat)
+box("Environment | grass edge near",(0,-2.0,0.035),(12,1.2,0.05),grassmat)
+box("Environment | grass edge far",(0,2.0,0.035),(12,1.2,0.05),grassmat)
+box("Environment | home facade",(0,4.4,2.05),(8,0.35,4.1),housemat)
+box("Environment | roofline",(0,4.4,4.18),(8.5,0.55,0.28),roofmat)
+for x in (-2.4,2.4): box("Environment | window",(x,4.19,2.65),(1.1,0.06,1.0),white)
+for obj in bpy.context.scene.objects:
+    if obj.name.startswith("Snail |"):
+        obj.hide_render=True
 # Ground, camera and lights.
-bpy.ops.mesh.primitive_plane_add(size=12, location=(0,0,0.02))
-bpy.context.object.name="Stage | ground"; bpy.context.object.data.materials.append(groundmat)
 bpy.ops.object.camera_add(location=(5,-9,4.6)); cam=bpy.context.object; cam.name="Camera | Mia blockout"
 target=Vector((0.55,0,1.75)); cam.rotation_euler=(target-cam.location).to_track_quat("-Z","Y").to_euler()
 cam.data.lens=52; bpy.context.scene.camera=cam
