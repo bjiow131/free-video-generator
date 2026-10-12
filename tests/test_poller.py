@@ -8,6 +8,49 @@ import pytest
 from local_agent.poller import _not_expired
 
 
+def test_mailbox_failure_diagnostics_exports_only_crash_metadata(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    state = tmp_path / ".local_agent"
+    state.mkdir()
+    (state / "octava_supervisor.log").write_text(
+        "mailbox exited code=1; auto-restarting\n"
+        "Trusted update installed; controlled restart\n", encoding="utf-8")
+    (state / "octava_mailbox.log").write_text(
+        'Traceback (most recent call last):\n'
+        '  File "C:\\private\\local_agent\\poller.py", line 123, in main\n'
+        '    secret = "DO_NOT_EXPORT"\n'
+        'RuntimeError: DO_NOT_EXPORT\n', encoding="utf-8")
+    result = poller._mailbox_failure_diagnostics()
+    assert result["last_mailbox_exit_code"] == 1
+    assert result["last_exception_type"] == "RuntimeError"
+    assert result["last_poller_frame"] == {"line": 123, "function": "main"}
+    assert result["controlled_update_restart_count_in_log_tail"] == 1
+    assert "DO_NOT_EXPORT" not in str(result)
+    assert "private" not in str(result)
+
+
+def test_mailbox_failure_diagnostics_handles_absent_logs(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    result = poller._mailbox_failure_diagnostics()
+    assert result["last_exception_type"] is None
+    assert result["last_mailbox_exit_code"] is None
+
+
+def test_mailbox_failure_diagnostics_rejects_log_symlink(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "ROOT", tmp_path)
+    (tmp_path / ".local_agent").mkdir()
+    outside = tmp_path / "other.log"
+    outside.write_text("RuntimeError: private\n", encoding="utf-8")
+    try:
+        (tmp_path / ".local_agent" / "octava_mailbox.log").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink creation unavailable")
+    assert poller._mailbox_failure_diagnostics()["last_exception_type"] is None
+
+
 @pytest.fixture(autouse=True)
 def _agent_interactive_console_for_tests(monkeypatch):
     # Simulate an interactive local terminal for approval-path unit tests.

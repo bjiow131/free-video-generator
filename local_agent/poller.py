@@ -143,6 +143,41 @@ def _telegram_signal(event: str, identifier: str, message: str) -> None:
         return
 
 
+def _mailbox_failure_diagnostics() -> dict[str, Any]:
+    """Return bounded crash metadata only; never export log messages or source lines."""
+    def tail(name: str) -> str:
+        path = ROOT / ".local_agent" / name
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            return ""
+        try:
+            with path.open("rb") as stream:
+                stream.seek(max(0, path.stat().st_size - 65536))
+                return stream.read(65536).decode("utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    events = tail("octava_supervisor.log")
+    exits = re.findall(r"mailbox exited code=(-?\d+); auto-restarting", events)
+    worker = tail("octava_mailbox.log")
+    exceptions = re.findall(r"^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))(?::|$)", worker, re.MULTILINE)
+    frames = re.findall(r'File "[^"\r\n]*[\\/]local_agent[\\/]poller\.py", line (\d+), in ([A-Za-z_][A-Za-z0-9_]*)', worker)
+    startup = [label for label in (
+        "another local agent poller is already running",
+        "Cannot load poller replay state",
+        "Cannot recover previous trusted update",
+        "GitHub mailbox polling is disabled",
+        "Cannot start mailbox poller",
+    ) if label in worker]
+    return {
+        "last_mailbox_exit_code": int(exits[-1]) if exits else None,
+        "mailbox_exit_count_in_log_tail": len(exits),
+        "last_exception_type": exceptions[-1] if exceptions else None,
+        "last_poller_frame": {"line": int(frames[-1][0]), "function": frames[-1][1]} if frames else None,
+        "startup_failure_categories": startup,
+        "controlled_update_restart_count_in_log_tail": events.count("Trusted update installed; controlled restart"),
+    }
+
+
 def doctor_with_supervisor() -> dict[str, Any]:
     """Read-only Windows watchdog health; never reveal account names or secrets."""
     result = doctor()
@@ -258,6 +293,7 @@ def doctor_with_supervisor() -> dict[str, Any]:
         "log_detected": logfile.is_file(),
         "recent_event_types": recent,
         "service_restart_check_seconds": 2,
+        "mailbox_failures": _mailbox_failure_diagnostics(),
     }
     return result
 
