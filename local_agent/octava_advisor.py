@@ -154,6 +154,9 @@ def request_advice(prompt: str | None = None, *, transport=None,
             except MemoryErrorSafe as exc:
                 raise OctavaAdviceError("Project checkpoint error: " + str(exc)) from None
         return result
+    except OctavaAdviceError:
+        # Preserve specific checkpoint diagnostics instead of replacing them.
+        raise
     except (ValueError, TypeError, KeyError, IndexError, UnicodeError):
         if memory:
             memory.fail("retry_later")
