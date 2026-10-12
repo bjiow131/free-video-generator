@@ -28,7 +28,7 @@ BLENDER_OPERATIONS = frozenset({
     'blender_mia_blockout', 'blender_mia_skeleton', 'export_mia_scene_review',
 })
 # Tests execute checked-out local project code. Require a separate checkbox.
-TEST_OPERATIONS = frozenset({'test'})
+TEST_OPERATIONS = frozenset({'test', 'trusted_update_diagnostics'})
 # Never allow unattended: apply_patch, open GUI, start/stop, backup, logs,
 # remotely provided code, unreviewed repair packages, or unknown operations.
 
