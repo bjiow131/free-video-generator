@@ -607,7 +607,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 continue
             # Validate PNG signature and avoid accidental unrelated files.
             with file.open("rb") as stream:
-                if stream.read(8) != b"\\x89PNG\\r\\n\\x1a\\n":
+                if stream.read(8) != b"\x89PNG\r\n\x1a\n":
                     failed.append(view)
                     continue
                 stream.seek(0)
