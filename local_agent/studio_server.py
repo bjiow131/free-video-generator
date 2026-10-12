@@ -570,6 +570,72 @@ def telegram_flush_outbox(*, max_messages: int = 4) -> int:
         return 0
 
 
+
+def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict:
+    """Best-effort delivery of fixed, previously rendered PNG stills.
+
+    The filenames, target bot/chat and root path are fixed. A remote mailbox
+    request never supplies paths, URLs, recipients or media bytes.
+    Direct Telegram multipart upload is used; the optional JSON-only Render
+    relay cannot forward multipart images. All originals remain local.
+    """
+    if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", task_id):
+        return {"status": "blocked", "reason": "invalid_review_id"}
+    try:
+        token, chat = _telegram_credentials()
+        if not token or not chat:
+            return {"status": "not_configured"}
+        if not telegram_notifications_enabled():
+            return {"status": "disabled_in_local_studio"}
+        import requests
+        base = Path(workspace).expanduser().resolve()
+        project = base / "MIA_REFERENCE_REVIEW"
+        review = project / task_id
+        for entry in (project, review):
+            if (entry.is_symlink() or getattr(entry, "is_junction", lambda: False)()):
+                return {"status": "blocked", "reason": "unsafe_review_directory"}
+        if not review.is_dir() or not review.resolve().is_relative_to(base):
+            return {"status": "blocked", "reason": "review_directory_missing"}
+        url = "https://api.telegram.org/bot" + token + "/sendPhoto"
+        sent = []
+        failed = []
+        for view in ("front", "three_quarter", "side", "back"):
+            file = review / (view + ".png")
+            if (file.is_symlink() or getattr(file, "is_junction", lambda: False)()
+                    or not file.is_file() or not 64 <= file.stat().st_size <= 8_000_000):
+                failed.append(view)
+                continue
+            # Validate PNG signature and avoid accidental unrelated files.
+            with file.open("rb") as stream:
+                if stream.read(8) != b"\\x89PNG\\r\\n\\x1a\\n":
+                    failed.append(view)
+                    continue
+                stream.seek(0)
+                try:
+                    response = requests.post(
+                        url,
+                        data={"chat_id": chat, "caption": "Мия: черновая 3D-модель • " + view
+                              + " • требуется проверка внешности; не анимация"},
+                        files={"photo": (view + ".png", stream, "image/png")},
+                        timeout=(8, 30), allow_redirects=False)
+                    valid = (response.status_code == 200
+                             and response.headers.get("Content-Type", "").startswith("application/json")
+                             and response.json().get("ok") is True)
+                except (requests.RequestException, ValueError, TypeError):
+                    valid = False
+            if valid:
+                sent.append(view)
+            else:
+                failed.append(view)
+        return {"status": "delivered" if len(sent) == 4 else
+                "partial" if sent else "failed", "sent": sent, "failed": failed,
+                "transport": "direct_telegram_multipart",
+                "note": "The configured text relay does not yet support photo attachments."
+                        if telegram_transport_settings()["use_relay"] and failed else ""}
+    except (OSError, RuntimeError, ValueError, TelegramAlertError):
+        return {"status": "failed", "reason": "telegram_photo_delivery_unavailable"}
+
+
 def telegram_send_test(data: dict) -> dict:
     if data != {}:
         raise TelegramAlertError("Лишние параметры запроса")
