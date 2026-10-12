@@ -130,7 +130,7 @@ def _is_blender_project_file(source: Path, signature: bytes) -> bool:
     """Accept a Blender file header directly or inside bounded gzip data."""
     if signature.startswith(b"BLENDER"):
         return True
-    if not signature.startswith(b"\\x1f\\x8b"):
+    if not signature.startswith(b"\x1f\x8b"):
         return False
     try:
         with gzip.open(source, "rb") as stream:
