@@ -9,7 +9,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import struct
+import tempfile
+import time
 import subprocess
 import zlib
 from typing import Any
@@ -618,7 +621,84 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 '''
 
 
-def _render_episode1_release(project: Path, workspace: Path, blender: Path, duration_seconds: int) -> dict[str, Any]:
+def _agent_cancel_requested(task_id: str | None) -> bool:
+    if not task_id:
+        return False
+    try:
+        from local_agent.studio_jobs import agent_task_cancel_requested
+        return agent_task_cancel_requested(task_id)
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        taskkill = shutil.which("taskkill.exe")
+        if taskkill:
+            try:
+                subprocess.run([taskkill, "/PID", str(int(process.pid)), "/T", "/F"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=12, check=False, shell=False)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        if process.poll() is None:
+            process.kill()
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except OSError:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            process.kill()
+        process.wait()
+
+def _run_cancellable_process(command: list[str], *, cwd: Path, timeout: int,
+                             task_id: str | None):
+    """Run Blender in its own process group and honor only this task's local cancel signal."""
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
+    started = time.monotonic()
+    with tempfile.TemporaryFile() as stdout_stream, tempfile.TemporaryFile() as stderr_stream:
+        try:
+            process = subprocess.Popen(
+                command, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                stdout=stdout_stream, stderr=stderr_stream, shell=False,
+                close_fds=True, creationflags=flags, start_new_session=(os.name != "nt"),
+            )
+        except OSError as exc:
+            return None, False, False, "", type(exc).__name__
+        cancelled = False
+        timed_out = False
+        while process.poll() is None:
+            if _agent_cancel_requested(task_id):
+                cancelled = True
+                _terminate_process_tree(process)
+                break
+            if time.monotonic() - started >= timeout:
+                timed_out = True
+                _terminate_process_tree(process)
+                break
+            time.sleep(0.25)
+        stdout_stream.flush()
+        stderr_stream.flush()
+        stdout_stream.seek(max(0, stdout_stream.tell() - 262_144))
+        stdout = stdout_stream.read().decode("utf-8", errors="replace")
+        stderr_stream.seek(max(0, stderr_stream.tell() - 262_144))
+        stderr = stderr_stream.read().decode("utf-8", errors="replace")
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        return completed, cancelled, timed_out, "", None
+
+def _render_episode1_release(project: Path, workspace: Path, blender: Path, duration_seconds: int, task_id: str | None = None) -> dict[str, Any]:
     """Render only the fixed Episode 1 scene folder; never overwrite existing files."""
     if project.name != "S01E01_SC01_RELEASE":
         return {"status": "rejected", "reason": "episode1_release_project_not_allowlisted"}
@@ -643,16 +723,24 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path, dura
                                    "duration_seconds": duration_seconds},
                                   ensure_ascii=False), encoding="utf-8")
         try:
-            proc = subprocess.run(
+            proc, cancelled, timed_out, _, error_type = _run_cancellable_process(
                 [str(blender), "--background", "--disable-autoexec", "--offline-mode",
                  "--python-exit-code", "1", "--python", str(script), "--", str(cfg)],
-                cwd=str(project), capture_output=True, text=True, encoding="utf-8",
-                errors="replace", timeout=2400, check=False, shell=False,
+                cwd=project, timeout=2400, task_id=task_id,
             )
-        except subprocess.TimeoutExpired:
-            return {"status": "timeout", "reason": "episode1_animation_render_timeout"}
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             return {"status": "error", "error_type": type(exc).__name__}
+        if error_type:
+            return {"status": "error", "error_type": error_type}
+        if cancelled:
+            (project / "scene.partial.mp4").unlink(missing_ok=True)
+            (project / "scene.mp4").unlink(missing_ok=True)
+            for temporary_frames in project.glob(".scene-frames-*"):
+                if temporary_frames.is_dir() and not is_link_or_junction(temporary_frames):
+                    shutil.rmtree(temporary_frames, ignore_errors=True)
+            return {"status": "cancelled", "reason": "cancelled_by_user", "task_id": task_id}
+        if timed_out:
+            return {"status": "timeout", "reason": "episode1_animation_render_timeout"}
     if proc.returncode != 0:
         return {"status": "failed", "reason": "episode1_animation_render_failed",
                 "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2500:]}
@@ -755,7 +843,7 @@ def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str
         return False, "preview_unreadable", None
 
 
-def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_seconds: int = 5) -> dict[str, Any]:
+def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_seconds: int = 5, task_id: str | None = None) -> dict[str, Any]:
     """Create a fixed Mia character/prop blockout, save .blend, and validate preview."""
     if not isinstance(project_name, str) or not project_name or len(project_name) > 48:
         raise BlenderWorkflowError("Invalid project name.")
@@ -793,7 +881,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
             and not overwrite):
         # A preview may exist from a prior animation attempt that failed during
         # video setup. The source blockout remains valid and can be animated in place.
-        return _render_episode1_release(project, workspace, blender, duration_seconds)
+        return _render_episode1_release(project, workspace, blender, duration_seconds, task_id)
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
     import tempfile
@@ -818,15 +906,18 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
             cfg = temp_dir / "task.json"
             script.write_text(_scene_script(), encoding="utf-8")
             cfg.write_text(json.dumps({"output_dir": str(project)}, ensure_ascii=False), encoding="utf-8")
-            try:
-                proc = subprocess.run([str(blender), "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
-                                       "--python", str(script), "--", str(cfg)],
-                                      cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                      timeout=1200, check=False, shell=False)
-            except subprocess.TimeoutExpired:
+            proc, cancelled, timed_out, _, error_type = _run_cancellable_process(
+                [str(blender), "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+                 "--python", str(script), "--", str(cfg)],
+                cwd=project, timeout=1200, task_id=task_id,
+            )
+            if error_type:
+                return {"status": "error", "error_type": error_type}
+            if cancelled:
+                return {"status": "cancelled", "reason": "cancelled_by_user", "task_id": task_id,
+                        "project_dir": str(project)}
+            if timed_out:
                 return {"status": "timeout", "reason": "blender_blockout_timeout", "project_dir": str(project)}
-            except OSError as exc:
-                return {"status": "error", "error_type": type(exc).__name__}
         (project / "blender_stdout.log").write_text((proc.stdout or "")[-262144:], encoding="utf-8")
         (project / "blender_stderr.log").write_text((proc.stderr or "")[-262144:], encoding="utf-8")
         if proc.returncode != 0:
@@ -861,6 +952,10 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
         completed = result.get("status") == "completed"
         return result
     finally:
+        if result.get("status") == "cancelled" and backup_dir is None:
+            for path in outputs:
+                if path.is_file() and not is_link_or_junction(path):
+                    path.unlink(missing_ok=True)
         if backup_dir is not None:
             if completed:
                 shutil.rmtree(backup_dir, ignore_errors=True)
