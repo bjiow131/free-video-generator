@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight",
 })
 
 
@@ -924,6 +924,82 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
 
 
+
+
+def _run_mia_3d_reconstruction_preflight(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Non-mutating readiness test for public local image-to-3D alternatives.
+
+    This probe performs no model downloads, no dependency installs, and no
+    Blender modifications. It checks known paths, GPU capacity, Git, disk and
+    access to the official MIT TripoSR source/model hosting endpoints.
+    """
+    if arguments != {}:
+        return {"status": "rejected", "reason": "unexpected_arguments"}
+    import hashlib
+    import shutil
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    from local_agent.mailbox_policy import load_policy
+    if not load_policy().get("allow_blender"):
+        return {"status": "blocked", "reason": "local_blender_permission_required"}
+    value = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+    workspace = Path(value).expanduser().resolve() if value else None
+    if workspace is None or not workspace.is_dir():
+        return {"status": "blocked", "reason": "workspace_missing"}
+    ref = workspace / "episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    if ref.is_symlink() or not ref.is_file():
+        return {"status": "blocked", "reason": "approved_mia_source_missing"}
+    approved_sha = hashlib.sha256(ref.read_bytes()).hexdigest()
+    if approved_sha != "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383":
+        return {"status": "blocked", "reason": "approved_reference_hash_mismatch"}
+    import importlib.util
+    shutil_stats = shutil.disk_usage(str(workspace))
+    free_gb = round(shutil_stats.free / (1024**3), 2)
+    gpu = {"status": "unavailable"}
+    command = shutil.which("nvidia-smi")
+    if command:
+        try:
+            result = subprocess.run(
+                [command, "--query-gpu=name,memory.total,memory.free",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=12, check=False,
+                shell=False, stdin=subprocess.DEVNULL)
+            lines = (result.stdout or "").splitlines()
+            if result.returncode == 0 and lines:
+                fields = [s.strip() for s in lines[0].split(",")]
+                if len(fields) >= 3:
+                    gpu = {"status": "detected", "name": fields[0][:90],
+                           "vram_mib": int(fields[1]), "free_vram_mib": int(fields[2])}
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            gpu = {"status": "probe_failed"}
+    endpoints = {
+        "TripoSR_source": "https://github.com/VAST-AI-Research/TripoSR",
+        "TripoSR_model": "https://huggingface.co/stabilityai/TripoSR",
+    }
+    reachability = {}
+    for key, url in endpoints.items():
+        try:
+            req = Request(url, method="HEAD", headers={"User-Agent": "BlenderMiaAgent/1.0"})
+            with urlopen(req, timeout=8) as response:
+                reachability[key] = response.status in (200, 204)
+        except (HTTPError, URLError, OSError, TimeoutError):
+            reachability[key] = False
+    ready = (
+        gpu.get("status") == "detected" and gpu.get("vram_mib", 0) >= 6000
+        and free_gb >= 10.0 and shutil.which("git") is not None
+        and all(reachability.values()))
+    return {"status": "completed", "task": "mia_3d_reconstruction_preflight",
+            "source_verified": True, "hardware": gpu,
+            "disk_free_gib": free_gb,
+            "git_available": shutil.which("git") is not None,
+            "nvcc_available": shutil.which("nvcc") is not None,
+            "torch_installed_in_agent_venv": importlib.util.find_spec("torch") is not None,
+            "python": ".".join(str(n) for n in sys.version_info[:3]),
+            "upstream_reachable": reachability,
+            "suitable_for_separate_venv_experiment": ready,
+            "source_version_kept": True,
+            "downloads_performed": False,
+            "next_step": "isolated pinned open-source trial, NOT approved Mia"}
 
 def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
     """Vision-gated third-party Astra review: fixed approved reference + fixed local renders.
@@ -1558,6 +1634,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_3d_reconstruction_preflight":
+                details = _run_mia_3d_reconstruction_preflight(task.arguments)
             elif task.operation == "mia_hair_identity_pass_three":
                 from local_agent.blender_workflow import create_mia_hair_identity_pass_three
                 from local_agent.studio_server import telegram_send_mia_review_photos
