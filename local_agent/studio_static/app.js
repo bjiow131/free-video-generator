@@ -19,7 +19,7 @@ function icon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true">${iconPa
 const sections=[['Главная','home'],['Сценарий','script'],['Персонажи','users'],['Паспорта','passport'],['Реквизит','cube'],['Сцены','image'],['Рендер','camera'],['История','history'],['Настройки','settings']];
 let state=null, page='Сценарий', selectedCharacter='',selectedProp='', pendingImage=null, saveTimer=0, saving=false,dirty=false,prepareMessage='',renderState=null,renderPlan=null,studioJob=null;
 let providerStatus=null, providerBusy=false;
-let approvedMia=null, approvedBusy=false;
+let approvedMia=null, approvedBusy=false, miaThumbnailUrl=null, miaThumbnailPending=false;
 let mailboxPolicy=null, mailboxSaving=false;
 let trustedUpdateStatus=null, trustedUpdateSaving=false;
 let dropboxReviewStatus=null, dropboxReviewSaving=false;
@@ -30,8 +30,53 @@ async function api(path,payload){const opts=payload===undefined?{}:{method:'POST
 function media(name){return /^[a-f0-9]{32}\.(png|jpg|webp)$/.test(name||'')?'/media/'+name:''}
 function imgOrFallback(reference,label){const uri=media(reference);return uri?`<img src="${uri}" alt="${escapeText(label)}" loading="lazy">`:`<span class="placeholder-icon">${escapeText((label||'?').slice(0,1).toUpperCase())}</span>`}
 function characterImage(ch){
-if(ch?.id==='mia'&&approvedMia?.status==='ready')return `<img src="/api/approved-reference-image/mia" alt="Утверждённый референс Мии" loading="lazy">`;
+if(ch?.id==='mia'&&approvedMia?.status==='ready')return `<img src="${miaThumbnailUrl||'/api/approved-reference-image/mia'}" alt="Утверждённый референс Мии" loading="lazy">`;
 return imgOrFallback(ch.reference,ch.name);
+}
+/* View-only thumbnail: crop letterboxing that is embedded in the canonical
+   JPEG. The original user-approved image on disk and in the API stays intact. */
+async function refreshMiaThumbnail(){
+if(miaThumbnailPending||miaThumbnailUrl||approvedMia?.status!=='ready')return;
+miaThumbnailPending=true;
+try{
+  const img=new Image();
+  img.decoding='async';
+  img.src='/api/approved-reference-image/mia';
+  await img.decode();
+  if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth>5000||img.naturalHeight>5000)return;
+  const maxSampleWidth=480;
+  const scale=Math.min(1,maxSampleWidth/img.naturalWidth);
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+  canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  if(!ctx)return;
+  ctx.drawImage(img,0,0,canvas.width,canvas.height);
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  let first=-1,last=-1;
+  for(let y=0;y<canvas.height;y+=2){
+    let lit=0, sample=0;
+    for(let x=0;x<canvas.width;x+=5){
+      const i=(y*canvas.width+x)*4;
+      const brightness=Math.max(pixels[i],pixels[i+1],pixels[i+2]);
+      if(brightness>65)lit++;
+      sample++;
+    }
+    if(lit>=sample*.18){if(first<0)first=y;last=y;}
+  }
+  if(first<0||last<first||last-first<canvas.height*.1)return;
+  // The approved turnaround has dark padding above/below the character strip.
+  const margin=Math.max(3,Math.round((last-first)*.06));
+  const y0=Math.max(0,first-margin);
+  const y1=Math.min(canvas.height,last+2+margin);
+  if(y1-y0>=canvas.height*.95)return;
+  const out=document.createElement('canvas');
+  out.width=canvas.width;out.height=y1-y0;
+  out.getContext('2d').drawImage(canvas,0,y0,canvas.width,out.height,0,0,out.width,out.height);
+  miaThumbnailUrl=out.toDataURL('image/jpeg',.92);
+  if(page==='Главная'||page==='Персонажи'||page==='Паспорта')draw();
+}catch(error){/* Fallback remains the exact approved file; no false success. */}
+finally{miaThumbnailPending=false}
 }
 function miaApprovedGallery(ch){
 if(ch?.id!=='mia')return '';
@@ -43,10 +88,11 @@ return `<section class="approved-reference-panel" aria-label="Утверждён
 <h3>Утверждённые референсы Мии</h3>
 <p class="hint">Источник: приватная библиотека сезона, один разворот с видами анфас, профиль и со спины. Черновые генерации не используются.</p>
 <div class="approved-reference-grid">
-<div class="approved-reference-image">${ready?'<img src="/api/approved-reference-image/mia" alt="Утверждённый разворот Мии: анфас, профиль и сзади" loading="lazy">':'<div class="empty-message">Исходный референс пока недоступен</div>'}</div>
+<div class="approved-reference-image">${ready?`<img src="${miaThumbnailUrl||'/api/approved-reference-image/mia'}" alt="Утверждённый разворот Мии: анфас, профиль и сзади" loading="lazy">`:'<div class="empty-message">Исходный референс пока недоступен</div>'}</div>
 <div class="approved-reference-meta">
 <p class="section-note"><strong>${escapeText(desc)}</strong></p>
 <p class="hint">Статус: ${ready?'утверждённый визуальный эталон': 'требуется локальная синхронизация'}</p>
+${ready?'<a class="reference-source-link" href="/api/approved-reference-image/mia" target="_blank" rel="noopener noreferrer">Открыть оригинал без изменений ↗</a>':''}
 <p class="hint">Этапы производства:</p>
 <ul class="reference-checklist">${(approvedMia?.readiness||[]).map(item=>`<li><span class="${item.status==='ready'?'done':'waiting'}">${item.status==='ready'?'✓':'○'}</span> ${escapeText(item.label)}</li>`).join('')}</ul>
 <p class="hint">3D-модель и риг ещё не утверждены. Изображение не считается готовой 3D-моделью.</p>
@@ -60,7 +106,7 @@ function activeScene(){return state.scenes.find(scene=>scene.id===state.active_s
 function markDirty(){dirty=true;$('#savedStatus').textContent='● Не сохранено';clearTimeout(saveTimer);saveTimer=setTimeout(flush,550)}
 async function flush(){clearTimeout(saveTimer);if(!state||saving||!dirty)return;saving=true;dirty=false;const snapshot=JSON.parse(JSON.stringify(state));const version=state.revision;$('#savedStatus').textContent='● Сохранение…';try{const saved=await api('/api/state',{revision:version,state:snapshot});state.revision=saved.revision;$('#savedStatus').textContent='✓ Сохранено локально'}catch(error){dirty=true;$('#savedStatus').textContent='● Ошибка сохранения';notify(error.message,true);if(error.code===409){clearTimeout(saveTimer);notify('Другая вкладка изменила проект. Перезагрузи страницу и проверь изменения.',true)}}finally{saving=false;if(dirty&&$('#savedStatus').textContent!=='● Ошибка сохранения')setTimeout(flush,80)}}
 function navigation(){return sections.map(([label,ico])=>`<button class="nav ${page===label?'active':''}" data-nav="${label}" title="${label}">${icon(ico)}<span>${label}</span></button>`).join('')}
-function draw(){if(!state)return;$('#navigation').innerHTML=navigation();$('#projectTitle').value=state.title;let root=$('#main');if(page==='Сценарий'||page==='Главная')root.innerHTML=dashboard();else if(page==='Персонажи'||page==='Паспорта')root.innerHTML=characterPage();else if(page==='Реквизит')root.innerHTML=propPage();else if(page==='Сцены')root.innerHTML=scenesPage();else if(page==='Рендер')root.innerHTML=renderPage();else if(page==='Настройки')root.innerHTML=providerSettingsPage();else root.innerHTML=historyPage()}
+function draw(){if(!state)return;$('#navigation').innerHTML=navigation();$('#projectTitle').value=state.title;let root=$('#main');if(page==='Главная')root.innerHTML=dashboard();else if(page==='Сценарий')root.innerHTML=scriptPage();else if(page==='Персонажи')root.innerHTML=rosterPage();else if(page==='Паспорта')root.innerHTML=characterPage();else if(page==='Реквизит')root.innerHTML=propPage();else if(page==='Сцены')root.innerHTML=scenesPage();else if(page==='Рендер')root.innerHTML=renderPage();else if(page==='Настройки')root.innerHTML=providerSettingsPage();else root.innerHTML=historyPage()}
 function characterCards(){return state.characters.slice(0,3).map(item=>`<button class="person-tile" data-character="${escapeText(item.id)}"><div class="person-cover">${characterImage(item)}</div><div class="tile-label">${escapeText(item.name)}</div><div class="tile-sub">${escapeText(item.role)}</div></button>`).join('')}
 function propCards(){return state.props.slice(0,12).map(item=>`<button class="prop-tile" data-prop="${escapeText(item.id)}"><div class="prop-cover">${imgOrFallback(item.reference,item.name)}</div><div class="prop-caption">${escapeText(item.name)}</div></button>`).join('')}
 function sceneCover(scene){if(!scene)return '';const uri=media(scene.preview)||media(state.characters.find(x=>x.id===scene.characters[0])?.reference);return uri?`<img src="${uri}" alt="Референс сцены">`:`<span class="placeholder-icon">${icon('image')}</span>`}
@@ -75,6 +121,37 @@ function dashboard(){const scene=activeScene(),conf=state.settings, total=state.
 <section class="column-center"><div class="card preview-card"><div class="card-head"><div class="header-title">${icon('image')}<h2>${scene?escapeText(scene.title):'Сцена 1'}</h2></div><span class="muted">◷ ${time(scene?.duration||conf.duration)}</span></div><div class="preview-area">${sceneCover(scene)||`<div class="empty-preview"><span class="preview-symbol">✧</span><b>Здесь появится первая сцена</b><p>Введи задачу агенту, выбери персонажей и подготовь сцену. Предпросмотр появится после получения реального кадра.</p></div>`}<span class="preview-badge">${scene?(scene.preview?'Референс — не рендер':escapeText(scene.status)):'Сцена не создана'}</span></div><div class="player"><button class="playbtn" title="Плеер будет доступен после рендера" disabled>▶</button><div class="progress"></div><span class="hint">00:00 / ${time(scene?.duration||conf.duration)}</span><span class="chip">${escapeText(conf.aspect)}</span></div></div></section>
 <section class="column-right"><div class="card inspector">${inspector()}</div></section>
 <section class="card storyboard"><div class="card-head"><div class="header-title">${icon('script')}<h3>Раскадровка (${state.scenes.length} сцен)</h3></div><span class="hint">Сохранение на этом компьютере</span></div><div class="storyboard-flex"><div class="scene-strip">${sceneStrip()}<button class="add-tile add-scene" data-action="add-scene"><span>+</span>Добавить сцену</button></div><div class="summary"><div class="summary-top"><div><div class="small muted">Общая длительность</div><div class="small muted">${state.scenes.length} сцен</div></div><strong>${time(total)}</strong></div><button class="btn-primary" data-nav="Рендер">▶ &nbsp; Рендер и проверка Blender</button></div></div></section></div>`}
+function scriptPage(){
+const count=state.scenes.length;
+const total=state.scenes.reduce((sum,scene)=>sum+scene.duration,0);
+return `${header('Сценарий','Работа с текстом истории и подготовка последовательности сцен')}
+<div class="script-layout">
+<section class="card script-writing"><div class="editor-content">
+<h2>Текст сценария / задача агенту</h2>
+<p class="hint">Напиши историю целиком или действие для первой сцены. Текст сохраняется локально и не отправляется в OctavAPI сам по себе.</p>
+<textarea class="input script-editor" data-bind="task" maxlength="4000" aria-label="Текст сценария" placeholder="Например: Мия замечает улитку на лесной дорожке...">${escapeText(state.task)}</textarea>
+<div class="tools"><button class="btn-secondary" data-action="load-text">Загрузить сценарий из TXT</button><span class="counter" id="taskCounter">${state.task.length}/4000</span></div>
+<button class="btn-primary" data-action="first">Подготовить первую сцену →</button>
+${prepareMessage?`<p class="section-note">${escapeText(prepareMessage)}</p>`:''}
+</div></section>
+<section class="card script-overview"><div class="editor-content">
+<h2>Материалы проекта</h2>
+<div class="script-metric"><strong>${count}</strong><span>сцен в проекте</span></div>
+<div class="script-metric"><strong>${time(total)}</strong><span>общая длительность</span></div>
+<div class="script-metric"><strong>${state.characters.length}</strong><span>персонажей</span></div>
+<p class="section-note">Для постоянной внешности Мии используй утверждённый эталон во вкладке «Паспорта». Текущий 3D-риг ещё не готов.</p>
+<button class="btn-secondary" data-nav="Паспорта">Открыть паспорта</button>
+</div></section>
+<section class="card script-scenes"><div class="card-head"><h2>Структура сцен</h2><button class="btn-secondary" data-action="add-scene">+ Добавить сцену</button></div>
+<div class="script-scene-list">${state.scenes.length?state.scenes.map((scene,i)=>`<button class="script-scene-row" data-scene="${escapeText(scene.id)}"><span class="script-scene-num">${i+1}</span><span><strong>${escapeText(scene.title)}</strong><small>${escapeText(scene.prompt||'Описание ещё не заполнено')}</small></span><span class="script-scene-time">${time(scene.duration)}</span></button>`).join(''):'<p class="empty-message">Сцен пока нет. Введи текст и подготовь первую сцену.</p>'}</div>
+</section></div>`;
+}
+function rosterPage(){
+return `${header('Персонажи','Каталог героев: выбери карточку, чтобы открыть и изменить её паспорт','+ Добавить персонажа','add-character')}
+<section class="card"><div class="card-head"><h2>Библиотека персонажей</h2><span class="hint">${state.characters.length} записей</span></div>
+<div class="roster-grid">${state.characters.map(ch=>`<button class="roster-tile" data-character="${escapeText(ch.id)}"><div class="roster-image">${characterImage(ch)}</div><div class="roster-caption"><strong>${escapeText(ch.name)}</strong><span>${escapeText(ch.role)}</span><small>${ch.id==='mia'&&approvedMia?.status==='ready'?'Визуальный эталон Мии подтверждён':ch.reference?'Референс загружен':'Референс не добавлен'}</small><span class="roster-open">Открыть паспорт →</span></div></button>`).join('')||'<p class="empty-message">Персонажей пока нет.</p>'}</div>
+</section>`;
+}
 function inspector(){const scene=activeScene(),cfg=state.settings;return `<div class="card-head"><div class="header-title">${icon('settings')}<h2>Настройки сцены</h2></div></div><div class="field"><label class="label">Название сцены</label><input class="input" data-scene-field="title" maxlength="180" value="${escapeText(scene?.title||'Первая сцена')}" ${scene?'':'disabled'}></div><div class="field"><label class="label">Описание сцены</label><textarea class="input" data-scene-field="prompt" maxlength="3000" ${scene?'':'disabled'} placeholder="Задача сцены">${escapeText(scene?.prompt||'')}</textarea></div>
 ${settingSelect('style','Стиль',[cfg.style,'3D-анимация','Кинематографичный','Мультфильм','Реалистичный'])}
 ${settingSelect('camera','Камера',[cfg.camera,'Плавное слежение','Статичная','Панорама','Приближение'])}
@@ -181,7 +258,7 @@ async function saveTrustedUpdates(){if(trustedUpdateSaving)return;const enabled=
 async function refreshMailboxPolicy(){try{mailboxPolicy=await api('/api/mailbox-policy');if(page==='Настройки'&&!mailboxSaving)draw()}catch(error){notify(error.message,true)}}
 async function saveMailboxPolicy(){if(mailboxSaving)return;const value={};for(const name of ['enabled','allow_blender','allow_asset_sync','allow_tests','allow_octava'])value[name]=Boolean(document.querySelector('[data-mailbox-option="'+name+'"]')?.checked);mailboxSaving=true;try{mailboxPolicy=await api('/api/mailbox-policy',value);notify(value.enabled?'Автономная обработка разрешена. Перезапуск агента нужен только для обновления кода.':'Автономная обработка выключена.')}catch(error){notify(error.message,true)}finally{mailboxSaving=false;draw()}}
 
-async function refreshApprovedReferences(){try{const data=await api('/api/approved-references');approvedMia=data.references?.find(x=>x.character_id==='mia')||null;if(page==='Паспорта'||page==='Персонажи')draw()}catch(error){notify(error.message,true)}}
+async function refreshApprovedReferences(){try{const data=await api('/api/approved-references');approvedMia=data.references?.find(x=>x.character_id==='mia')||null;if(page==='Главная'||page==='Паспорта'||page==='Персонажи')draw();if(approvedMia?.status==='ready')refreshMiaThumbnail()}catch(error){notify(error.message,true)}}
 async function linkApprovedMiaReference(){
 if(approvedBusy||dirty||saving)return notify('Дождись сохранения изменений паспорта',true);
 approvedBusy=true;draw();
