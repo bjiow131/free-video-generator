@@ -869,7 +869,12 @@ class StudioHandler(BaseHTTPRequestHandler):
                     result = replace_key(body["api_key"])
                 # A locally approved OctavAPI session may resume after rotation.
                 # Run outside the HTTP handler; key replacement stays responsive.
-                if load_policy()["enabled"] and load_policy()["allow_octava"]:
+                try:
+                    project_policy = load_policy()
+                except MailboxPolicyError:
+                    project_policy = {"enabled": False, "allow_octava": False}
+                if (project_policy["enabled"] and project_policy["allow_octava"]
+                        and hasattr(self.server, "store")):
                     threading.Thread(
                         target=_resume_octava_waiting_projects,
                         args=(self.server.store.workspace,),
