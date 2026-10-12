@@ -87,9 +87,17 @@ def discover_dropbox_root() -> Path | None:
         if not candidate.is_dir():
             return None
         return candidate.resolve()
-    appdata = os.environ.get("APPDATA")
-    if appdata:
+    # Dropbox documents both roaming and local AppData locations on Windows.
+    # Check only these account-config files; never guess a folder named "Dropbox".
+    seen_configs: set[Path] = set()
+    for env_name in ("APPDATA", "LOCALAPPDATA"):
+        appdata = os.environ.get(env_name)
+        if not appdata:
+            continue
         config = Path(appdata) / "Dropbox" / "info.json"
+        if config in seen_configs:
+            continue
+        seen_configs.add(config)
         if config.is_file() and not config.is_symlink():
             try:
                 obj = json.loads(config.read_text(encoding="utf-8"))
