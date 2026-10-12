@@ -121,6 +121,44 @@ class DurableMemoryTests(unittest.TestCase):
             m.snapshot()
         self.assertEqual(m.path.read_text(encoding="utf-8"), '{"invalid":true}')
 
+    def test_full_answer_archive_survives_context_window_trimming(self):
+        m = ProjectMemory(self.tmp.name, "mia")
+        for i in range(12):
+            prompt = "Question " + str(i)
+            m.begin(prompt)
+            m.complete(prompt, "Answer " + str(i))
+        self.assertEqual(len(m.snapshot()["history"]), 8)
+        archived = (m.root / "mia.history.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(archived), 12)
+        self.assertEqual(json.loads(archived[0])["answer"], "Answer 0")
+        self.assertEqual(json.loads(archived[-1])["answer"], "Answer 11")
+
+    def test_rotation_selects_only_sessions_waiting_for_key(self):
+        waiting = ProjectMemory(self.tmp.name, "mia")
+        waiting.begin("Finish Mia")
+        waiting.fail("waiting_for_key")
+        other = ProjectMemory(self.tmp.name, "unrelated")
+        other.begin("Retry later")
+        other.fail("retry_later")
+        self.assertEqual(ProjectMemory.waiting_projects(self.tmp.name), ["mia"])
+
+    def test_rotation_worker_replays_only_with_local_permission(self):
+        from local_agent.studio_server import _resume_octava_waiting_projects
+        memory = ProjectMemory(self.tmp.name, "mia")
+        memory.begin("Mia request")
+        memory.fail("waiting_for_key")
+        with patch("local_agent.studio_server.load_policy", return_value={
+            "enabled": False, "allow_octava": True
+        }), patch("local_agent.octava_advisor.request_advice") as mocked:
+            _resume_octava_waiting_projects(Path(self.tmp.name))
+            mocked.assert_not_called()
+        with patch("local_agent.studio_server.load_policy", return_value={
+            "enabled": True, "allow_octava": True
+        }), patch("local_agent.octava_advisor.request_advice") as mocked:
+            _resume_octava_waiting_projects(Path(self.tmp.name))
+            mocked.assert_called_once_with(
+                project_id="mia", resume_pending=True, workspace=self.tmp.name)
+
     def test_mailbox_accepts_project_and_resume_without_commands(self):
         base = {"protocol_version": 1, "task_id": "mia-memory-check",
                 "operation": "octava_advice", "created_at": "2026-10-12T17:00:00Z",
