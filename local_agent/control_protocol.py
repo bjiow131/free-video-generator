@@ -15,7 +15,7 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
@@ -172,6 +172,8 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         project_name = plan.get("project_name")
         if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
             raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
+    if value["operation"] == "mia_hair_identity_pass_three" and value["arguments"] != {}:
+        raise ProtocolError("Hair pass 3 cannot receive arbitrary paths, code or arguments.")
     if value["operation"] == "mia_identity_pass_two" and value["arguments"] != {}:
         raise ProtocolError("mia_identity_pass_two accepts no arbitrary paths, scripts or arguments.")
     if value["operation"] == "mia_astra_pass_one" and value["arguments"] != {}:
