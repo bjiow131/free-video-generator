@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100",
 })
 
 
@@ -1636,6 +1636,12 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_mia_skeleton(task.arguments)
             elif task.operation == "mia_3d_reconstruction_preflight":
                 details = _run_mia_3d_reconstruction_preflight(task.arguments)
+            elif task.operation == "mia_astra_autoloop_100":
+                # Never publish accepted/per-cycle GitHub results. One final
+                # compact result after 100 iterations (or terminal failure).
+                # Locally preserves each revision; Telegram gets FRONT only.
+                from local_agent.blender_workflow import run_mia_astra_autoloop_100
+                details = run_mia_astra_autoloop_100(task_id=task.task_id)
             elif task.operation == "mia_hair_identity_pass_three":
                 from local_agent.blender_workflow import create_mia_hair_identity_pass_three
                 from local_agent.studio_server import telegram_send_mia_review_photos
