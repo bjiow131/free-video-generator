@@ -13,6 +13,7 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "SETTINGS", tmp_path / ".local_agent" / "dropbox_review.json")
     monkeypatch.delenv("LOCAL_AGENT_DROPBOX_ROOT", raising=False)
     monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     return tmp_path
 
 
@@ -147,3 +148,14 @@ def test_episode1_export_accepts_gzip_compressed_blend_header(isolated, monkeypa
 
     result = mod.export_mia_scene_review(project.parent, "S01E01_SC01_DRAFT")
     assert result["status"] == "exported_to_local_dropbox"
+
+
+def test_desktop_root_from_local_appdata_account_config(isolated, monkeypatch):
+    local = isolated / "LocalAppData"
+    (local / "Dropbox").mkdir(parents=True)
+    drive = isolated / "SyncFolderLocal"
+    drive.mkdir()
+    (local / "Dropbox" / "info.json").write_text(
+        json.dumps({"business":{"path":str(drive)}}), encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    assert mod.discover_dropbox_root() == drive.resolve()
