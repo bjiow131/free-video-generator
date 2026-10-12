@@ -452,31 +452,18 @@ def test_telegram_switch_blocks_send_and_deletes_old_queue(tmp_path, monkeypatch
     assert len(sent) == 1
 
 
-def test_mailbox_ten_minute_idle_notice_with_restart(tmp_path, monkeypatch):
-    """Trusted-update smoke test: idle is measured since new task, never since poll."""
+def test_mailbox_idle_notice_disabled_but_error_delivery_retained(tmp_path, monkeypatch):
+    """Trusted update smoke test: owner disabled recurring no-task notices."""
     from local_agent import poller, studio_server as studio
-    saved = []
-    queued = []
-    monkeypatch.setattr(poller, "_save_state", lambda value: saved.append(dict(value)))
-    monkeypatch.setattr(studio, "telegram_queue_event",
-                        lambda key, msg: queued.append((key, msg)) or True)
-    monkeypatch.setattr(studio, "telegram_flush_outbox", lambda **kw: 1)
-    state = poller._mailbox_idle_initialize({}, now=1000)
-    assert poller._mailbox_idle_tick(state, github_reachable=True, now=1599) == state
-    assert queued == []
-    state = poller._mailbox_idle_tick(state, github_reachable=True, now=1600)
-    assert state["mailbox_idle_notice_sent"] is True
-    assert "10 минут" in queued[-1][1]
-    # Repeat the reminder after each ten-minute idle interval.
-    repeated = poller._mailbox_idle_tick(state, github_reachable=True, now=2600)
-    assert repeated["mailbox_idle_last_notice_at"] == 2600
-    assert len(queued) == 2
-    assert poller._mailbox_idle_initialize(repeated, now=3000) is repeated
-    state = poller._mailbox_idle_new_task(repeated, now=3001)
-    assert not state["mailbox_idle_notice_sent"]
-    state = poller._mailbox_idle_tick(state, github_reachable=True, now=3601)
-    assert state["mailbox_idle_notice_sent"] is True
-    assert len(queued) == 3
+    queued=[]
+    monkeypatch.setattr(studio,"telegram_queue_event",
+                        lambda key,msg: queued.append((key,msg)) or True)
+    state=poller._mailbox_idle_initialize({},now=1000)
+    for timestamp in (1600,2200,6000):
+        assert poller._mailbox_idle_tick(state,github_reachable=True,now=timestamp) is state
+    assert queued==[]
+    assert studio.telegram_queue_event("task-error:latest","Error remains enabled")
+    assert len(queued)==1
 
 
 
