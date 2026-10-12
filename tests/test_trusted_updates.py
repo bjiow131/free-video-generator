@@ -458,3 +458,34 @@ def test_mailbox_ten_minute_idle_notice_with_restart(tmp_path, monkeypatch):
     state = poller._mailbox_idle_tick(state, github_reachable=True, now=3601)
     assert state["mailbox_idle_notice_sent"] is True
     assert len(queued) == 3
+
+
+
+def test_trusted_update_diagnostics_parser_redacts_arbitrary_output():
+    from local_agent.poller import _parse_trusted_update_diagnostics
+
+    raw = """FAILED tests/test_trusted_updates.py::test_gate - AssertionError: private-story-text
+E   RuntimeError: ghp_secret_token
+=========================== short test summary info ===========================
+1 failed, 17 passed, 1 skipped in 2.04s
+"""
+    result = _parse_trusted_update_diagnostics(raw, 1)
+    assert result["status"] == "failed"
+    assert result["failed_tests"] == ["tests/test_trusted_updates.py::test_gate"]
+    assert result["error_types"] == ["RuntimeError"]
+    assert result["summary"] == "1 failed, 17 passed, 1 skipped"
+    assert "private-story-text" not in repr(result)
+    assert "ghp_secret_token" not in repr(result)
+
+
+def test_trusted_update_diagnostics_requires_existing_tests_permission():
+    from local_agent.mailbox_policy import default_policy, is_auto_authorized
+
+    policy = default_policy()
+    policy.update(enabled=True, allow_tests=True)
+    assert is_auto_authorized("trusted_update_diagnostics", policy)
+    policy["allow_tests"] = False
+    assert not is_auto_authorized("trusted_update_diagnostics", policy)
+    policy["enabled"] = False
+    policy["allow_tests"] = True
+    assert not is_auto_authorized("trusted_update_diagnostics", policy)
