@@ -400,11 +400,13 @@ def test_mailbox_ten_minute_idle_notice_with_restart(tmp_path, monkeypatch):
     state = poller._mailbox_idle_tick(state, github_reachable=True, now=1600)
     assert state["mailbox_idle_notice_sent"] is True
     assert "10 минут" in queued[-1][1]
-    assert poller._mailbox_idle_tick(state, github_reachable=True, now=2600) is state
-    assert poller._mailbox_idle_initialize(state, now=3000) is state
-    assert len(queued) == 1
-    state = poller._mailbox_idle_new_task(state, now=3001)
+    # Repeat the reminder after each ten-minute idle interval.
+    repeated = poller._mailbox_idle_tick(state, github_reachable=True, now=2600)
+    assert repeated["mailbox_idle_last_notice_at"] == 2600
+    assert len(queued) == 2
+    assert poller._mailbox_idle_initialize(repeated, now=3000) is repeated
+    state = poller._mailbox_idle_new_task(repeated, now=3001)
     assert not state["mailbox_idle_notice_sent"]
     state = poller._mailbox_idle_tick(state, github_reachable=True, now=3601)
     assert state["mailbox_idle_notice_sent"] is True
-    assert len(queued) == 2
+    assert len(queued) == 3
