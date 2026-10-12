@@ -175,8 +175,20 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
     if value["operation"] == "octava_advice":
         args = value["arguments"]
         prompt = args.get("prompt")
-        if set(args) != {"prompt"} or not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
-            raise ProtocolError("octava_advice requires exactly one 1-1600 character prompt.")
+        project_id = args.get("project_id")
+        if set(args) == {"prompt"}:
+            if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
+                raise ProtocolError("octava_advice requires a 1-1600 character prompt.")
+        elif set(args) == {"prompt", "project_id"}:
+            if (not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600
+                    or not isinstance(project_id, str) or not BLENDER_PROJECT_RE.fullmatch(project_id)):
+                raise ProtocolError("octava_advice requires a safe project_id and 1-1600 character prompt.")
+        elif set(args) == {"project_id", "resume_pending"}:
+            if (not isinstance(project_id, str) or not BLENDER_PROJECT_RE.fullmatch(project_id)
+                    or args.get("resume_pending") is not True):
+                raise ProtocolError("Invalid octava_advice project resume request.")
+        else:
+            raise ProtocolError("octava_advice accepts prompt, optional project_id, or project resume.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
