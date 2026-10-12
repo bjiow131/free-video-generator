@@ -127,7 +127,11 @@ try {
     $stagePath = Join-Path $Stage $Item.Relative
     New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
     if ($Item.Existed) {
-      [IO.File]::Replace($stagePath, $destination, $null)
+      # Windows PowerShell/.NET Framework requires a valid backup path here;
+      # passing $null raises "The path is not of a legal form".
+      $replaceBackup = $destination + '.' + $Id + '.replace-backup'
+      [IO.File]::Replace($stagePath, $destination, $replaceBackup)
+      Remove-Item -LiteralPath $replaceBackup -Force
     } else {
       [IO.File]::Move($stagePath, $destination)
     }
