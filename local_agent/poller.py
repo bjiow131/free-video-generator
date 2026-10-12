@@ -927,7 +927,9 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
 def _run_octava_advice(arguments: dict[str, Any]) -> dict[str, Any]:
     """One user-approved, locally opt-in advisory call, never executable code."""
     from local_agent.octava_advisor import request_advice
-    return request_advice(arguments["prompt"])
+    return request_advice(arguments.get("prompt"),
+                          project_id=arguments.get("project_id"),
+                          resume_pending=arguments.get("resume_pending", False))
 
 
 def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
