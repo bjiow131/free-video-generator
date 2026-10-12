@@ -2364,3 +2364,124 @@ def _mia_v2_request(key: str, refs: dict[str, Path], views: dict[str, Path],
         raise BlenderWorkflowError("vision_response_too_large")
     result=json.loads(response.decode("utf-8"))
     return _mia_v2_commands(result["choices"][0]["message"]["content"])
+
+
+def _mia_v2_blender_script() -> str:
+    """Locally pinned Blender scene editor, never provider-provided code."""
+    return r'''import bpy,os,sys,json,math
+from mathutils import Vector
+cfg=json.load(open(sys.argv[sys.argv.index("--")+1],encoding="utf-8"))
+out=cfg["out"]; commands=cfg["commands"]
+modified=[];total=0
+EYE=("eye_","lid_skin_transition","upper_eyelid","lower_eyelid",
+     "fine_upper_lash","outer_lash")
+IRIS=("eye_iris_","eye_pupil_","iris_matte_","iris_fleck_","pupil_")
+LIDS=("upper_eyelid","lower_eyelid","lid_skin_transition","fine_upper_lash")
+BROWS=("soft_child_brow","brow_")
+FRINGE=("side_swept_fringe_","fringe_fine_fiber")
+SIDELOCK=("side_tendril","side_hair_lock","side_loose_lock","temple_lock")
+BUN=("low_bun_core","loose_bun_loop_","bun_fine_fiber")
+BACK=("gathered_back_lock_","gathered_fine_back_fiber")
+HAIR=("swept_hair_cap","crown_flow_lock_","side_swept_fringe_",
+      "natural_crown_fiber_")
+for command in commands:
+    area=command["target"];d=command["delta"];touched=0
+    if area=="hair_tone":
+        for mat in bpy.data.materials:
+            if not mat.use_nodes or not mat.name.lower().startswith("hair_"):continue
+            bs=mat.node_tree.nodes.get("Principled BSDF")
+            if not bs:continue
+            color=bs.inputs["Base Color"]
+            rgba=list(color.default_value)
+            for channel in range(3):
+                rgba[channel]=max(.025,min(.93,rgba[channel]*(1+d)))
+            color.default_value=rgba;touched+=1
+    else:
+        for obj in bpy.data.objects:
+            if obj.type!="MESH" or not obj.data.vertices:continue
+            name=obj.name.lower()
+            belongs=(
+                (area=="eyes" and name.startswith(EYE)) or
+                (area=="iris" and name.startswith(IRIS)) or
+                (area=="eyelids" and name.startswith(LIDS)) or
+                (area=="brows" and name.startswith(BROWS)) or
+                (area=="side_fringe" and name.startswith(FRINGE)) or
+                (area=="side_locks" and name.startswith(SIDELOCK)) or
+                (area=="bun_shape" and name.startswith(BUN)) or
+                (area=="back_hair" and name.startswith(BACK)) or
+                (area=="hair_volume" and name.startswith(HAIR)) or
+                (area=="hairline" and name.startswith(("swept_hair_cap","side_swept_fringe_"))) or
+                (area in ("lower_face","cheeks","chin","forehead") and name=="mia_sculpted_head"))
+            if not belongs:continue
+            verts=obj.data.vertices
+            xcenter=0.217 if sum(v.co.x for v in verts)/len(verts)>=0 else -.217
+            changed=0
+            for v in verts:
+                x,y,z=v.co.x,v.co.y,v.co.z
+                if area in ("eyes","iris"):
+                    v.co.x=xcenter+(x-xcenter)*(1+d)
+                    v.co.z=3.43+(z-3.43)*(1+d*.8)
+                elif area=="eyelids":
+                    v.co.z=3.43+(z-3.43)*(1+d)
+                elif area=="brows":
+                    v.co.z=z+d*.8
+                elif area=="lower_face":
+                    mask=math.exp(-((z-3.20)/.22)**2)
+                    v.co.x=x*(1+d*mask)
+                elif area=="cheeks":
+                    mask=math.exp(-((z-3.27)/.13)**2)
+                    v.co.x=x*(1+d*mask)
+                elif area=="chin":
+                    mask=math.exp(-((z-3.065)/.10)**2)
+                    v.co.z=z+d*.1*mask
+                    v.co.x=x*(1+d*.35*mask)
+                elif area=="forehead":
+                    mask=math.exp(-((z-3.68)/.14)**2)
+                    v.co.x=x*(1+d*.7*mask)
+                elif area=="hairline":
+                    mask=max(0,min(1,(z-3.60)/.24))
+                    v.co.z=z+d*.2*mask
+                elif area=="side_fringe":
+                    mask=max(0,min(1,(3.98-z)/.36))
+                    v.co.x=x+d*1.2*mask
+                    v.co.y=y+d*.33*mask
+                elif area=="side_locks":
+                    v.co.x=x*(1+d*.65)
+                    v.co.z=z+d*.20
+                elif area=="bun_shape":
+                    v.co.x=x*(1+d)
+                    v.co.z=3.30+(z-3.30)*(1+d)
+                elif area=="back_hair":
+                    v.co.x=x*(1+d*.6)
+                    v.co.z=z+d*.12
+                elif area=="hair_volume":
+                    mask=max(0,min(1,(z-3.53)/.34))
+                    v.co.x=x*(1+d*mask)
+                    v.co.y=y*(1+d*mask)
+                changed+=1
+            if changed:
+                obj.data.update();touched+=changed
+    modified.append({"target":area,"delta":d,"modified_elements":touched})
+    total+=touched
+if total==0:
+    raise RuntimeError("No permitted Blender vertex or material was changed")
+scene=bpy.context.scene
+scene["mia_identity"]="UNAPPROVED_FIXED_V2"
+scene["mia_autoloop_cycle"]=cfg["cycle"]
+scene["mia_autoloop_applied"]=json.dumps(modified)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_reference_model.blend"))
+cam=scene.camera
+if cam is None:raise RuntimeError("No review camera")
+cam.data.type="ORTHO";cam.data.ortho_scale=4.10
+scene.render.resolution_x=600;scene.render.resolution_y=900
+scene.render.resolution_percentage=100
+scene.render.image_settings.file_format="PNG"
+for name,pos in (("front",(0,-8,2.3)),("side",(8,0,2.3)),("back",(0,8,2.3))):
+    cam.location=pos
+    cam.rotation_euler=(Vector((0,0,1.87))-cam.location).to_track_quat("-Z","Y").to_euler()
+    scene.render.filepath=os.path.join(out,name+".png")
+    bpy.ops.render.render(write_still=True)
+with open(os.path.join(out,"applied_commands.json"),"w",encoding="utf-8") as f:
+    json.dump({"cycle":cfg["cycle"],"commands":modified,
+               "total_modified_elements":total,"video_created":False},f,indent=2)
+'''
