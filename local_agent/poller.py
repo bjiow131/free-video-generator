@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one",
 })
 
 
@@ -1554,6 +1554,17 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_astra_pass_one":
+                from local_agent.blender_workflow import create_mia_astra_pass_one
+                from local_agent.studio_server import telegram_send_mia_review_photos
+                details = create_mia_astra_pass_one(task_id=task.task_id)
+                if details.get("status") == "completed":
+                    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+                    details["telegram_photo_delivery"] = telegram_send_mia_review_photos(
+                        workspace, task.task_id)
+                    details["mailbox_preview_delivery"] = {
+                        "status": "included_in_result",
+                        "views": sorted(details.get("thumbnail_jpeg_base64", {}))}
             elif task.operation == "mia_astra_review":
                 details = _run_mia_astra_review(task.arguments)
             elif task.operation == "mia_model_review":
