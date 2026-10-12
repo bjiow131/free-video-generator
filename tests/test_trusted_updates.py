@@ -88,6 +88,25 @@ def test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_
         update.parse_manifest(json.dumps(blocked).encode())
 
 
+def test_pinned_update_fetch_uses_rate_limit_free_raw_content(monkeypatch):
+    payload = b"pinned trusted file"
+    response = SimpleNamespace(status_code=200, content=payload)
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr(update.requests, "get", get)
+    digest = hashlib.sha256(payload).hexdigest()
+    assert update._fetch_pinned("run_github_mailbox_agent.bat", "a" * 40, digest) == payload
+    assert calls[0][0] == (
+        "https://raw.githubusercontent.com/bjiow131/free-video-generator/"
+        + "a" * 40 + "/run_github_mailbox_agent.bat"
+    )
+    assert calls[0][1]["allow_redirects"] is False
+
+
 def test_update_stages_and_keeps_backup(location):
     target = location / "run_github_mailbox_agent.bat"
     target.write_bytes(b"old safe launcher")
