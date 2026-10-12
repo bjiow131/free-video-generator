@@ -69,6 +69,29 @@ class LocalKeyHTTPTests(unittest.TestCase):
         self.assertEqual(status, 403)
         save.assert_not_called()
 
+    def test_model_switch_is_local_origin_only(self):
+        with patch("local_agent.studio_server.set_default_model",
+                   return_value={"configured": True, "model": "gpt-6.1-sol"}) as save:
+            denied, _ = self.fetch("POST", "/api/octava-model",
+                                   {"model": "gpt-6.1-sol"}, include_origin=False)
+            self.assertEqual(denied, 403)
+            save.assert_not_called()
+            status, result = self.fetch("POST", "/api/octava-model",
+                                        {"model": "gpt-6.1-sol"})
+            self.assertEqual(status, 200)
+            self.assertEqual(result["model"], "gpt-6.1-sol")
+            save.assert_called_once_with({"model": "gpt-6.1-sol"})
+
+    def test_failed_model_probe_does_not_expose_credential(self):
+        secret = "must-never-return-this-secret"
+        with patch("local_agent.studio_server.set_default_model",
+                   side_effect=OctavaKeyError("OctavAPI: HTTP 404 — модель недоступна")):
+            status, result = self.fetch("POST", "/api/octava-model",
+                                        {"model": "gpt-6.1-sol"})
+        self.assertEqual(status, 400)
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertIn("404", result["error"])
+
     def test_mailbox_policy_get_does_not_expose_tokens(self):
         settings = {"enabled": True, "allow_octava": True,
                     "allow_blender": False, "allow_tests": False}
