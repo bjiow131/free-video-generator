@@ -2031,3 +2031,199 @@ def _mia_autoloop_astra(api_key: str, approved_jpeg64: str,
         raise BlenderWorkflowError("provider_response_exceeds_limit")
     data=json.loads(raw.decode("utf-8"))
     return _mia_autoloop_command(data["choices"][0]["message"]["content"])
+
+
+def run_mia_astra_autoloop_100(*, task_id: str) -> dict[str, Any]:
+    """One mailbox job, ONE FINAL mailbox result, 100 Telegram FRONT photos.
+
+    Save original and every changed .blend in a separate folder; fixed Blender
+    code only. The 100 calls to an external paid third-party API are explicitly
+    requested by the owner. Abort on unsafe output, disk pressure or user cancel.
+    """
+    import base64
+    import hashlib
+    import re
+    from datetime import datetime, timezone
+    from urllib.error import HTTPError, URLError
+    import requests
+    from local_agent.octava_credentials import read_key
+    from local_agent.mailbox_policy import load_policy, telegram_notifications_enabled
+    from local_agent.studio_server import _telegram_credentials
+
+    if type(task_id) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}",task_id):
+        return {"status":"blocked","reason":"invalid_task_identifier"}
+    policy=load_policy()
+    if not all(policy.get(f,False) for f in ("enabled","allow_octava","allow_blender")):
+        return {"status":"blocked","reason":"local_blender_and_octava_policy_required"}
+    token,chat=_telegram_credentials()
+    if not token or not chat or not telegram_notifications_enabled():
+        return {"status":"blocked","reason":"paired_telegram_photo_channel_required"}
+    key,_=read_key()
+    if not key:
+        return {"status":"blocked","reason":"astra_key_missing"}
+    blender=find_blender_executable()
+    workspace_raw=os.environ.get("LOCAL_AGENT_WORKSPACE","")
+    if not workspace_raw or blender is None or not blender.is_file():
+        return {"status":"blocked","reason":"blender_or_workspace_missing"}
+    ws=Path(workspace_raw).expanduser().resolve()
+    root=ws/"MIA_REFERENCE_REVIEW"
+    base=root/_MIA_AUTOMODEL_SOURCE
+    canonical=ws/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    output=root/("MIA_AUTOLOOP_100_"+task_id)
+    start_model=base/"mia_reference_model.blend"
+    start_front=base/"front.png"
+    for p in (root,base,canonical,output,start_model,start_front):
+        if is_link_or_junction(p):
+            return {"status":"blocked","reason":"unsafe_path_junction"}
+    if (not base.is_dir() or not start_model.is_file() or not start_front.is_file()
+            or start_model.stat().st_size<1000 or not canonical.is_file()):
+        return {"status":"blocked","reason":"approved_mesh_checkpoint_or_reference_missing"}
+    ref=canonical.read_bytes()
+    if (hashlib.sha256(ref).hexdigest()!=_MIA_AUTOMODEL_REF_SHA
+            or len(ref)!=111601 or not ref.startswith(b"\xff\xd8\xff")):
+        return {"status":"blocked","reason":"approved_reference_integrity_failed"}
+    if shutil.disk_usage(ws).free<2_000_000_000:
+        return {"status":"blocked","reason":"insufficient_free_disk_for_100_versions"}
+    if output.exists():
+        if is_link_or_junction(output) or not output.is_dir():
+            return {"status":"blocked","reason":"unsafe_existing_job_directory"}
+    else:
+        output.mkdir()
+    checkpoint=output/"checkpoint.json"
+    if checkpoint.is_file():
+        if is_link_or_junction(checkpoint) or checkpoint.stat().st_size>120_000:
+            return {"status":"blocked","reason":"invalid_checkpoint"}
+        state=json.loads(checkpoint.read_text(encoding="utf-8"))
+        if (state.get("task_id")!=task_id or
+                state.get("approved_sha256")!=_MIA_AUTOMODEL_REF_SHA):
+            return {"status":"blocked","reason":"checkpoint_identity_mismatch"}
+    else:
+        state={"task_id":task_id,"approved_sha256":_MIA_AUTOMODEL_REF_SHA,
+               "completed_cycles":0,"telegram_front_sent":0,"next_cycle":1,
+               "previous_command":None,"cumulative":{},"astra_scores":[],
+               "best_front_score":None,"best_front_input_cycle":None,
+               "started_at":datetime.now(timezone.utc).isoformat()}
+    def persist():
+        temp=output/"checkpoint.tmp"
+        temp.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8")
+        os.replace(temp,checkpoint)
+    ref64=base64.b64encode(ref).decode("ascii")
+    for cycle in range(int(state["next_cycle"]),101):
+        if _agent_cancel_requested(task_id):
+            return {"status":"cancelled","completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        if shutil.disk_usage(ws).free<750_000_000:
+            return {"status":"incomplete","reason":"low_disk","completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        previous=base if cycle==1 else output/("cycle_%03d"%(cycle-1))
+        prev_blend=previous/"mia_reference_model.blend"
+        prev_front=previous/"front.png"
+        if not prev_blend.is_file() or not prev_front.is_file():
+            return {"status":"incomplete","reason":"previous_iteration_missing",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        # Astra sees ONLY the immutable reference + one current FRONT.
+        # No intermediate GitHub result or summary is published during this call.
+        last_error=None
+        for attempt in range(3):
+            if _agent_cancel_requested(task_id):
+                return {"status":"cancelled","completed_cycles":state["completed_cycles"]}
+            try:
+                command=_mia_autoloop_astra(key,ref64,prev_front.read_bytes(),cycle,state)
+                last_error=None
+                break
+            except (HTTPError,URLError,TimeoutError,OSError,ValueError,TypeError,
+                    KeyError,IndexError,BlenderWorkflowError) as exc:
+                last_error=type(exc).__name__
+                if attempt<2:time.sleep(8*(attempt+1))
+        if last_error is not None:
+            return {"status":"incomplete","reason":"astra_unavailable_or_invalid_json",
+                    "error_type":last_error,"completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        previous_total=float(state["cumulative"].get(command["area"],0))
+        total=previous_total+command["delta"]
+        if abs(total)>0.28:
+            command["delta"]=round((.28 if total>0 else -.28)-previous_total,5)
+            total=previous_total+command["delta"]
+            if abs(command["delta"])<0.0005:
+                return {"status":"incomplete","reason":"cumulative_mesh_safety_limit",
+                        "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        folder=output/("cycle_%03d"%cycle)
+        if folder.exists():
+            # Never overwrite results from an interrupted cycle; ambiguous
+            # Telegram delivery must be resolved before retry to avoid duplicates.
+            return {"status":"incomplete","reason":"interrupted_cycle_requires_recovery",
+                    "cycle":cycle,"completed_cycles":state["completed_cycles"]}
+        folder.mkdir()
+        (folder/"astra_response.json").write_text(
+            json.dumps(command,ensure_ascii=False,indent=2),encoding="utf-8")
+        with tempfile.TemporaryDirectory(dir=folder,prefix=".fixed-blender-") as temporary:
+            script=Path(temporary)/"fixed_mia_cycle.py"
+            config=Path(temporary)/"configuration.json"
+            script.write_text(_mia_autoloop_script(),encoding="utf-8")
+            config.write_text(json.dumps({"cycle":cycle,"area":command["area"],
+                                          "delta":command["delta"],"out":str(folder)}),
+                              encoding="utf-8")
+            proc,cancelled,timed_out,_,err=_run_cancellable_process(
+                [str(blender),"--background",str(prev_blend),"--disable-autoexec",
+                 "--offline-mode","--python-exit-code","1","--python",str(script),
+                 "--",str(config)],
+                cwd=folder,timeout=600,task_id=task_id)
+        if cancelled:
+            return {"status":"cancelled","completed_cycles":state["completed_cycles"]}
+        if err or timed_out or not proc or proc.returncode!=0:
+            return {"status":"incomplete","reason":"blender_pass_failed",
+                    "error_type":err or ("Timeout" if timed_out else "ExitCode"),
+                    "completed_cycles":state["completed_cycles"],"cycle":cycle,
+                    "checkpoint":str(checkpoint)}
+        img=folder/"front.png"
+        blend=folder/"mia_reference_model.blend"
+        stat=folder/"model_result.json"
+        if not img.is_file() or not blend.is_file() or blend.stat().st_size<1000 or not stat.is_file():
+            return {"status":"incomplete","reason":"missing_still_or_blend",
+                    "completed_cycles":state["completed_cycles"],"cycle":cycle}
+        valid,why,_=_validate_png(img,(600,900))
+        result=json.loads(stat.read_text(encoding="utf-8"))
+        if not valid or not result.get("changed_vertices_or_materials"):
+            return {"status":"incomplete","reason":"bad_front_or_no_mesh_edit",
+                    "completed_cycles":state["completed_cycles"],"cycle":cycle}
+        delivered=False
+        for attempt in range(3):
+            try:
+                with img.open("rb") as stream:
+                    response=requests.post(
+                        "https://api.telegram.org/bot"+token+"/sendPhoto",
+                        data={"chat_id":chat,
+                              "caption":"Мия FRONT • цикл %03d/100 • черновая 3D"%cycle},
+                        files={"photo":("front.png",stream,"image/png")},
+                        timeout=(8,40),allow_redirects=False)
+                    delivered=(response.status_code==200 and
+                               response.headers.get("Content-Type","").startswith("application/json")
+                               and response.json().get("ok") is True)
+            except (requests.RequestException,ValueError,TypeError,OSError):
+                delivered=False
+            if delivered:break
+            if attempt<2:time.sleep(6)
+        if not delivered:
+            return {"status":"incomplete","reason":"telegram_front_delivery_failed",
+                    "cycle":cycle,"completed_cycles":state["completed_cycles"],
+                    "front_saved_locally":str(img),"checkpoint":str(checkpoint)}
+        (folder/"telegram_delivery.json").write_text(json.dumps(
+            {"view":"front","cycle":cycle,"delivered":True},ensure_ascii=False),encoding="utf-8")
+        # Atomically checkpoint only AFTER one real frame and Telegram delivery.
+        state["completed_cycles"]=cycle
+        state["telegram_front_sent"]=cycle
+        state["next_cycle"]=cycle+1
+        state["previous_command"]=command
+        state["cumulative"][command["area"]]=round(total,5)
+        state["astra_scores"].append(command["score"])
+        if state["best_front_score"] is None or command["score"]>state["best_front_score"]:
+            state["best_front_score"]=command["score"]
+            state["best_front_input_cycle"]=cycle-1  # score describes BEFORE edit
+        persist()
+    return {"status":"completed","completed_cycles":100,
+            "telegram_front_photos_sent":state["telegram_front_sent"],
+            "model_folder":str(output),"latest_blend":str(output/"cycle_100/mia_reference_model.blend"),
+            "latest_front":str(output/"cycle_100/front.png"),
+            "best_front_input_cycle_by_astra_subjective_score":state["best_front_input_cycle"],
+            "original_model_preserved":True,"videos_created":False,
+            "identity_approved":False,"checkpoint":str(checkpoint)}
