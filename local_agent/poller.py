@@ -222,20 +222,20 @@ _TRUSTED_UPDATE_DIAGNOSTIC_TESTS = (
 def _parse_trusted_update_diagnostics(output: str, exit_code: int) -> dict[str, Any]:
     """Return only bounded pytest metadata; never publish captured output or tracebacks."""
     failed = []
-    for match in re.finditer(r"(?m)^FAILED\\s+(tests/test_[A-Za-z0-9_./:-]+)", output):
+    for match in re.finditer(r"(?m)^FAILED\s+(tests/test_[A-Za-z0-9_./:-]+)", output):
         node_id = match.group(1)[:240]
         if node_id not in failed:
             failed.append(node_id)
         if len(failed) >= 40:
             break
     error_types = []
-    for match in re.finditer(r"(?m)^E\\s+([A-Za-z][A-Za-z0-9_]*(?:Error|Exception)):", output):
+    for match in re.finditer(r"(?m)^E\s+([A-Za-z][A-Za-z0-9_]*(?:Error|Exception)):", output):
         name = match.group(1)
         if name not in error_types:
             error_types.append(name)
         if len(error_types) >= 20:
             break
-    summary_match = re.search(r"(?m)^=+\\s*([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error))*(?:, [0-9]+ (?:passed|skipped|error))*)\\s+in [0-9.]+s\\s*=+$", output)
+    summary_match = re.search(r"(?m)^=+\\s*([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error))*(?:, [0-9]+ (?:passed|skipped|error))*)\s+in [0-9.]+s\s*=+$", output)
     summary = summary_match.group(1) if summary_match else ("focused tests passed" if exit_code == 0 else "focused tests failed; summary unavailable")
     return {
         "status": "completed" if exit_code == 0 else "failed",
