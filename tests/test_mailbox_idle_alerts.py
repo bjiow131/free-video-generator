@@ -10,8 +10,8 @@ def test_all_idle_intervals_and_offline_states_are_silent(monkeypatch):
     monkeypatch.setattr(studio_server,"telegram_flush_outbox",lambda **kwargs: queued.append(kwargs) or 1)
     state=poller._mailbox_idle_initialize({},now=1000)
     for when in (1599,1600,2200,2800,4000,86400):
-        assert poller._mailbox_idle_tick(state,github_reachable=True,now=when) is state
-        assert poller._mailbox_idle_tick(state,github_reachable=False,now=when) is state
+        assert poller._maybe_mailbox_idle_tick(state,github_reachable=True,now=when) is state
+        assert poller._maybe_mailbox_idle_tick(state,github_reachable=False,now=when) is state
     assert queued==[]
 
 def test_queued_old_idle_notices_are_purged_without_deleting_errors(monkeypatch,tmp_path):
@@ -29,7 +29,7 @@ def test_legacy_clock_still_loads_but_does_not_send():
     legacy={"mailbox_last_new_task_at":1000.0,"mailbox_idle_notice_sent":True}
     state=poller._mailbox_idle_initialize(legacy,now=1900)
     assert state["mailbox_idle_last_notice_at"]==1900
-    assert poller._mailbox_idle_tick(state,github_reachable=True,now=2500) is state
+    assert poller._maybe_mailbox_idle_tick(state,github_reachable=True,now=2500) is state
 
 def test_old_manifest_not_new_task():
     state={"last_task_id":"task-1","manifest_sha":"sha-1",
