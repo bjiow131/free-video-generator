@@ -74,7 +74,6 @@ hair=mat("Mia | light brown hair",(0.36,0.20,0.10))
 jacket=mat("Mia | teal-blue jacket",(0.035,0.32,0.40))
 pants=mat("Mia | brown trousers",(0.24,0.13,0.075))
 backpack=mat("Mia | mustard-yellow backpack",(0.78,0.48,0.055))
-helmet=mat("Mia | riding helmet",(0.92,0.67,0.08))
 shoe=mat("Mia | sturdy ankle boots",(0.16,0.085,0.045))
 white=mat("Eyes | ivory",(0.95,0.88,0.73))
 iris=mat("Eyes | brown",(0.19,0.08,0.035))
@@ -115,17 +114,29 @@ def box(name, loc, dims, material):
 uv("Mia | head",(0,0,3.12),(0.53,0.47,0.58),skin)
 uv("Mia | hair cap",(0,0.035,3.48),(0.55,0.48,0.32),hair)
 uv("Mia | back hair",(0,0.23,3.13),(0.48,0.28,0.62),hair)
-# Simple helmet and backpack are continuity blockout cues, not final models.
-uv("Mia | riding helmet",(0,-0.005,3.76),(0.51,0.48,0.16),helmet)
+# The approved Mia turnaround has a loose low bun and no helmet.
+uv("Mia | low bun",(0,0.39,3.13),(0.25,0.22,0.23),hair)
+for i, (dx,dz) in enumerate(((-0.12,0.02),(-0.05,0.13),(0.05,0.14),(0.13,0.04),(0.02,-0.10),(-0.10,-0.09))):
+    uv("Mia | bun curl %02d" % i,(dx,0.47,3.13+dz),(0.105,0.11,0.105),hair,16,10)
 uv("Mia | mustard backpack",(0,0.32,2.31),(0.27,0.16,0.34),backpack)
 uv("Mia | fringe left",(-0.24,-0.405,3.43),(0.25,0.12,0.19),hair)
 uv("Mia | fringe right",(0.08,-0.425,3.45),(0.24,0.11,0.17),hair)
-for x in (-0.19,0.19):
-    uv("Mia | eye white",(x,-0.438,3.17),(0.09,0.045,0.105),white,20,12)
-    uv("Mia | iris",(x,-0.478,3.16),(0.044,0.022,0.058),iris,16,10)
-uv("Mia | nose",(0,-0.49,3.02),(0.045,0.04,0.05),skin,16,10)
+for x in (-0.21,0.21):
+    uv("Mia | eye white",(x,-0.423,3.16),(0.125,0.065,0.15),white,24,16)
+    uv("Mia | iris",(x,-0.477,3.15),(0.071,0.036,0.092),iris,20,12)
+    uv("Mia | pupil",(x,-0.508,3.15),(0.039,0.022,0.058),mat("Mia | pupil black",(0.035,0.018,0.012)),16,10)
+    uv("Mia | eye catchlight",(x-0.025,-0.528,3.19),(0.019,0.012,0.024),white,12,8)
+for x in (-0.21,0.21):
+    brow=uv("Mia | soft eyebrow",(x,-0.425,3.36),(0.105,0.04,0.032),hair,16,10)
+    brow.rotation_euler[1]=0.10 if x < 0 else -0.10
+for x in (-0.34,0.34):
+    uv("Mia | rosy cheek",(x,-0.394,3.01),(0.095,0.035,0.055),mat("Mia | rosy skin",(0.92,0.40,0.32)),16,10)
+uv("Mia | nose",(0,-0.49,3.02),(0.055,0.045,0.06),skin,16,10)
+uv("Mia | smile",(0,-0.466,2.91),(0.095,0.025,0.027),mat("Mia | warm smile",(0.36,0.09,0.075)),16,10)
 uv("Mia | jacket torso",(0,0,2.22),(0.37,0.29,0.57),jacket)
 uv("Mia | neck",(0,0,2.77),(0.13,0.13,0.17),skin)
+between("Mia | hoodie zipper",(0,-0.294,1.80),(0,-0.294,2.60),0.012,mat("Mia | zipper brass",(0.84,0.51,0.12)))
+uv("Mia | hood",(0,0.16,2.57),(0.31,0.18,0.22),jacket)
 for side in (-1,1):
     hip=(side*0.19,0,1.72); knee=(side*0.21,-0.015,1.05); ankle=(side*0.22,-0.02,0.48)
     between("Mia | trouser leg",hip,knee,0.105,pants); between("Mia | trouser cuff",knee,ankle,0.085,pants)
@@ -196,8 +207,8 @@ def build_rig(name, prefix, origin, bones):
         side=".L" if relative_x>=0 else ".R"
         bone=None
         if prefix in ("Mia","Stepa"):
-            if "eye white" in label or "iris" in label: bone="eye"+side
-            elif any(w in label for w in ("head","hair","fringe","nose","helmet")): bone="head"
+            if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
+            elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
             elif "neck" in label: bone="neck"
             elif any(w in label for w in ("backpack","torso")): bone="spine"
             elif "sleeve" in label: bone="upper_arm"+side
@@ -338,8 +349,8 @@ def upgrade_child_rig(rig_name,prefix):
         if obj.type!="MESH" or not obj.name.startswith(prefix+" | "): continue
         label=obj.name[len(prefix)+2:].lower(); relx=obj.matrix_world.translation.x-rig.location.x
         side=".L" if relx>=0 else ".R"
-        if "eye white" in label or "iris" in label: bone="eye"+side
-        elif any(w in label for w in ("head","hair","fringe","nose","helmet")): bone="head"
+            if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
+            elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
         elif "neck" in label: bone="neck"
         elif any(w in label for w in ("backpack","torso")): bone="spine"
         elif "sleeve" in label: bone="upper_arm"+side
@@ -365,9 +376,8 @@ def aim(camera, point):
 camera=scene.camera
 camera.data.type="ORTHO"; camera.data.ortho_scale=9.5
 camera.location=(3.3,-12.5,4.7); aim(camera,(-0.25,0.1,1.85))
-helmet=bpy.data.objects.get("Mia | riding helmet")
 backpack=bpy.data.objects.get("Mia | mustard backpack")
-if not helmet or not backpack: raise RuntimeError("Mia helmet/backpack proxy is missing")
+if not backpack: raise RuntimeError("Mia backpack proxy is missing")
 def material(name, rgba):
     m=bpy.data.materials.get(name)
     if m is None:
@@ -376,24 +386,13 @@ def material(name, rgba):
         if bs: bs.inputs["Base Color"].default_value=rgba
     return m
 gold=material("Mia | mustard strap",(0.90,0.56,0.08,1))
-dark=material("Mia | helmet strap",(0.12,0.11,0.09,1))
 def bar(name,a,b,r,mat):
     vec=Vector(b)-Vector(a); mid=(Vector(a)+Vector(b))*0.5
     bpy.ops.mesh.primitive_cylinder_add(vertices=12,radius=r,depth=vec.length,location=mid)
     o=bpy.context.object; o.name=name; o.data.materials.append(mat)
     o.rotation_euler=vec.to_track_quat("Z","Y").to_euler(); return o
-strap_objects=[]
 for sign in (-1,1):
     bar("Mia | visible backpack shoulder strap",(sign*0.25,-0.31,2.56),(sign*0.19,-0.31,2.05),0.055,gold)
-    strap_objects.append(bar("Mia | helmet chin strap",(sign*0.39,-0.30,3.69),(0,-0.35,2.90),0.025,dark))
-for strap in strap_objects:
-    for frame,scale in ((1,(1,1,0.01)),(75,(1,1,1)),(720,(1,1,1))):
-        strap.scale=scale; strap.keyframe_insert(data_path="scale",frame=frame)
-# The helmet is lifted into place before the controlled ride begins.
-helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=1)
-helmet.location=(0.52,-0.28,2.1); helmet.keyframe_insert(data_path="location",frame=25)
-helmet.location=(0,-0.005,3.76); helmet.keyframe_insert(data_path="location",frame=75)
-helmet.keyframe_insert(data_path="location",frame=720)
 skin=material("Guardian | neutral",(0.48,0.31,0.22,1))
 coat=material("Guardian | muted coat",(0.22,0.29,0.31,1))
 def box(name,loc,dims,mat):
