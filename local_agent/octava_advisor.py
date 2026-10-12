@@ -38,7 +38,8 @@ def validate_prompt(prompt: str) -> str:
 
 
 def request_advice(prompt: str | None = None, *, transport=None,
-                   project_id: str | None = None, resume_pending: bool = False) -> dict:
+                   project_id: str | None = None, resume_pending: bool = False,
+                   workspace: str | None = None) -> dict:
     """Bounded, non-executing advice; optionally replay durable project history.
 
     A project call checkpoints the pending prompt BEFORE external requests. If a
@@ -49,7 +50,8 @@ def request_advice(prompt: str | None = None, *, transport=None,
     if project_id is not None:
         from local_agent.octava_project_memory import ProjectMemory, MemoryErrorSafe
         try:
-            memory = ProjectMemory(os.environ.get("LOCAL_AGENT_WORKSPACE", ""), project_id)
+            memory = ProjectMemory(workspace if workspace is not None else
+                                   os.environ.get("LOCAL_AGENT_WORKSPACE", ""), project_id)
             question, history = memory.begin(prompt, resume=resume_pending)
             checkpoint = memory.snapshot()
         except MemoryErrorSafe as exc:
