@@ -1,0 +1,33 @@
+name: Telegram media offline contracts
+
+on:
+  push:
+    branches:
+      - feature/telegram-media-preview-20261012
+    paths:
+      - "local_agent/telegram_media.py"
+      - "local_agent/telegram_relay_server.py"
+      - "local_agent/studio_server.py"
+      - "local_agent/poller.py"
+      - "tests/test_telegram_media_preview.py"
+      - ".github/workflows/telegram-media-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install limited offline test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
+      - name: Python syntax check
+        run: python -m compileall -q local_agent/telegram_media.py local_agent/telegram_relay_server.py local_agent/studio_server.py local_agent/poller.py
+      - name: Telegram media and supervisor tests (no keys or Telegram network)
+        run: python -m pytest -q tests/test_telegram_media_preview.py tests/test_telegram_supervisor_commands.py tests/test_telegram_notification_switch.py
