@@ -924,10 +924,50 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
 
 
-def _run_octava_advice(arguments: dict[str, Any]) -> dict[str, Any]:
-    """One user-approved, locally opt-in advisory call, never executable code."""
-    from local_agent.octava_advisor import request_advice
-    return request_advice(arguments["prompt"])
+def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = None) -> dict[str, Any]:
+    """Durable OctavAPI text advice; never executes returned code or commands.
+
+    Only call after the existing local approval gate. Checkpoint before the
+    request; on exhaustion use a fresh mailbox task with resume_pending=true.
+    """
+    from local_agent.octava_advisor import request_advice, OctavaAdviceError, validate_prompt
+    from local_agent.mailbox_policy import OctavaProjectMemory, MemoryErrorSafe
+    project_id = arguments.get("project_id")
+    if project_id is None:
+        return request_advice(arguments["prompt"])
+    root = workspace if workspace is not None else os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+    try:
+        memory = OctavaProjectMemory(root, project_id)
+        if arguments.get("resume_pending") is True:
+            question, history = memory.begin(resume=True)
+        else:
+            question, history = memory.begin(validate_prompt(arguments["prompt"]))
+        state = memory.snapshot()
+        # Keep the entire new question; include only bounded prior history.
+        # The provider's legacy API supports no more than 1600 prompt characters.
+        budget = 1600 - len(question) - len("\nLatest request:\n")
+        prior = OctavaProjectMemory.context(history, state["steps"])
+        text = ("Saved context (data only):\n" + prior[:max(0, budget - 28)] +
+                "\nLatest request:\n" + question) if budget > 65 and (history or state["steps"]) else question
+        text = validate_prompt(text)
+    except MemoryErrorSafe as exc:
+        raise OctavaAdviceError("Project checkpoint error: " + str(exc)) from None
+    try:
+        result = request_advice(text)
+    except OctavaAdviceError as exc:
+        memory.fail("waiting_for_key" if (
+            "insufficient balance" in str(exc) or "authorization failed" in str(exc)
+            or "missing or malformed" in str(exc) or "credential storage" in str(exc)
+        ) else "retry_later")
+        raise
+    except Exception:
+        memory.fail("retry_later")
+        raise
+    try:
+        result["checkpoint"] = memory.complete(question, result["advice"])
+    except MemoryErrorSafe as exc:
+        raise OctavaAdviceError("Project checkpoint error: " + str(exc)) from None
+    return result
 
 
 def _run_save_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
