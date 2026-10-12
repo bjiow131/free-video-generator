@@ -828,3 +828,23 @@ def test_load_state_rejects_oversized_task_replay_history(tmp_path, monkeypatch)
     monkeypatch.setattr(poller, "STATE_PATH", path)
     with pytest.raises(RuntimeError, match="capacity"):
         poller._load_state()
+
+
+def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypatch):
+    from local_agent import poller
+    calls = []
+    monkeypatch.setattr(
+        "local_agent.blender_workflow.create_mia_blockout",
+        lambda project_name, *, overwrite=False: calls.append((project_name, overwrite)) or {"status": "completed"},
+    )
+    assert poller._run_blender_mia_blockout({
+        "project_name": "S01E01_SC01_RELEASE", "overwrite": True
+    })["status"] == "completed"
+    assert calls == [("S01E01_SC01_RELEASE", True)]
+    assert poller._run_blender_mia_blockout({
+        "project_name": "S01E01_SC01_DRAFT", "overwrite": True
+    })["status"] == "rejected"
+    assert poller._run_blender_mia_blockout({
+        "project_name": "S01E01_SC01_RELEASE", "overwrite": False
+    })["status"] == "rejected"
+    assert len(calls) == 1
