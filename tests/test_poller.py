@@ -835,12 +835,13 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
     calls = []
     monkeypatch.setattr(
         "local_agent.blender_workflow.create_mia_blockout",
-        lambda project_name, *, overwrite=False: calls.append((project_name, overwrite)) or {"status": "completed"},
+        lambda project_name, *, overwrite=False, duration_seconds=5, task_id=None:
+            calls.append((project_name, overwrite, duration_seconds, task_id)) or {"status": "completed"},
     )
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_RELEASE", "overwrite": True
     })["status"] == "completed"
-    assert calls == [("S01E01_SC01_RELEASE", True)]
+    assert calls == [("S01E01_SC01_RELEASE", True, 5, None)]
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_DRAFT", "overwrite": True
     })["status"] == "rejected"
@@ -911,3 +912,36 @@ def test_remote_restart_opens_only_fixed_loopback_studio(monkeypatch):
     monkeypatch.setenv("LOCAL_AGENT_STUDIO_PORT", "99999")
     poller._request_restart_and_open_studio()
     assert opened[-1][0] == "http://127.0.0.1:55313/"
+
+def test_remote_blender_task_cancel_signal_is_scoped_to_active_task(tmp_path, monkeypatch):
+    from local_agent import studio_jobs
+    root = tmp_path / ".local_agent"
+    monkeypatch.setattr(studio_jobs, "_AGENT_CONTROL_ROOT", root)
+    monkeypatch.setattr(studio_jobs, "_AGENT_ACTIVE_TASK", root / "active_agent_task.json")
+    monkeypatch.setattr(studio_jobs, "_AGENT_CANCEL_TASK", root / "cancel_agent_task.json")
+    monkeypatch.setattr(studio_jobs, "_agent_control_dir", lambda: root.mkdir(parents=True, exist_ok=True) or root)
+    active = studio_jobs.begin_agent_task("task-cancel-001", "blender_mia_blockout", "S01E01_SC01_RELEASE")
+    assert active["state"] == "running"
+    assert studio_jobs.agent_task_status()["state"] == "running"
+    requested = studio_jobs.request_agent_task_cancel("task-cancel-001")
+    assert requested["state"] == "cancelling"
+    assert studio_jobs.agent_task_status()["state"] == "cancelling"
+    assert studio_jobs.agent_task_cancel_requested("task-cancel-001")
+    assert not studio_jobs.agent_task_cancel_requested("other-task")
+    studio_jobs.finish_agent_task("task-cancel-001")
+    assert studio_jobs.agent_task_status() == {"state": "idle"}
+
+
+def test_cancelable_blender_process_stops_on_signal(monkeypatch, tmp_path):
+    import sys
+    from local_agent import blender_workflow
+    seen = []
+    monkeypatch.setattr(blender_workflow, "_agent_cancel_requested",
+                        lambda task_id: seen.append(task_id) is None)
+    completed, cancelled, timed_out, _extra, error_type = blender_workflow._run_cancellable_process(
+        [sys.executable, "-c", "import time; time.sleep(10)"],
+        cwd=tmp_path, timeout=20, task_id="task-cancel-002",
+    )
+    assert cancelled and not timed_out and error_type is None
+    assert completed.returncode is not None
+    assert seen and set(seen) == {"task-cancel-002"}
