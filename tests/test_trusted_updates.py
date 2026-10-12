@@ -67,6 +67,24 @@ def test_manifest_restricts_file_paths_and_untrusted_sources():
             update.parse_manifest(json.dumps(changed).encode())
 
 
+def test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_update():
+    paths = [
+        "local_agent/control_protocol.py",
+        "local_agent/github_asset_sync.py",
+        "docs/season1/asset_sync_manifest.json",
+        "tests/test_github_asset_sync.py",
+        "tests/test_github_asset_sync_resume.py",
+        "tests/test_asset_sync_protocol.py",
+    ]
+    valid = manifest(files=[{"path": path, "sha256": "b"*64} for path in paths])
+    parsed = update.parse_manifest(json.dumps(valid).encode())
+    assert {item["path"] for item in parsed["files"]} == set(paths)
+
+    blocked = manifest(files=[{"path": "local_agent/trusted_updates.py", "sha256": "b"*64}])
+    with pytest.raises(update.TrustedUpdateError):
+        update.parse_manifest(json.dumps(blocked).encode())
+
+
 def test_update_stages_and_keeps_backup(location):
     target = location / "run_github_mailbox_agent.bat"
     target.write_bytes(b"old safe launcher")
