@@ -119,7 +119,7 @@ class LocalKeyHTTPTests(unittest.TestCase):
             save.assert_called_once_with({"enabled": enabled})
 
     def test_telegram_notifications_status_and_toggle(self):
-        with patch("local_agent.studio_server.load_notifications", return_value={"enabled": False}):
+        with patch("local_agent.studio_server.load_telegram_notifications", return_value={"enabled": False}):
             status, data = self.fetch("GET", "/api/telegram-notifications")
         self.assertEqual(status, 200)
         self.assertEqual(data, {"notifications_enabled": False})
