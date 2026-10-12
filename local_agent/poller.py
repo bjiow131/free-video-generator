@@ -1923,7 +1923,7 @@ def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
 
 def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
     """Fast crash recovery, with bounded backoff for persistent start failures."""
-    return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 5)))
+    return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 6)))
 
 
 def supervise_windows() -> int:
