@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "title": "Episode 1 approved asset manifest",
+  "repository": "bjiow131/free-video-generator",
+  "commit_sha": "7ced2288169e91db2758965999ad3e8d71d5be37",
+  "assets": [
+    {
+      "category": "character_passport",
+      "asset_id": "mia",
+      "path": "docs/season1/character_passports/mia.json",
+      "destination": "assets/characters/passports/mia.json",
+      "commit_sha": "7ced2288169e91db2758965999ad3e8d71d5be37",
+      "size_bytes": 2451,
+      "sha256": "8b5f1e7171704651b73fc818abd8095fd439523d90e1cbfcb7b38e04875d6488"
+    },
+    {
+      "category": "character_passport",
+      "asset_id": "stepa",
+      "path": "docs/season1/character_passports/stepa.json",
+      "destination": "assets/characters/passports/stepa.json",
+      "commit_sha": "7ced2288169e91db2758965999ad3e8d71d5be37",
+      "size_bytes": 2053,
+      "sha256": "660568d424d679087bdd1785eee7886172f544e6b33a6d62c90e6ae89a9913a1"
+    },
+    {
+      "category": "animal_passport",
+      "asset_id": "snail-spiral",
+      "path": "docs/season1/character_passports/snail-spiral.json",
+      "destination": "assets/animals/passports/snail-spiral.json",
+      "commit_sha": "7ced2288169e91db2758965999ad3e8d71d5be37",
+      "size_bytes": 2473,
+      "sha256": "0301ec6832bf6aa8d5fd17cffc87519c11ed26aaee5b09b2b969e8b8051213e4"
+    }
+  ],
+  "unavailable_categories": [
+    "character_reference",
+    "animal_reference",
+    "prop",
+    "environment"
+  ],
+  "notes": [
+    "No reference image, prop model, animal model, environment asset, or Blender-ready rig was found at the pinned repository commit.",
+    "Story scripts and private-bible files are intentionally excluded."
+  ]
+}
