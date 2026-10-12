@@ -656,6 +656,8 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         with video.open("rb") as stream: header = stream.read(16)
         if b"ftyp" not in header or video.stat().st_size > 32_000_000:
             return {"status": "failed", "reason": "episode1_release_video_invalid_or_too_large"}
+    else:
+        return {"status": "failed", "reason": "episode1_video_export_" + str(data.get("video_export_status", "status_missing"))}
     review_frames = data.get("review_frame_paths", [])
     expected_review_names = {f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)}
     if not isinstance(review_frames, list) or {Path(p).name for p in review_frames} != expected_review_names:
