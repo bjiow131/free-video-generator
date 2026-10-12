@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from local_agent.scene_compiler import compile_story_plan
 from local_agent.story_plan import StoryPlanError, save_story_plan
 from local_agent.studio_state import StudioConflict, StudioError, StudioStore, to_story_plan
+from local_agent.studio_references import approved_status, approved_bytes, attach_approved_mia
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
 from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key, set_default_model
@@ -762,6 +763,16 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, telegram_transport_settings())
             except TelegramAlertError as exc:
                 return self._json(503, {"error": str(exc)})
+        if path == "/api/approved-references":
+            return self._json(200, {"references": [approved_status(self.server.store.workspace)]})
+        if path == "/api/approved-reference-image/mia":
+            try:
+                raw = approved_bytes(self.server.store.workspace)
+            except (StudioError, OSError):
+                raw = None
+            if raw is None:
+                return self._json(404, {"error": "Approved reference unavailable or invalid"})
+            return self._send(200, raw, "image/jpeg")
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -847,7 +858,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         if not self._request_allowed() or not self._same_origin():
             return self._json(403, {"error": "Cross-origin request rejected"})
         path = urlsplit(self.path).path
-        if path in ("/api/octava-key", "/api/octava-model", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and self.headers.get("Origin") not in (
+        if path in ("/api/octava-key", "/api/octava-model", "/api/link-mia-reference", "/api/mailbox-policy", "/api/trusted-updates", "/api/dropbox-review", "/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and self.headers.get("Origin") not in (
                 f"http://127.0.0.1:{self.server.server_port}",
                 f"http://localhost:{self.server.server_port}"):
             return self._json(403, {"error": "Local studio origin required"})
@@ -857,7 +868,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
-        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/octava-model" and length > 240) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and length > 240):
+        if not 0 < length <= _MAX_REQUEST or (path == "/api/octava-key" and length > 2700) or (path == "/api/octava-model" and length > 240) or (path == "/api/link-mia-reference" and length > 128) or (path == "/api/mailbox-policy" and length > 300) or (path == "/api/trusted-updates" and length > 100) or (path == "/api/dropbox-review" and length > 100) or (path in ("/api/telegram-configure", "/api/telegram-pair", "/api/telegram-test", "/api/telegram-transport", "/api/telegram-notifications", "/api/agent-pause", "/api/agent-restart") and length > 240):
             return self._json(413, {"error": "Invalid request size"})
         try:
             body = json.loads(self.rfile.read(length))
@@ -915,6 +926,10 @@ class StudioHandler(BaseHTTPRequestHandler):
                     return self._json(200, telegram_pair_chat(body))
             if path == "/api/telegram-test":
                 return self._json(200, telegram_send_test(body))
+            if path == "/api/link-mia-reference":
+                if set(body) != {"revision"}:
+                    raise StudioError("Only project revision is allowed")
+                return self._json(200, attach_approved_mia(self.server.store, body["revision"]))
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
