@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one",
 })
 
 
@@ -924,6 +924,124 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failed", "task": "blender_forest_preview", "reason": str(exc)[:1000]}
 
 
+
+def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Vision-gated third-party Astra review: fixed approved reference + fixed local renders.
+
+    No arbitrary content/paths from GitHub. This call inspects pictures and
+    returns critique only. It does not execute provider-supplied scripts.
+    """
+    if arguments:
+        return {"status": "rejected", "reason": "unexpected_review_arguments"}
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    import base64
+    import hashlib
+    from local_agent.octava_credentials import read_key
+    from local_agent.mailbox_policy import load_policy
+
+    policy = load_policy()
+    if not (policy["enabled"] and policy["allow_octava"] and policy["allow_blender"]):
+        return {"status": "blocked", "reason": "local_blender_and_octava_permissions_required"}
+    workspace = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", "")).expanduser()
+    if not workspace.is_dir():
+        return {"status": "blocked", "reason": "workspace_missing"}
+    base = workspace.resolve()
+    origin = base / "episode1" / "assets" / "references" / "mia_turnaround_approved_20261012.jpeg"
+    model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-static-model-v6-20261012T222818971Z"
+    for path in (origin, origin.parent, model_dir, model_dir.parent):
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            return {"status": "blocked", "reason": "symlink_or_junction_blocked"}
+        if not path.resolve().is_relative_to(base):
+            return {"status": "blocked", "reason": "unsafe_path"}
+    if not origin.is_file() or not model_dir.is_dir():
+        return {"status": "blocked", "reason": "canonical_source_or_review_not_found"}
+    reference = origin.read_bytes()
+    if (len(reference) != 111601
+            or hashlib.sha256(reference).hexdigest() != "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+            or not reference.startswith(b"\xff\xd8\xff")):
+        return {"status": "blocked", "reason": "approved_reference_integrity_failure"}
+    model = model_dir / "mia_reference_model.blend"
+    if model.is_symlink() or not model.is_file() or not 1000 <= model.stat().st_size <= 1_000_000_000:
+        return {"status": "blocked", "reason": "original_editable_blend_missing"}
+    frame_paths = [(name, model_dir / (name + ".png")) for name in
+                   ("front", "three_quarter", "side", "back")]
+    for name, frame in frame_paths:
+        if (frame.is_symlink() or not frame.is_file()
+                or not 1000 <= frame.stat().st_size <= 4_000_000):
+            return {"status": "blocked", "reason": "invalid_static_" + name}
+        with frame.open("rb") as stream:
+            if stream.read(8) != b"\x89PNG\r\n\x1a\n":
+                return {"status": "blocked", "reason": "invalid_png_" + name}
+    face = model_dir / "face_thumb.jpg"
+    if face.is_symlink() or not face.is_file() or face.stat().st_size > 300_000:
+        return {"status": "blocked", "reason": "face_closeup_missing"}
+    key, _source = read_key()
+    if not key:
+        return {"status": "blocked", "reason": "provider_key_missing"}
+    system_prompt = "IDENTITY PRESERVATION CONTRACT — MIA / BLENDER 5.2\nROLE: You are the strict, critical lead identity-matching supervisor and 3D sculpt correction planner. You are given the ORIGINAL APPROVED three-view reference of the SAME four-year-old Mia and true Blender static renders of the current EDITABLE 3D mesh. The image with the label APPROVED_REFERENCE is the sole visual authority. Images with label CURRENT are unapproved output that MUST be changed to approach the reference. No other character is permitted.\n\nTASK: Diagnose precisely how to reshape the ACTUAL 3D geometry and refine the actual materials using Blender operations, with minimal reversible modifications. Aim for maximum cross-view identity similarity (front, side, rear, three-quarter), with particular attention to facial landmarks and hair silhouette. No motion, rigging, video, scene creation or generic cartoon girl. Do not create a different girl. Do not silently alter or reinterpret canonical proportions, outfit or color. Do not approve a model merely because it is appealing.\n\nVISUAL TRUTH PRIORITIES:\n(1) Face: actual head shape and height/width ratio, forehead, cheek fullness/placement, jawline, chin, nose tip, ear position, mouth expression and scale; huge generic eyes must be corrected if different; actual eye shape, separation, iris size, sclera exposure, eyelids and eyebrows against source.\n(2) Hair: exact light brown color and luminosity in the approved reference, fringe parting and direction, front scalp silhouette, low gathered bun, individual loose curls; same hairstyle on every view. Do not invent new bangs, ponytail or new hair color.\n(3) Child anatomy: age 4, not adult or teenager; head-to-height, shoulder width, body/arm/leg length, hand and boot scale.\n(4) Outfit: the APPROVED reference always wins; teal blue jacket/hoodie, warm mustard yellow backpack, brown trousers and boots only insofar as actually visible, clothing seams, folds and shape consistent between views.\n(5) Materials and renders: ensure lighting does not deceptively conceal identity mismatches; preserve a neutral camera and comparable orthographic framing; no billboards or pasted image replacing true volumetric geometry.\n(6) Full-figure cross-view consistency: same single .blend mesh must be visible from 360-degree camera angles. Never use separate generated 2D images as proof of 3D continuity.\n\nMUST EXPLICITLY EVALUATE: front face silhouette, eye size relative to head, lower cheeks and chin, forehead/hairline, low bun vs visible back, torso-to-leg ratio, child scale, garment/backpack shapes, any pixel-to-geometry projection artifacts. Look for changed identity, not only gross category match.\n\nOUTPUT IN RUSSIAN. DO NOT flatter the previous output. Do not assert that anything was modified in Blender or that you can run tools: your output is planning data only. If source or views cannot be inspected, say \"vision_unavailable\" and STOP; do not invent observed differences. Never claim 100% certainty from occluded surfaces. Provide:\n1) explicit confirmation you SEE BOTH the reference and renders, citing distinctive visible elements;\n2) verdict REJECT / NEEDS_REVISION / READY_FOR_USER_REVIEW (only user can give final approval);\n3) ranked 6-12 concrete, MEASURABLE mesh corrections, each with Blender object groups, affected axes or dimensions, intended visual effect and what must stay unchanged;\n4) distinguish changes possible safely by numerical Blender transforms from artist-only sculpting;\n5) a precise first corrective pass restricted to at most FIVE safe changes and how to test each;\n6) next render requirements front, 3/4, profile, rear, face closeup and whole body;\n7) remaining unknowns, no fake similarity percentage: qualitative low/medium/high per face/hair/body/outfit and reason;\n8) after-plan instruction to halt until the resulting mesh is actually re-rendered and checked, no videos."
+    content = [{"type": "text", "text": "Image order: APPROVED_REFERENCE (one composite three-view JPEG), CURRENT_FRONT, CURRENT_THREE_QUARTER, CURRENT_SIDE, CURRENT_BACK, CURRENT_FACE_CLOSEUP. Source prevails over any text. Inspect actual visual content, do not hallucinate details. No video or rig. Return strict critique and actionable corrective plan."}]
+    def image_block(label: str, blob: bytes, mime: str) -> dict[str, Any]:
+        content.append({"type": "text", "text": label})
+        return {"type": "image_url", "image_url": {
+            "url": "data:" + mime + ";base64," + base64.b64encode(blob).decode("ascii"),
+            "detail": "high"}}
+    content.append(image_block("APPROVED_REFERENCE", reference, "image/jpeg"))
+    for name, frame in frame_paths:
+        content.append(image_block("CURRENT_" + name.upper(), frame.read_bytes(), "image/png"))
+    content.append(image_block("CURRENT_FACE_CLOSEUP", face.read_bytes(), "image/jpeg"))
+    payload = json.dumps({"model": "gpt-6-astra", "messages": [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": content}],
+        "max_tokens": 3200}, ensure_ascii=False).encode("utf-8")
+    if len(payload) > 15_000_000:
+        return {"status": "blocked", "reason": "vision_request_exceeds_fixed_limit"}
+    request = Request("https://octavapi.shop/v1/chat/completions", data=payload,
+                      headers={"Authorization": "Bearer " + key,
+                               "Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(request, timeout=100) as response:
+            raw = response.read(262145)
+    except HTTPError as exc:
+        if exc.code in (400, 404, 422):
+            return {"status": "blocked", "reason": "astra_model_or_multimodal_payload_unavailable_from_provider",
+                    "http_code": exc.code, "provider": "OctavAPI"}
+        if exc.code in (401, 402, 403, 429):
+            return {"status": "blocked", "reason": "provider_access_balance_or_rate_limit", "http_code": exc.code}
+        return {"status": "error", "reason": "provider_http_error", "http_code": exc.code}
+    except (URLError, OSError, TimeoutError):
+        return {"status": "error", "reason": "provider_connection_failed"}
+    if len(raw) > 262144:
+        return {"status": "error", "reason": "provider_response_too_large"}
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        advice = data["choices"][0]["message"]["content"]
+        if type(advice) is not str or not advice.strip():
+            raise ValueError("empty_response")
+    except (ValueError, KeyError, TypeError, IndexError, UnicodeError):
+        return {"status": "error", "reason": "unexpected_provider_response_shape"}
+    if len(advice) > 16000:
+        advice = advice[:16000]
+    # Never interpret AI text as Blender code. Save a durable, bounded,
+    # human-reviewable checkpoint in the existing model folder.
+    feedback = model_dir / "astra_identity_review.txt"
+    if feedback.exists() or feedback.is_symlink():
+        return {"status": "blocked", "reason": "prior_astra_review_exists_no_overwrite",
+                "advice": advice}
+    try:
+        with feedback.open("x", encoding="utf-8") as output:
+            output.write("UNAPPROVED MODEL: no geometry changes executed\n\n" + advice)
+    except OSError:
+        return {"status": "error", "reason": "could_not_write_astra_review"}
+    return {"status": "completed", "model_requested": "gpt-6-astra",
+            "vision_images_sent": 6, "reference_sha256": hashlib.sha256(reference).hexdigest(),
+            "model_path": str(model), "feedback_path": str(feedback),
+            "advice": advice, "geometry_changed": False,
+            "user_visual_approval": False,
+            "next_step": "apply only reviewed bounded geometry edits, then rerender all views",
+            "provider": "OctavAPI third-party", "model_verified_by_response": True}
+
+
 def _run_octava_advice(arguments: dict[str, Any], *, workspace: str | None = None) -> dict[str, Any]:
     """Durable OctavAPI text advice; never executes returned code or commands.
 
@@ -1436,6 +1554,19 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_astra_pass_one":
+                from local_agent.blender_workflow import create_mia_astra_pass_one
+                from local_agent.studio_server import telegram_send_mia_review_photos
+                details = create_mia_astra_pass_one(task_id=task.task_id)
+                if details.get("status") == "completed":
+                    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+                    details["telegram_photo_delivery"] = telegram_send_mia_review_photos(
+                        workspace, task.task_id)
+                    details["mailbox_preview_delivery"] = {
+                        "status": "included_in_result",
+                        "views": sorted(details.get("thumbnail_jpeg_base64", {}))}
+            elif task.operation == "mia_astra_review":
+                details = _run_mia_astra_review(task.arguments)
             elif task.operation == "mia_model_review":
                 # Fixed existing static-only mesh workflow; no video, no new model
                 # prompt, no arbitrary external code or paths from the mailbox.
