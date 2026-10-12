@@ -1836,12 +1836,48 @@ def _mailbox_idle_new_task(state: dict[str, Any], *, now: float | None = None) -
 
 def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
                        now: float | None = None) -> dict[str, Any]:
-    """Legacy compatibility only: owner has disabled ALL idle reminders.
+    """Repeat one idle reminder every ten minutes, without offline outbox buildup."""
+    clock = time.time() if now is None else now
+    state = _mailbox_idle_initialize(state, now=clock)
+    latest = state["mailbox_idle_last_notice_at"]
+    since = latest if latest is not None else state["mailbox_last_new_task_at"]
+    if clock - since < _MAILBOX_IDLE_SECONDS:
+        return state
+    try:
+        from local_agent.studio_server import telegram_queue_event, telegram_flush_outbox
+        connection = ("Проверка GitHub работает." if github_reachable else
+                      "Последняя проверка GitHub завершилась ошибкой подключения.")
+        minutes = max(10, int((clock - state["mailbox_last_new_task_at"]) // 60))
+        message = (f"Blender AI Agent: новых заданий из GitHub нет уже {minutes} минут. "
+                   + connection + " Напоминание повторяется каждые 10 минут.")
+        # Stable for the CURRENT idle period: at most one pending notice when
+        # Telegram is offline, but fresh notices after each successful delivery.
+        event_id = "mailbox-idle:" + str(int(state["mailbox_last_new_task_at"]))
+        if not telegram_queue_event(event_id, message):
+            # Notifications disabled, unpaired, or outbox full. Retry later.
+            return state
+        # Durable interval checkpoint before delivery prevents restart spam.
+        updated = {**state, "mailbox_idle_notice_sent": True,
+                   "mailbox_idle_last_notice_at": clock}
+        _save_state(updated)
+        telegram_flush_outbox(max_messages=2)
+        return updated
+    except (ImportError, OSError, RuntimeError, ValueError):
+        # Notification failures must not block GitHub tasks.
+        return state
 
-    Never enqueue a ten-minute no-task Telegram message. Error, restart
-    and completed-task notifications remain enabled.
-    """
-    return state
+
+
+# Owner policy: do not send idle reminders in the actual worker loop.
+# Retain the old pure handler for compatibility with older diagnostics/tests.
+_MAILBOX_IDLE_NOTICES_ENABLED = False
+
+
+def _maybe_mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
+                             now: float | None = None) -> dict[str, Any]:
+    if not _MAILBOX_IDLE_NOTICES_ENABLED:
+        return state
+    return _mailbox_idle_tick(state, github_reachable=github_reachable, now=now)
 
 
 def _purge_idle_telegram_outbox() -> int:
@@ -2071,7 +2107,7 @@ def main() -> int:
                         last_sha = manifest_sha
                 if not load_runtime_control()["paused"]:
                     state = _poll_repair_once(client, state)
-                    state = _mailbox_idle_tick(state, github_reachable=True)
+                    state = _maybe_mailbox_idle_tick(state, github_reachable=True)
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -2099,14 +2135,14 @@ def main() -> int:
                 return 0
             except QueueTransportError as exc:
                 if not load_runtime_control()["paused"]:
-                    state = _mailbox_idle_tick(state, github_reachable=False)
+                    state = _maybe_mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError, MailboxPolicyError) as exc:
                 try:
                     if not load_runtime_control()["paused"]:
-                        state = _mailbox_idle_tick(state, github_reachable=False)
+                        state = _maybe_mailbox_idle_tick(state, github_reachable=False)
                 except MailboxPolicyError:
                     pass
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
