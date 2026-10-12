@@ -3,7 +3,7 @@
 The prototype supports fixed diagnostics, reviewed patches, structured story-plan
 storage/compilation, local asset indexing, and one deterministic Blender preview.
 It does not execute arbitrary remote commands or claim full animation support.
-Service start/stop/backup operations are not implemented.
+Only the fixed, opt-in Studio restart operation may run without local console approval; other service controls are not implemented.
 """
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
 from local_agent.blender_locator import find_blender_executable
+from local_agent.restart_control import request_agent_restart, RestartControlError
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -396,6 +397,24 @@ def _run_scan_project_assets(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
+def _run_agent_restart(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
+    """Restart the fixed local Studio app and reopen its browser; no remote path is accepted."""
+    if arguments:
+        return {"status": "rejected", "reason": "restart_agent_does_not_accept_arguments"}
+    if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART") != "1":
+        return {"status": "blocked", "reason": "remote_restart_opt_in_is_disabled"}
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        return {"status": "blocked", "reason": "local_agent_workspace_is_not_configured"}
+    project_root = Path(workspace).expanduser() / "mia_story"
+    try:
+        return request_agent_restart(project_root, task_id, ROOT / "run_blender_studio.bat")
+    except RestartControlError as exc:
+        return {"status": "blocked", "reason": str(exc)[:240]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
 def _run_compile_story_plan(arguments: dict[str, Any]) -> dict[str, Any]:
     """Compile an existing local story plan into an inert storyboard manifest."""
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
@@ -616,7 +635,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "restart_agent"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -626,18 +645,23 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
-    print("Supported work: local diagnostics and tests, plus allowlisted Blender workflows. Every task requires approval on this computer.")
-    if getattr(task, "requires_local_approval", True) is not True:
-        result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_disabled"}
+    print("Supported work: local diagnostics and tests, allowlisted Blender workflows, and the fixed Studio restart.")
+    remote_restart_authorized = (
+        task.operation == "restart_agent"
+        and getattr(task, "requires_local_approval", True) is False
+        and os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART") == "1"
+    )
+    if getattr(task, "requires_local_approval", True) is not True and not remote_restart_authorized:
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_disabled_for_this_operation"}
         commit_sha = _publish_result_durable(client, task.task_id, result)
-        print(f"Remote approval is disabled. Result commit: {commit_sha}")
+        print(f"Remote approval is disabled for this operation. Result commit: {commit_sha}")
         return
-    if not sys.stdin.isatty():
+    if not remote_restart_authorized and not sys.stdin.isatty():
         result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
         commit_sha = _publish_result_durable(client, task.task_id, result)
         print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
         return
-    answer = input("Approve this local operation? Type YES to run: ").strip()
+    answer = "YES" if remote_restart_authorized else input("Approve this local operation? Type YES to run: ").strip()
     if answer != "YES":
         result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
     else:
@@ -700,6 +724,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "restart_agent":
+                details = _run_agent_restart(task.arguments, task.task_id)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
