@@ -37,6 +37,7 @@ def test_local_enable_accepts_diagnostics_and_never_arbitrary_patch(vault):
         assert not policy.is_auto_authorized(op)
     assert not policy.is_auto_authorized('octava_advice')
     assert not policy.is_auto_authorized('blender_mia_skeleton')
+    assert not policy.is_auto_authorized('export_mia_scene_review')
     assert not policy.is_auto_authorized('sync_approved_assets')
 
 
@@ -46,6 +47,7 @@ def test_optional_permissions_are_independent(vault):
     assert policy.is_auto_authorized('octava_advice')
     assert policy.is_auto_authorized('test')
     assert policy.is_auto_authorized('save_story_plan')
+    assert policy.is_auto_authorized('export_mia_scene_review')
     assert not policy.is_auto_authorized('apply_patch')
     value['enabled'] = False
     policy.save_policy(value)
