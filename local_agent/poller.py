@@ -932,7 +932,7 @@ def _run_blender_open_mia_project(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "error", "error_type": type(exc).__name__}
 
 
-def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
+def _run_blender_mia_blockout(arguments: dict[str, Any], *, task_id: str | None = None) -> dict[str, Any]:
     """Create and validate fixed Mia blockouts; allow guarded retry only for the Episode 1 release."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
     project_name = arguments.get("project_name")
@@ -955,7 +955,22 @@ def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
     if duration_seconds == 5 and allow_full_render:
         return {"status": "rejected", "reason": "full_render_flag_only_applies_to_60_second_render"}
     try:
-        result = create_mia_blockout(project_name, overwrite=overwrite, duration_seconds=duration_seconds)
+        if task_id is not None:
+            from local_agent.studio_jobs import (
+                StudioJobError, begin_agent_task, finish_agent_task,
+            )
+            try:
+                begin_agent_task(task_id, "blender_mia_blockout", project_name)
+            except StudioJobError as exc:
+                return {"status": "blocked", "reason": str(exc)[:300]}
+            try:
+                result = create_mia_blockout(project_name, overwrite=overwrite,
+                                             duration_seconds=duration_seconds, task_id=task_id)
+            finally:
+                finish_agent_task(task_id)
+        else:
+            result = create_mia_blockout(project_name, overwrite=overwrite,
+                                         duration_seconds=duration_seconds)
         if (result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE"
                 and duration_seconds == 5):
             from pathlib import Path
@@ -1285,7 +1300,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_preflight":
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
-                details = _run_blender_mia_blockout(task.arguments)
+                details = _run_blender_mia_blockout(task.arguments, task_id=task.task_id)
             elif task.operation == "blender_open_mia_project":
                 details = _run_blender_open_mia_project(task.arguments)
             elif task.operation == "blender_inspect_mia_project":
