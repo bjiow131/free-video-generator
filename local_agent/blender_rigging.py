@@ -67,7 +67,7 @@ for obj in list(bpy.context.scene.objects):
     x = obj.matrix_world.translation.x
     side = ".L" if x >= 0 else ".R"
     bone_name = None
-    if any(word in label for word in ("head", "hair", "eye", "iris", "nose", "helmet")):
+    if any(word in label for word in ("head", "hair", "fringe", "eye", "iris", "nose", "helmet")):
         bone_name = "head"
     elif "neck" in label:
         bone_name = "neck"
@@ -141,15 +141,26 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     if is_link_or_junction(project):
         return {"status": "rejected", "reason": "project_must_not_be_symlink_or_junction"}
     source = project / "mia_blockout.blend"
+    if is_link_or_junction(source):
+        return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
+    if not source.is_file() or source.stat().st_size == 0:
+        return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
     output = project / "mia_skeleton.blend"
     report = project / "mia_skeleton_result.json"
+    if output.exists() or report.exists():
+        for version in range(2, 100):
+            candidate_output = project / f"mia_skeleton_v{version}.blend"
+            candidate_report = project / f"mia_skeleton_v{version}_result.json"
+            if is_link_or_junction(candidate_output) or is_link_or_junction(candidate_report):
+                return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
+            if not candidate_output.exists() and not candidate_report.exists():
+                output, report = candidate_output, candidate_report
+                break
+        else:
+            return {"status": "blocked", "reason": "no_free_versioned_skeleton_output"}
     for path in (source, output, report):
         if is_link_or_junction(path):
             return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
-    if not source.is_file() or source.stat().st_size == 0:
-        return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
-    if output.exists() or report.exists():
-        return {"status": "blocked", "reason": "skeleton_outputs_exist_no_overwrite"}
     try:
         with tempfile.TemporaryDirectory(prefix=".mia-rig-", dir=project) as temp:
             script = Path(temp) / "skeleton.py"
