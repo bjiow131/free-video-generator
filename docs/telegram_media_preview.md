@@ -34,6 +34,13 @@ and temporarily receives the bot token and media bytes in RAM. No persistent
 storage is implemented, but network availability and Render size/bandwidth
 limits are not yet verified.
 
+Before deploying the Render media endpoint, set the Render environment variable
+`TELEGRAM_RELAY_TOKEN_SHA256` to the SHA-256 hex fingerprint of the **paired
+BotFather token** (never the raw token). Until the fingerprint is present,
+the relay refuses media uploads with HTTP 503. After configuration, both text
+requests and media requests from other bot tokens are rejected. This allows
+remote delivery without exposing the bot token in GitHub or the setup transcript.
+
 The **currently deployed** Render service tracks branch
 `feature/octava-agent-bridge-20261011` and has auto-deploy disabled.
 This feature-branch change by itself does NOT update the live relay.
