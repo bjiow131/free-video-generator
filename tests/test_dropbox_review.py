@@ -102,8 +102,8 @@ def test_exports_only_fixed_episode1_draft_files_after_local_consent(isolated, m
     workspace = isolated / "workspace"
     project = workspace / "S01E01_SC01_DRAFT"
     project.mkdir(parents=True)
-    blend = b"blender-project-draft"
-    preview = b"\\x89PNG\\r\\n\\x1a\\npreview"
+    blend = b"BLENDERmock-project-draft"
+    preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
     (project / "mia_blockout.blend").write_bytes(blend)
     (project / "mia_blockout.png").write_bytes(preview)
 
