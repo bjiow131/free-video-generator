@@ -1,13 +1,14 @@
 """Minimal, token-nonpersisting Telegram Bot API gateway for the owner's Render free service.
 
 The local Windows Studio opts in explicitly before sending credentials to this
-separate HTTPS gateway. It forwards only getMe/getUpdates/sendMessage, to the
-fixed Telegram Bot API hostname; it stores no bot tokens or messages.
+separate HTTPS gateway. It forwards a fixed allowlist of Bot API methods and bounded media bytes\nto Telegram's HTTPS hostname; it stores no bot tokens, messages, or images.
 """
 from __future__ import annotations
+import base64
 import json
 import os
 import re
+import uuid
 import threading
 import time
 from collections import deque
@@ -18,6 +19,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 ALLOWED = {"getMe", "getUpdates", "sendMessage"}
 BOT_TOKEN = re.compile(r"\d{5,15}:[A-Za-z0-9_-]{20,128}\Z")
 MAX_BYTES = 4096
+MAX_PHOTO = 9_500_000
+MAX_VIDEO = 32_000_000
+_MEDIA_LIMIT = 6
+_MEDIA_RECENT: deque[float] = deque()
 WINDOW = 60
 RATE_LIMIT = 24
 _MUTEX = threading.RLock()
@@ -50,12 +55,18 @@ def forward(data: dict) -> tuple[int, dict]:
         return 400, {"ok": False, "description": "Unsupported method"}
     if method == "getMe" and params:
         return 400, {"ok": False, "description": "Unexpected parameters"}
-    if method == "getUpdates" and (set(params) != {"limit", "timeout"}
-                                   or type(params["limit"]) is not int
-                                   or type(params["timeout"]) is not int
-                                   or not 1 <= params["limit"] <= 100
-                                   or params["timeout"] != 0):
-        return 400, {"ok": False, "description": "Invalid polling parameters"}
+    if method == "getUpdates":
+        # Pairing uses limit/timeout; the private supervisor additionally uses
+        # an offset and a fixed allowed_updates=["message"] filter.
+        fields = set(params)
+        if (not {"limit", "timeout"} <= fields
+                or not fields <= {"limit", "timeout", "offset", "allowed_updates"}
+                or type(params["limit"]) is not int or not 1 <= params["limit"] <= 100
+                or type(params["timeout"]) is not int or params["timeout"] != 0
+                or ("offset" in params and (type(params["offset"]) is not int
+                    or not 0 <= params["offset"] < 2**63))
+                or ("allowed_updates" in params and params["allowed_updates"] != ["message"])):
+            return 400, {"ok": False, "description": "Invalid polling parameters"}
     if method == "sendMessage":
         if set(params) != {"chat_id", "text"}:
             return 400, {"ok": False, "description": "Invalid message fields"}
@@ -96,6 +107,93 @@ def forward(data: dict) -> tuple[int, dict]:
     return 200, out
 
 
+
+def forward_media(token: str, chat: str, method: str,
+                  caption_header: str, content: bytes) -> tuple[int, dict]:
+    """Accept only byte uploads to one Telegram method and a numeric chat.
+
+    No arbitrary URL/remote filename or shell execution; nothing is written
+    to disk. This gateway is a transient forwarder, not a cloud media store.
+    """
+    if not isinstance(token, str) or not BOT_TOKEN.fullmatch(token):
+        return 400, {"ok": False, "description": "Invalid bot token"}
+    if method not in ("sendPhoto", "sendVideo"):
+        return 400, {"ok": False, "description": "Unsupported media method"}
+    if not isinstance(chat, str) or not re.fullmatch(r"[0-9]{1,20}", chat):
+        return 400, {"ok": False, "description": "Invalid private chat"}
+    if not isinstance(caption_header, str) or len(caption_header) > 1200:
+        return 400, {"ok": False, "description": "Invalid caption"}
+    try:
+        caption = base64.b64decode(caption_header, altchars=b"-_", validate=True).decode("utf-8")
+    except (ValueError, UnicodeError):
+        return 400, {"ok": False, "description": "Invalid caption"}
+    if len(caption) > 600:
+        return 400, {"ok": False, "description": "Caption too long"}
+    if not isinstance(content, bytes):
+        return 400, {"ok": False, "description": "Invalid upload"}
+    if method == "sendPhoto":
+        if not 16 <= len(content) <= MAX_PHOTO:
+            return 413, {"ok": False, "description": "Photo too large"}
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            suffix, mime = ".png", "image/png"
+        elif content.startswith(b"\xff\xd8\xff"):
+            suffix, mime = ".jpg", "image/jpeg"
+        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            suffix, mime = ".webp", "image/webp"
+        else:
+            return 415, {"ok": False, "description": "Invalid image signature"}
+        field = "photo"
+    else:
+        if not 16 <= len(content) <= MAX_VIDEO:
+            return 413, {"ok": False, "description": "Video too large"}
+        if content[4:8] != b"ftyp":
+            return 415, {"ok": False, "description": "Invalid MP4 signature"}
+        suffix, mime, field = ".mp4", "video/mp4", "video"
+    now = time.monotonic()
+    with _MUTEX:
+        while _MEDIA_RECENT and _MEDIA_RECENT[0] < now - WINDOW:
+            _MEDIA_RECENT.popleft()
+        if len(_MEDIA_RECENT) >= _MEDIA_LIMIT:
+            return 429, {"ok": False, "description": "Media rate limited"}
+        _MEDIA_RECENT.append(now)
+    if not _limit():
+        return 429, {"ok": False, "description": "Rate limited"}
+    boundary = uuid.uuid4().hex
+    mark = ("--" + boundary + "\r\n").encode("ascii")
+    def form_field(name: str, value: str) -> bytes:
+        return (mark + f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
+                + value.encode("utf-8") + b"\r\n")
+    upload = (form_field("chat_id", chat) + form_field("caption", caption)
+              + mark + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\r\n'.encode("ascii")
+              + f"Content-Type: {mime}\r\n\r\n".encode("ascii")
+              + content + b"\r\n" + ("--" + boundary + "--\r\n").encode("ascii"))
+    # Mandatory Telegram Bot API URL contains the token; the relay never logs it.
+    url = "https://api.telegram.org/bot" + token + "/" + method
+    request = Request(url, method="POST", data=upload,
+                      headers={"Content-Type": "multipart/form-data; boundary=" + boundary})
+    try:
+        with build_opener(RejectRedirect()).open(request, timeout=60) as response:
+            raw = response.read(65537)
+            code = response.status
+    except HTTPError as exc:
+        code = exc.code
+        raw = exc.read(4097) if 400 <= code < 500 else b""
+    except (URLError, TimeoutError, OSError):
+        return 502, {"ok": False, "description": "Telegram media upstream unavailable"}
+    if len(raw) > 65536:
+        return 502, {"ok": False, "description": "Telegram response too large"}
+    try:
+        result = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return 502, {"ok": False, "description": "Telegram response not JSON"}
+    if not isinstance(result, dict):
+        return 502, {"ok": False, "description": "Telegram response invalid"}
+    if code != 200:
+        return (code if 400 <= code < 500 else 502), {
+            "ok": False, "description": "Telegram returned HTTP " + str(code)}
+    return 200, result
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "OctavaTelegramBridge"
     sys_version = ""
@@ -134,6 +232,24 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"ok": False})
 
     def do_POST(self):
+        if self.path == "/api/telegram/media":
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/octet-stream":
+                return self._send(415, {"ok": False})
+            try:
+                size = int(self.headers.get("Content-Length", "0"))
+                if not 16 <= size <= MAX_VIDEO:
+                    return self._send(413, {"ok": False})
+                content = self.rfile.read(size)
+                if len(content) != size:
+                    return self._send(400, {"ok": False})
+            except (OSError, ValueError):
+                return self._send(400, {"ok": False})
+            status, response = forward_media(
+                self.headers.get("X-Telegram-Token", ""),
+                self.headers.get("X-Telegram-Chat-Id", ""),
+                self.headers.get("X-Telegram-Method", ""),
+                self.headers.get("X-Telegram-Caption", ""), content)
+            return self._send(status, response)
         if self.path != "/api/telegram":
             return self._send(404, {"ok": False})
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
