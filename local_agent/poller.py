@@ -899,8 +899,9 @@ def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_export_mia_scene_review(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Export only the fixed Episode 1 draft to the locally opted-in Dropbox folder."""
-    if set(arguments) != {"project_name"} or arguments.get("project_name") != "S01E01_SC01_DRAFT":
+    """Export only fixed Episode 1 review projects to the locally opted-in Dropbox folder."""
+    allowed_projects = {"S01E01_SC01_DRAFT", "S01E01_SC01_RELEASE"}
+    if set(arguments) != {"project_name"} or arguments.get("project_name") not in allowed_projects:
         return {"status": "rejected", "reason": "episode1_project_not_allowlisted"}
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     if not workspace:
