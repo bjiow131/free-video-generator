@@ -43,6 +43,7 @@ ALLOWED_FILES = frozenset({
     "tests/test_github_asset_sync.py",
     "tests/test_github_asset_sync_resume.py",
     "tests/test_asset_sync_protocol.py",
+    "tests/test_mailbox_policy.py",
     "local_agent/blender_bridge.py",
     "local_agent/blender_workflow.py",
     "local_agent/blender_rigging.py",
