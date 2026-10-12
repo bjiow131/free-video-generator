@@ -201,6 +201,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if args.check:
+        if os.name == "nt" and not is_supported_windows_blender(found):
+            print("Configured Blender is not a supported 64-bit Windows executable.", file=sys.stderr)
+            return 2
         try:
             result = subprocess.run(
                 [str(found), "--version"], capture_output=True, text=True,
