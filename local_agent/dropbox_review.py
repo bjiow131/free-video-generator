@@ -7,6 +7,7 @@ after an explicit opt-in stored on the Windows computer.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import gzip
 import hashlib
 import json
 import os
@@ -125,6 +126,19 @@ def _ffmpeg(cmd: list[str], *, timeout: int) -> None:
         raise ReviewDeliveryError("FFmpeg preview export failed")
 
 
+def _is_blender_project_file(source: Path, signature: bytes) -> bool:
+    """Accept a Blender file header directly or inside bounded gzip data."""
+    if signature.startswith(b"BLENDER"):
+        return True
+    if not signature.startswith(b"\\x1f\\x8b"):
+        return False
+    try:
+        with gzip.open(source, "rb") as stream:
+            return stream.read(7).startswith(b"BLENDER")
+    except (OSError, EOFError):
+        return False
+
+
 def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[str, Any]:
     """Copy only the fixed Episode 1 draft .blend and PNG to opted-in Dropbox Sync.
 
@@ -159,7 +173,7 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             raise ReviewDeliveryError("Scene artifact is empty or exceeds its export size limit")
         with source.open("rb") as stream:
             signature = stream.read(8)
-        if name == "scene.blend" and not signature.startswith(b"BLENDER"):
+        if name == "scene.blend" and not _is_blender_project_file(source, signature):
             raise ReviewDeliveryError("Scene project is not a Blender file")
         if name == "preview.png" and signature != bytes.fromhex("89504e470d0a1a0a"):
             raise ReviewDeliveryError("Scene preview is not a PNG file")
