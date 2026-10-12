@@ -265,3 +265,16 @@ def test_blender_mia_skeleton_requires_local_approval():
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="require local approval"):
         parse_task(json.dumps(value))
+
+
+def test_fixed_studio_restart_is_the_only_task_that_can_skip_console_approval():
+    value = json.loads(_task("restart_agent", {}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.operation == "restart_agent"
+    assert task.requires_local_approval is False
+
+
+def test_restart_task_rejects_arguments():
+    with pytest.raises(ProtocolError, match="does not accept arguments"):
+        parse_task(_task("restart_agent", {"project_name": "mia_story"}))
