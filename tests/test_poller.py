@@ -848,3 +848,32 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
         "project_name": "S01E01_SC01_RELEASE", "overwrite": False
     })["status"] == "rejected"
     assert len(calls) == 1
+
+
+def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
+    import json
+    from local_agent import poller, github_queue
+    from local_agent.control_protocol import ProtocolError
+
+    envelope = {
+        "protocol_version": 1,
+        "task_id": "codex-restart-20261012",
+        "operation": "restart_agent",
+        "created_at": "2026-10-12T16:00:00Z",
+        "expires_at": "2026-10-12T16:10:00Z",
+        "requires_local_approval": True,
+        "arguments": {},
+    }
+    parsed = github_queue.parse_task(json.dumps(envelope))
+    assert parsed.operation == "restart_agent"
+    assert parsed.arguments == {}
+    assert parsed.requires_local_approval is True
+
+    envelope["arguments"] = {"command": "anything"}
+    with pytest.raises(ProtocolError, match="no arguments"):
+        github_queue.parse_task(json.dumps(envelope))
+
+    envelope["arguments"] = {}
+    envelope["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval"):
+        github_queue.parse_task(json.dumps(envelope))

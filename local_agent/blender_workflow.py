@@ -196,13 +196,16 @@ def build_rig(name, prefix, origin, bones):
         side=".L" if relative_x>=0 else ".R"
         bone=None
         if prefix in ("Mia","Stepa"):
-            if any(w in label for w in ("head","hair","fringe","eye","iris","nose","helmet")): bone="head"
+            if "eye white" in label or "iris" in label: bone="eye"+side
+            elif any(w in label for w in ("head","hair","fringe","nose","helmet")): bone="head"
             elif "neck" in label: bone="neck"
             elif any(w in label for w in ("backpack","torso")): bone="spine"
             elif "sleeve" in label: bone="upper_arm"+side
-            elif any(w in label for w in ("cuff","hand")): bone="forearm"+side
+            elif "hand" in label: bone="hand"+side
+            elif "cuff" in label: bone="forearm"+side
             elif "trouser leg" in label: bone="thigh"+side
-            elif any(w in label for w in ("trouser cuff","shoe")): bone="shin"+side
+            elif "trouser cuff" in label: bone="shin"+side
+            elif "shoe" in label: bone="foot"+side
         else:
             if "body" in label or "shell" in label: bone="body"
             elif "head" in label: bone="head"
@@ -221,14 +224,21 @@ child_bones=[
     ("spine",(0,0,1.78),(0,0,2.35),"pelvis"),
     ("neck",(0,0,2.35),(0,0,2.65),"spine"),
     ("head",(0,0,2.65),(0,0,3.35),"neck"),
+    ("jaw",(0,-0.08,2.90),(0,-0.10,3.04),"head"),
+    ("eye.L",(0.08,-0.39,3.12),(0.18,-0.39,3.12),"head"),
+    ("eye.R",(-0.08,-0.39,3.12),(-0.18,-0.39,3.12),"head"),
     ("upper_arm.L",(0.30,0,2.25),(0.62,0,1.93),"spine"),
     ("forearm.L",(0.62,0,1.93),(0.78,0,1.60),"upper_arm.L"),
+    ("hand.L",(0.52,-0.04,2.03),(0.60,-0.04,1.96),"forearm.L"),
     ("upper_arm.R",(-0.30,0,2.25),(-0.62,0,1.93),"spine"),
     ("forearm.R",(-0.62,0,1.93),(-0.78,0,1.60),"upper_arm.R"),
+    ("hand.R",(-0.52,-0.04,2.03),(-0.60,-0.04,1.96),"forearm.R"),
     ("thigh.L",(0.18,0,1.48),(0.20,0,0.88),"pelvis"),
     ("shin.L",(0.20,0,0.88),(0.20,0,0.22),"thigh.L"),
+    ("foot.L",(0.22,-0.10,0.34),(0.22,-0.30,0.30),"shin.L"),
     ("thigh.R",(-0.18,0,1.48),(-0.20,0,0.88),"pelvis"),
     ("shin.R",(-0.20,0,0.88),(-0.20,0,0.22),"thigh.R"),
+    ("foot.R",(-0.22,-0.10,0.34),(-0.22,-0.30,0.30),"shin.R"),
 ]
 mia_rig,mia_bound=build_rig("Mia_Rig","Mia",(0,0,0),child_bones)
 stepa_rig,stepa_bound=build_rig("Stepa_Rig","Stepa",(-2.05,0,0),child_bones)
@@ -292,7 +302,7 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 def _episode1_animation_script() -> str:
     """Fixed silent animatic pass; inputs are local paths constructed by this module."""
     return r'''
-import bpy, json, math, os, sys, hashlib
+import bpy, json, math, os, sys, hashlib, shutil, subprocess, tempfile
 from mathutils import Vector
 args=sys.argv[sys.argv.index("--")+1:]
 cfg=json.load(open(args[0],encoding="utf-8"))
@@ -303,6 +313,53 @@ scene.frame_start=1; scene.frame_end=720; scene.render.fps=12
 scene.render.resolution_x=720; scene.render.resolution_y=1280; scene.render.resolution_percentage=100
 scene.render.image_settings.file_format="PNG"
 scene.render.filepath=os.path.join(out,"preview.png")
+# Upgrade the already-saved 13-bone blockout in place. This keeps the existing
+# scene and its user data while adding the new face, hand and foot controls.
+def upgrade_child_rig(rig_name,prefix):
+    rig=scene.objects.get(rig_name)
+    if rig is None or rig.type!="ARMATURE": raise RuntimeError("Child rig missing: "+rig_name)
+    controls=[
+        ("jaw",(0,-0.08,2.90),(0,-0.10,3.04),"head"),
+        ("eye.L",(0.08,-0.39,3.12),(0.18,-0.39,3.12),"head"),
+        ("eye.R",(-0.08,-0.39,3.12),(-0.18,-0.39,3.12),"head"),
+        ("hand.L",(0.52,-0.04,2.03),(0.60,-0.04,1.96),"forearm.L"),
+        ("hand.R",(-0.52,-0.04,2.03),(-0.60,-0.04,1.96),"forearm.R"),
+        ("foot.L",(0.22,-0.10,0.34),(0.22,-0.30,0.30),"shin.L"),
+        ("foot.R",(-0.22,-0.10,0.34),(-0.22,-0.30,0.30),"shin.R"),
+    ]
+    bpy.ops.object.select_all(action="DESELECT"); rig.select_set(True); bpy.context.view_layer.objects.active=rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name,head,tail,parent in controls:
+        if name not in rig.data.edit_bones:
+            bone=rig.data.edit_bones.new(name); bone.head=head; bone.tail=tail
+            bone.parent=rig.data.edit_bones.get(parent)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for obj in list(scene.objects):
+        if obj.type!="MESH" or not obj.name.startswith(prefix+" | "): continue
+        label=obj.name[len(prefix)+2:].lower(); relx=obj.matrix_world.translation.x-rig.location.x
+        side=".L" if relx>=0 else ".R"
+        if "eye white" in label or "iris" in label: bone="eye"+side
+        elif any(w in label for w in ("head","hair","fringe","nose","helmet")): bone="head"
+        elif "neck" in label: bone="neck"
+        elif any(w in label for w in ("backpack","torso")): bone="spine"
+        elif "sleeve" in label: bone="upper_arm"+side
+        elif "hand" in label: bone="hand"+side
+        elif "cuff" in label: bone="forearm"+side
+        elif "trouser leg" in label: bone="thigh"+side
+        elif "trouser cuff" in label: bone="shin"+side
+        elif "shoe" in label: bone="foot"+side
+        else: continue
+        for group in list(obj.vertex_groups): obj.vertex_groups.remove(group)
+        group=obj.vertex_groups.new(name=bone)
+        if obj.data.vertices: group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
+        modifier=next((m for m in obj.modifiers if m.type=="ARMATURE"),None)
+        if modifier is None: modifier=obj.modifiers.new(name=rig_name+" rigid proxy binding",type="ARMATURE")
+        modifier.object=rig
+    missing={"jaw","eye.L","eye.R","hand.L","hand.R","foot.L","foot.R"}-set(rig.data.bones.keys())
+    if missing: raise RuntimeError("Child rig upgrade incomplete: "+",".join(sorted(missing)))
+    return len(rig.data.bones)
+mia_bone_count=upgrade_child_rig("Mia_Rig","Mia")
+stepa_bone_count=upgrade_child_rig("Stepa_Rig","Stepa")
 def aim(camera, point):
     camera.rotation_euler=(Vector(point)-camera.location).to_track_quat("-Z","Y").to_euler()
 camera=scene.camera
@@ -354,7 +411,13 @@ for s in (-1,1):
     bar("Adult guardian proxy | arm",(gx+s*0.39,gy,2.05),(gx+s*0.48,gy-0.05,1.45),0.09,coat)
 mouth_mat=material("Face | mouth",(0.055,0.018,0.014,1))
 def mouth_for(prefix,x,y,z):
-    return sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
+    obj=sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
+    rig=scene.objects.get(prefix+"_Rig")
+    if rig is None or "jaw" not in rig.data.bones: raise RuntimeError("Jaw control missing for "+prefix)
+    group=obj.vertex_groups.new(name="jaw")
+    if obj.data.vertices: group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
+    modifier=obj.modifiers.new(name=prefix+" jaw control",type="ARMATURE"); modifier.object=rig
+    return obj
 mia_mouth=mouth_for("Mia",0,-0.475,2.96)
 step_mouth=mouth_for("Stepa",-2.05,-0.47,2.96)
 def animate_mouth(obj, intervals):
@@ -379,6 +442,38 @@ for frame,x in ((1,0),(480,0),(540,0.25),(600,0.5),(720,0.5)):
     mia_root.location.x=x; mia_root.keyframe_insert(data_path="location",frame=frame)
 for frame,tilt in ((1,0),(90,0),(120,0.06),(150,0),(300,0),(340,-0.05),(380,0),(720,0)):
     step_root.rotation_euler.z=tilt; step_root.keyframe_insert(data_path="rotation_euler",frame=frame)
+
+# Pose controls animate actual rigid-bound character parts instead of moving
+# only the parent group. The proxies remain segmented; this is a controllable
+# scene rig, not a claim of production-quality smooth skinning.
+def animate_bone(rig_name,bone_name,axis,keys):
+    rig=scene.objects.get(rig_name)
+    if rig is None or rig.type!="ARMATURE" or bone_name not in rig.pose.bones:
+        raise RuntimeError("Required rig control is missing: "+rig_name+"/"+bone_name)
+    bone=rig.pose.bones[bone_name]; bone.rotation_mode="XYZ"
+    for frame,value in keys:
+        rotation=[0.0,0.0,0.0]; rotation[axis]=value
+        bone.rotation_euler=rotation
+        bone.keyframe_insert(data_path="rotation_euler",frame=frame,group=bone_name)
+
+animate_bone("Mia_Rig","upper_arm.L",1,((1,0),(28,0.28),(48,0.62),(72,0.72),(96,0.15),(120,0),(720,0)))
+animate_bone("Mia_Rig","upper_arm.R",1,((1,0),(28,-0.28),(48,-0.62),(72,-0.72),(96,-0.15),(120,0),(720,0)))
+animate_bone("Mia_Rig","forearm.L",2,((1,0),(42,-0.22),(72,-0.3),(100,0),(720,0)))
+animate_bone("Mia_Rig","forearm.R",2,((1,0),(42,0.22),(72,0.3),(100,0),(720,0)))
+animate_bone("Mia_Rig","head",2,((1,0),(72,0.04),(120,-0.08),(180,0),(380,0.09),(430,0),(720,0)))
+animate_bone("Mia_Rig","eye.L",2,((1,0),(160,0.08),(210,0),(400,-0.07),(450,0),(720,0)))
+animate_bone("Mia_Rig","eye.R",2,((1,0),(160,0.08),(210,0),(400,-0.07),(450,0),(720,0)))
+animate_bone("Mia_Rig","jaw",0,((1,0),(140,0.08),(250,0),(355,0.07),(385,0),(500,0.08),(545,0),(720,0)))
+animate_bone("Mia_Rig","foot.L",1,((1,0),(485,0.02),(540,0.04),(600,0.02),(720,0)))
+
+# Stepa marks the start and gives a short countdown gesture; Mia answers and
+# looks toward the route. These pose keys align with the existing dialogue cues.
+animate_bone("Stepa_Rig","upper_arm.L",1,((1,0),(20,0.35),(80,0.55),(125,0),(270,0),(300,0.5),(330,0),(720,0)))
+animate_bone("Stepa_Rig","forearm.L",2,((1,0),(25,-0.3),(70,0.35),(110,-0.2),(125,0),(270,0),(300,-0.5),(330,0),(720,0)))
+animate_bone("Stepa_Rig","upper_arm.R",1,((1,0),(270,-0.35),(305,-0.58),(340,0),(390,-0.35),(430,-0.58),(475,0),(720,0)))
+animate_bone("Stepa_Rig","forearm.R",2,((1,0),(270,0.3),(305,-0.35),(340,0),(390,0.3),(430,-0.35),(475,0),(720,0)))
+animate_bone("Stepa_Rig","head",2,((1,0),(120,0.08),(180,0),(300,-0.1),(360,0),(475,0.08),(520,0),(720,0)))
+animate_bone("Stepa_Rig","jaw",0,((1,0),(20,0),(45,0.08),(120,0),(270,0),(290,0.08),(330,0),(390,0),(410,0.08),(475,0),(720,0)))
 for obj in scene.objects:
     if obj.name=="Scooter | wheel":
         for frame,angle in ((1,0),(480,0),(600,-math.pi*2),(720,-math.pi*2)):
@@ -434,11 +529,47 @@ scene.render.filepath=os.path.join(out,"preview.png")
 blend=os.path.join(out,"mia_blockout.blend")
 bpy.ops.wm.save_as_mainfile(filepath=blend)
 video=os.path.join(out,"scene.mp4")
-video_status="unsupported_by_blender_build"
+video_status="render_failed"
+video_error=None
 try:
     scene.render.image_settings.file_format="FFMPEG"
 except (TypeError, ValueError):
-    scene["video_export_status"]=video_status
+    ffmpeg=shutil.which("ffmpeg")
+    if not ffmpeg:
+        video_status="ffmpeg_not_found"
+    elif os.path.lexists(video):
+        video_status="blocked_existing_video"
+    else:
+        frame_dir=tempfile.mkdtemp(prefix=".scene-frames-",dir=out)
+        partial=os.path.join(out,"scene.partial.mp4")
+        try:
+            scene.render.image_settings.file_format="PNG"
+            scene.render.filepath=os.path.join(frame_dir,"frame_")
+            bpy.ops.render.render(animation=True)
+            command=[ffmpeg,"-hide_banner","-loglevel","error","-n","-framerate","12",
+                     "-start_number","1","-i",os.path.join(frame_dir,"frame_%04d.png"),
+                     "-frames:v","720","-c:v","libx264","-pix_fmt","yuv420p",
+                     "-movflags","+faststart","-crf","20","-preset","medium","-an",partial]
+            proc=subprocess.run(command,capture_output=True,text=True,encoding="utf-8",errors="replace",
+                                timeout=900,check=False,shell=False)
+            if proc.returncode!=0:
+                video_error=(proc.stderr or "")[-1200:]
+            elif os.path.isfile(partial) and os.path.getsize(partial)>=1024:
+                with open(partial,"rb") as stream: header=stream.read(16)
+                if b"ftyp" in header and not os.path.lexists(video):
+                    os.replace(partial,video); video_status="exported"
+                else:
+                    video_status="invalid_or_existing_video"
+            else:
+                video_status="render_failed"
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+            video_status="ffmpeg_failed"
+            video_error=type(exc).__name__
+        finally:
+            if video_status=="exported":
+                shutil.rmtree(frame_dir,ignore_errors=True)
+            if os.path.isfile(partial) and video_status!="exported":
+                os.remove(partial)
 else:
     scene.render.ffmpeg.format="MPEG4"; scene.render.ffmpeg.codec="H264"
     scene.render.ffmpeg.constant_rate_factor="MEDIUM"; scene.render.ffmpeg.video_bitrate=2500
@@ -457,8 +588,10 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
                "video_export_status":video_status,
                "duration_seconds":60,"fps":12,"frame_count":720,
                "object_count":len(scene.objects),"audio":"none","subtitles":"none",
+               "mia_rig_bones":len(scene.objects["Mia_Rig"].data.bones),
+               "stepa_rig_bones":len(scene.objects["Stepa_Rig"].data.bones),
                "asset_provenance":ref_meta,"production_models_available":False,
-               "manual_visual_review_required":True},f,ensure_ascii=False)
+               "manual_visual_review_required":True,"video_error":video_error},f,ensure_ascii=False)
 '''
 
 
@@ -514,7 +647,8 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         return {"status": "failed", "reason": png_reason}
     if (data.get("status") != "completed" or data.get("stage") != "episode1_scene1_animated_animatic"
             or data.get("duration_seconds") != 60 or data.get("frame_count") != 720
-            or data.get("audio") != "none" or data.get("subtitles") != "none"):
+            or data.get("audio") != "none" or data.get("subtitles") != "none"
+            or data.get("mia_rig_bones",0) < 20 or data.get("stepa_rig_bones",0) < 20):
         return {"status": "failed", "reason": "episode1_release_manifest_validation_failed"}
     if data.get("video_export_status") == "exported":
         if is_link_or_junction(video) or not video.is_file() or video.stat().st_size < 1024:
@@ -537,8 +671,9 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
             "video_export_status": data.get("video_export_status"),
             "review_frames": review_frames, "resolution": dimensions,
             "duration_seconds": 60, "fps": 12, "frame_count": 720,
-            "object_count": data.get("object_count"), "manual_review_required": True,
-            "note": "Animated procedural scene; video availability depends on the installed Blender build. Concept board remains a draft and production models are not approved."}
+            "object_count": data.get("object_count"), "mia_rig_bones": data.get("mia_rig_bones"),
+            "stepa_rig_bones": data.get("stepa_rig_bones"), "manual_review_required": True,
+            "note": "Animated courtyard animatic with 20-control segmented proxy rigs; smooth production skinning and final model approval remain outstanding."}
 
 
 def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str, list[int] | None]:

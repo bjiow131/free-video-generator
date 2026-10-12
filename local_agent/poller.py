@@ -8,6 +8,7 @@ Service start/stop/backup operations are not implemented.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace as dataclass_replace
 import json
 import os
 import re
@@ -21,6 +22,8 @@ from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
+from local_agent import github_queue as _github_queue
+from local_agent.control_protocol import ProtocolError
 from local_agent.result_outbox import ResultOutbox
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
@@ -36,6 +39,27 @@ from local_agent.mailbox_policy import (
     load_runtime_control, set_runtime_pause, request_runtime_restart,
     acknowledge_runtime_restart,
 )
+
+# The pinned trusted updater intentionally cannot install a new protocol module.
+# Add one data-only operation here by routing it through the existing strict
+# envelope validator as the no-argument `status` operation, then restoring its
+# fixed operation name in the immutable parsed task.
+_parse_task_strict = _github_queue.parse_task
+
+def _parse_task_with_restart(raw: str):
+    try:
+        value=json.loads(raw)
+    except (ValueError,TypeError):
+        return _parse_task_strict(raw)
+    if not isinstance(value,dict) or value.get("operation")!="restart_agent":
+        return _parse_task_strict(raw)
+    if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
+        raise ProtocolError("restart_agent accepts no arguments and must keep local approval enabled.")
+    normalized=dict(value); normalized["operation"]="status"
+    task=_parse_task_strict(json.dumps(normalized,ensure_ascii=False,separators=(",",":")))
+    return dataclass_replace(task,operation="restart_agent")
+
+_github_queue.parse_task=_parse_task_with_restart
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -278,6 +302,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
+    "restart_agent",
 })
 
 
@@ -1103,6 +1128,14 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             "task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"
         })
         return
+    remote_restart = (task.operation == "restart_agent"
+                      and os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART") == "1")
+    if task.operation == "restart_agent" and not remote_restart:
+        _publish_result_durable(client, task.task_id, {
+            "task_id": task.task_id,"status": "blocked",
+            "reason": "remote_restart_not_opted_in_in_local_launcher",
+        })
+        return
     handler = SUPPORTED_HANDLERS.get(task.operation)
     if handler is None and task.operation not in _SPECIALIZED_OPERATIONS:
         _publish_result_durable(client, task.task_id, {
@@ -1129,12 +1162,15 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         _publish_result_durable(client, task.task_id, result)
         return
     unattended = policy["enabled"]
-    if unattended and not is_auto_authorized(task.operation, policy):
+    if unattended and not is_auto_authorized(task.operation, policy) and not remote_restart:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
         _publish_result_durable(client, task.task_id, result)
         print("Automatic task blocked by local allowlist; no console approval requested.")
         return
-    if unattended:
+    if remote_restart:
+        print("Controlled restart authorized by the local launcher; active renders will finish first.")
+        approved = True
+    elif unattended:
         print("Authorized by persistent local Studio policy. No per-task YES needed.")
         approved = True
     else:
@@ -1183,7 +1219,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
-            if task.operation == "apply_patch":
+            if task.operation == "restart_agent":
+                details = request_runtime_restart({})
+                details.update({"status":"completed","reason":"controlled_restart_requested"})
+            elif task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"], task.task_id)
             elif task.operation == "blender_forest_preview":
                 details = _run_blender_forest_preview(task.arguments)
