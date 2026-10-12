@@ -11,6 +11,7 @@ on:
       - "local_agent/studio_server.py"
       - "local_agent/studio_static/app.js"
       - "tests/test_octava_*.py"
+      - "tests/test_octava_*.ps1"
       - ".github/workflows/octava-luna-sol-release.yml"
   workflow_dispatch:
 
