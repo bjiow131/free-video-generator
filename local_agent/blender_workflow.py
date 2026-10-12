@@ -320,7 +320,9 @@ cfg=json.load(open(args[0],encoding="utf-8"))
 out=os.path.realpath(cfg["output_dir"])
 bpy.ops.wm.open_mainfile(filepath=os.path.join(out,"mia_blockout.blend"),load_ui=False)
 scene=bpy.context.scene
-scene.frame_start=1; scene.frame_end=720; scene.render.fps=12
+duration_seconds=int(cfg.get("duration_seconds",60))
+frame_count=duration_seconds*12
+scene.frame_start=1; scene.frame_end=frame_count; scene.render.fps=12
 scene.render.resolution_x=720; scene.render.resolution_y=1280; scene.render.resolution_percentage=100
 scene.render.image_settings.file_format="PNG"
 scene.render.filepath=os.path.join(out,"preview.png")
@@ -349,8 +351,8 @@ def upgrade_child_rig(rig_name,prefix):
         if obj.type!="MESH" or not obj.name.startswith(prefix+" | "): continue
         label=obj.name[len(prefix)+2:].lower(); relx=obj.matrix_world.translation.x-rig.location.x
         side=".L" if relx>=0 else ".R"
-            if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
-            elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
+        if "eye white" in label or "iris" in label or "pupil" in label or "catchlight" in label: bone="eye"+side
+        elif any(w in label for w in ("head","hair","fringe","nose","bun","eyebrow","cheek","smile")): bone="head"
         elif "neck" in label: bone="neck"
         elif any(w in label for w in ("backpack","torso")): bone="spine"
         elif "sleeve" in label: bone="upper_arm"+side
@@ -488,6 +490,17 @@ for frame,loc,scale in ((1,(3.3,-12.5,4.7),9.5),(180,(3.3,-12.3,4.6),9.5),
     camera.keyframe_insert(data_path="location",frame=frame)
     camera.keyframe_insert(data_path="rotation_euler",frame=frame)
     camera.data.keyframe_insert(data_path="ortho_scale",frame=frame)
+# The five-second test preserves the same story beats by compressing the full
+# animatic timing; its 60 frames therefore show the complete action.
+if duration_seconds != 60:
+    ratio=duration_seconds/60.0
+    for action in bpy.data.actions:
+        for curve in action.fcurves:
+            for point in curve.keyframe_points:
+                point.co.x=1+(point.co.x-1)*ratio
+                point.handle_left.x=1+(point.handle_left.x-1)*ratio
+                point.handle_right.x=1+(point.handle_right.x-1)*ratio
+            curve.update()
 asset_root=os.path.realpath(cfg["asset_root"])
 ref_meta={}
 for key,rel in (("mia_passport","characters/passports/mia.json"),
@@ -526,7 +539,8 @@ bpy.ops.render.render(write_still=True)
 review_dir=os.path.join(out,"review_frames")
 os.makedirs(review_dir,exist_ok=True)
 review_frames=[]
-for frame in (180,360,540,720):
+review_frame_numbers=tuple(max(1,round(frame_count*f)) for f in (0.25,0.5,0.75,1.0))
+for frame in review_frame_numbers:
     scene.frame_set(frame)
     review_path=os.path.join(review_dir,"review-%04d.png" % frame)
     scene.render.filepath=review_path
@@ -594,7 +608,7 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
                "review_frame_paths":review_frames,
                "video_path":video if video_status=="exported" else None,
                "video_export_status":video_status,
-               "duration_seconds":60,"fps":12,"frame_count":720,
+               "duration_seconds":duration_seconds,"fps":12,"frame_count":frame_count,
                "object_count":len(scene.objects),"audio":"none","subtitles":"none",
                "mia_rig_bones":len(scene.objects["Mia_Rig"].data.bones),
                "stepa_rig_bones":len(scene.objects["Stepa_Rig"].data.bones),
@@ -604,7 +618,7 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
 '''
 
 
-def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> dict[str, Any]:
+def _render_episode1_release(project: Path, workspace: Path, blender: Path, duration_seconds: int) -> dict[str, Any]:
     """Render only the fixed Episode 1 scene folder; never overwrite existing files."""
     if project.name != "S01E01_SC01_RELEASE":
         return {"status": "rejected", "reason": "episode1_release_project_not_allowlisted"}
@@ -625,7 +639,8 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         script = Path(temp) / "episode1_animation.py"
         cfg = Path(temp) / "release.json"
         script.write_text(_episode1_animation_script(), encoding="utf-8")
-        cfg.write_text(json.dumps({"output_dir": str(project), "asset_root": str(asset_root)},
+        cfg.write_text(json.dumps({"output_dir": str(project), "asset_root": str(asset_root),
+                                   "duration_seconds": duration_seconds},
                                   ensure_ascii=False), encoding="utf-8")
         try:
             proc = subprocess.run(
@@ -656,7 +671,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
     if not png_ok:
         return {"status": "failed", "reason": png_reason}
     if (data.get("status") != "completed" or data.get("stage") != "episode1_scene1_animated_animatic"
-            or data.get("duration_seconds") != 60 or data.get("frame_count") != 720
+            or data.get("duration_seconds") != duration_seconds or data.get("frame_count") != duration_seconds * 12
             or data.get("audio") != "none" or data.get("subtitles") != "none"
             or data.get("mia_rig_bones",0) < 20 or data.get("stepa_rig_bones",0) < 20):
         return {"status": "failed", "reason": "episode1_release_manifest_validation_failed"}
@@ -669,7 +684,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
     else:
         return {"status": "failed", "reason": "episode1_video_export_" + str(data.get("video_export_status", "status_missing"))}
     review_frames = data.get("review_frame_paths", [])
-    expected_review_names = {f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)}
+    expected_review_names = {f"review-{round(duration_seconds * 12 * part):04d}.png" for part in (0.25, 0.5, 0.75, 1.0)}
     if not isinstance(review_frames, list) or {Path(p).name for p in review_frames} != expected_review_names:
         return {"status": "failed", "reason": "episode1_review_frame_manifest_invalid"}
     for frame_path in review_frames:
@@ -682,7 +697,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
             "video_path": str(video) if data.get("video_export_status") == "exported" else None,
             "video_export_status": data.get("video_export_status"),
             "review_frames": review_frames, "resolution": dimensions,
-            "duration_seconds": 60, "fps": 12, "frame_count": 720,
+            "duration_seconds": duration_seconds, "fps": 12, "frame_count": duration_seconds * 12,
             "object_count": data.get("object_count"), "mia_rig_bones": data.get("mia_rig_bones"),
             "stepa_rig_bones": data.get("stepa_rig_bones"), "manual_review_required": True,
             "note": "Animated courtyard animatic with 20-control segmented proxy rigs; smooth production skinning and final model approval remain outstanding."}
@@ -740,10 +755,12 @@ def _validate_png(path: Path, expected_size: tuple[int, int]) -> tuple[bool, str
         return False, "preview_unreadable", None
 
 
-def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[str, Any]:
+def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_seconds: int = 5) -> dict[str, Any]:
     """Create a fixed Mia character/prop blockout, save .blend, and validate preview."""
     if not isinstance(project_name, str) or not project_name or len(project_name) > 48:
         raise BlenderWorkflowError("Invalid project name.")
+    if type(duration_seconds) is not int or duration_seconds not in (5, 60):
+        raise BlenderWorkflowError("Episode 1 duration must be 5 seconds for review or 60 seconds after review.")
     if not _PROJECT_NAME.fullmatch(project_name):
         raise BlenderWorkflowError("Project name must contain only letters, digits, underscores, or hyphens.")
     blender = find_blender_executable()
@@ -776,7 +793,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
             and not overwrite):
         # A preview may exist from a prior animation attempt that failed during
         # video setup. The source blockout remains valid and can be animated in place.
-        return _render_episode1_release(project, workspace, blender)
+        return _render_episode1_release(project, workspace, blender, duration_seconds)
     if not overwrite and any(p.exists() for p in outputs):
         return {"status": "blocked", "reason": "outputs_exist; explicit overwrite required", "project_dir": str(project)}
     import tempfile
@@ -840,7 +857,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     try:
         result = generate()
         if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":
-            result = _render_episode1_release(project, workspace, blender)
+            result = _render_episode1_release(project, workspace, blender, duration_seconds)
         completed = result.get("status") == "completed"
         return result
     finally:
