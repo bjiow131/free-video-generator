@@ -113,8 +113,7 @@ def _matches_unsupported_16bit_dialog(title: str, body: str, executable: str | o
     slash = chr(92)
     normalized_body = body.casefold().replace("/", slash)
     requested = str(Path(executable)).casefold().replace("/", slash)
-    basename = Path(executable).name.casefold()
-    if requested not in normalized_body and basename not in normalized_body:
+    if requested not in normalized_body:
         return False
     return any(marker in normalized_body for marker in (
         "64-bit", "64 bit", "64-разряд", "64 разряд",
@@ -129,6 +128,14 @@ def _dismiss_matching_dialogs(executable: str, events: list[dict[str, object]]) 
     user32 = ctypes.windll.user32
     wm_close = 0x0010
     enum_proc_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
+    user32.EnumWindows.argtypes = [enum_proc_type, wintypes.LPARAM]
+    user32.EnumChildWindows.argtypes = [wintypes.HWND, enum_proc_type, wintypes.LPARAM]
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.PostMessageW.restype = wintypes.BOOL
 
     def window_text(hwnd) -> str:
         length = min(int(user32.GetWindowTextLengthW(hwnd)), 4096)
