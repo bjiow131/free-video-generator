@@ -25,7 +25,7 @@ READ_ONLY_OPERATIONS = frozenset({
 })
 BLENDER_OPERATIONS = frozenset({
     'save_story_plan', 'blender_forest_preview',
-    'blender_mia_blockout', 'blender_mia_skeleton',
+    'blender_mia_blockout', 'blender_mia_skeleton', 'export_mia_scene_review',
 })
 # Tests execute checked-out local project code. Require a separate checkbox.
 TEST_OPERATIONS = frozenset({'test'})
