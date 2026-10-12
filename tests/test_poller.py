@@ -940,8 +940,26 @@ def test_blockout_overwrite_retry_is_limited_to_fixed_episode1_release(monkeypat
     })["status"] == "rejected"
     assert poller._run_blender_mia_blockout({
         "project_name": "S01E01_SC01_RELEASE", "overwrite": False
-    })["status"] == "rejected"
-    assert len(calls) == 1
+    })["status"] == "completed"
+    assert calls[-1] == ("S01E01_SC01_RELEASE", False, 5, None)
+    assert len(calls) == 2
+
+
+def test_five_second_retry_options_pass_mailbox_protocol():
+    import json
+    from local_agent.control_protocol import parse_task, ProtocolError
+    value = {"protocol_version": 1, "task_id": "five-second-retry",
+             "operation": "blender_mia_blockout",
+             "created_at": "2026-10-12T16:00:00Z", "expires_at": "2026-10-12T18:00:00Z",
+             "requires_local_approval": True,
+             "arguments": {"project_name": "S01E01_SC01_RELEASE", "duration_seconds": 5, "overwrite": True}}
+    assert parse_task(json.dumps(value)).arguments == value["arguments"]
+    for changes in ({"project_name": "different_project"}, {"duration_seconds": True},
+                    {"duration_seconds": 60}, {"overwrite": "yes"},
+                    {"allow_full_render": True}, {"command": "anything"}):
+        changed = {**value, "arguments": {**value["arguments"], **changes}}
+        with pytest.raises(ProtocolError):
+            parse_task(json.dumps(changed))
 
 
 def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():

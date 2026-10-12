@@ -948,7 +948,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
     try:
         result = generate()
         if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":
-            result = _render_episode1_release(project, workspace, blender, duration_seconds)
+            result = _render_episode1_release(project, workspace, blender, duration_seconds, task_id)
         completed = result.get("status") == "completed"
         return result
     finally:

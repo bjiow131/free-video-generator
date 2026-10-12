@@ -119,8 +119,21 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             raise ProtocolError("blender_open_mia_project requires only a safe project_name.")
     if value["operation"] == "blender_mia_blockout":
         args = value["arguments"]
-        if set(args) - {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
-            raise ProtocolError("blender_mia_blockout requires only a safe project_name.")
+        allowed = {"project_name", "duration_seconds", "overwrite", "allow_full_render"}
+        if set(args) - allowed or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("blender_mia_blockout requires a safe project_name and fixed render options.")
+        duration = args.get("duration_seconds", 5)
+        if type(duration) is not int or duration not in (5, 60):
+            raise ProtocolError("Duration must be 5 or 60 seconds.")
+        for flag in ("overwrite", "allow_full_render"):
+            if flag in args and type(args[flag]) is not bool:
+                raise ProtocolError("Render flags must be booleans.")
+        if args.get("overwrite", False) and args["project_name"] != "S01E01_SC01_RELEASE":
+            raise ProtocolError("Overwrite is restricted to the fixed Episode 1 release.")
+        if duration == 60 and (args["project_name"] != "S01E01_SC01_RELEASE" or not args.get("allow_full_render", False)):
+            raise ProtocolError("60-second release requires explicit full render permission.")
+        if duration == 5 and args.get("allow_full_render", False):
+            raise ProtocolError("Full render permission is only valid for 60 seconds.")
     if value["operation"] == "export_mia_scene_review":
         args = value["arguments"]
         if set(args) != {"project_name"} or args.get("project_name") != "S01E01_SC01_DRAFT":
