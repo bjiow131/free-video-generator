@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/octava-durable-memory-20261012
+      - feature/octava-sol-luna-routing-20261012
     paths:
       - "local_agent/octava_*.py"
       - "local_agent/control_protocol.py"
