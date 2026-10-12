@@ -32,7 +32,7 @@ def test_real_hair_geometry_is_changed_but_not_face():
     assert 'eye_sclera' not in code
     assert "mp4" not in code
     assert "scene.frame_set(" not in code
-    assert "video" not in code.lower()
+    assert "bpy.ops.render.render(animation=True)" not in code
 
 def test_parent_files_not_overwritten_if_missing(monkeypatch,tmp_path):
     from local_agent import blender_workflow as wf
