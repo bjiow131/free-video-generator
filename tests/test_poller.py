@@ -877,3 +877,17 @@ def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
     envelope["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="local approval"):
         github_queue.parse_task(json.dumps(envelope))
+
+
+def test_remote_restart_needs_persistent_opt_in_or_local_launcher(monkeypatch):
+    from local_agent import poller
+
+    monkeypatch.delenv("LOCAL_AGENT_ALLOW_REMOTE_RESTART", raising=False)
+    monkeypatch.setattr(poller, "get_opt_in", lambda: {"enabled": False})
+    assert poller._remote_restart_enabled() is False
+
+    monkeypatch.setattr(poller, "get_opt_in", lambda: {"enabled": True})
+    assert poller._remote_restart_enabled() is True
+
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_REMOTE_RESTART", "0")
+    assert poller._remote_restart_enabled() is False

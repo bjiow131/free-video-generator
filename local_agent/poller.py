@@ -61,6 +61,16 @@ def _parse_task_with_restart(raw: str):
 
 _github_queue.parse_task=_parse_task_with_restart
 
+def _remote_restart_enabled() -> bool:
+    """Require a persistent local software-update opt-in or a launcher opt-in."""
+    override=os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART")
+    if override=="0": return False
+    try:
+        opted_in=get_opt_in().get("enabled") is True
+    except TrustedUpdateError:
+        opted_in=False
+    return opted_in or override=="1"
+
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
 
@@ -1128,8 +1138,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             "task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"
         })
         return
-    remote_restart = (task.operation == "restart_agent"
-                      and os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_RESTART") == "1")
+    remote_restart = task.operation == "restart_agent" and _remote_restart_enabled()
     if task.operation == "restart_agent" and not remote_restart:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,"status": "blocked",
