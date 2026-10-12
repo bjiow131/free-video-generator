@@ -107,6 +107,47 @@ class ModelRoutingTests(unittest.TestCase):
             request_advice("Please start", tier="expensive-unapproved", project_id="mia")
         self.assertFalse(ProjectMemory(self.workspace, "mia").path.exists())
 
+    def test_local_switch_verifies_sol_before_saving_and_keeps_vault(self):
+        settings = __import__("pathlib").Path(self.workspace) / "agent" / "octava_model.json"
+        requests = []
+        def send(req, timeout):
+            requests.append(json.loads(req.data)["model"])
+            return Response("OK")
+        with patch.object(credentials, "MODEL_SETTINGS", settings), patch.object(
+                credentials, "read_key", return_value=("fake-vault-key-12345", "windows_vault")):
+            self.assertEqual(credentials.configured_model(), "gpt-6-luna")
+            output = credentials.set_default_model({"model": "gpt-6.1-sol"}, transport=send)
+            self.assertEqual(output["model"], "gpt-6.1-sol")
+            self.assertEqual(requests, ["gpt-6.1-sol"])
+            self.assertEqual(credentials.model_for_tier("default"), "gpt-6.1-sol")
+            self.assertEqual(credentials.model_for_tier("simple"), "gpt-6-luna")
+            self.assertEqual(json.loads(settings.read_text())["model"], "gpt-6.1-sol")
+            # A second selection of the same model is free (no extra probe).
+            credentials.set_default_model({"model": "gpt-6.1-sol"}, transport=send)
+            self.assertEqual(len(requests), 1)
+
+    def test_failed_model_probe_keeps_previously_chosen_model_and_key(self):
+        settings = __import__("pathlib").Path(self.workspace) / "octava-model.json"
+        def failing(req, timeout):
+            raise HTTPError(req.full_url, 404, "unsupported", {}, io.BytesIO(b"secret"))
+        with patch.object(credentials, "MODEL_SETTINGS", settings), patch.object(
+                credentials, "read_key", return_value=("fake-vault-key-12345", "windows_vault")):
+            with self.assertRaisesRegex(credentials.OctavaKeyError, "404"):
+                credentials.set_default_model({"model": "gpt-6.1-sol"}, transport=failing)
+            self.assertFalse(settings.exists())
+            self.assertEqual(credentials.configured_model(), "gpt-6-luna")
+            with self.assertRaises(credentials.OctavaKeyError):
+                credentials.set_default_model({"model": "not-a-listed-model"}, transport=failing)
+            self.assertFalse(settings.exists())
+
+    def test_corrupt_model_settings_do_not_silently_select_another_model(self):
+        settings = __import__("pathlib").Path(self.workspace) / "octava-model.json"
+        settings.write_text('{"model": "unknown"}', encoding="utf-8")
+        with patch.object(credentials, "MODEL_SETTINGS", settings):
+            with self.assertRaises(credentials.OctavaKeyError):
+                credentials.configured_model()
+        self.assertEqual(settings.read_text(encoding="utf-8"), '{"model": "unknown"}')
+
     def test_structured_mailbox_accepts_only_fixed_tiers(self):
         task = {
             "protocol_version": 1, "task_id": "test-model-choice",
