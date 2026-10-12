@@ -447,8 +447,8 @@ def telegram_upload_local_media(token: str, chat: str, method: str,
     if not 16 <= len(content) <= limit:
         raise TelegramAlertError("Файл слишком большой или пустой")
     if method == "sendPhoto":
-        valid = (suffix == ".png" and content.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
-                 or suffix == ".jpg" and content.startswith(b"\\xff\\xd8\\xff")
+        valid = (suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n")
+                 or suffix == ".jpg" and content.startswith(b"\xff\xd8\xff")
                  or suffix == ".webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP")
     else:
         valid = content[4:8] == b"ftyp"
@@ -457,15 +457,15 @@ def telegram_upload_local_media(token: str, chat: str, method: str,
     if not isinstance(caption, str) or len(caption) > 600:
         raise TelegramAlertError("Недопустимая подпись")
     boundary = uuid.uuid4().hex
-    mark = ("--" + boundary + "\\r\\n").encode("ascii")
+    mark = ("--" + boundary + "\r\n").encode("ascii")
     def field_part(name: str, value: str) -> bytes:
-        return (mark + f'Content-Disposition: form-data; name="{name}"\\r\\n\\r\\n'.encode("ascii")
-                + value.encode("utf-8") + b"\\r\\n")
+        return (mark + f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
+                + value.encode("utf-8") + b"\r\n")
     payload = (
         field_part("chat_id", chat) + field_part("caption", caption) + mark
-        + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\\r\\n'.encode("ascii")
-        + f"Content-Type: {mime}\\r\\n\\r\\n".encode("ascii")
-        + content + b"\\r\\n" + ("--" + boundary + "--\\r\\n").encode("ascii")
+        + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\r\n'.encode("ascii")
+        + f"Content-Type: {mime}\r\n\r\n".encode("ascii")
+        + content + b"\r\n" + ("--" + boundary + "--\r\n").encode("ascii")
     )
     url = "https://api.telegram.org/bot" + token + "/" + method
     request = Request(url, data=payload, method="POST", headers={
