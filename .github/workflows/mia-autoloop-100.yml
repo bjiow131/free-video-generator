@@ -1,0 +1,30 @@
+name: Mia Astra 100 autonomous cycles
+on:
+  push:
+    branches: [feature/mia-autoloop-100-20261013]
+    paths:
+      - "local_agent/blender_workflow.py"
+      - "local_agent/poller.py"
+      - "local_agent/control_protocol.py"
+      - "local_agent/mailbox_policy.py"
+      - "tests/test_mia_autoloop_100.py"
+      - ".github/workflows/mia-autoloop-100.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mia-autoloop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest,ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements-github-mailbox.txt
+      - run: python -m compileall -q local_agent
+      - run: python -m pytest -q tests/test_mia_autoloop_100.py tests/test_control_protocol.py tests/test_mailbox_policy.py tests/test_mailbox_idle_alerts.py tests/test_mia_astra_vision.py tests/test_mia_model_review_delivery.py tests/test_unattended_poller.py
