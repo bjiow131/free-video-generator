@@ -12,7 +12,12 @@ import re
 import subprocess
 import tempfile
 from typing import Any
-from local_agent.blender_locator import find_blender_executable
+from local_agent.blender_locator import (
+    find_blender_executable, is_supported_windows_blender,
+    watch_unsupported_blender_dialogs,
+)
+
+_REAL_SUBPROCESS_RUN = subprocess.run
 
 
 PROJECT_RE = path_identifier_pattern(48)
@@ -67,21 +72,19 @@ for obj in list(bpy.context.scene.objects):
     x = obj.matrix_world.translation.x
     side = ".L" if x >= 0 else ".R"
     bone_name = None
-    if any(word in label for word in ("head", "hair", "eye", "iris", "nose")):
+    if any(word in label for word in ("head", "hair", "fringe", "eye", "iris", "nose", "helmet")):
         bone_name = "head"
     elif "neck" in label:
         bone_name = "neck"
-    elif "torso" in label:
+    elif "backpack" in label or "torso" in label:
         bone_name = "spine"
-    elif "skirt" in label:
-        bone_name = "pelvis"
-    elif "upper arm" in label:
+    elif "sleeve" in label or "upper arm" in label:
         bone_name = "upper_arm" + side
-    elif "forearm" in label or "hand" in label:
+    elif "cuff" in label or "forearm" in label or "hand" in label:
         bone_name = "forearm" + side
-    elif "lower leg" in label or "shoe" in label:
+    elif "lower leg" in label or "trouser cuff" in label or "shoe" in label:
         bone_name = "shin" + side
-    elif "leg" in label:
+    elif "trouser leg" in label or "leg" in label:
         bone_name = "thigh" + side
     if bone_name is None or bone_name not in arm_data.bones:
         unbound_objects.append(obj.name)
@@ -133,6 +136,8 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     blender = find_blender_executable()
     if blender is None:
         return {"status": "blocked", "reason": "blender_executable_not_found"}
+    if os.name == "nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender):
+        return {"status": "blocked", "reason": "blender_executable_not_supported_64_bit_windows"}
     workspace = Path(workspace_value).expanduser().resolve()
     project = workspace / project_name
     if is_link_or_junction(project):
@@ -143,32 +148,40 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     if is_link_or_junction(project):
         return {"status": "rejected", "reason": "project_must_not_be_symlink_or_junction"}
     source = project / "mia_blockout.blend"
+    if is_link_or_junction(source):
+        return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
+    if not source.is_file() or source.stat().st_size == 0:
+        return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
     output = project / "mia_skeleton.blend"
     report = project / "mia_skeleton_result.json"
+    if is_link_or_junction(output) or is_link_or_junction(report):
+        return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
+    if output.exists() or report.exists():
+        return {"status": "blocked", "reason": "skeleton_outputs_exist_no_overwrite"}
     for path in (source, output, report):
         if is_link_or_junction(path):
             return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
-    if not source.is_file() or source.stat().st_size == 0:
-        return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
-    if output.exists() or report.exists():
-        return {"status": "blocked", "reason": "skeleton_outputs_exist_no_overwrite"}
     try:
         with tempfile.TemporaryDirectory(prefix=".mia-rig-", dir=project) as temp:
             script = Path(temp) / "skeleton.py"
             script.write_text(_RIG_SCRIPT, encoding="utf-8")
-            proc = subprocess.run(
-                [str(blender), "--disable-autoexec", "--background", "--factory-startup",
-                 "--python-exit-code", "1", "--python", str(script), "--", str(source), str(output), str(report)],
-                cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
-                check=False, shell=False,
-            )
+            dismissed_dialogs: list[dict[str, object]] = []
+            with watch_unsupported_blender_dialogs(blender, dismissed_dialogs):
+                proc = subprocess.run(
+                    [str(blender), "--disable-autoexec", "--background", "--factory-startup",
+                     "--python-exit-code", "1", "--python", str(script), "--", str(source), str(output), str(report)],
+                    cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                    check=False, shell=False,
+                )
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "skeleton_smoke_test_timeout"}
     except OSError as exc:
-        return {"status": "error", "error_type": type(exc).__name__}
+        return {"status": "error", "error_type": type(exc).__name__,
+                "compatibility_dialog_auto_closed": bool(locals().get("dismissed_dialogs"))}
     if proc.returncode != 0 or not output.is_file() or output.stat().st_size == 0 or not report.is_file():
         return {"status": "failed", "reason": "blender_skeleton_step_failed",
-                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:]}
+                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:],
+                "compatibility_dialog_auto_closed": bool(dismissed_dialogs)}
     try:
         result = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError):

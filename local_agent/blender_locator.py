@@ -7,12 +7,14 @@ calls, package managers, registry writes, or automatic installation.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+import threading
 from typing import Callable, Mapping
 
 
@@ -76,6 +78,123 @@ def find_blender_executable(
     return None
 
 
+_SUPPORTED_WINDOWS_MACHINES = {0x8664, 0xAA64}  # AMD64 and ARM64
+
+
+def is_supported_windows_blender(path: str | os.PathLike[str]) -> bool:
+    """Check the PE header before asking Windows to launch a Blender binary."""
+    try:
+        with Path(path).open("rb") as stream:
+            dos = stream.read(64)
+            if len(dos) < 64 or dos[:2] != b"MZ":
+                return False
+            offset = int.from_bytes(dos[0x3C:0x40], "little")
+            if offset < 64 or offset > 1_048_576:
+                return False
+            stream.seek(offset)
+            header = stream.read(6)
+        return (len(header) == 6 and header[:4] == bytes((80, 69, 0, 0))
+                and int.from_bytes(header[4:6], "little") in _SUPPORTED_WINDOWS_MACHINES)
+    except (OSError, ValueError):
+        return False
+
+
+def _matches_unsupported_16bit_dialog(title: str, body: str, executable: str | os.PathLike[str]) -> bool:
+    """Match only the known Windows loader dialog for the Blender process we launched."""
+    normalized_title = " ".join(title.casefold().split())
+    known_titles = {
+        "unsupported 16-bit application",
+        "unsupported 16 bit application",
+        "неподдерживаемое 16-разрядное приложение",
+        "неподдерживаемое 16 разрядное приложение",
+    }
+    if normalized_title not in known_titles:
+        return False
+    slash = chr(92)
+    normalized_body = body.casefold().replace("/", slash)
+    requested = str(Path(executable)).casefold().replace("/", slash)
+    if requested not in normalized_body:
+        return False
+    return any(marker in normalized_body for marker in (
+        "64-bit", "64 bit", "64-разряд", "64 разряд",
+    ))
+
+
+def _dismiss_matching_dialogs(executable: str, events: list[dict[str, object]]) -> None:
+    """Close only the exact compatibility dialog referring to our Blender executable."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    wm_close = 0x0010
+    enum_proc_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
+    user32.EnumWindows.argtypes = [enum_proc_type, wintypes.LPARAM]
+    user32.EnumChildWindows.argtypes = [wintypes.HWND, enum_proc_type, wintypes.LPARAM]
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.PostMessageW.restype = wintypes.BOOL
+
+    def window_text(hwnd) -> str:
+        length = min(int(user32.GetWindowTextLengthW(hwnd)), 4096)
+        if length <= 0:
+            return ""
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, len(buffer))
+        return buffer.value
+
+    def visit(hwnd, _lparam):
+        title = window_text(hwnd)
+        if not title:
+            return True
+        child_text = []
+
+        def visit_child(child, _child_param):
+            value = window_text(child)
+            if value:
+                child_text.append(value)
+            return True
+
+        child_callback = enum_proc_type(visit_child)
+        user32.EnumChildWindows(hwnd, child_callback, 0)
+        body = " ".join(child_text)
+        if _matches_unsupported_16bit_dialog(title, body, executable):
+            if user32.PostMessageW(hwnd, wm_close, 0, 0):
+                events.append({"code": "unsupported_16bit_blender_dialog", "closed": True})
+        return True
+
+    callback = enum_proc_type(visit)
+    user32.EnumWindows(callback, 0)
+
+
+@contextmanager
+def watch_unsupported_blender_dialogs(executable: str | os.PathLike[str], events: list[dict[str, object]]):
+    """Auto-close one known Windows compatibility popup while a Blender launch is active."""
+    if os.name != "nt":
+        yield events
+        return
+    stopped = threading.Event()
+    resolved = str(Path(executable).resolve())
+
+    def watch() -> None:
+        while not stopped.is_set():
+            try:
+                _dismiss_matching_dialogs(resolved, events)
+            except (OSError, AttributeError):
+                pass
+            stopped.wait(0.25)
+
+    thread = threading.Thread(target=watch, name="blender-dialog-guard", daemon=True)
+    thread.start()
+    try:
+        yield events
+    finally:
+        stopped.set()
+        thread.join(timeout=1.0)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify the locally installed Blender executable")
     parser.add_argument("--check", action="store_true", help="Check Blender --version without launching its GUI")
@@ -89,6 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if args.check:
+        if os.name == "nt" and not is_supported_windows_blender(found):
+            print("Configured Blender is not a supported 64-bit Windows executable.", file=sys.stderr)
+            return 2
         try:
             result = subprocess.run(
                 [str(found), "--version"], capture_output=True, text=True,

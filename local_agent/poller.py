@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import re
 from pathlib import Path
 import threading
 import subprocess
@@ -211,13 +212,73 @@ def doctor_with_supervisor() -> dict[str, Any]:
     return result
 
 
+
+_TRUSTED_UPDATE_DIAGNOSTIC_TESTS = (
+    "tests/test_trusted_updates.py",
+    "tests/test_unattended_poller.py",
+)
+
+
+def _parse_trusted_update_diagnostics(output: str, exit_code: int) -> dict[str, Any]:
+    """Return only bounded pytest metadata; never publish captured output or tracebacks."""
+    failed = []
+    for match in re.finditer(r"(?m)^FAILED\s+(tests/test_[A-Za-z0-9_./:-]+)", output):
+        node_id = match.group(1)[:240]
+        if node_id not in failed:
+            failed.append(node_id)
+        if len(failed) >= 40:
+            break
+    error_types = []
+    for match in re.finditer(r"(?m)^E\s+([A-Za-z][A-Za-z0-9_]*(?:Error|Exception)):", output):
+        name = match.group(1)
+        if name not in error_types:
+            error_types.append(name)
+        if len(error_types) >= 20:
+            break
+    summary_match = re.search(r"(?m)^(?:=+\s*)?([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error|warning))*)\s+in [0-9.]+s(?:\s*=+)?$", output)
+    summary = summary_match.group(1) if summary_match else ("focused tests passed" if exit_code == 0 else "focused tests failed; summary unavailable")
+    return {
+        "status": "completed" if exit_code == 0 else "failed",
+        "suite": "trusted_update_and_unattended_poller",
+        "exit_code": int(exit_code),
+        "failed_tests": failed,
+        "error_types": error_types,
+        "summary": summary[:200],
+    }
+
+
+def run_trusted_update_diagnostics() -> dict[str, Any]:
+    """Run the fixed updater gate suite and publish only sanitized test metadata."""
+    command = [sys.executable, "-m", "pytest", "-q", *_TRUSTED_UPDATE_DIAGNOSTIC_TESTS]
+    try:
+        completed = subprocess.run(
+            command, cwd=ROOT, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", timeout=240, shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "suite": "trusted_update_and_unattended_poller", "timeout_seconds": 240}
+    except OSError as exc:
+        return {"status": "error", "suite": "trusted_update_and_unattended_poller", "error_type": type(exc).__name__}
+    return _parse_trusted_update_diagnostics(completed.stdout or "", completed.returncode)
+
+
 SUPPORTED_HANDLERS = {
     "doctor": doctor_with_supervisor,
     "preflight": preflight,
     "status": status,
     "logs": tail_logs,
     "test": run_tests,
+    "trusted_update_diagnostics": run_trusted_update_diagnostics,
 }
+
+_SPECIALIZED_OPERATIONS = frozenset({
+    "apply_patch", "blender_forest_preview", "save_story_plan",
+    "compile_story_plan", "scan_project_assets", "sync_approved_assets",
+    "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
+    "blender_open_mia_project", "blender_inspect_mia_project",
+    "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
+})
 
 
 def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None) -> dict[str, Any]:
@@ -821,10 +882,18 @@ def _run_blender_open_mia_project(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_blender_mia_blockout(arguments: dict[str, Any]) -> dict[str, Any]:
-    """Create and validate the fixed Mia starter blockout using local Blender."""
+    """Create and validate fixed Mia blockouts; allow guarded retry only for the Episode 1 release."""
     from local_agent.blender_workflow import BlenderWorkflowError, create_mia_blockout
+    project_name = arguments.get("project_name")
+    overwrite = False
+    if set(arguments) == {"project_name", "overwrite"}:
+        if project_name != "S01E01_SC01_RELEASE" or type(arguments.get("overwrite")) is not bool or not arguments["overwrite"]:
+            return {"status": "rejected", "reason": "overwrite_retry_only_for_fixed_episode1_release"}
+        overwrite = True
+    elif set(arguments) != {"project_name"}:
+        return {"status": "rejected", "reason": "invalid_blockout_arguments"}
     try:
-        return create_mia_blockout(arguments["project_name"])
+        return create_mia_blockout(project_name, overwrite=overwrite)
     except BlenderWorkflowError as exc:
         return {"status": "rejected", "reason": str(exc)[:1000]}
     except OSError as exc:
@@ -835,6 +904,43 @@ def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
     """Build a fixed skeleton prototype for an existing local Mia blockout."""
     from local_agent.blender_rigging import create_mia_skeleton
     return create_mia_skeleton(arguments["project_name"])
+
+
+def _run_export_mia_scene_review(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Export only fixed Episode 1 review projects to the locally opted-in Dropbox folder."""
+    allowed_projects = {"S01E01_SC01_DRAFT", "S01E01_SC01_RELEASE"}
+    if set(arguments) != {"project_name"} or arguments.get("project_name") not in allowed_projects:
+        return {"status": "rejected", "reason": "episode1_project_not_allowlisted"}
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        workspace = str(ROOT.parent / "AI-Agent-Workspace")
+    from local_agent.dropbox_review import ReviewDeliveryError, export_mia_scene_review
+    try:
+        return export_mia_scene_review(workspace, arguments["project_name"])
+    except ReviewDeliveryError as exc:
+        return {"status": "blocked", "reason": str(exc)[:500]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+
+
+def _run_sync_approved_assets(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Download only pinned assets after the existing local authorization."""
+    if set(arguments) != {"project_name"}:
+        return {"status": "rejected", "reason": "unexpected_asset_sync_arguments"}
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        return {"status": "blocked", "reason": "set_LOCAL_AGENT_WORKSPACE_locally"}
+    from local_agent.github_asset_sync import AssetSyncError, sync_approved_assets
+    try:
+        return sync_approved_assets(
+            workspace,
+            arguments["project_name"],
+            ROOT / "docs" / "season1" / "asset_sync_manifest.json",
+        )
+    except AssetSyncError as exc:
+        return {"status": "rejected", "reason": str(exc)[:1000]}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
 
 
 def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -998,7 +1104,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"}:
+    if handler is None and task.operation not in _SPECIALIZED_OPERATIONS:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -1087,6 +1193,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_compile_story_plan(task.arguments)
             elif task.operation == "scan_project_assets":
                 details = _run_scan_project_assets(task.arguments)
+            elif task.operation == "sync_approved_assets":
+                details = _run_sync_approved_assets(task.arguments)
+            elif task.operation == "export_mia_scene_review":
+                details = _run_export_mia_scene_review(task.arguments)
             elif task.operation == "blender_knowledge_search":
                 details = _run_blender_knowledge_search(task.arguments)
             elif task.operation == "blender_preflight":
@@ -1883,7 +1993,7 @@ def _supervisor_telegram_poll_once(status_line: str, tasks_line: str,
 
 def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
     """Fast crash recovery, with bounded backoff for persistent start failures."""
-    return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 5)))
+    return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 6)))
 
 
 def supervise_windows() -> int:

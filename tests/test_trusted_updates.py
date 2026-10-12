@@ -67,6 +67,46 @@ def test_manifest_restricts_file_paths_and_untrusted_sources():
             update.parse_manifest(json.dumps(changed).encode())
 
 
+def test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_update():
+    paths = [
+        "local_agent/control_protocol.py",
+        "local_agent/github_asset_sync.py",
+        "docs/season1/asset_sync_manifest.json",
+        "tests/test_github_asset_sync.py",
+        "tests/test_github_asset_sync_resume.py",
+        "tests/test_asset_sync_protocol.py",
+        "local_agent/mailbox_policy.py",
+        "local_agent/studio_static/app.js",
+        "tests/test_mailbox_policy.py",
+    ]
+    valid = manifest(files=[{"path": path, "sha256": "b"*64} for path in paths])
+    parsed = update.parse_manifest(json.dumps(valid).encode())
+    assert {item["path"] for item in parsed["files"]} == set(paths)
+
+    blocked = manifest(files=[{"path": "local_agent/trusted_updates.py", "sha256": "b"*64}])
+    with pytest.raises(update.TrustedUpdateError):
+        update.parse_manifest(json.dumps(blocked).encode())
+
+
+def test_pinned_update_fetch_uses_rate_limit_free_raw_content(monkeypatch):
+    payload = b"pinned trusted file"
+    response = SimpleNamespace(status_code=200, content=payload)
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        return response
+
+    monkeypatch.setattr(update.requests, "get", get)
+    digest = hashlib.sha256(payload).hexdigest()
+    assert update._fetch_pinned("run_github_mailbox_agent.bat", "a" * 40, digest) == payload
+    assert calls[0][0] == (
+        "https://raw.githubusercontent.com/bjiow131/free-video-generator/"
+        + "a" * 40 + "/run_github_mailbox_agent.bat"
+    )
+    assert calls[0][1]["allow_redirects"] is False
+
+
 def test_update_stages_and_keeps_backup(location):
     target = location / "run_github_mailbox_agent.bat"
     target.write_bytes(b"old safe launcher")
@@ -266,6 +306,54 @@ def test_unattended_blender_command_remains_headless(tmp_path):
         bridge.run_task("forest_preview", project_name="headless_test")
 
 
+
+def test_blender_executable_preflight_and_narrow_dialog_match(tmp_path):
+    from local_agent.blender_locator import (
+        is_supported_windows_blender, _matches_unsupported_16bit_dialog,
+    )
+
+    fake = tmp_path / "blender.exe"
+    fake.write_bytes(b"placeholder")
+    assert is_supported_windows_blender(fake) is False
+
+    pe = bytearray(0x80 + 6)
+    pe[:2] = b"MZ"
+    pe[0x3C:0x40] = (0x80).to_bytes(4, "little")
+    pe[0x80:0x84] = bytes((80, 69, 0, 0))
+    pe[0x84:0x86] = (0x8664).to_bytes(2, "little")
+    fake.write_bytes(pe)
+    assert is_supported_windows_blender(fake) is True
+
+    title = "Неподдерживаемое 16-разрядное приложение"
+    body = f"Не удалось запустить {fake}: несовместимо с 64-разрядной версией Windows."
+    assert _matches_unsupported_16bit_dialog(title, body, fake) is True
+    assert _matches_unsupported_16bit_dialog("Ошибка", body, fake) is False
+    assert _matches_unsupported_16bit_dialog(title, body, tmp_path / "other.exe") is False
+
+
+def test_existing_skeleton_output_blocks_before_blender_launch(monkeypatch, tmp_path):
+    from local_agent import blender_rigging as rigging
+
+    blender = tmp_path / "blender.exe"
+    blender.write_text("placeholder", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    project = workspace / "mia"
+    project.mkdir(parents=True)
+    (project / "mia_blockout.blend").write_bytes(b"blockout")
+    output = project / "mia_skeleton.blend"
+    output.write_bytes(b"keep")
+    monkeypatch.setenv("BLENDER_EXECUTABLE", str(blender))
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
+
+    def fail_if_launched(*_args, **_kwargs):
+        raise AssertionError("Blender must not launch when the output already exists")
+
+    monkeypatch.setattr(rigging.subprocess, "run", fail_if_launched)
+    result = rigging.create_mia_skeleton("mia")
+    assert result == {"status": "blocked", "reason": "skeleton_outputs_exist_no_overwrite"}
+    assert output.read_bytes() == b"keep"
+
+
 def test_telegram_notifications_disabled_until_paired(monkeypatch, tmp_path):
     from local_agent import studio_server as studio
     monkeypatch.setattr(studio, "_TELEGRAM_OUTBOX", tmp_path / "telegram_pending")
@@ -379,11 +467,82 @@ def test_mailbox_ten_minute_idle_notice_with_restart(tmp_path, monkeypatch):
     state = poller._mailbox_idle_tick(state, github_reachable=True, now=1600)
     assert state["mailbox_idle_notice_sent"] is True
     assert "10 минут" in queued[-1][1]
-    assert poller._mailbox_idle_tick(state, github_reachable=True, now=2600) is state
-    assert poller._mailbox_idle_initialize(state, now=3000) is state
-    assert len(queued) == 1
-    state = poller._mailbox_idle_new_task(state, now=3001)
+    # Repeat the reminder after each ten-minute idle interval.
+    repeated = poller._mailbox_idle_tick(state, github_reachable=True, now=2600)
+    assert repeated["mailbox_idle_last_notice_at"] == 2600
+    assert len(queued) == 2
+    assert poller._mailbox_idle_initialize(repeated, now=3000) is repeated
+    state = poller._mailbox_idle_new_task(repeated, now=3001)
     assert not state["mailbox_idle_notice_sent"]
     state = poller._mailbox_idle_tick(state, github_reachable=True, now=3601)
     assert state["mailbox_idle_notice_sent"] is True
-    assert len(queued) == 2
+    assert len(queued) == 3
+
+
+
+def test_trusted_update_diagnostics_parser_redacts_arbitrary_output():
+    from local_agent.poller import _parse_trusted_update_diagnostics
+
+    raw = """FAILED tests/test_trusted_updates.py::test_gate - AssertionError: private-story-text
+E   RuntimeError: ghp_secret_token
+=========================== short test summary info ===========================
+1 failed, 17 passed, 1 skipped in 2.04s
+"""
+    result = _parse_trusted_update_diagnostics(raw, 1)
+    assert result["status"] == "failed"
+    assert result["failed_tests"] == ["tests/test_trusted_updates.py::test_gate"]
+    assert result["error_types"] == ["RuntimeError"]
+    assert result["summary"] == "1 failed, 17 passed, 1 skipped"
+    assert "private-story-text" not in repr(result)
+    assert "ghp_secret_token" not in repr(result)
+
+
+def test_trusted_update_diagnostics_requires_existing_tests_permission():
+    from local_agent.mailbox_policy import default_policy, is_auto_authorized
+
+    policy = default_policy()
+    policy.update(enabled=True, allow_tests=True)
+    assert is_auto_authorized("trusted_update_diagnostics", policy)
+    policy["allow_tests"] = False
+    assert not is_auto_authorized("trusted_update_diagnostics", policy)
+    policy["enabled"] = False
+    policy["allow_tests"] = True
+    assert not is_auto_authorized("trusted_update_diagnostics", policy)
+
+
+def test_episode_scene_review_export_dispatch_is_blender_gated():
+    from local_agent import poller
+    from local_agent.mailbox_policy import default_policy, is_auto_authorized
+
+    operation = "export_mia_scene_review"
+    assert operation in poller._SPECIALIZED_OPERATIONS
+    policy = default_policy()
+    policy.update(enabled=True, allow_blender=True)
+    assert is_auto_authorized(operation, policy)
+    policy["allow_blender"] = False
+    assert not is_auto_authorized(operation, policy)
+
+
+def test_episode1_export_accepts_zstandard_blender_signature(tmp_path):
+    from local_agent.dropbox_review import _is_blender_project_file
+
+    zstd = tmp_path / "scene.blend"
+    zstd.write_bytes(bytes.fromhex("28b52ffd") + b"frame-data")
+    assert _is_blender_project_file(zstd, zstd.read_bytes()[:8])
+
+    unrelated = tmp_path / "unrelated.blend"
+    unrelated.write_bytes(bytes.fromhex("28b52f00") + b"data")
+    assert not _is_blender_project_file(unrelated, unrelated.read_bytes()[:8])
+
+
+def test_episode1_export_accepts_only_gzip_wrapped_blender_headers(tmp_path):
+    import gzip
+    from local_agent.dropbox_review import _is_blender_project_file
+
+    valid = tmp_path / "valid.blend"
+    valid.write_bytes(gzip.compress(b"BLENDER-v500mock"))
+    assert _is_blender_project_file(valid, valid.read_bytes()[:8])
+
+    invalid = tmp_path / "invalid.blend"
+    invalid.write_bytes(gzip.compress(b"unrelated-private-data"))
+    assert not _is_blender_project_file(invalid, invalid.read_bytes()[:8])

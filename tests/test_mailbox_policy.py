@@ -28,7 +28,7 @@ def test_default_is_disabled_and_safest(vault):
 
 
 def test_local_enable_accepts_diagnostics_and_never_arbitrary_patch(vault):
-    value = dict(enabled=True, allow_octava=False, allow_blender=False, allow_tests=False)
+    value = dict(enabled=True, allow_octava=False, allow_blender=False, allow_tests=False, allow_asset_sync=False)
     assert policy.save_policy(value) == value
     assert policy.load_policy() == value
     for op in policy.READ_ONLY_OPERATIONS:
@@ -37,18 +37,46 @@ def test_local_enable_accepts_diagnostics_and_never_arbitrary_patch(vault):
         assert not policy.is_auto_authorized(op)
     assert not policy.is_auto_authorized('octava_advice')
     assert not policy.is_auto_authorized('blender_mia_skeleton')
+    assert not policy.is_auto_authorized('export_mia_scene_review')
+    assert not policy.is_auto_authorized('sync_approved_assets')
 
 
 def test_optional_permissions_are_independent(vault):
-    value = dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True)
+    value = dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True, allow_asset_sync=False)
     policy.save_policy(value)
     assert policy.is_auto_authorized('octava_advice')
     assert policy.is_auto_authorized('test')
     assert policy.is_auto_authorized('save_story_plan')
+    assert policy.is_auto_authorized('export_mia_scene_review')
     assert not policy.is_auto_authorized('apply_patch')
     value['enabled'] = False
     policy.save_policy(value)
     assert not policy.is_auto_authorized('octava_advice')
+
+
+def test_asset_sync_needs_its_own_local_permission(vault):
+    value = dict(enabled=True, allow_octava=False, allow_blender=False,
+                 allow_tests=False, allow_asset_sync=False)
+    policy.save_policy(value)
+    assert not policy.is_auto_authorized('sync_approved_assets')
+
+    value['allow_asset_sync'] = True
+    policy.save_policy(value)
+    assert policy.is_auto_authorized('sync_approved_assets')
+    assert not policy.is_auto_authorized('apply_patch')
+    assert not policy.is_auto_authorized('blender_mia_blockout')
+
+    value['enabled'] = False
+    policy.save_policy(value)
+    assert not policy.is_auto_authorized('sync_approved_assets')
+
+
+def test_legacy_policy_migrates_asset_sync_disabled(vault):
+    old = dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True)
+    policy.POLICY_FILE.parent.mkdir(parents=True)
+    policy.POLICY_FILE.write_text(json.dumps(old), encoding='utf-8')
+    loaded = policy.load_policy()
+    assert loaded == {**old, 'allow_asset_sync': False}
 
 
 @pytest.mark.parametrize('bad', [
@@ -76,7 +104,7 @@ def test_symlink_attack_blocks_storage(vault, tmp_path):
     except (OSError, NotImplementedError):
         pytest.skip('Windows account cannot create a symlink without developer mode')
     with pytest.raises(policy.MailboxPolicyError):
-        policy.save_policy(dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True))
+        policy.save_policy(dict(enabled=True, allow_octava=True, allow_blender=True, allow_tests=True, allow_asset_sync=False))
     assert not list(other.iterdir())
 
 

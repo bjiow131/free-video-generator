@@ -16,7 +16,8 @@ from typing import Any
 _ROOT = Path(__file__).resolve().parents[1]
 POLICY_FILE = _ROOT / '.local_agent' / 'mailbox_policy.json'
 _LOCK = threading.RLock()
-_POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests'}
+_POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests', 'allow_asset_sync'}
+_LEGACY_POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests'}
 READ_ONLY_OPERATIONS = frozenset({
     'doctor', 'preflight', 'status', 'blender_preflight',
     'blender_inspect_mia_project', 'blender_knowledge_search',
@@ -24,10 +25,10 @@ READ_ONLY_OPERATIONS = frozenset({
 })
 BLENDER_OPERATIONS = frozenset({
     'save_story_plan', 'blender_forest_preview',
-    'blender_mia_blockout', 'blender_mia_skeleton',
+    'blender_mia_blockout', 'blender_mia_skeleton', 'export_mia_scene_review',
 })
 # Tests execute checked-out local project code. Require a separate checkbox.
-TEST_OPERATIONS = frozenset({'test'})
+TEST_OPERATIONS = frozenset({'test', 'trusted_update_diagnostics'})
 # Never allow unattended: apply_patch, open GUI, start/stop, backup, logs,
 # remotely provided code, unreviewed repair packages, or unknown operations.
 
@@ -38,15 +39,18 @@ class MailboxPolicyError(ValueError):
 
 def default_policy() -> dict[str, bool]:
     return {'enabled': False, 'allow_octava': False, 'allow_blender': False,
-            'allow_tests': False}
+            'allow_tests': False, 'allow_asset_sync': False}
 
 
 def _validate(data: Any) -> dict[str, bool]:
+    if isinstance(data, dict) and set(data) == _LEGACY_POLICY_FIELDS:
+        # Add the new permission as disabled when reading older local settings.
+        data = {**data, 'allow_asset_sync': False}
     if not isinstance(data, dict) or set(data) != _POLICY_FIELDS:
         raise MailboxPolicyError('Некорректные поля политики автономного режима')
     if any(type(data[name]) is not bool for name in _POLICY_FIELDS):
         raise MailboxPolicyError('Параметры автономного режима должны быть true/false')
-    return {name: data[name] for name in ('enabled', 'allow_octava', 'allow_blender', 'allow_tests')}
+    return {name: data[name] for name in ('enabled', 'allow_octava', 'allow_blender', 'allow_tests', 'allow_asset_sync')}
 
 
 def _safe_directory() -> Path:
@@ -117,6 +121,8 @@ def is_auto_authorized(operation: str, policy: dict[str, bool] | None = None) ->
         return False
     if operation in READ_ONLY_OPERATIONS:
         return True
+    if operation == 'sync_approved_assets':
+        return p['allow_asset_sync']
     if operation in BLENDER_OPERATIONS:
         return p['allow_blender']
     if operation in TEST_OPERATIONS:

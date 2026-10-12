@@ -7,6 +7,8 @@ after an explicit opt-in stored on the Windows computer.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import uuid
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,9 +87,17 @@ def discover_dropbox_root() -> Path | None:
         if not candidate.is_dir():
             return None
         return candidate.resolve()
-    appdata = os.environ.get("APPDATA")
-    if appdata:
+    # Dropbox documents both roaming and local AppData locations on Windows.
+    # Check only these account-config files; never guess a folder named "Dropbox".
+    seen_configs: set[Path] = set()
+    for env_name in ("APPDATA", "LOCALAPPDATA"):
+        appdata = os.environ.get(env_name)
+        if not appdata:
+            continue
         config = Path(appdata) / "Dropbox" / "info.json"
+        if config in seen_configs:
+            continue
+        seen_configs.add(config)
         if config.is_file() and not config.is_symlink():
             try:
                 obj = json.loads(config.read_text(encoding="utf-8"))
@@ -121,6 +132,130 @@ def _ffmpeg(cmd: list[str], *, timeout: int) -> None:
         raise ReviewDeliveryError("FFmpeg export could not finish") from exc
     if p.returncode:
         raise ReviewDeliveryError("FFmpeg preview export failed")
+
+
+def _is_blender_project_file(source: Path, signature: bytes) -> bool:
+    """Recognize Blender's plain, Zstandard, or gzip-compressed file signatures."""
+    if signature.startswith(b"BLENDER"):
+        return True
+    # Blender 3.0+ uses standard Zstandard frames for compressed .blend files.
+    # This exporter handles only the fixed project path previously inspected in Blender.
+    if signature.startswith(b"\x28\xb5\x2f\xfd"):
+        return True
+    if not signature.startswith(b"\x1f\x8b"):
+        return False
+    try:
+        with gzip.open(source, "rb") as stream:
+            return stream.read(7).startswith(b"BLENDER")
+    except (OSError, EOFError):
+        return False
+
+
+def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[str, Any]:
+    """Copy only the fixed Episode 1 draft .blend and PNG to opted-in Dropbox Sync.
+
+    This is an explicit local Dropbox-review export. It accepts no arbitrary
+    source paths, does not include story text, and never overwrites an earlier
+    review folder. Dropbox cloud delivery must still be verified separately.
+    """
+    if project_name not in {"S01E01_SC01_DRAFT", "S01E01_SC01_RELEASE"}:
+        raise ReviewDeliveryError("Only fixed Episode 1 review projects can be exported")
+    if not read_settings()["enabled"]:
+        return {"status": "disabled", "reason": "dropbox_review_permission_disabled"}
+
+    workspace_root = Path(workspace).expanduser()
+    _safe_path(workspace_root)
+    if not workspace_root.is_dir():
+        raise ReviewDeliveryError("Workspace is unavailable")
+    workspace_root = workspace_root.resolve()
+    project = _safe_path(workspace_root / project_name)
+    if not project.is_dir() or not project.resolve().is_relative_to(workspace_root):
+        raise ReviewDeliveryError("Episode 1 draft project is unavailable or outside the workspace")
+
+    if project_name == "S01E01_SC01_RELEASE":
+        sources = [
+            ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
+            ("preview.png", _safe_path(project / "preview.png"), 20_000_000),
+            *[(f"review-{frame:04d}.png",
+               _safe_path(project / "review_frames" / f"review-{frame:04d}.png"), 20_000_000)
+              for frame in (180, 360, 540, 720)],
+        ]
+        video = _safe_path(project / "scene.mp4")
+        if video.is_file():
+            sources.append(("preview.mp4", video, MAX_VIDEO_BYTES))
+    else:
+        sources = (
+            ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
+            ("preview.png", _safe_path(project / "mia_blockout.png"), 20_000_000),
+        )
+    metadata = []
+    for name, source, limit in sources:
+        if not source.is_file():
+            raise ReviewDeliveryError("Required scene artifact is missing")
+        size = source.stat().st_size
+        if size <= 0 or size > limit:
+            raise ReviewDeliveryError("Scene artifact is empty or exceeds its export size limit")
+        with source.open("rb") as stream:
+            signature = stream.read(8)
+        if name == "scene.blend" and not _is_blender_project_file(source, signature):
+            raise ReviewDeliveryError("Scene project is not a Blender file")
+        if name == "preview.png" and signature != bytes.fromhex("89504e470d0a1a0a"):
+            raise ReviewDeliveryError("Scene preview is not a PNG file")
+        if name == "preview.mp4" and (b"ftyp" not in signature or size > MAX_VIDEO_BYTES):
+            raise ReviewDeliveryError("Scene video is not a bounded silent MP4")
+        digest = hashlib.sha256()
+        with source.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        metadata.append({"name": name, "size_bytes": size, "sha256": digest.hexdigest()})
+
+    root = discover_dropbox_root()
+    if root is None:
+        raise ReviewDeliveryError("Dropbox Desktop folder was not detected; sign in to Dropbox desktop")
+    review_root = _safe_path(root / REVIEW_FOLDER)
+    review_root.mkdir(exist_ok=True)
+    if len(list(review_root.iterdir())) >= MAX_REVIEW_JOBS:
+        raise ReviewDeliveryError("Review folder limit reached; manually archive older reviews")
+    job_id = uuid.uuid4().hex
+    destination = _safe_path(review_root / job_id)
+    if destination.exists():
+        raise ReviewDeliveryError("Review job already exists; refusing to overwrite")
+    destination.mkdir()
+    try:
+        for (name, source, _), item in zip(sources, metadata):
+            shutil.copyfile(source, destination / name)
+            # Re-hash the copied bytes so the published manifest describes
+            # the actual Dropbox-sync files, not only the source files.
+            copied = hashlib.sha256()
+            with (destination / name).open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    copied.update(chunk)
+            if copied.hexdigest() != item["sha256"]:
+                raise ReviewDeliveryError("Scene artifact changed during export")
+        manifest = {
+            "status": "draft",
+            "scene_id": "S01_SC01",
+            "project_name": project_name,
+            "manual_visual_review_required": True,
+            "scene_status": "procedural_animatic_candidate" if project_name == "S01E01_SC01_RELEASE" else "procedural_blockout",
+            "video_status": "exported" if any(item["name"] == "preview.mp4" for item in metadata) else "unavailable_from_blender_build",
+            "files": metadata,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+        (destination / "scene_manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (destination / "complete.json").write_text(
+            json.dumps({"status": "completed", "job_id": job_id}) + "\n", encoding="utf-8")
+        return {
+            "status": "exported_to_local_dropbox",
+            "folder": REVIEW_FOLDER + "/" + job_id,
+            "files": [item["name"] for item in metadata] + ["scene_manifest.json", "complete.json"],
+            "sha256": {item["name"]: item["sha256"] for item in metadata},
+            "cloud_sync_verified": False,
+        }
+    except BaseException:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
 
 
 def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[str, Any]:

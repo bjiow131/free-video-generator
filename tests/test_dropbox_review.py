@@ -13,6 +13,7 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "SETTINGS", tmp_path / ".local_agent" / "dropbox_review.json")
     monkeypatch.delenv("LOCAL_AGENT_DROPBOX_ROOT", raising=False)
     monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     return tmp_path
 
 
@@ -91,3 +92,133 @@ def test_video_export_failure_leaves_no_partial_public_review(isolated, monkeypa
     with pytest.raises(mod.ReviewDeliveryError):
         mod.export_review(job, {"job_id":"4"*32}, "ffmpeg")
     assert not (sync / "AI-Agent-Reviews" / ("4"*32)).exists()
+
+
+
+def test_exports_only_fixed_episode1_draft_files_after_local_consent(isolated, monkeypatch):
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    blend = b"BLENDERmock-project-draft"
+    preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
+    (project / "mia_blockout.blend").write_bytes(blend)
+    (project / "mia_blockout.png").write_bytes(preview)
+
+    result = mod.export_mia_scene_review(workspace, "S01E01_SC01_DRAFT")
+    assert result["status"] == "exported_to_local_dropbox"
+    folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
+    assert (folder / "scene.blend").read_bytes() == blend
+    assert (folder / "preview.png").read_bytes() == preview
+    assert result["sha256"]["scene.blend"]
+    assert json.loads((folder / "scene_manifest.json").read_text())["manual_visual_review_required"] is True
+    assert json.loads((folder / "complete.json").read_text())["status"] == "completed"
+
+
+def test_exports_fixed_episode1_release_with_silent_mp4_and_hashes(isolated, monkeypatch):
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_RELEASE"
+    project.mkdir(parents=True)
+    blend = b"BLENDERmock-animated-project"
+    preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
+    video = bytes.fromhex("00000018") + b"ftypisom" + b"silent-video"
+    (project / "mia_blockout.blend").write_bytes(blend)
+    (project / "preview.png").write_bytes(preview)
+    (project / "scene.mp4").write_bytes(video)
+    frames = project / "review_frames"
+    frames.mkdir()
+    for frame in (180, 360, 540, 720):
+        (frames / f"review-{frame:04d}.png").write_bytes(preview)
+
+    result = mod.export_mia_scene_review(workspace, "S01E01_SC01_RELEASE")
+    folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
+    assert result["status"] == "exported_to_local_dropbox"
+    assert (folder / "scene.blend").read_bytes() == blend
+    assert (folder / "preview.png").read_bytes() == preview
+    assert (folder / "preview.mp4").read_bytes() == video
+    manifest = json.loads((folder / "scene_manifest.json").read_text())
+    assert manifest["scene_status"] == "procedural_animatic_candidate"
+    expected = {"scene.blend", "preview.png", "preview.mp4",
+                *(f"review-{frame:04d}.png" for frame in (180, 360, 540, 720))}
+    assert {item["name"] for item in manifest["files"]} == expected
+    assert manifest["video_status"] == "exported"
+    assert result["sha256"]["preview.mp4"]
+
+
+def test_exports_animated_episode1_without_mp4_when_blender_lacks_ffmpeg(isolated, monkeypatch):
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_RELEASE"
+    project.mkdir(parents=True)
+    blend = b"BLENDERmock-animated-project"
+    preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
+    (project / "mia_blockout.blend").write_bytes(blend)
+    (project / "preview.png").write_bytes(preview)
+    frames = project / "review_frames"
+    frames.mkdir()
+    for frame in (180, 360, 540, 720):
+        (frames / f"review-{frame:04d}.png").write_bytes(preview)
+
+    result = mod.export_mia_scene_review(workspace, "S01E01_SC01_RELEASE")
+    folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
+    manifest = json.loads((folder / "scene_manifest.json").read_text())
+    assert result["status"] == "exported_to_local_dropbox"
+    assert not (folder / "preview.mp4").exists()
+    assert manifest["video_status"] == "unavailable_from_blender_build"
+    assert {item["name"] for item in manifest["files"]} == {
+        "scene.blend", "preview.png",
+        *(f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)),
+    }
+
+
+def test_episode1_export_is_disabled_without_local_dropbox_consent(isolated, monkeypatch):
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    (project / "mia_blockout.blend").write_bytes(b"blend")
+    (project / "mia_blockout.png").write_bytes(b"png")
+    assert mod.export_mia_scene_review(workspace, "S01E01_SC01_DRAFT")["status"] == "disabled"
+
+
+def test_episode1_export_rejects_arbitrary_project_and_preserves_existing_data(isolated):
+    with pytest.raises(mod.ReviewDeliveryError, match="fixed Episode 1"):
+        mod.export_mia_scene_review(isolated, "../private")
+    assert not (isolated / "AI-Agent-Reviews").exists()
+
+
+
+def test_episode1_export_accepts_gzip_compressed_blend_header(isolated, monkeypatch):
+    import gzip
+
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    project = isolated / "workspace" / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    (project / "mia_blockout.blend").write_bytes(gzip.compress(b"BLENDER-v500mock"))
+    (project / "mia_blockout.png").write_bytes(bytes.fromhex("89504e470d0a1a0a") + b"preview")
+
+    result = mod.export_mia_scene_review(project.parent, "S01E01_SC01_DRAFT")
+    assert result["status"] == "exported_to_local_dropbox"
+
+
+def test_desktop_root_from_local_appdata_account_config(isolated, monkeypatch):
+    local = isolated / "LocalAppData"
+    (local / "Dropbox").mkdir(parents=True)
+    drive = isolated / "SyncFolderLocal"
+    drive.mkdir()
+    (local / "Dropbox" / "info.json").write_text(
+        json.dumps({"business":{"path":str(drive)}}), encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    assert mod.discover_dropbox_root() == drive.resolve()

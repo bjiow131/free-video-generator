@@ -37,6 +37,13 @@ ALLOWED_FILES = frozenset({
     "run_github_mailbox_agent.bat",
     "run_blender_studio.bat",
     "local_agent/poller.py",
+    "local_agent/control_protocol.py",
+    "local_agent/github_asset_sync.py",
+    "docs/season1/asset_sync_manifest.json",
+    "tests/test_github_asset_sync.py",
+    "tests/test_github_asset_sync_resume.py",
+    "tests/test_asset_sync_protocol.py",
+    "tests/test_mailbox_policy.py",
     "local_agent/blender_bridge.py",
     "local_agent/blender_workflow.py",
     "local_agent/blender_rigging.py",
@@ -192,20 +199,18 @@ def _fetch_manifest(client: Any) -> tuple[dict[str, Any], str] | None:
 
 
 def _fetch_pinned(path: str, commit_sha: str, digest: str) -> bytes:
-    url = "https://api.github.com/repos/" + SOURCE_REPO + "/contents/" + quote(path, safe="/")
+    # Public raw content avoids the unauthenticated GitHub REST API rate limit.
+    # Integrity still comes only from the locally validated pinned commit and SHA-256.
+    url = "https://raw.githubusercontent.com/" + SOURCE_REPO + "/" + commit_sha + "/" + quote(path, safe="/")
     try:
-        response = requests.get(url, params={"ref": commit_sha}, timeout=20,
-                                allow_redirects=False, headers={"Accept": "application/vnd.github+json",
-                                                                "User-Agent": "blender-agent-pinned-updater"})
+        response = requests.get(url, timeout=20, allow_redirects=False,
+                                headers={"User-Agent": "blender-agent-pinned-updater"})
         if response.status_code != 200:
             raise TrustedUpdateError("Cannot fetch pinned update file from trusted GitHub repository")
-        if len(response.content) > MAX_FILE_BYTES * 2:
+        raw = response.content
+        if len(raw) > MAX_FILE_BYTES:
             raise TrustedUpdateError("GitHub file response is too large")
-        info = response.json()
-        if not isinstance(info, dict) or info.get("type") != "file" or info.get("encoding") != "base64":
-            raise TrustedUpdateError("GitHub returned an unexpected file type")
-        raw = base64.b64decode("".join(info["content"].split()), validate=True)
-    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+    except requests.RequestException as exc:
         raise TrustedUpdateError("Pinned GitHub download failed") from exc
     if len(raw) > MAX_FILE_BYTES or hashlib.sha256(raw).hexdigest() != digest:
         raise TrustedUpdateError("Pinned update file digest mismatch")
