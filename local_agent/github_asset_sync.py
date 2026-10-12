@@ -16,6 +16,16 @@ _ALLOWED_CATEGORIES = {
     "character_reference", "character_passport", "animal_reference",
     "animal_passport", "prop", "environment",
 }
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+_MODEL_EXTENSIONS = {".blend", ".obj", ".fbx", ".glb", ".gltf", ".stl", ".abc", ".usd", ".usdz"}
+_CATEGORY_EXTENSIONS = {
+    "character_reference": _IMAGE_EXTENSIONS,
+    "animal_reference": _IMAGE_EXTENSIONS,
+    "character_passport": {".json"},
+    "animal_passport": {".json"},
+    "prop": _IMAGE_EXTENSIONS | _MODEL_EXTENSIONS,
+    "environment": _IMAGE_EXTENSIONS | _MODEL_EXTENSIONS,
+}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _MAX_FILE_BYTES = 100 * 1024 * 1024
 
@@ -60,6 +70,9 @@ def _load_manifest(path: Path) -> dict[str, Any]:
             raise AssetSyncError("category_not_allowlisted")
         source = _safe_relative(item.get("path"))
         destination = _safe_relative(item.get("destination"), asset_only=True)
+        allowed_extensions = _CATEGORY_EXTENSIONS[item["category"]]
+        if source.suffix.lower() not in allowed_extensions or destination.suffix.lower() not in allowed_extensions:
+            raise AssetSyncError("file_extension_not_allowed_for_category")
         digest = item.get("sha256")
         if not _SHA256.fullmatch(digest or ""):
             raise AssetSyncError("invalid_sha256")
@@ -123,8 +136,12 @@ def _download_one(
         if metadata_response.status_code != 200:
             raise AssetSyncError("github_metadata_unavailable")
         metadata = metadata_response.json()
+        remote_size = metadata.get("size")
+        pinned_size = asset.get("size_bytes")
         if (metadata.get("type") != "file" or metadata.get("path") != source.as_posix()
-                or metadata.get("size", 0) > _MAX_FILE_BYTES):
+                or isinstance(remote_size, bool) or not isinstance(remote_size, int)
+                or remote_size < 0 or remote_size > _MAX_FILE_BYTES
+                or (pinned_size is not None and pinned_size != remote_size)):
             raise AssetSyncError("github_file_metadata_rejected")
         raw_url = metadata.get("download_url")
         parsed = urlparse(raw_url or "")
@@ -188,9 +205,10 @@ def sync_approved_assets(
     """
     if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,47}", project_name):
         raise AssetSyncError("invalid_project_name")
-    root = Path(workspace).expanduser().resolve()
-    if root.is_symlink() or getattr(root, "is_junction", lambda: False)():
+    raw_root = Path(workspace).expanduser()
+    if raw_root.is_symlink() or getattr(raw_root, "is_junction", lambda: False)():
         raise AssetSyncError("workspace_must_not_be_linked")
+    root = raw_root.resolve()
     project = root / project_name
     if project.is_symlink() or getattr(project, "is_junction", lambda: False)():
         raise AssetSyncError("project_must_not_be_linked")
