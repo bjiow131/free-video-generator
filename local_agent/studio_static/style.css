@@ -37,3 +37,20 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .telegram-alert-control .section-note{margin:6px 0 0}
 .telegram-alert-control button{flex:none;white-space:nowrap}
 @media(max-width:640px){.telegram-alert-control{flex-direction:column;align-items:stretch}.telegram-alert-control button{width:100%}}
+
+
+/* User-approved Mia turnaround: distinct from generic generated references. */
+.approved-reference-panel{margin:18px 0;padding:16px;border:1px solid var(--border,#375065);border-radius:12px;background:rgba(33,54,68,.34)}
+.approved-reference-panel h3{margin:0 0 8px;font-size:16px}
+.approved-reference-grid{display:grid;grid-template-columns:minmax(155px,1.1fr) minmax(190px,1fr);gap:16px;align-items:start}
+.approved-reference-image{border-radius:8px;overflow:hidden;min-height:120px;background:#182b38;display:flex;align-items:center;justify-content:center}
+.approved-reference-image img{display:block;width:100%;height:auto;max-height:460px;object-fit:contain}
+.approved-reference-meta{display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.approved-reference-meta p{margin:0}
+.approved-reference-meta button{width:100%;white-space:normal}
+@media(max-width:740px){.approved-reference-grid{grid-template-columns:1fr}}
+
+.reference-checklist{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+.reference-checklist li{font-size:13px;line-height:1.5;color:#ced9e3}
+.reference-checklist .done{color:#79d9b0;font-weight:700}
+.reference-checklist .waiting{color:#b1bac8}
