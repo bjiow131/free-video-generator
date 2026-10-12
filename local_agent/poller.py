@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent",
+    "restart_agent", "mia_model_review",
 })
 
 
@@ -1436,6 +1436,30 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_model_review":
+                # Fixed existing static-only mesh workflow; no video, no new model
+                # prompt, no arbitrary external code or paths from the mailbox.
+                from local_agent.blender_workflow import create_reference_mia_model
+                from local_agent.studio_server import telegram_send_mia_review_photos
+                try:
+                    _publish_result_durable(client, task.task_id + "-accepted", {
+                        "task_id": task.task_id, "status": "accepted",
+                        "operation": "mia_model_review", "animation_rendered": False,
+                        "visual_acceptance": "pending",
+                    })
+                except QueueTransportError:
+                    print("Static model task acknowledgement queued locally.")
+                details = create_reference_mia_model(task_id=task.task_id)
+                if details.get("status") == "completed":
+                    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+                    details["telegram_photo_delivery"] = telegram_send_mia_review_photos(workspace, task.task_id)
+                    details["mailbox_preview_delivery"] = {
+                        "status": "included_in_result",
+                        "views": sorted(details.get("thumbnail_jpeg_base64", {})),
+                        "public_repository_upload": False,
+                    }
+                    details["visual_acceptance"] = "pending_user_review"
+                    details["production_ready"] = False
             elif task.operation == "octava_advice":
                 if unattended:
                     # Legacy hook is deliberately a no-op: the user removed the
@@ -1812,37 +1836,33 @@ def _mailbox_idle_new_task(state: dict[str, Any], *, now: float | None = None) -
 
 def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
                        now: float | None = None) -> dict[str, Any]:
-    """Repeat one idle reminder every ten minutes, without offline outbox buildup."""
-    clock = time.time() if now is None else now
-    state = _mailbox_idle_initialize(state, now=clock)
-    latest = state["mailbox_idle_last_notice_at"]
-    since = latest if latest is not None else state["mailbox_last_new_task_at"]
-    if clock - since < _MAILBOX_IDLE_SECONDS:
-        return state
-    try:
-        from local_agent.studio_server import telegram_queue_event, telegram_flush_outbox
-        connection = ("Проверка GitHub работает." if github_reachable else
-                      "Последняя проверка GitHub завершилась ошибкой подключения.")
-        minutes = max(10, int((clock - state["mailbox_last_new_task_at"]) // 60))
-        message = (f"Blender AI Agent: новых заданий из GitHub нет уже {minutes} минут. "
-                   + connection + " Напоминание повторяется каждые 10 минут.")
-        # Stable for the CURRENT idle period: at most one pending notice when
-        # Telegram is offline, but fresh notices after each successful delivery.
-        event_id = "mailbox-idle:" + str(int(state["mailbox_last_new_task_at"]))
-        if not telegram_queue_event(event_id, message):
-            # Notifications disabled, unpaired, or outbox full. Retry later.
-            return state
-        # Durable interval checkpoint before delivery prevents restart spam.
-        updated = {**state, "mailbox_idle_notice_sent": True,
-                   "mailbox_idle_last_notice_at": clock}
-        _save_state(updated)
-        telegram_flush_outbox(max_messages=2)
-        return updated
-    except (ImportError, OSError, RuntimeError, ValueError):
-        # Notification failures must not block GitHub tasks.
-        return state
+    """Legacy compatibility only: owner has disabled ALL idle reminders.
+
+    Never enqueue a ten-minute no-task Telegram message. Error, restart
+    and completed-task notifications remain enabled.
+    """
+    return state
 
 
+def _purge_idle_telegram_outbox() -> int:
+    """Remove only old queued idle reminders so restart cannot deliver them."""
+    root = ROOT / ".local_agent" / "telegram_outbox"
+    if root.is_symlink() or getattr(root, "is_junction", lambda: False)() or not root.is_dir():
+        return 0
+    removed = 0
+    for path in root.glob("*.json"):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2048:
+            continue
+        try:
+            event = json.loads(path.read_text(encoding="utf-8"))
+            if (isinstance(event, dict) and
+                    isinstance(event.get("event"), str) and
+                    event["event"].startswith("mailbox-idle:")):
+                path.unlink()
+                removed += 1
+        except (ValueError, OSError, TypeError):
+            continue
+    return removed
 
 
 def _legacy_supervisor_telegram_loop(stop_event: threading.Event) -> None:
@@ -1925,6 +1945,12 @@ def main() -> int:
         print(f"Cannot recover previous trusted update: {exc}")
         return 2
 
+    # Remove any undelivered historic idle notices before regular notification
+    # delivery resumes. No other message classes are touched.
+    try:
+        _purge_idle_telegram_outbox()
+    except (OSError, ValueError):
+        pass
     interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
     next_update_check = time.monotonic()
