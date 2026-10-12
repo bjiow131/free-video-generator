@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import re
 from pathlib import Path
 import threading
 import subprocess
@@ -211,12 +212,64 @@ def doctor_with_supervisor() -> dict[str, Any]:
     return result
 
 
+
+_TRUSTED_UPDATE_DIAGNOSTIC_TESTS = (
+    "tests/test_trusted_updates.py",
+    "tests/test_unattended_poller.py",
+)
+
+
+def _parse_trusted_update_diagnostics(output: str, exit_code: int) -> dict[str, Any]:
+    """Return only bounded pytest metadata; never publish captured output or tracebacks."""
+    failed = []
+    for match in re.finditer(r"(?m)^FAILED\\s+(tests/test_[A-Za-z0-9_./:-]+)", output):
+        node_id = match.group(1)[:240]
+        if node_id not in failed:
+            failed.append(node_id)
+        if len(failed) >= 40:
+            break
+    error_types = []
+    for match in re.finditer(r"(?m)^E\\s+([A-Za-z][A-Za-z0-9_]*(?:Error|Exception)):", output):
+        name = match.group(1)
+        if name not in error_types:
+            error_types.append(name)
+        if len(error_types) >= 20:
+            break
+    summary_match = re.search(r"(?m)^=+\\s*([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error))*(?:, [0-9]+ (?:passed|skipped|error))*)\\s+in [0-9.]+s\\s*=+$", output)
+    summary = summary_match.group(1) if summary_match else ("focused tests passed" if exit_code == 0 else "focused tests failed; summary unavailable")
+    return {
+        "status": "completed" if exit_code == 0 else "failed",
+        "suite": "trusted_update_and_unattended_poller",
+        "exit_code": int(exit_code),
+        "failed_tests": failed,
+        "error_types": error_types,
+        "summary": summary[:200],
+    }
+
+
+def run_trusted_update_diagnostics() -> dict[str, Any]:
+    """Run the fixed updater gate suite and publish only sanitized test metadata."""
+    command = [sys.executable, "-m", "pytest", "-q", *_TRUSTED_UPDATE_DIAGNOSTIC_TESTS]
+    try:
+        completed = subprocess.run(
+            command, cwd=ROOT, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", timeout=240, shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "suite": "trusted_update_and_unattended_poller", "timeout_seconds": 240}
+    except OSError as exc:
+        return {"status": "error", "suite": "trusted_update_and_unattended_poller", "error_type": type(exc).__name__}
+    return _parse_trusted_update_diagnostics(completed.stdout or "", completed.returncode)
+
+
 SUPPORTED_HANDLERS = {
     "doctor": doctor_with_supervisor,
     "preflight": preflight,
     "status": status,
     "logs": tail_logs,
     "test": run_tests,
+    "trusted_update_diagnostics": run_trusted_update_diagnostics,
 }
 
 
