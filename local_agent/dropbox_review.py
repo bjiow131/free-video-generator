@@ -127,8 +127,12 @@ def _ffmpeg(cmd: list[str], *, timeout: int) -> None:
 
 
 def _is_blender_project_file(source: Path, signature: bytes) -> bool:
-    """Accept a Blender file header directly or inside bounded gzip data."""
+    """Recognize Blender's plain, Zstandard, or gzip-compressed file signatures."""
     if signature.startswith(b"BLENDER"):
+        return True
+    # Blender 3.0+ uses standard Zstandard frames for compressed .blend files.
+    # This exporter handles only the fixed project path previously inspected in Blender.
+    if signature.startswith(b"\x28\xb5\x2f\xfd"):
         return True
     if not signature.startswith(b"\x1f\x8b"):
         return False
