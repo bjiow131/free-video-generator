@@ -891,3 +891,23 @@ def test_remote_restart_needs_persistent_opt_in_or_local_launcher(monkeypatch):
 
     monkeypatch.setenv("LOCAL_AGENT_ALLOW_REMOTE_RESTART", "0")
     assert poller._remote_restart_enabled() is False
+
+
+def test_remote_restart_opens_only_fixed_loopback_studio(monkeypatch):
+    from local_agent import poller
+
+    opened = []
+    monkeypatch.setenv("LOCAL_AGENT_STUDIO_PORT", "55313")
+    monkeypatch.setattr(poller, "request_runtime_restart", lambda _: {"restart_pending": True})
+    monkeypatch.setattr(
+        poller.webbrowser, "open",
+        lambda url, new=0, autoraise=True: opened.append((url, new, autoraise)) or True,
+    )
+    result = poller._request_restart_and_open_studio()
+    assert result["restart_pending"] is True
+    assert result["browser_open_requested"] is True
+    assert opened == [("http://127.0.0.1:55313/", 2, True)]
+
+    monkeypatch.setenv("LOCAL_AGENT_STUDIO_PORT", "99999")
+    poller._request_restart_and_open_studio()
+    assert opened[-1][0] == "http://127.0.0.1:55313/"

@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import webbrowser
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
@@ -70,6 +71,21 @@ def _remote_restart_enabled() -> bool:
     except TrustedUpdateError:
         opted_in=False
     return opted_in or override=="1"
+
+def _request_restart_and_open_studio() -> dict[str, Any]:
+    """Queue a controlled service restart and open only the fixed loopback Studio URL."""
+    result=request_runtime_restart({})
+    try:
+        port=int(os.environ.get("LOCAL_AGENT_STUDIO_PORT","55313"))
+    except (TypeError,ValueError):
+        port=55313
+    if not 1024<=port<=65535: port=55313
+    url=f"http://127.0.0.1:{port}/"
+    try:
+        opened=bool(webbrowser.open(url,new=2,autoraise=True))
+    except (webbrowser.Error,OSError,RuntimeError):
+        opened=False
+    return {**result,"studio_url":url,"browser_open_requested":opened}
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -1229,7 +1245,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
             if task.operation == "restart_agent":
-                details = request_runtime_restart({})
+                details = _request_restart_and_open_studio()
                 details.update({"status":"completed","reason":"controlled_restart_requested"})
             elif task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"], task.task_id)

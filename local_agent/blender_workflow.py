@@ -409,6 +409,10 @@ sphere("Adult guardian proxy | head",(gx,gy,2.55),(0.30,0.29,0.36),skin)
 for s in (-1,1):
     box("Adult guardian proxy | leg",(gx+s*0.20,gy,0.62),(0.22,0.25,0.82),coat)
     bar("Adult guardian proxy | arm",(gx+s*0.39,gy,2.05),(gx+s*0.48,gy-0.05,1.45),0.09,coat)
+# Keep the guardian as a scene reference only; the approved framing keeps adults off camera.
+for obj in scene.objects:
+    if obj.name.startswith("Adult guardian proxy"):
+        obj.hide_render=True
 mouth_mat=material("Face | mouth",(0.055,0.018,0.014,1))
 def mouth_for(prefix,x,y,z):
     obj=sphere(prefix+" | mouth cue",(x,y,z),(0.105,0.025,0.025),mouth_mat)
