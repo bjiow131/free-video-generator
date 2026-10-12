@@ -22,6 +22,7 @@ from local_agent.story_plan import StoryPlanError, save_story_plan
 from local_agent.studio_state import StudioConflict, StudioError, StudioStore, to_story_plan
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
+from local_agent.restart_control import write_server_status, clear_server_status, peek_restart_request, clear_restart_request
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
@@ -296,16 +297,47 @@ def main(argv=None):
     store = StudioStore(args.workspace, args.project)
     server = StudioHTTPServer(("127.0.0.1", args.port), store)
     url = f"http://127.0.0.1:{server.server_port}/"
+    pid = os.getpid()
+    write_server_status(store.root, pid, server.server_port)
+    stop_watcher = threading.Event()
+    restart_requested = threading.Event()
     print("Blender AI Agent studio:", url, flush=True)
     if not args.no_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+
+    def watch_restart():
+        while not stop_watcher.wait(0.5):
+            try:
+                request = peek_restart_request(store.root)
+            except OSError:
+                continue
+            if request is None:
+                continue
+            with server.jobs.lock:
+                scene_render_active = server.jobs.active is not None
+            with server.render_lock:
+                demo_render_active = server.render_status.get("state") == "running"
+            if scene_render_active or demo_render_active:
+                continue
+            clear_restart_request(store.root, request["task_id"])
+            restart_requested.set()
+            server.shutdown()
+            return
+
+    watcher = threading.Thread(target=watch_restart, name="studio-restart-watcher", daemon=True)
+    watcher.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        stop_watcher.set()
         server.server_close()
-    return 0
+        clear_server_status(store.root, pid)
+        watcher.join(timeout=2)
+    # The fixed Windows launcher handles this private exit code by starting the
+    # same Studio command again, which opens the browser on the fresh port.
+    return 75 if restart_requested.is_set() else 0
 
 
 if __name__ == "__main__":
