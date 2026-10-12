@@ -1,0 +1,42 @@
+name: OctavAPI release Luna Sol acceptance
+
+on:
+  push:
+    branches:
+      - release/octava-luna-sol-safe-20261012
+    paths:
+      - "local_agent/octava_*.py"
+      - "local_agent/control_protocol.py"
+      - "local_agent/poller.py"
+      - "local_agent/studio_server.py"
+      - "local_agent/studio_static/app.js"
+      - "tests/test_octava_*.py"
+      - ".github/workflows/octava-luna-sol-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements-github-mailbox.txt
+      - name: Compile local agent
+        run: python -m compileall -q local_agent
+      - name: Verify Studio JavaScript
+        run: node --check local_agent/studio_static/app.js
+      - name: Isolated OctavAPI release tests
+        run: python -m unittest discover -s tests -p "test_octava_*.py" -v
+      - name: Protocol and legacy memory regression
+        run: python -m unittest discover -s tests -p "test_control_protocol.py" -v
