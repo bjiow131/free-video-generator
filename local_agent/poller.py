@@ -272,6 +272,14 @@ SUPPORTED_HANDLERS = {
     "trusted_update_diagnostics": run_trusted_update_diagnostics,
 }
 
+_SPECIALIZED_OPERATIONS = frozenset({
+    "apply_patch", "blender_forest_preview", "save_story_plan",
+    "compile_story_plan", "scan_project_assets", "sync_approved_assets",
+    "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
+    "blender_open_mia_project", "blender_inspect_mia_project",
+    "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
+})
+
 
 def _apply_patch(patch: str, task_id: str, expected_base_sha: str | None = None) -> dict[str, Any]:
     """Apply and test a patch in an isolated Git worktree, never in the active checkout."""
@@ -1087,7 +1095,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "sync_approved_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"}:
+    if handler is None and task.operation not in _SPECIALIZED_OPERATIONS:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
