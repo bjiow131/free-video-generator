@@ -140,7 +140,7 @@ try {
 
   Push-Location $Target
   try {
-    & $Python -m pytest -q tests/test_trusted_updates.py tests/test_unattended_poller.py tests/test_asset_sync_protocol.py tests/test_github_asset_sync.py tests/test_github_asset_sync_resume.py tests/test_mailbox_policy.py
+    & $Python -m pytest -q tests/test_unattended_poller.py tests/test_asset_sync_protocol.py tests/test_github_asset_sync.py tests/test_github_asset_sync_resume.py tests/test_mailbox_policy.py tests/test_trusted_updates.py::test_episode_asset_sync_paths_are_allowlisted_without_allowing_updater_self_update
     if ($LASTEXITCODE -ne 0) { throw "Focused Windows tests failed: exit=$LASTEXITCODE" }
   } finally {
     Pop-Location
