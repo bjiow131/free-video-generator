@@ -51,6 +51,30 @@ def test_mailbox_failure_diagnostics_rejects_log_symlink(monkeypatch, tmp_path):
     assert poller._mailbox_failure_diagnostics()["last_exception_type"] is None
 
 
+def test_supervisor_recovery_enters_install_directory_before_import(tmp_path, monkeypatch):
+    from local_agent import poller
+    import subprocess
+    import json
+    root = tmp_path / "Studio folder's name"
+    root.mkdir()
+    monkeypatch.setattr(poller.subprocess, "list2cmdline", lambda args: args)
+    args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
+    (root / "local_agent").mkdir()
+    (root / "local_agent" / "__init__.py").write_text("")
+    (root / "local_agent" / "poller.py").write_text(
+        "import os,sys,json; print(json.dumps([os.getcwd(),sys.argv[1:]]))")
+    completed = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, check=True)
+    assert json.loads(completed.stdout) == [str(root), ["--supervise"]]
+
+
+def test_mailbox_process_diagnostics_never_exports_commands(monkeypatch):
+    from local_agent import poller
+    monkeypatch.setattr(poller.os, "name", "nt")
+    monkeypatch.setattr(poller.subprocess, "run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout='[{"pid":1,"parent_pid":2,"role":"mailbox","CommandLine":"SECRET"},{"pid":3,"parent_pid":2,"role":"unknown"}]'))
+    assert poller._mailbox_process_diagnostics() == [{"pid": 1, "parent_pid": 2, "role": "mailbox"}]
+
+
 @pytest.fixture(autouse=True)
 def _agent_interactive_console_for_tests(monkeypatch):
     # Simulate an interactive local terminal for approval-path unit tests.

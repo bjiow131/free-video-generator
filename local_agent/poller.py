@@ -178,6 +178,37 @@ def _mailbox_failure_diagnostics() -> dict[str, Any]:
     }
 
 
+def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
+    """Classify Windows Python workers without returning command lines or secrets."""
+    if os.name != "nt":
+        return []
+    script = (
+        "@(Get-CimInstance Win32_Process | Where-Object {"
+        "$_.Name -match '^pythonw?\\.exe$' -and "
+        "$_.CommandLine -match '-m\\s+local_agent\\.(poller|studio_server)(\\s|$)'"
+        "} | ForEach-Object {"
+        "$role=if($_.CommandLine -match 'studio_server'){'studio'}"
+        "elseif($_.CommandLine -match '--supervise'){'supervisor'}else{'mailbox'};"
+        "[pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;role=$role}"
+        "}) | ConvertTo-Json -Compress")
+    try:
+        found = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            timeout=10, check=False, text=True)
+        if found.returncode or len(found.stdout) > 8192:
+            return []
+        items = json.loads(found.stdout or "[]")
+        if isinstance(items, dict):
+            items = [items]
+        return [{key: item[key] for key in ("pid", "parent_pid", "role")}
+                for item in items[:30] if isinstance(item, dict)
+                and type(item.get("pid")) is int and type(item.get("parent_pid")) is int
+                and item.get("role") in ("mailbox", "studio", "supervisor")]
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
+        return []
+
+
 def doctor_with_supervisor() -> dict[str, Any]:
     """Read-only Windows watchdog health; never reveal account names or secrets."""
     result = doctor()
@@ -294,6 +325,7 @@ def doctor_with_supervisor() -> dict[str, Any]:
         "recent_event_types": recent,
         "service_restart_check_seconds": 2,
         "mailbox_failures": _mailbox_failure_diagnostics(),
+        "agent_processes": _mailbox_process_diagnostics(),
     }
     return result
 
@@ -2130,6 +2162,13 @@ def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
     return 2.0 if runtime_seconds >= 10 else min(60.0, float(2 ** min(failures + 1, 6)))
 
 
+def _supervisor_recovery_command(program: Path, root: Path) -> str:
+    """Make Task Scheduler startup independent of its default System32 directory."""
+    code = ("import os,runpy;os.chdir(" + repr(str(root)) + ");"
+            "runpy.run_module('local_agent.poller',run_name='__main__')")
+    return subprocess.list2cmdline([str(program), "-c", code, "--supervise"])
+
+
 def supervise_windows() -> int:
     """Maintain Studio and the private mailbox worker for the signed-in user.
 
@@ -2229,7 +2268,7 @@ def supervise_windows() -> int:
     try:
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         program = pythonw if pythonw.is_file() else Path(sys.executable)
-        trigger = f'"{program}" -m local_agent.poller --supervise'
+        trigger = _supervisor_recovery_command(program, root)
         completed = subprocess.run(
             ["schtasks.exe", "/Create", "/F", "/SC", "MINUTE", "/MO", "1",
              "/TN", "BlenderOctavaStudioSupervisor", "/TR", trigger],
