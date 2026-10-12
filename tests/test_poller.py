@@ -75,6 +75,32 @@ def test_mailbox_process_diagnostics_never_exports_commands(monkeypatch):
     assert poller._mailbox_process_diagnostics() == [{"pid": 1, "parent_pid": 2, "role": "mailbox"}]
 
 
+def test_duplicate_poller_waits_for_owner_instead_of_exiting(monkeypatch, tmp_path):
+    from local_agent import poller
+    owner = object()
+    attempts = []
+    waits = []
+    def acquire(path):
+        attempts.append(path)
+        if len(attempts) < 3:
+            raise poller.PollerAlreadyRunning("busy")
+        return owner
+    monkeypatch.setattr(poller, "_acquire_instance_lock", acquire)
+    monkeypatch.setattr(poller.time, "sleep", waits.append)
+    assert poller._wait_for_instance_lock(tmp_path / "poller.lock") is owner
+    assert waits == [10, 10]
+
+
+def test_standby_poller_does_not_hide_unsafe_lock_path(monkeypatch, tmp_path):
+    from local_agent import poller
+    def acquire(path):
+        raise RuntimeError("unsafe path")
+    monkeypatch.setattr(poller, "_acquire_instance_lock", acquire)
+    monkeypatch.setattr(poller.time, "sleep", lambda _: pytest.fail("unsafe error retried"))
+    with pytest.raises(RuntimeError, match="unsafe path"):
+        poller._wait_for_instance_lock(tmp_path / "poller.lock")
+
+
 @pytest.fixture(autouse=True)
 def _agent_interactive_console_for_tests(monkeypatch):
     # Simulate an interactive local terminal for approval-path unit tests.

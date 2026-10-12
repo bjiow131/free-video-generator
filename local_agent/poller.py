@@ -1629,6 +1629,23 @@ def _poll_repair_once(client: GitHubQueueClient, state: dict[str, Any]) -> dict[
     return state
 
 
+class PollerAlreadyRunning(RuntimeError):
+    """Another process owns the mailbox; this is contention, not a worker crash."""
+
+
+def _wait_for_instance_lock(path: Path):
+    """Remain a standby without reading tasks until the existing owner releases it."""
+    announced = False
+    while True:
+        try:
+            return _acquire_instance_lock(path)
+        except PollerAlreadyRunning:
+            if not announced:
+                print("Another mailbox worker owns the lock; waiting without executing tasks.", flush=True)
+                announced = True
+            time.sleep(10)
+
+
 def _acquire_instance_lock(path: Path):
     """Acquire an OS-released singleton lock so two pollers cannot run one task twice."""
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -1648,13 +1665,19 @@ def _acquire_instance_lock(path: Path):
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as exc:
-                raise RuntimeError("another local agent poller is already running") from exc
+                import errno
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                raise PollerAlreadyRunning("another local agent poller is already running") from exc
         else:
             import fcntl
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError as exc:
-                raise RuntimeError("another local agent poller is already running") from exc
+                import errno
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                raise PollerAlreadyRunning("another local agent poller is already running") from exc
         handle.seek(0)
         handle.truncate()
         handle.write(str(os.getpid()).encode("ascii"))
@@ -1817,7 +1840,9 @@ def main() -> int:
         return 2
 
     try:
-        lock_handle = _acquire_instance_lock(STATE_PATH.with_name("poller.lock"))
+        lock_handle = _wait_for_instance_lock(STATE_PATH.with_name("poller.lock"))
+    except KeyboardInterrupt:
+        return 0
     except RuntimeError as exc:
         print(f"Cannot start poller: {exc}")
         return 2
