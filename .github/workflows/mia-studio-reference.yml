@@ -2,12 +2,13 @@ name: Mia approved reference in Studio
 
 on:
   push:
-    branches: [feature/mia-approved-reference-in-studio-20261013]
+    branches: [feature/mia-approved-reference-in-studio-20261013, feature/studio-nav-image-fix-20261013]
     paths:
       - "local_agent/studio_references.py"
       - "local_agent/studio_server.py"
       - "local_agent/studio_static/**"
       - "tests/test_studio_approved_mia_reference.py"
+      - "tests/test_studio_frontend_navigation.mjs"
       - ".github/workflows/mia-studio-reference.yml"
   workflow_dispatch:
 
@@ -33,6 +34,8 @@ jobs:
         run: python -m compileall -q local_agent
       - name: JavaScript syntax
         run: node --check local_agent/studio_static/app.js
+      - name: Frontend navigation and Mia thumbnail regressions
+        run: node --test tests/test_studio_frontend_navigation.mjs
       - name: Approved Mia reference integration
         run: python -m unittest discover -s tests -p test_studio_approved_mia_reference.py -v
       - name: Existing Studio tests
