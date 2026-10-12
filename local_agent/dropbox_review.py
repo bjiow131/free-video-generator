@@ -157,6 +157,12 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
         size = source.stat().st_size
         if size <= 0 or size > limit:
             raise ReviewDeliveryError("Scene artifact is empty or exceeds its export size limit")
+        with source.open("rb") as stream:
+            signature = stream.read(8)
+        if name == "scene.blend" and not signature.startswith(b"BLENDER"):
+            raise ReviewDeliveryError("Scene project is not a Blender file")
+        if name == "preview.png" and signature != b"\\x89PNG\\r\\n\\x1a\\n":
+            raise ReviewDeliveryError("Scene preview is not a PNG file")
         digest = hashlib.sha256()
         with source.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -195,9 +201,9 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             "exported_at": datetime.now(timezone.utc).isoformat(),
         }
         (destination / "scene_manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         (destination / "complete.json").write_text(
-            json.dumps({"status": "completed", "job_id": job_id}) + "\\n", encoding="utf-8")
+            json.dumps({"status": "completed", "job_id": job_id}) + "\n", encoding="utf-8")
         return {
             "status": "exported_to_local_dropbox",
             "folder": REVIEW_FOLDER + "/" + job_id,
