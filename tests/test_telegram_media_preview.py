@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import urllib.request
 from pathlib import Path
@@ -137,7 +138,16 @@ def test_upload_rejects_bad_image_signature_before_network(tmp_path, monkeypatch
         studio_server.telegram_upload_local_media(TOKEN, CHAT, "sendPhoto", bad, "Test")
 
 
-def test_relay_rejects_bad_tokens_chats_bytes_and_poll_updates():
+def test_relay_requires_owner_binding_for_large_files(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_RELAY_TOKEN_SHA256", raising=False)
+    caption = base64.urlsafe_b64encode("Мия".encode()).decode()
+    assert telegram_relay_server.forward_media(
+        TOKEN, CHAT, "sendPhoto", caption, PNG)[0] == 503
+
+
+def test_relay_rejects_bad_tokens_chats_bytes_and_poll_updates(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_RELAY_TOKEN_SHA256",
+                       hashlib.sha256(TOKEN.encode()).hexdigest())
     caption = base64.urlsafe_b64encode("Мия".encode()).decode()
     relay = telegram_relay_server
     assert relay.forward_media("bad", CHAT, "sendPhoto", caption, PNG)[0] == 400
