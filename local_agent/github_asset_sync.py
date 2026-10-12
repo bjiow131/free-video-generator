@@ -183,9 +183,19 @@ def _download_one(
         if _digest(part) != expected:
             part.unlink(missing_ok=True)
             raise AssetSyncError("sha256_mismatch")
-        if target.exists():
-            return {"path": relative.as_posix(), "status": "preserved_conflict"}
-        os.replace(part, target)
+        try:
+            # Hard-link creation is atomic and fails if another file appeared at
+            # the destination after the initial existence check. Unlike
+            # os.replace(), it cannot overwrite a concurrent local file.
+            os.link(part, target)
+        except FileExistsError:
+            return {
+                "path": relative.as_posix(),
+                "status": "duplicate" if _digest(target) == expected else "preserved_conflict",
+            }
+        except OSError as exc:
+            raise AssetSyncError("atomic_install_unavailable") from exc
+        part.unlink()
         return {"path": relative.as_posix(), "status": "downloaded"}
     except requests.RequestException as exc:
         # Keep a partial file so a locally approved retry can resume it.
@@ -205,6 +215,8 @@ def sync_approved_assets(
     """
     if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,47}", project_name):
         raise AssetSyncError("invalid_project_name")
+    if project_name != "episode1":
+        raise AssetSyncError("project_not_allowlisted")
     raw_root = Path(workspace).expanduser()
     if raw_root.is_symlink() or getattr(raw_root, "is_junction", lambda: False)():
         raise AssetSyncError("workspace_must_not_be_linked")
