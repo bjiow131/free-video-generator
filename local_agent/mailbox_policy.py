@@ -19,7 +19,7 @@ _LOCK = threading.RLock()
 _POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests', 'allow_asset_sync'}
 _LEGACY_POLICY_FIELDS = {'enabled', 'allow_octava', 'allow_blender', 'allow_tests'}
 READ_ONLY_OPERATIONS = frozenset({
-    'doctor', 'preflight', 'status', 'blender_preflight',
+    'doctor', 'preflight', 'status', 'octava_connectivity', 'blender_preflight',
     'blender_inspect_mia_project', 'blender_knowledge_search',
     'scan_project_assets', 'compile_story_plan',
 })
