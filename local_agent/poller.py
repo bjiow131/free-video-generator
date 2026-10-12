@@ -948,7 +948,11 @@ def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "blocked", "reason": "workspace_missing"}
     base = workspace.resolve()
     origin = base / "episode1" / "assets" / "references" / "mia_turnaround_approved_20261012.jpeg"
-    model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-static-model-v6-20261012T222818971Z"
+    # Review the newest verified fixed checkpoint first. The fallback preserves
+    # compatibility for brand-new installations that only have V6.
+    revised_model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-identity-shape-v2-20261012T230037560Z"
+    original_model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-static-model-v6-20261012T222818971Z"
+    model_dir = revised_model_dir if revised_model_dir.exists() else original_model_dir
     for path in (origin, origin.parent, model_dir, model_dir.parent):
         if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
             return {"status": "blocked", "reason": "symlink_or_junction_blocked"}
