@@ -67,21 +67,19 @@ for obj in list(bpy.context.scene.objects):
     x = obj.matrix_world.translation.x
     side = ".L" if x >= 0 else ".R"
     bone_name = None
-    if any(word in label for word in ("head", "hair", "eye", "iris", "nose")):
+    if any(word in label for word in ("head", "hair", "eye", "iris", "nose", "helmet")):
         bone_name = "head"
     elif "neck" in label:
         bone_name = "neck"
-    elif "torso" in label:
+    elif "backpack" in label or "torso" in label:
         bone_name = "spine"
-    elif "skirt" in label:
-        bone_name = "pelvis"
-    elif "upper arm" in label:
+    elif "sleeve" in label or "upper arm" in label:
         bone_name = "upper_arm" + side
-    elif "forearm" in label or "hand" in label:
+    elif "cuff" in label or "forearm" in label or "hand" in label:
         bone_name = "forearm" + side
-    elif "lower leg" in label or "shoe" in label:
+    elif "lower leg" in label or "trouser cuff" in label or "shoe" in label:
         bone_name = "shin" + side
-    elif "leg" in label:
+    elif "trouser leg" in label or "leg" in label:
         bone_name = "thigh" + side
     if bone_name is None or bone_name not in arm_data.bones:
         unbound_objects.append(obj.name)
