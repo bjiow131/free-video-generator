@@ -584,7 +584,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False) -> dict[s
     project.mkdir(parents=True, exist_ok=True)
     outputs = [project / "mia_blockout.blend", project / "mia_blockout.png", project / "blender_result.json"]
     if project_name == "S01E01_SC01_RELEASE":
-        outputs.append(project / "scene.mp4")
+        outputs.extend([project / "preview.png", project / "scene.mp4"])
     if any(is_link_or_junction(p) for p in outputs + [project / "blender_stdout.log", project / "blender_stderr.log"]):
         raise BlenderWorkflowError("Output files must not be symlinks or junctions.")
     if (project_name == "S01E01_SC01_RELEASE"
