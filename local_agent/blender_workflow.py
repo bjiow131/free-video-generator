@@ -2485,3 +2485,204 @@ with open(os.path.join(out,"applied_commands.json"),"w",encoding="utf-8") as f:
     json.dump({"cycle":cfg["cycle"],"commands":modified,
                "total_modified_elements":total,"video_created":False},f,indent=2)
 '''
+
+
+def _mia_v2_similarity(before: Path, after: Path) -> tuple[bool,str]:
+    """Distinguish changed-file from changed-visible-image using installed FFmpeg."""
+    import hashlib
+    import subprocess
+    if hashlib.sha256(before.read_bytes()).digest()==hashlib.sha256(after.read_bytes()).digest():
+        return False,"identical_png_hash"
+    ffmpeg=shutil.which("ffmpeg")
+    if not ffmpeg:return True,"png_hash_differs_ssim_unavailable"
+    run=subprocess.run([ffmpeg,"-nostdin","-hide_banner","-i",str(before),
+                        "-i",str(after),"-lavfi","ssim","-f","null","-"],
+                        capture_output=True,text=True,timeout=45,check=False,shell=False)
+    import re
+    hits=re.findall(r"All:([0-9.]+)",run.stderr)
+    if not hits:return True,"png_hash_differs_ssim_unavailable"
+    score=float(hits[-1])
+    return score<0.9994,"ssim_"+format(score,".6f")
+
+
+def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
+    """100 sequential local attempts; one FRONT for owner, no interim Mailbox.
+
+    Stop safely if the output is identical, too weak for repeated attempts,
+    API fails or cancellation is requested. No provider code is executed.
+    """
+    import base64
+    import hashlib
+    import re
+    from datetime import datetime,timezone
+    from urllib.error import HTTPError,URLError
+    import requests
+    from local_agent.octava_credentials import read_key
+    from local_agent.mailbox_policy import load_policy,telegram_notifications_enabled
+    from local_agent.studio_server import _telegram_credentials
+    if not isinstance(task_id,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}",task_id):
+        return {"status":"blocked","reason":"unsafe_task_id"}
+    p=load_policy()
+    if not (p.get("enabled") and p.get("allow_octava") and p.get("allow_blender")):
+        return {"status":"blocked","reason":"local_permissions_absent"}
+    key,_=read_key()
+    token,chat=_telegram_credentials()
+    if not key or not token or not chat or not telegram_notifications_enabled():
+        return {"status":"blocked","reason":"provider_or_telegram_not_configured"}
+    blender=find_blender_executable()
+    w=os.environ.get("LOCAL_AGENT_WORKSPACE","")
+    if not w or blender is None or not blender.is_file():
+        return {"status":"blocked","reason":"workspace_or_blender_missing"}
+    workspace=Path(w).expanduser().resolve()
+    root=workspace/"MIA_REFERENCE_REVIEW"
+    parent=root/_MIA_V2_SOURCE
+    original=workspace/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    job=root/("MIA_AUTOLOOP_V2_"+task_id)
+    ref_folder=job/"approved_reference_crops"
+    for path in (root,parent,original,job,ref_folder):
+        if is_link_or_junction(path):
+            return {"status":"blocked","reason":"unsafe_directory"}
+    if not parent.is_dir() or not (parent/"mia_reference_model.blend").is_file():
+        return {"status":"blocked","reason":"original_3d_mesh_missing"}
+    if not original.is_file():
+        return {"status":"blocked","reason":"approved_reference_missing"}
+    if hashlib.sha256(original.read_bytes()).hexdigest()!=_MIA_V2_REF_SHA:
+        return {"status":"blocked","reason":"approved_reference_integrity_failure"}
+    if shutil.disk_usage(workspace).free<2_000_000_000:
+        return {"status":"blocked","reason":"low_disk_space"}
+    if job.exists():
+        if not job.is_dir() or is_link_or_junction(job):
+            return {"status":"blocked","reason":"job_path_not_safe"}
+    else:job.mkdir()
+    try:
+        refs=_mia_v2_prepare_references(workspace,original,ref_folder)
+    except (BlenderWorkflowError,OSError,subprocess.TimeoutExpired) as exc:
+        return {"status":"blocked","reason":"reference_preparation_failed",
+                "error_type":type(exc).__name__}
+    checkpoint=job/"checkpoint.json"
+    if checkpoint.exists():
+        if is_link_or_junction(checkpoint) or checkpoint.stat().st_size>120000:
+            return {"status":"blocked","reason":"checkpoint_invalid"}
+        state=json.loads(checkpoint.read_text(encoding="utf-8"))
+        if state.get("task_id")!=task_id or state.get("reference_sha")!=_MIA_V2_REF_SHA:
+            return {"status":"blocked","reason":"wrong_checkpoint"}
+    else:
+        state={"task_id":task_id,"reference_sha":_MIA_V2_REF_SHA,
+               "completed_cycles":0,"next_cycle":1,"photos_sent":0,
+               "weak_streak":0,"last_change":"first_cycle","last_commands":[],
+               "subjective_scores":[],"started_at":datetime.now(timezone.utc).isoformat()}
+    def persist():
+        temporary=job/"checkpoint.tmp"
+        temporary.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8")
+        os.replace(temporary,checkpoint)
+    for cycle in range(int(state["next_cycle"]),101):
+        if _agent_cancel_requested(task_id):
+            return {"status":"cancelled","completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        if shutil.disk_usage(workspace).free<800_000_000:
+            return {"status":"incomplete","reason":"low_disk_space",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        previous=parent if cycle==1 else job/("cycle_%03d"%(cycle-1))
+        before={v:previous/(v+".png") for v in ("front","side","back")}
+        model=previous/"mia_reference_model.blend"
+        if not model.is_file() or any(not f.is_file() for f in before.values()):
+            return {"status":"incomplete","reason":"previous_blend_or_views_missing",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        try:
+            response=_mia_v2_request(key,refs,before,cycle,state)
+        except (HTTPError,URLError,OSError,TimeoutError,ValueError,IndexError,
+                KeyError,TypeError,BlenderWorkflowError) as exc:
+            return {"status":"incomplete","reason":"astra_multimodal_request_failed",
+                    "error_type":type(exc).__name__,"completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        folder=job/("cycle_%03d"%cycle)
+        if folder.exists():
+            return {"status":"incomplete","reason":"unsafe_attempt_to_repeat_existing_cycle",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        folder.mkdir()
+        # Preserve original multimodal response as validated metadata, not executable text.
+        (folder/"astra_response.json").write_text(
+            json.dumps(response,ensure_ascii=False,indent=2),encoding="utf-8")
+        for v in ("front","side","back"):
+            shutil.copy2(before[v],folder/(v+"_before.png"))
+        with tempfile.TemporaryDirectory(prefix=".mia-v2-render-",dir=folder) as d:
+            script=Path(d)/"approved_blender_script.py"
+            cfg=Path(d)/"parameters.json"
+            script.write_text(_mia_v2_blender_script(),encoding="utf-8")
+            cfg.write_text(json.dumps({"cycle":cycle,"commands":response["commands"],
+                                       "out":str(folder)}),encoding="utf-8")
+            result,cancelled,timed_out,_,err=_run_cancellable_process(
+                [str(blender),"--background",str(model),"--disable-autoexec",
+                 "--offline-mode","--python-exit-code","1","--python",str(script),
+                 "--",str(cfg)],cwd=folder,timeout=960,task_id=task_id)
+        if cancelled:
+            return {"status":"cancelled","completed_cycles":state["completed_cycles"],
+                    "checkpoint":str(checkpoint)}
+        if timed_out or err or not result or result.returncode:
+            return {"status":"incomplete","reason":"blender_multicommand_failed",
+                    "error_type":err or ("Timeout" if timed_out else "BlenderExit"),
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        new_front=folder/"front.png"
+        new_blend=folder/"mia_reference_model.blend"
+        manifest=folder/"applied_commands.json"
+        if (not new_blend.is_file() or new_blend.stat().st_size<1000
+            or not manifest.is_file() or any(not (folder/(v+".png")).is_file()
+                                         for v in ("front","side","back"))):
+            return {"status":"incomplete","reason":"bad_updated_blend_or_three_view_output",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        valid,why,_=_validate_png(new_front,(600,900))
+        if not valid:
+            return {"status":"incomplete","reason":"invalid_front_"+why,
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        details=json.loads(manifest.read_text(encoding="utf-8"))
+        if not details.get("total_modified_elements"):
+            return {"status":"incomplete","reason":"no_edit_was_applied",
+                    "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
+        try:
+            changed,metric=_mia_v2_similarity(before["front"],new_front)
+        except (OSError,subprocess.TimeoutExpired):
+            changed=True;metric="visual_diff_unavailable"
+        state["weak_streak"]=0 if changed else state["weak_streak"]+1
+        (folder/"identity_delta.json").write_text(json.dumps(
+            {"noticeable_change":changed,"metric":metric,"weak_streak":state["weak_streak"],
+             "reference_sha256":_MIA_V2_REF_SHA},indent=2),encoding="utf-8")
+        # If an edit is literally identical, never spam the owner with
+        # duplicate PNGs. Pause rather than generating another 20 duplicates.
+        if metric=="identical_png_hash" or state["weak_streak"]>=5:
+            persist()
+            return {"status":"incomplete","reason":"identical_or_repeated_weak_front_renders",
+                    "completed_cycles":state["completed_cycles"],
+                    "paused_cycle":cycle,"metric":metric,"checkpoint":str(checkpoint)}
+        # The request sends exactly ONE FRONT to the owner's paired Telegram,
+        # never SIDE/BACK, and never publishes intermediate mailbox data.
+        try:
+            with new_front.open("rb") as image_stream:
+                delivery=requests.post("https://api.telegram.org/bot"+token+"/sendPhoto",
+                    data={"chat_id":chat,
+                          "caption":"Мия • FRONT • цикл %03d/100 • черновая 3D"%cycle},
+                    files={"photo":("front.png",image_stream,"image/png")},
+                    timeout=(8,40),allow_redirects=False)
+            delivered=(delivery.status_code==200 and
+                      delivery.headers.get("Content-Type","").startswith("application/json")
+                      and delivery.json().get("ok") is True)
+        except (OSError,requests.RequestException,ValueError,TypeError):
+            delivered=False
+        if not delivered:
+            return {"status":"incomplete","reason":"telegram_photo_not_delivered",
+                    "completed_cycles":state["completed_cycles"],
+                    "front_saved_locally":str(new_front),"checkpoint":str(checkpoint)}
+        (folder/"telegram_delivery.json").write_text(
+            json.dumps({"cycle":cycle,"delivered":True,"only_view":"front"},indent=2),
+            encoding="utf-8")
+        state["completed_cycles"]=cycle
+        state["next_cycle"]=cycle+1
+        state["photos_sent"]=cycle
+        state["last_change"]=metric
+        state["last_commands"]=response["commands"][-32:]
+        state["subjective_scores"].append(response["score"])
+        persist()
+    return {"status":"completed","cycles_completed":100,"front_photos_delivered":100,
+            "model_folder":str(job),"last_model":str(job/"cycle_100/mia_reference_model.blend"),
+            "reference_sha256":_MIA_V2_REF_SHA,"original_model_preserved":True,
+            "animation_created":False,"user_identity_approved":False,
+            "checkpoint":str(checkpoint)}
