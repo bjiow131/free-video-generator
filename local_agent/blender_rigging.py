@@ -12,7 +12,12 @@ import re
 import subprocess
 import tempfile
 from typing import Any
-from local_agent.blender_locator import find_blender_executable
+from local_agent.blender_locator import (
+    find_blender_executable, is_supported_windows_blender,
+    watch_unsupported_blender_dialogs,
+)
+
+_REAL_SUBPROCESS_RUN = subprocess.run
 
 
 PROJECT_RE = path_identifier_pattern(48)
@@ -131,6 +136,8 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
     blender = find_blender_executable()
     if blender is None:
         return {"status": "blocked", "reason": "blender_executable_not_found"}
+    if os.name == "nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender):
+        return {"status": "blocked", "reason": "blender_executable_not_supported_64_bit_windows"}
     workspace = Path(workspace_value).expanduser().resolve()
     project = workspace / project_name
     if is_link_or_junction(project):
@@ -147,17 +154,10 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
         return {"status": "blocked", "reason": "mia_blockout_project_not_found"}
     output = project / "mia_skeleton.blend"
     report = project / "mia_skeleton_result.json"
+    if is_link_or_junction(output) or is_link_or_junction(report):
+        return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
     if output.exists() or report.exists():
-        for version in range(2, 100):
-            candidate_output = project / f"mia_skeleton_v{version}.blend"
-            candidate_report = project / f"mia_skeleton_v{version}_result.json"
-            if is_link_or_junction(candidate_output) or is_link_or_junction(candidate_report):
-                return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
-            if not candidate_output.exists() and not candidate_report.exists():
-                output, report = candidate_output, candidate_report
-                break
-        else:
-            return {"status": "blocked", "reason": "no_free_versioned_skeleton_output"}
+        return {"status": "blocked", "reason": "skeleton_outputs_exist_no_overwrite"}
     for path in (source, output, report):
         if is_link_or_junction(path):
             return {"status": "rejected", "reason": "output_path_must_not_be_symlink_or_junction"}
@@ -165,19 +165,23 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix=".mia-rig-", dir=project) as temp:
             script = Path(temp) / "skeleton.py"
             script.write_text(_RIG_SCRIPT, encoding="utf-8")
-            proc = subprocess.run(
-                [str(blender), "--disable-autoexec", "--background", "--factory-startup",
-                 "--python-exit-code", "1", "--python", str(script), "--", str(source), str(output), str(report)],
-                cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
-                check=False, shell=False,
-            )
+            dismissed_dialogs: list[dict[str, object]] = []
+            with watch_unsupported_blender_dialogs(blender, dismissed_dialogs):
+                proc = subprocess.run(
+                    [str(blender), "--disable-autoexec", "--background", "--factory-startup",
+                     "--python-exit-code", "1", "--python", str(script), "--", str(source), str(output), str(report)],
+                    cwd=str(project), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
+                    check=False, shell=False,
+                )
     except subprocess.TimeoutExpired:
         return {"status": "timeout", "reason": "skeleton_smoke_test_timeout"}
     except OSError as exc:
-        return {"status": "error", "error_type": type(exc).__name__}
+        return {"status": "error", "error_type": type(exc).__name__,
+                "compatibility_dialog_auto_closed": bool(locals().get("dismissed_dialogs"))}
     if proc.returncode != 0 or not output.is_file() or output.stat().st_size == 0 or not report.is_file():
         return {"status": "failed", "reason": "blender_skeleton_step_failed",
-                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:]}
+                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2000:],
+                "compatibility_dialog_auto_closed": bool(dismissed_dialogs)}
     try:
         result = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError):
