@@ -1,0 +1,29 @@
+name: Mia Astra visual identity review
+on:
+  push:
+    branches: [feature/mia-astra-visual-review-20261013]
+    paths:
+      - "local_agent/control_protocol.py"
+      - "local_agent/mailbox_policy.py"
+      - "local_agent/poller.py"
+      - "tests/test_mia_astra_vision.py"
+      - ".github/workflows/mia-astra-vision.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  astravision:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements-github-mailbox.txt
+      - run: python -m compileall -q local_agent
+      - run: python -m pytest -q tests/test_mia_astra_vision.py tests/test_control_protocol.py tests/test_mailbox_policy.py tests/test_octava_mailbox.py tests/test_mia_model_review_delivery.py tests/test_unattended_poller.py
