@@ -235,7 +235,7 @@ def _parse_trusted_update_diagnostics(output: str, exit_code: int) -> dict[str, 
             error_types.append(name)
         if len(error_types) >= 20:
             break
-    summary_match = re.search(r"(?m)^=+\s*([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error))*(?:, [0-9]+ (?:passed|skipped|error))*)\s+in [0-9.]+s\s*=+$", output)
+    summary_match = re.search(r"(?m)^(?:=+\\s*)?([0-9]+ failed(?:, [0-9]+ (?:passed|skipped|error|warning))*)\\s+in [0-9.]+s(?:\\s*=+)?$", output)
     summary = summary_match.group(1) if summary_match else ("focused tests passed" if exit_code == 0 else "focused tests failed; summary unavailable")
     return {
         "status": "completed" if exit_code == 0 else "failed",
