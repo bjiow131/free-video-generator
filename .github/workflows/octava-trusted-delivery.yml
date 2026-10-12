@@ -36,4 +36,14 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install -r requirements-github-mailbox.txt
       - run: python -m compileall -q local_agent
+      - name: Emit pinned source SHA256 hashes for updater
+        shell: python
+        run: |
+          import hashlib, json
+          from pathlib import Path
+          paths = ["local_agent/mailbox_policy.py", "local_agent/poller.py",
+                   "local_agent/control_protocol.py", "local_agent/studio_server.py"]
+          print("PINNED_UPDATE_SHA256=" + json.dumps({
+              p: hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths
+          }, sort_keys=True))
       - run: python -m unittest discover -s tests -p "test_octava_*.py" -v
