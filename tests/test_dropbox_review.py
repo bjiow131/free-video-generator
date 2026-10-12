@@ -130,3 +130,20 @@ def test_episode1_export_rejects_arbitrary_project_and_preserves_existing_data(i
     with pytest.raises(mod.ReviewDeliveryError, match="fixed Episode 1"):
         mod.export_mia_scene_review(isolated, "../private")
     assert not (isolated / "AI-Agent-Reviews").exists()
+
+
+
+def test_episode1_export_accepts_gzip_compressed_blend_header(isolated, monkeypatch):
+    import gzip
+
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    project = isolated / "workspace" / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    (project / "mia_blockout.blend").write_bytes(gzip.compress(b"BLENDER-v500mock"))
+    (project / "mia_blockout.png").write_bytes(bytes.fromhex("89504e470d0a1a0a") + b"preview")
+
+    result = mod.export_mia_scene_review(project.parent, "S01E01_SC01_DRAFT")
+    assert result["status"] == "exported_to_local_dropbox"
