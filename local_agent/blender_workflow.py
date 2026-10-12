@@ -493,7 +493,8 @@ asset_root=os.path.realpath(cfg["asset_root"])
 ref_meta={}
 for key,rel in (("mia_passport","characters/passports/mia.json"),
                 ("stepa_passport","characters/passports/stepa.json"),
-                ("draft_board","references/episode-01-reference-board.png")):
+                ("draft_board","references/episode-01-reference-board.png"),
+                ("approved_mia_turnaround","references/mia_turnaround_approved_20261012.jpeg")):
     path=os.path.realpath(os.path.join(asset_root,rel))
     if os.path.commonpath((asset_root,path))!=asset_root or not os.path.isfile(path):
         raise RuntimeError("Required pinned Episode 1 reference asset is missing")
@@ -508,11 +509,15 @@ for key,rel in (("mia_passport","characters/passports/mia.json"),
             raise RuntimeError("Mia passport age does not match continuity")
     else:
         image=bpy.data.images.load(path,check_existing=True); image.pack()
-        empty=bpy.data.objects.new("REFERENCE ONLY | generated draft board",None)
+        label=("REFERENCE ONLY | approved Mia turnaround" if key=="approved_mia_turnaround"
+               else "REFERENCE ONLY | generated draft board")
+        empty=bpy.data.objects.new(label,None)
         scene.collection.objects.link(empty); empty.empty_display_type="IMAGE"; empty.data=image
-        empty.location=(100,100,0); empty.hide_render=True; empty["status"]="draft_not_approved"
+        empty.location=(100,100,0); empty.hide_render=True
+        empty["status"]=("approved_visual_reference" if key=="approved_mia_turnaround"
+                         else "draft_not_approved")
 scene["episode_id"]="S01E01"; scene["scene_id"]="S01_SC01"
-scene["asset_status"]="procedural proxies; passports verified; generated board is draft"
+scene["asset_status"]="proxy character rejected for visual mismatch; approved Mia turnaround packed for replacement model"
 scene["reference_sha256_json"]=json.dumps(ref_meta,sort_keys=True)
 scene["audio_policy"]="silent; no voice, music, or subtitles"
 scene.frame_set(1)
@@ -595,6 +600,7 @@ with open(os.path.join(out,"blender_result.json"),"w",encoding="utf-8") as f:
                "mia_rig_bones":len(scene.objects["Mia_Rig"].data.bones),
                "stepa_rig_bones":len(scene.objects["Stepa_Rig"].data.bones),
                "asset_provenance":ref_meta,"production_models_available":False,
+               "visual_acceptance":"rejected_proxy_mismatch; do not call this render final",
                "manual_visual_review_required":True,"video_error":video_error},f,ensure_ascii=False)
 '''
 
@@ -608,6 +614,7 @@ def _render_episode1_release(project: Path, workspace: Path, blender: Path) -> d
         asset_root / "characters" / "passports" / "mia.json",
         asset_root / "characters" / "passports" / "stepa.json",
         asset_root / "references" / "episode-01-reference-board.png",
+        asset_root / "references" / "mia_turnaround_approved_20261012.jpeg",
     ]
     guarded = [workspace / "episode1", asset_root, *required]
     if any(is_link_or_junction(p) for p in guarded) or any(not p.is_file() for p in required):

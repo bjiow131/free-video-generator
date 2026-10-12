@@ -1,6 +1,7 @@
 """Download only explicitly pinned public GitHub assets into a local project."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -11,7 +12,9 @@ from urllib.parse import quote, urlparse
 
 import requests
 
-_ALLOWED_REPOSITORIES = {"bjiow131/free-video-generator"}
+_PUBLIC_REPOSITORY = "bjiow131/free-video-generator"
+_PRIVATE_REFERENCE_REPOSITORY = "bjiow131/season1-private-bible"
+_ALLOWED_REPOSITORIES = {_PUBLIC_REPOSITORY, _PRIVATE_REFERENCE_REPOSITORY}
 _ALLOWED_CATEGORIES = {
     "character_reference", "character_passport", "animal_reference",
     "animal_passport", "prop", "environment",
@@ -76,8 +79,18 @@ def _load_manifest(path: Path) -> dict[str, Any]:
         digest = item.get("sha256")
         if not _SHA256.fullmatch(digest or ""):
             raise AssetSyncError("invalid_sha256")
-        if item.get("commit_sha") != commit:
+        source_repository = item.get("source_repository", data["repository"])
+        if source_repository not in _ALLOWED_REPOSITORIES:
+            raise AssetSyncError("repository_not_allowlisted")
+        source_commit = item.get("commit_sha", commit)
+        if not isinstance(source_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", source_commit):
             raise AssetSyncError("asset_commit_mismatch")
+        if source_repository == data["repository"] and source_commit != commit:
+            raise AssetSyncError("asset_commit_mismatch")
+        if source_repository == _PRIVATE_REFERENCE_REPOSITORY and item["category"] != "character_reference":
+            raise AssetSyncError("private_repository_category_not_allowed")
+        item["source_repository"] = source_repository
+        item["commit_sha"] = source_commit
         key = destination.as_posix().casefold()
         if key in seen:
             raise AssetSyncError("duplicate_destination")
@@ -116,6 +129,8 @@ def _download_one(
     commit: str,
     project: Path,
     asset: dict[str, Any],
+    *,
+    private_token: str | None = None,
 ) -> dict[str, str]:
     relative = _safe_relative(asset["destination"], asset_only=True)
     target = _check_path(project, relative, create=True)
@@ -126,13 +141,19 @@ def _download_one(
             "status": "duplicate" if _digest(target) == expected else "preserved_conflict",
         }
 
+    repository = asset.get("source_repository", repository)
+    commit = asset.get("commit_sha", commit)
+    is_private = repository == _PRIVATE_REFERENCE_REPOSITORY
+    if is_private and not private_token:
+        raise AssetSyncError("private_repository_credential_unavailable")
     source = _safe_relative(asset["path"])
     api_url = (
         f"https://api.github.com/repos/{repository}/contents/"
         f"{quote(source.as_posix(), safe='/')}?ref={commit}"
     )
     try:
-        metadata_response = session.get(api_url, timeout=20, allow_redirects=False)
+        api_headers = {"Authorization": f"Bearer {private_token}"} if is_private else None
+        metadata_response = session.get(api_url, headers=api_headers, timeout=20, allow_redirects=False)
         if metadata_response.status_code != 200:
             raise AssetSyncError("github_metadata_unavailable")
         metadata = metadata_response.json()
@@ -143,6 +164,34 @@ def _download_one(
                 or remote_size < 0 or remote_size > _MAX_FILE_BYTES
                 or (pinned_size is not None and pinned_size != remote_size)):
             raise AssetSyncError("github_file_metadata_rejected")
+        if is_private:
+            if remote_size > 900_000 or metadata.get("encoding") != "base64":
+                raise AssetSyncError("private_reference_size_or_encoding_rejected")
+            try:
+                encoded = "".join(metadata.get("content", "").split())
+                raw = base64.b64decode(encoded, validate=True)
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise AssetSyncError("private_reference_content_invalid") from exc
+            if len(raw) != remote_size or hashlib.sha256(raw).hexdigest() != expected:
+                raise AssetSyncError("sha256_mismatch")
+            part = target.with_name(target.name + ".part")
+            if part.is_symlink() or getattr(part, "is_junction", lambda: False)():
+                raise AssetSyncError("unsafe_partial_file")
+            with part.open("wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(part, target)
+            except FileExistsError:
+                return {
+                    "path": relative.as_posix(),
+                    "status": "duplicate" if _digest(target) == expected else "preserved_conflict",
+                }
+            except OSError as exc:
+                raise AssetSyncError("atomic_install_unavailable") from exc
+            part.unlink()
+            return {"path": relative.as_posix(), "status": "downloaded"}
         raw_url = metadata.get("download_url")
         parsed = urlparse(raw_url or "")
         if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com":
@@ -235,11 +284,22 @@ def sync_approved_assets(
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "blender-agent-approved-asset-sync",
     })
+    private_token = None
+    if any(item.get("source_repository", manifest["repository"]) == _PRIVATE_REFERENCE_REPOSITORY
+           for item in manifest["assets"]):
+        try:
+            from local_agent.windows_credentials import read_credential
+            private_token = (read_credential() or "").strip()
+        except (ImportError, OSError, RuntimeError) as exc:
+            raise AssetSyncError("private_repository_credential_unavailable") from exc
+        if not private_token:
+            raise AssetSyncError("private_repository_credential_unavailable")
     results = []
     for item in manifest["assets"]:
         try:
             results.append(_download_one(
-                client, manifest["repository"], manifest["commit_sha"], project, item
+                client, manifest["repository"], manifest["commit_sha"], project, item,
+                private_token=private_token,
             ))
         except AssetSyncError as exc:
             results.append({
@@ -254,5 +314,9 @@ def sync_approved_assets(
         "asset_count": len(results),
         "counts": counts,
         "assets": results,
-        "downloaded_private_data": False,
+        "downloaded_private_data": any(
+            item.get("source_repository") == _PRIVATE_REFERENCE_REPOSITORY
+            and result.get("status") == "downloaded"
+            for item, result in zip(manifest["assets"], results, strict=True)
+        ),
     }

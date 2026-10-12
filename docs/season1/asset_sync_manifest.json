@@ -39,6 +39,16 @@
       "commit_sha": "2190ac150c559a1b1cd0e44bcae7bef8c3d9e8b6",
       "size_bytes": 2358347,
       "sha256": "1a899a950862bbdab2c5801c1b6b273f57e08b9d5e1b5117972cb202fc50214d"
+    },
+    {
+      "category": "character_reference",
+      "asset_id": "mia-turnaround-20261012",
+      "source_repository": "bjiow131/season1-private-bible",
+      "path": "characters/mia/references/mia_turnaround_approved_20261012.jpeg",
+      "destination": "assets/references/mia_turnaround_approved_20261012.jpeg",
+      "commit_sha": "db2d06edaa874db48871bdc268c8092190617261",
+      "size_bytes": 111601,
+      "sha256": "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
     }
   ],
   "unavailable_categories": [
@@ -48,8 +58,8 @@
     "production_environment_model"
   ],
   "notes": [
-    "The PNG reference board is generated concept art for Episode 1 and is not a production 3D model or finalized character canon.",
-    "Passports and generated image are pinned to the same public commit so the trusted local asset sync can verify every byte.",
-    "Private scripts, dialogue, and story-bible contents are not included."
+    "The generated draft board remains a draft and is not Mia's canonical model source.",
+    "Mia's approved turnaround is read from the private season1 bible using the Windows Credential Manager token; credentials are sent only to the GitHub API host and are never sent to raw content hosts.",
+    "Episode 1 production model and rig remain under visual review until the Blender character matches the approved turnaround."
   ]
 }
