@@ -1368,6 +1368,19 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_preflight":
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
+                # Separate immutable acknowledgement lets the remote operator
+                # distinguish task intake from a still-running render.
+                try:
+                    _publish_result_durable(client, task.task_id + "-accepted", {
+                        "task_id": task.task_id,
+                        "status": "accepted",
+                        "operation": task.operation,
+                        "project_name": task.arguments["project_name"],
+                        "duration_seconds": task.arguments.get("duration_seconds", 5),
+                        "render_completion_confirmed": False,
+                    })
+                except QueueTransportError:
+                    print("Task acknowledgement queued for later delivery.")
                 details = _run_blender_mia_blockout(task.arguments, task_id=task.task_id)
             elif task.operation == "blender_open_mia_project":
                 details = _run_blender_open_mia_project(task.arguments)
