@@ -173,11 +173,16 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
         raise ReviewDeliveryError("Episode 1 draft project is unavailable or outside the workspace")
 
     if project_name == "S01E01_SC01_RELEASE":
-        sources = (
+        sources = [
             ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
             ("preview.png", _safe_path(project / "preview.png"), 20_000_000),
-            ("preview.mp4", _safe_path(project / "scene.mp4"), MAX_VIDEO_BYTES),
-        )
+            *[(f"review-{frame:04d}.png",
+               _safe_path(project / "review_frames" / f"review-{frame:04d}.png"), 20_000_000)
+              for frame in (180, 360, 540, 720)],
+        ]
+        video = _safe_path(project / "scene.mp4")
+        if video.is_file():
+            sources.append(("preview.mp4", video, MAX_VIDEO_BYTES))
     else:
         sources = (
             ("scene.blend", _safe_path(project / "mia_blockout.blend"), 128_000_000),
@@ -233,6 +238,7 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             "project_name": project_name,
             "manual_visual_review_required": True,
             "scene_status": "procedural_animatic_candidate" if project_name == "S01E01_SC01_RELEASE" else "procedural_blockout",
+            "video_status": "exported" if any(item["name"] == "preview.mp4" for item in metadata) else "unavailable_from_blender_build",
             "files": metadata,
             "exported_at": datetime.now(timezone.utc).isoformat(),
         }
