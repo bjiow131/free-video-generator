@@ -4,6 +4,7 @@ import json
 import pytest
 import requests
 
+from local_agent import github_asset_sync as asset_sync
 from local_agent.github_asset_sync import AssetSyncError, sync_approved_assets
 
 
@@ -98,6 +99,30 @@ def test_rejects_untrusted_manifest_fields(tmp_path, changes):
     manifest = make_manifest(tmp_path, **changes)
     with pytest.raises(AssetSyncError):
         sync_approved_assets(tmp_path / "workspace", "episode1", manifest, session=Session([]))
+
+
+def test_project_name_is_fixed_before_creating_workspace_path(tmp_path):
+    workspace = tmp_path / "workspace"
+    with pytest.raises(AssetSyncError, match="project_not_allowlisted"):
+        sync_approved_assets(workspace, "other-project", make_manifest(tmp_path), session=Session([]))
+    assert not workspace.exists()
+
+
+def test_concurrent_destination_file_is_preserved(tmp_path, monkeypatch):
+    manifest = make_manifest(tmp_path)
+    workspace = tmp_path / "workspace"
+    user_bytes = b"created by another local process"
+    real_link = asset_sync.os.link
+
+    def create_conflict_then_link(source, destination):
+        Path(destination).write_bytes(user_bytes)
+        return real_link(source, destination)
+
+    monkeypatch.setattr(asset_sync.os, "link", create_conflict_then_link)
+    result = sync_approved_assets(workspace, "episode1", manifest, session=session_for())
+    target = workspace / "episode1/assets/characters/passports/mia.json"
+    assert result["counts"] == {"preserved_conflict": 1}
+    assert target.read_bytes() == user_bytes
 
 
 def test_rejects_redirects_and_bad_digest_without_creating_target(tmp_path):
