@@ -1,0 +1,41 @@
+name: Mia approved reference in Studio
+
+on:
+  push:
+    branches: [feature/mia-approved-reference-in-studio-20261013]
+    paths:
+      - "local_agent/studio_references.py"
+      - "local_agent/studio_server.py"
+      - "local_agent/studio_static/**"
+      - "tests/test_studio_approved_mia_reference.py"
+      - ".github/workflows/mia-studio-reference.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  studio-approved-reference:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dependencies
+        run: python -m pip install -r requirements-github-mailbox.txt
+      - name: Python syntax
+        run: python -m compileall -q local_agent
+      - name: JavaScript syntax
+        run: node --check local_agent/studio_static/app.js
+      - name: Approved Mia reference integration
+        run: python -m unittest discover -s tests -p test_studio_approved_mia_reference.py -v
+      - name: Existing Studio tests
+        run: python -m unittest discover -s tests -p test_studio.py -v
+      - name: Existing Studio HTTP and Octava key tests
+        run: python -m unittest discover -s tests -p test_octava_studio_http.py -v
