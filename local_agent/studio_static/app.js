@@ -17,7 +17,7 @@ const iconPaths = {
 };
 function icon(name){return `<svg viewBox="0 0 24 24" aria-hidden="true">${iconPaths[name] || iconPaths.stars}</svg>`}
 const sections=[['Главная','home'],['Сценарий','script'],['Персонажи','users'],['Паспорта','passport'],['Реквизит','cube'],['Сцены','image'],['Рендер','camera'],['История','history'],['Настройки','settings']];
-let state=null, page='Сценарий', selectedCharacter='',selectedProp='', pendingImage=null, saveTimer=0, saving=false,dirty=false,prepareMessage='',renderState=null,renderPlan=null,studioJob=null;
+let state=null, page='Главная', selectedCharacter='',selectedProp='', pendingImage=null, saveTimer=0, saving=false,dirty=false,prepareMessage='',renderState=null,renderPlan=null,studioJob=null;
 let providerStatus=null, providerBusy=false;
 let approvedMia=null, approvedBusy=false, miaThumbnailUrl=null, miaThumbnailPending=false;
 let mailboxPolicy=null, mailboxSaving=false;
