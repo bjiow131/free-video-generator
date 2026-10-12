@@ -161,7 +161,7 @@ def export_mia_scene_review(workspace: str | Path, project_name: str) -> dict[st
             signature = stream.read(8)
         if name == "scene.blend" and not signature.startswith(b"BLENDER"):
             raise ReviewDeliveryError("Scene project is not a Blender file")
-        if name == "preview.png" and signature != b"\\x89PNG\\r\\n\\x1a\\n":
+        if name == "preview.png" and signature != bytes.fromhex("89504e470d0a1a0a"):
             raise ReviewDeliveryError("Scene preview is not a PNG file")
         digest = hashlib.sha256()
         with source.open("rb") as stream:
