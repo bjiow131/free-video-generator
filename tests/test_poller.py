@@ -962,6 +962,27 @@ def test_five_second_retry_options_pass_mailbox_protocol():
             parse_task(json.dumps(changed))
 
 
+def test_generated_rig_skips_mesh_without_a_bone_selection():
+    import ast
+    from local_agent.blender_workflow import _scene_script
+    tree = ast.parse(_scene_script())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "build_rig")
+    # Execute the actual guard with Blender's string-only membership contract.
+    guard = next(node for node in ast.walk(function) if isinstance(node, ast.If)
+                 and any(isinstance(part, ast.Compare) and any(isinstance(op, ast.NotIn) for op in part.ops)
+                         for part in ast.walk(node.test)))
+    class Bones:
+        def __contains__(self, key):
+            if not isinstance(key, str):
+                raise TypeError("Blender requires a bone name")
+            return key == "head"
+    data = SimpleNamespace(bones=Bones())
+    expression = compile(ast.Expression(guard.test), "rig-guard", "eval")
+    assert eval(expression, {"bone": None, "data": data}) is True
+    assert eval(expression, {"bone": "missing", "data": data}) is True
+    assert eval(expression, {"bone": "head", "data": data}) is False
+
+
 def test_remote_restart_envelope_is_data_only_and_keeps_local_approval():
     import json
     from local_agent import poller, github_queue

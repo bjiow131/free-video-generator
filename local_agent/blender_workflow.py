@@ -225,7 +225,7 @@ def build_rig(name, prefix, origin, bones):
             elif "head" in label: bone="head"
             elif "stalk" in label or "eye" in label:
                 bone="eye.L" if relative_x<0.34 else "eye.R"
-        if bone not in data.bones:
+        if bone is None or bone not in data.bones:
             continue
         group=obj.vertex_groups.new(name=bone)
         if len(obj.data.vertices): group.add(list(range(len(obj.data.vertices))),1.0,"REPLACE")
