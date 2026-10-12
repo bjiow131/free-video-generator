@@ -91,3 +91,42 @@ def test_video_export_failure_leaves_no_partial_public_review(isolated, monkeypa
     with pytest.raises(mod.ReviewDeliveryError):
         mod.export_review(job, {"job_id":"4"*32}, "ffmpeg")
     assert not (sync / "AI-Agent-Reviews" / ("4"*32)).exists()
+
+
+
+def test_exports_only_fixed_episode1_draft_files_after_local_consent(isolated, monkeypatch):
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    blend = b"blender-project-draft"
+    preview = b"\\x89PNG\\r\\n\\x1a\\npreview"
+    (project / "mia_blockout.blend").write_bytes(blend)
+    (project / "mia_blockout.png").write_bytes(preview)
+
+    result = mod.export_mia_scene_review(workspace, "S01E01_SC01_DRAFT")
+    assert result["status"] == "exported_to_local_dropbox"
+    folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
+    assert (folder / "scene.blend").read_bytes() == blend
+    assert (folder / "preview.png").read_bytes() == preview
+    assert result["sha256"]["scene.blend"]
+    assert json.loads((folder / "scene_manifest.json").read_text())["manual_visual_review_required"] is True
+    assert json.loads((folder / "complete.json").read_text())["status"] == "completed"
+
+
+def test_episode1_export_is_disabled_without_local_dropbox_consent(isolated, monkeypatch):
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_DRAFT"
+    project.mkdir(parents=True)
+    (project / "mia_blockout.blend").write_bytes(b"blend")
+    (project / "mia_blockout.png").write_bytes(b"png")
+    assert mod.export_mia_scene_review(workspace, "S01E01_SC01_DRAFT")["status"] == "disabled"
+
+
+def test_episode1_export_rejects_arbitrary_project_and_preserves_existing_data(isolated):
+    with pytest.raises(mod.ReviewDeliveryError, match="fixed Episode 1"):
+        mod.export_mia_scene_review(isolated, "../private")
+    assert not (isolated / "AI-Agent-Reviews").exists()
