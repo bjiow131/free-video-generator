@@ -2227,3 +2227,140 @@ def run_mia_astra_autoloop_100(*, task_id: str) -> dict[str, Any]:
             "best_front_input_cycle_by_astra_subjective_score":state["best_front_input_cycle"],
             "original_model_preserved":True,"videos_created":False,
             "identity_approved":False,"checkpoint":str(checkpoint)}
+
+
+# Mia identity restoration v2. Approved reference is immutable. All image
+# derivatives are generated locally via already installed FFmpeg, never AI
+# generated and never committed to the public source repository.
+_MIA_V2_TARGETS = frozenset(("eyes","iris","eyelids","brows","lower_face",
+    "cheeks","chin","forehead","hairline","side_fringe","side_locks",
+    "bun_shape","back_hair","hair_volume","hair_tone"))
+_MIA_V2_ACTIONS = frozenset(("adjust_geometry","adjust_material"))
+_MIA_V2_SOURCE = "mia-hair-shape-v3-20261012T231214169Z"
+_MIA_V2_REF_SHA = "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+
+_MIA_V2_PROMPT = """You are Astra, the lead critical visual identity supervisor for the SAME existing editable 3D Mia mesh. The user-approved source is immutable. Image order: 1 CLEAN APPROVED TURNAROUND (front, side, rear), 2 approved FRONT HEAD, 3 approved SIDE HEAD, 4 approved BACK HAIR/BUN, 5 approved FULL-BODY FRONT, 6 CURRENT Blender FRONT, 7 CURRENT Blender SIDE, 8 CURRENT Blender BACK. These are EIGHT ACTUAL attached images; if you cannot see them say so and do not fabricate assessments. Mia is a specifically approved 4-year-old cartoon girl, not a generic substitute. Preserve her facial identity, head-to-body proportions, light brown swept hair, low bun, teal hoodie, mustard backpack, brown cargo trousers, tan boots. Evaluate every mismatch (face width, cheeks, chin, forehead, eye size and iris, lids, brows, hairline, fringe, side locks, low bun, 3D rear silhouette). Prioritize LARGE VISIBLE improvements, not cosmetic 0.001 nudges. You may return MANY commands per cycle, not only one; propose a coordinated safe batch fixing every supported mismatch you can identify. Authorized targets exactly: eyes, iris, eyelids, brows, lower_face, cheeks, chin, forehead, hairline, side_fringe, side_locks, bun_shape, back_hair, hair_volume, hair_tone. Every command requires target, action, delta, reason. action adjust_geometry for all targets except hair_tone, which uses adjust_material. Signed delta -0.08 to +0.08, meaningful but conservative, judged against actual reference; no code, arbitrary paths, video, voice, redesign, object deletion, or fake completion. One correction batch modifies the SAME Blender mesh, then agent renders current FRONT/SIDE/BACK again. Return ONE strict JSON object EXACTLY:
+{"verdict":"continue","score":32,"priority_summary":"face and hairstyle mismatches","commands":[{"target":"eyes","action":"adjust_geometry","delta":-0.04,"reason":"eye assemblies too wide"}]}
+No extra fields, text, code fences or tool commands. score is a subjective estimate, not calibrated; do not repeat the exact same batch when results barely change. If a past correction worsened similarity, counteract it. You are not allowed to declare model APPROVED: only its owner may do that. The agent will complete up to 100 successful cycles, pausing safely for provider errors, weak/no-change, or unsafe edits. Return more than one edit when warranted; focus on identity rather than activity. English JSON, descriptive reasons.
+"""
+
+def _mia_v2_commands(raw: str) -> dict[str, Any]:
+    """Parse multiple Astra requests as typed data; never execute its code."""
+    import math
+    if not isinstance(raw,str) or len(raw)>30000:
+        raise BlenderWorkflowError("invalid_astra_payload")
+    try:
+        obj=json.loads(raw.strip())
+    except (ValueError,TypeError) as exc:
+        raise BlenderWorkflowError("astra_not_json") from exc
+    if (not isinstance(obj,dict) or
+        set(obj)!={"verdict","score","priority_summary","commands"}
+        or obj["verdict"]!="continue" or type(obj["score"]) not in (int,float)
+        or not math.isfinite(obj["score"]) or not 0<=obj["score"]<=100
+        or not isinstance(obj["priority_summary"],str)
+        or len(obj["priority_summary"])>300
+        or not isinstance(obj["commands"],list) or not 1<=len(obj["commands"])<=96):
+        raise BlenderWorkflowError("astra_invalid_batch_shape")
+    seen={}
+    commands=[]
+    for cmd in obj["commands"]:
+        if (type(cmd) is not dict or set(cmd)!={"target","action","delta","reason"}
+            or type(cmd["target"]) is not str or cmd["target"] not in _MIA_V2_TARGETS
+            or cmd["action"] not in _MIA_V2_ACTIONS
+            or ((cmd["target"]=="hair_tone") != (cmd["action"]=="adjust_material"))
+            or type(cmd["delta"]) not in (int,float)
+            or not math.isfinite(cmd["delta"])
+            or not .001<=abs(cmd["delta"])<=.08
+            or not isinstance(cmd["reason"],str) or not 1<=len(cmd["reason"])<=240):
+            raise BlenderWorkflowError("astra_unsafe_edit")
+        cumulative=seen.get(cmd["target"],0)+cmd["delta"]
+        if abs(cumulative)>.19:
+            raise BlenderWorkflowError("astra_area_total_too_large_this_cycle")
+        seen[cmd["target"]]=cumulative
+        commands.append({"target":cmd["target"],"action":cmd["action"],
+                         "delta":round(cmd["delta"],5),"reason":cmd["reason"]})
+    return {"verdict":"continue","score":round(obj["score"],2),
+            "priority_summary":obj["priority_summary"],"commands":commands}
+
+def _mia_v2_prepare_references(workspace: Path, canonical: Path, folder: Path) -> dict[str, Path]:
+    """Crop documented black margins and separate approved face/hair crops.
+
+    The fixed approved source is 710x1536 with a center strip, so no heuristic
+    could silently choose an unrelated photo. FFmpeg exists on target Windows.
+    """
+    import hashlib
+    import subprocess
+    if canonical.is_symlink() or not canonical.is_file():
+        raise BlenderWorkflowError("approved_jpeg_missing")
+    raw=canonical.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=_MIA_V2_REF_SHA:
+        raise BlenderWorkflowError("approved_jpeg_hash_mismatch")
+    ffmpeg=shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise BlenderWorkflowError("ffmpeg_not_installed")
+    if folder.exists() and any(folder.iterdir()):
+        known=("mia_turnaround_clean.png","mia_head_front.png","mia_head_side.png",
+               "mia_head_back_hair.png","mia_front_full.png")
+        files={n:folder/n for n in known}
+        if all(p.is_file() and p.stat().st_size>500 for p in files.values()):
+            return files
+        raise BlenderWorkflowError("incomplete_reference_derivatives")
+    folder.mkdir(parents=True,exist_ok=True)
+    filters=[
+        ("mia_turnaround_clean.png","crop=iw:trunc(ih*0.310/2)*2:0:trunc(ih*0.346/2)*2"),
+        ("mia_head_front.png","crop=iw*0.255:ih*0.105:iw*0.070:ih*0.350,scale=512:-2"),
+        ("mia_head_side.png","crop=iw*0.23:ih*0.110:iw*0.405:ih*0.350,scale=512:-2"),
+        ("mia_head_back_hair.png","crop=iw*0.25:ih*0.110:iw*0.705:ih*0.350,scale=512:-2"),
+        ("mia_front_full.png","crop=iw*0.33:ih*0.310:iw*0.006:ih*0.346,scale=500:-2"),
+    ]
+    result={}
+    for name,vf in filters:
+        path=folder/name
+        run=subprocess.run([ffmpeg,"-nostdin","-hide_banner","-loglevel","error",
+                            "-y","-i",str(canonical),"-vf",vf,
+                            "-frames:v","1",str(path)],
+                            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                            timeout=45,check=False,shell=False)
+        if run.returncode!=0 or not path.is_file() or path.stat().st_size<500:
+            raise BlenderWorkflowError("could_not_crop_"+name)
+        result[name]=path
+    (folder/"source_integrity.json").write_text(json.dumps(
+        {"source_sha256":_MIA_V2_REF_SHA,
+         "unaltered_original":str(canonical),
+         "derivatives":{k:str(v.name) for k,v in result.items()}},indent=2),
+        encoding="utf-8")
+    return result
+
+def _mia_v2_request(key: str, refs: dict[str, Path], views: dict[str, Path],
+                    cycle: int, previous: dict[str, Any]) -> dict[str, Any]:
+    """Send exactly five clean approved crops plus current front, side, back."""
+    import base64
+    from urllib.request import Request, urlopen
+    content=[{"type":"text","text":("Cycle %d/100. Previous edits: %s. "
+       "Previous visual outcome: %s. Compare ORIGINAL approved visual identity "
+       "against the THREE new renders; produce meaningful MULTI-EDIT JSON."
+       % (cycle,json.dumps(previous.get("last_commands",[]),ensure_ascii=False)[:1500],
+          previous.get("last_change","first_cycle")))}]
+    for path in [refs[x] for x in ("mia_turnaround_clean.png","mia_head_front.png",
+                                  "mia_head_side.png","mia_head_back_hair.png",
+                                  "mia_front_full.png")]+[views[x] for x in ("front","side","back")]:
+        data=path.read_bytes()
+        if not 500<len(data)<4_000_000:
+            raise BlenderWorkflowError("vision_image_invalid_size")
+        mime="image/png"
+        content.append({"type":"image_url","image_url":{"url":"data:"+mime+";base64,"+
+                        base64.b64encode(data).decode("ascii"),"detail":"high"}})
+    payload=json.dumps({"model":"gpt-6-astra","messages":[
+        {"role":"system","content":_MIA_V2_PROMPT},
+        {"role":"user","content":content}],
+        "max_tokens":4000,"temperature":0.2},ensure_ascii=False).encode("utf-8")
+    if len(payload)>25_000_000:
+        raise BlenderWorkflowError("vision_batch_too_large")
+    req=Request("https://octavapi.shop/v1/chat/completions",data=payload,
+        headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},method="POST")
+    with urlopen(req,timeout=135) as res:
+        response=res.read(100_001)
+    if len(response)>100_000:
+        raise BlenderWorkflowError("vision_response_too_large")
+    result=json.loads(response.decode("utf-8"))
+    return _mia_v2_commands(result["choices"][0]["message"]["content"])
