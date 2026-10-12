@@ -37,7 +37,7 @@ function miaApprovedGallery(ch){
 if(ch?.id!=='mia')return '';
 const status=approvedMia?.status||'loading';
 const ready=status==='ready';
-const attached=media(ch.reference)===media('7a3194accfecdb4873bc7d4cd8015edb5a94.jpg');
+const attached=media(ch.reference)===media('7a3194accfecdb4873bc7d4cd8015edb.jpg');
 const desc=status==='loading'?'Проверяем локальный эталон…':ready?'Подтверждён контрольной суммой SHA-256':status==='missing'?'Эталон пока не найден в локальном каталоге episode1/assets/references':'Проверка целостности эталона не пройдена — запрещено использовать файл';
 return `<section class="approved-reference-panel" aria-label="Утверждённые референсы Мии">
 <h3>Утверждённые референсы Мии</h3>
