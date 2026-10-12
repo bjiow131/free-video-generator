@@ -126,6 +126,16 @@ class ProjectMemory:
                 or data["status"] not in ("idle", "in_flight", "waiting_for_key", "retry_later")
                 or not isinstance(data["history"], list) or len(data["history"]) > MAX_HISTORY
                 or not isinstance(data["steps"], list) or len(data["steps"]) > MAX_STEPS
+                or any(not isinstance(t, dict) or set(t) != {"prompt", "answer"}
+                       or not isinstance(t["prompt"], str) or len(t["prompt"]) > 1600
+                       or not isinstance(t["answer"], str) or len(t["answer"]) > 2500
+                       or _SECRET.search(t["prompt"]) or _SECRET.search(t["answer"])
+                       for t in data["history"])
+                or any(not isinstance(t, dict) or set(t) != {"id", "state", "note"}
+                       or not isinstance(t["id"], str) or not STEP_ID.fullmatch(t["id"])
+                       or t["state"] not in ("completed", "blocked", "failed")
+                       or not isinstance(t["note"], str) or len(t["note"]) > 300
+                       for t in data["steps"])
                 or (data["pending"] is not None and
                     (not isinstance(data["pending"], str) or len(data["pending"]) > 1600))):
                 raise ValueError("invalid")
@@ -160,6 +170,25 @@ class ProjectMemory:
                 except OSError:
                     pass
 
+    def _append_journal(self, entry: dict) -> None:
+        """Append accepted events to a durable local archive without an 8-turn cap.
+
+        The compact snapshot retains only recent context for the API model.
+        The journal is archival; it never stores tokens or raw rendering files.
+        """
+        path = self.root / (self.project_id + ".history.jsonl")
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            raise MemoryErrorSafe("Unsafe project history path")
+        record = (json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(descriptor, "ab") as stream:
+                stream.write(record)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except OSError:
+            raise MemoryErrorSafe("Could not archive project progress") from None
+
     def snapshot(self) -> dict:
         with self._locked():
             return self._read()
@@ -187,8 +216,9 @@ class ProjectMemory:
             data = self._read()
             if data["pending"] != prompt:
                 raise MemoryErrorSafe("Pending project request changed")
-            data["history"].append({"prompt": _clean(prompt, 1600),
-                                    "answer": _clean(answer, 2500)})
+            item = {"prompt": _clean(prompt, 1600), "answer": _clean(answer, 2500)}
+            self._append_journal({"event": "answer", "date": _now(), **item})
+            data["history"].append(item)
             data["history"] = data["history"][-MAX_HISTORY:]
             data["pending"] = None
             data["status"] = "idle"
@@ -220,6 +250,8 @@ class ProjectMemory:
             data["steps"] = [s for s in data["steps"] if s["id"] != step_id]
             data["steps"].append({"id": step_id, "state": state, "note": note})
             data["steps"] = data["steps"][-MAX_STEPS:]
+            self._append_journal({"event": "step", "date": _now(),
+                                  "id": step_id, "state": state, "note": note})
             self._write(data)
             return {"project_id": self.project_id, "revision": data["revision"],
                     "step_id": step_id, "state": state}
