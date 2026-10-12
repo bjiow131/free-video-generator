@@ -57,6 +57,14 @@ def approved_status(workspace: Path) -> dict:
         "views": list(VIEWS),
         "url": "/api/approved-reference-image/mia" if status == "ready" else None,
         "model_status": "3D-модель и риг ещё не утверждены",
+        "readiness": [
+            {"label": "Утверждённый разворот Мии", "status": "ready" if status == "ready" else "blocked"},
+            {"label": "Точный неподвижный 2.5D-кадр", "status": "pending"},
+            {"label": "Движение 2.5D на 5 секунд", "status": "pending"},
+            {"label": "Настоящая 3D-геометрия", "status": "pending"},
+            {"label": "Риг тела и мимики", "status": "pending"},
+            {"label": "Проверка ракурсов и камеры", "status": "pending"},
+        ],
         "note": ("Один исходный JPEG с несколькими ракурсами. "
                  "Только после визуальной проверки допускается 2.5D; "
                  "для свободной 3D-камеры требуется отдельная проверенная модель."),
