@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 from typing import Any
 
-_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\\Z")
+_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
 _STATUS_NAME = ".studio_server.json"
 _REQUEST_NAME = ".studio_restart_request.json"
 
