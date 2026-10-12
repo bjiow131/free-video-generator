@@ -396,7 +396,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two",
 })
 
 
@@ -948,7 +948,11 @@ def _run_mia_astra_review(arguments: dict[str, Any]) -> dict[str, Any]:
         return {"status": "blocked", "reason": "workspace_missing"}
     base = workspace.resolve()
     origin = base / "episode1" / "assets" / "references" / "mia_turnaround_approved_20261012.jpeg"
-    model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-static-model-v6-20261012T222818971Z"
+    # Review the newest verified fixed checkpoint first. The fallback preserves
+    # compatibility for brand-new installations that only have V6.
+    revised_model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-identity-shape-v2-20261012T230037560Z"
+    original_model_dir = base / "MIA_REFERENCE_REVIEW" / "mia-static-model-v6-20261012T222818971Z"
+    model_dir = revised_model_dir if revised_model_dir.exists() else original_model_dir
     for path in (origin, origin.parent, model_dir, model_dir.parent):
         if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
             return {"status": "blocked", "reason": "symlink_or_junction_blocked"}
@@ -1554,6 +1558,17 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "mia_identity_pass_two":
+                from local_agent.blender_workflow import create_mia_identity_shape_pass_two
+                from local_agent.studio_server import telegram_send_mia_review_photos
+                details = create_mia_identity_shape_pass_two(task_id=task.task_id)
+                if details.get("status") == "completed":
+                    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+                    details["telegram_photo_delivery"] = telegram_send_mia_review_photos(
+                        workspace, task.task_id)
+                    details["mailbox_preview_delivery"] = {
+                        "status": "included_in_result",
+                        "views": sorted(details.get("thumbnail_jpeg_base64", {}))}
             elif task.operation == "mia_astra_pass_one":
                 from local_agent.blender_workflow import create_mia_astra_pass_one
                 from local_agent.studio_server import telegram_send_mia_review_photos
