@@ -132,6 +132,10 @@ def test_exports_fixed_episode1_release_with_silent_mp4_and_hashes(isolated, mon
     (project / "mia_blockout.blend").write_bytes(blend)
     (project / "preview.png").write_bytes(preview)
     (project / "scene.mp4").write_bytes(video)
+    frames = project / "review_frames"
+    frames.mkdir()
+    for frame in (180, 360, 540, 720):
+        (frames / f"review-{frame:04d}.png").write_bytes(preview)
 
     result = mod.export_mia_scene_review(workspace, "S01E01_SC01_RELEASE")
     folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
@@ -141,8 +145,40 @@ def test_exports_fixed_episode1_release_with_silent_mp4_and_hashes(isolated, mon
     assert (folder / "preview.mp4").read_bytes() == video
     manifest = json.loads((folder / "scene_manifest.json").read_text())
     assert manifest["scene_status"] == "procedural_animatic_candidate"
-    assert {item["name"] for item in manifest["files"]} == {"scene.blend", "preview.png", "preview.mp4"}
+    expected = {"scene.blend", "preview.png", "preview.mp4",
+                *(f"review-{frame:04d}.png" for frame in (180, 360, 540, 720))}
+    assert {item["name"] for item in manifest["files"]} == expected
+    assert manifest["video_status"] == "exported"
     assert result["sha256"]["preview.mp4"]
+
+
+def test_exports_animated_episode1_without_mp4_when_blender_lacks_ffmpeg(isolated, monkeypatch):
+    sync = isolated / "SyncFolder"
+    sync.mkdir()
+    monkeypatch.setenv("LOCAL_AGENT_DROPBOX_ROOT", str(sync))
+    mod.save_settings({"enabled": True})
+    workspace = isolated / "workspace"
+    project = workspace / "S01E01_SC01_RELEASE"
+    project.mkdir(parents=True)
+    blend = b"BLENDERmock-animated-project"
+    preview = bytes.fromhex("89504e470d0a1a0a") + b"preview"
+    (project / "mia_blockout.blend").write_bytes(blend)
+    (project / "preview.png").write_bytes(preview)
+    frames = project / "review_frames"
+    frames.mkdir()
+    for frame in (180, 360, 540, 720):
+        (frames / f"review-{frame:04d}.png").write_bytes(preview)
+
+    result = mod.export_mia_scene_review(workspace, "S01E01_SC01_RELEASE")
+    folder = sync / "AI-Agent-Reviews" / result["folder"].split("/")[-1]
+    manifest = json.loads((folder / "scene_manifest.json").read_text())
+    assert result["status"] == "exported_to_local_dropbox"
+    assert not (folder / "preview.mp4").exists()
+    assert manifest["video_status"] == "unavailable_from_blender_build"
+    assert {item["name"] for item in manifest["files"]} == {
+        "scene.blend", "preview.png",
+        *(f"review-{frame:04d}.png" for frame in (180, 360, 540, 720)),
+    }
 
 
 def test_episode1_export_is_disabled_without_local_dropbox_consent(isolated, monkeypatch):
