@@ -401,6 +401,108 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
         raise TelegramAlertError("Некорректный ответ Telegram") from None
 
 
+
+def telegram_upload_local_media(token: str, chat: str, method: str,
+                                file: Path, caption: str) -> dict:
+    """Send one pre-validated local Studio asset via direct Telegram multipart.
+
+    Existing JSON Render relay does not implement media forwarding. Never
+    downgrade to a public file URL, disclose a local filename, or silently
+    bypass the user's selected relay transport.
+    """
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    from local_agent.telegram_media import TelegramMediaError
+    if method not in ("sendPhoto", "sendVideo"):
+        raise TelegramAlertError("Недопустимая операция с медиа")
+    if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
+        raise TelegramAlertError("Недопустимый Telegram-токен")
+    if not isinstance(chat, str) or not re.fullmatch(r"[0-9]{1,20}", chat):
+        raise TelegramAlertError("Неизвестный личный Telegram-чат")
+    if telegram_transport_settings()["use_relay"]:
+        raise TelegramAlertError(
+            "Текущий Render relay поддерживает только текст. "
+            "Для изображений требуется прямой доступ к api.telegram.org "
+            "или отдельное обновление relay для передачи файлов.")
+    suffix = file.suffix.lower()
+    if method == "sendPhoto":
+        if suffix not in (".png", ".jpg", ".webp"):
+            raise TelegramAlertError("Неподдерживаемый формат изображения")
+        limit, mime, field = 9_500_000, {
+            ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"
+        }[suffix], "photo"
+    else:
+        if suffix != ".mp4":
+            raise TelegramAlertError("Нужен MP4")
+        limit, mime, field = 32_000_000, "video/mp4", "video"
+    # The caller chooses files ONLY from the Studio allowlist. Recheck the
+    # open file and size here; keep the network request bounded.
+    if file.is_symlink() or getattr(file, "is_junction", lambda: False)():
+        raise TelegramAlertError("Ссылка на файл запрещена")
+    try:
+        with file.open("rb") as stream:
+            content = stream.read(limit + 1)
+    except OSError:
+        raise TelegramAlertError("Не удалось открыть медиафайл") from None
+    if not 16 <= len(content) <= limit:
+        raise TelegramAlertError("Файл слишком большой или пустой")
+    if method == "sendPhoto":
+        valid = (suffix == ".png" and content.startswith(b"\\x89PNG\\r\\n\\x1a\\n")
+                 or suffix == ".jpg" and content.startswith(b"\\xff\\xd8\\xff")
+                 or suffix == ".webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+    else:
+        valid = content[4:8] == b"ftyp"
+    if not valid:
+        raise TelegramAlertError("Расширение медиафайла не соответствует содержимому")
+    if not isinstance(caption, str) or len(caption) > 600:
+        raise TelegramAlertError("Недопустимая подпись")
+    boundary = uuid.uuid4().hex
+    mark = ("--" + boundary + "\\r\\n").encode("ascii")
+    def field_part(name: str, value: str) -> bytes:
+        return (mark + f'Content-Disposition: form-data; name="{name}"\\r\\n\\r\\n'.encode("ascii")
+                + value.encode("utf-8") + b"\\r\\n")
+    payload = (
+        field_part("chat_id", chat) + field_part("caption", caption) + mark
+        + f'Content-Disposition: form-data; name="{field}"; filename="studio{suffix}"\\r\\n'.encode("ascii")
+        + f"Content-Type: {mime}\\r\\n\\r\\n".encode("ascii")
+        + content + b"\\r\\n" + ("--" + boundary + "--\\r\\n").encode("ascii")
+    )
+    url = "https://api.telegram.org/bot" + token + "/" + method
+    request = Request(url, data=payload, method="POST", headers={
+        "Content-Type": "multipart/form-data; boundary=" + boundary
+    })
+    try:
+        with urlopen(request, timeout=45) as response:
+            raw = response.read(262145)
+    except HTTPError as exc:
+        raise TelegramAlertError("Telegram отклонил медиа: HTTP " + str(exc.code)) from None
+    except (URLError, TimeoutError, OSError):
+        raise TelegramAlertError("Не удалось отправить файл в Telegram") from None
+    if len(raw) > 262144:
+        raise TelegramAlertError("Слишком большой ответ Telegram")
+    try:
+        obj = json.loads(raw)
+        if not isinstance(obj, dict) or obj.get("ok") is not True:
+            raise ValueError("bad Telegram response")
+        return obj
+    except (ValueError, UnicodeError):
+        raise TelegramAlertError("Telegram не подтвердил получение файла") from None
+
+
+def telegram_send_studio_media(kind: str) -> None:
+    """Explicit private-chat command; works even when automatic notices are off."""
+    from local_agent.telegram_media import resolve_media, TelegramMediaError
+    token, chat = _telegram_credentials()
+    if not token or not chat:
+        raise TelegramAlertError("Сначала привяжите Telegram-чат")
+    try:
+        file, method, caption = resolve_media(kind)
+    except TelegramMediaError as exc:
+        raise TelegramAlertError(str(exc)) from None
+    telegram_upload_local_media(token, chat, method, file, caption)
+
+
+
 def telegram_save_token(data: dict) -> dict:
     """Verify BotFather token via getMe, then save in Windows vault only."""
     from local_agent.windows_credentials import CredentialStoreError, write_credential, delete_credential
@@ -564,6 +666,17 @@ class ReviewStudioJobs(StudioJobs):
             result = {"status": "failed", "reason": str(exc)[:180]}
         except Exception as exc:
             result = {"status": "failed", "error_type": type(exc).__name__}
+        # Optional automatic final-frame delivery is independent of Dropbox.
+        # A Telegram transport or network failure must never change render status.
+        try:
+            if info.get("kind", "scene") == "scene" and telegram_notifications_enabled():
+                from local_agent.telegram_media import media_for_job
+                token, chat = _telegram_credentials()
+                if token and chat and not telegram_transport_settings()["use_relay"]:
+                    file, method, caption = media_for_job(self.store.root, job_id, "preview", info)
+                    telegram_upload_local_media(token, chat, method, file, caption)
+        except (TelegramAlertError, OSError, ValueError):
+            pass
         if result.get("status") == "exported_to_local_dropbox":
             telegram_queue_event("studio:" + job_id,
                                  "Blender Studio: видео готово. Кадры отправлены в Dropbox. Задача " + job_id[:12])
