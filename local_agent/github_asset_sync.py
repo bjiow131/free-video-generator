@@ -13,7 +13,7 @@ from urllib.parse import quote, urlparse
 import requests
 
 _PUBLIC_REPOSITORY = "bjiow131/free-video-generator"
-_PRIVATE_REFERENCE_REPOSITORY = "bjiow131/season1-private-bible"
+_PRIVATE_REFERENCE_REPOSITORY = "bjiow131/local-agent-mailbox"
 _ALLOWED_REPOSITORIES = {_PUBLIC_REPOSITORY, _PRIVATE_REFERENCE_REPOSITORY}
 _ALLOWED_CATEGORIES = {
     "character_reference", "character_passport", "animal_reference",
