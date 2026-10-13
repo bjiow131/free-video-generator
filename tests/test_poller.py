@@ -1263,3 +1263,22 @@ def test_astra_operation_stops_when_local_provider_consent_is_off(monkeypatch):
         def _request(self,*args,**kwargs): raise AssertionError("must stop before network")
     assert poller._run_astra_season_response(NoNetwork(),"astra-response-test")=={
         "status":"blocked","reason":"local_octava_permission_disabled"}
+
+
+
+def test_queue_protocol_error_detail_is_visible_and_redacted():
+    from local_agent.poller import _queue_error_detail
+    from local_agent.github_queue import QueueTransportError
+    from local_agent.control_protocol import ProtocolError
+
+    transport = QueueTransportError("Task manifest rejected: ProtocolError")
+    transport.__cause__ = ProtocolError(
+        "Task must require local approval; access_token=ghp_123456789012345678901234"
+    )
+    detail = _queue_error_detail(transport)
+    assert "Task must require local approval" in detail
+    assert "ghp_123456789012345678901234" not in detail
+    assert "[REDACTED]" in detail
+
+    network_error = QueueTransportError("GitHub request failed: Timeout")
+    assert _queue_error_detail(network_error) == ""
