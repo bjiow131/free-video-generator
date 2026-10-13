@@ -3327,6 +3327,28 @@ def _launch_health_watchdog():
         print('Independent health watchdog launch unavailable')
 
 
+def _stop_owned_worker(process: Any) -> None:
+    """Stop the supervisor's worker tree, including Windows venv launchers."""
+    if process is None or process.poll() is not None:
+        return
+    if os.name == "nt":
+        # Terminating only the venv launcher can orphan its real Python child,
+        # which keeps poller.lock held and prevents every replacement worker.
+        subprocess.run(
+            ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+            timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, shell=False,
+        )
+        process.wait(timeout=3)
+        return
+    try:
+        process.terminate()
+        process.wait(timeout=8)
+    except (OSError, subprocess.TimeoutExpired):
+        process.kill()
+        process.wait(timeout=3)
+
+
 def supervise_windows() -> int:
     """Maintain Studio and the private mailbox worker for the signed-in user.
 
@@ -3484,17 +3506,10 @@ def supervise_windows() -> int:
 
     def stop(name: str) -> None:
         p = processes.pop(name, None)
-        if p is None or p.poll() is not None:
-            return
         try:
-            p.terminate()
-            p.wait(timeout=8)
+            _stop_owned_worker(p)
         except (OSError, subprocess.TimeoutExpired):
-            try:
-                p.kill()
-                p.wait(timeout=3)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
+            log(f"Could not confirm complete shutdown of {name} worker tree")
 
     def studio_render_active() -> bool:
         try:
@@ -3659,4 +3674,5 @@ if __name__ == "__main__":
     if "--supervise" in sys.argv[1:] or (os.name == "nt" and os.environ.get("LOCAL_AGENT_MAILBOX_WORKER") != "1"):
         raise SystemExit(supervise_windows())
     raise SystemExit(main())
+
 
