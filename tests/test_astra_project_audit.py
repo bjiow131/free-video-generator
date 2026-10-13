@@ -82,3 +82,40 @@ def test_full_request_loop(ns,tmp_path,monkeypatch):
     assert result['full_project_audit_verified'] is False
     assert 'FILE app.py' in calls[-1]['messages'][1]['content']
     assert (tmp_path/'state/reports/audit-id/WORK_PROMPT.txt').read_text()=='fix tests'
+
+def test_large_audit_reduces_saved_notes_before_final_synthesis(ns,tmp_path,monkeypatch):
+    import base64,sys,urllib.request
+    root=tmp_path/'source';root.mkdir()
+    ns.update(ROOT=root,load_policy=lambda:{'allow_octava':True},_ensure_agent_dir=lambda:tmp_path/'state')
+    def collect(root,archive):
+        with zipfile.ZipFile(archive,'w'):
+            pass
+        return ([{'path':f'f{i}.py','status':'included'} for i in range(50)],{f'f{i}.py':'x'*45000 for i in range(50)})
+    ns['_audit_collect']=collect
+    monkeypatch.setitem(sys.modules,'local_agent.octava_credentials',SimpleNamespace(read_key=lambda:('fake',None)))
+    calls=[]
+    class Response:
+        def __init__(self,answer):self.answer=answer
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def read(self,n):return json.dumps({'model':'fake','choices':[{'message':{'content':self.answer},'finish_reason':'stop'}]}).encode()
+    def urlopen(req,timeout):
+        user=json.loads(req.data)['messages'][1]['content'];calls.append(user)
+        if user.startswith('PART '): answer='N'*2000
+        elif user.startswith('Synthesize this group'): answer='R'*5000
+        else: answer=json.dumps({'audit_report':'report','work_prompt':'prompt','file_requests':[]})
+        return Response(answer)
+    monkeypatch.setattr(urllib.request,'urlopen',urlopen)
+    class Client:
+        config=SimpleNamespace(ref='main')
+        def _require_private_repo(self):pass
+        def _request(self,method,path,**kw):
+            if method=='PUT':return None
+            return SimpleNamespace(json=lambda:{'content':base64.b64encode(b'a'*1001).decode()})
+    result=ns['_run_astra_project_audit'](Client(),'large-audit')
+    assert result['status']=='completed'
+    assert result['chunks_sent']==50
+    assert any(x.startswith('Synthesize this group') for x in calls)
+    assert calls[-1].startswith('SOURCE INDEX:')
+    assert (tmp_path/'state/reports/large-audit/part_50.txt').read_text()=='N'*2000
+    assert (tmp_path/'state/reports/large-audit/reduce_1_1.txt').exists()
