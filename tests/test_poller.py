@@ -123,20 +123,15 @@ def test_mailbox_failure_diagnostics_rejects_log_symlink(monkeypatch, tmp_path):
     assert poller._mailbox_failure_diagnostics()["last_exception_type"] is None
 
 
-def test_supervisor_recovery_enters_install_directory_before_import(tmp_path, monkeypatch):
+def test_supervisor_recovery_invokes_batch_launcher_from_install_root(tmp_path, monkeypatch):
     from local_agent import poller
-    import subprocess
-    import json
     root = tmp_path / "Studio folder's name"
     root.mkdir()
+    launcher = root / "run_github_mailbox_agent.bat"
+    launcher.write_text("@echo off\n", encoding="utf-8")
     monkeypatch.setattr(poller.subprocess, "list2cmdline", lambda args: args)
     args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
-    (root / "local_agent").mkdir()
-    (root / "local_agent" / "__init__.py").write_text("")
-    (root / "local_agent" / "poller.py").write_text(
-        "import os,sys,json; print(json.dumps([os.getcwd(),sys.argv[1:]]))")
-    completed = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, check=True)
-    assert json.loads(completed.stdout) == [str(root), ["--supervise"]]
+    assert args == ["cmd.exe", "/d", "/c", str(launcher)]
 
 
 def test_mailbox_process_diagnostics_never_exports_commands(monkeypatch):
@@ -1327,6 +1322,8 @@ def test_luna_full_episode_blocks_when_simple_model_is_not_luna(monkeypatch, tmp
     import local_agent.octava_credentials as credentials
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
+        "imported":True,"episodes":[{"episode_id":"S01E01"}]})
     monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda _: {
         "full_text":"S01E01 full text","asset_ids":["char.snail_spiral.master"]})
     monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda *_:{})
