@@ -197,13 +197,13 @@ def _astra_exchange_notification(task_id: str, stage: str, kind: str, text: str)
     """Send bounded, credential-free details to the already paired Telegram bot."""
     import hashlib
     try:
-        if kind == 'sent':
+        if kind in ('started', 'sent'):
             paths = re.findall(r'^FILE (.+?) OFFSET ', text, flags=re.MULTILINE)
             if paths:
                 brief = 'Проверка исходников: '+', '.join(dict.fromkeys(paths[:4]))
             else:
                 brief = 'Сводный аудит проекта и запрос дополнительных файлов/итогового отчёта.'
-            title = 'Отправил задачу Астре'
+            title = 'Начинаю запрос к Астре' if kind == 'started' else 'Отправил задачу Астре'
         else:
             title = 'Получил ответ от Астры'
             brief = text.strip()
@@ -274,6 +274,7 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
                 raise ValueError('request_size_limit')
             (folder/('request_'+stage+'.txt')).write_text(_audit_safe_text(user.encode()),encoding='utf-8')
             req = Request('https://octavapi.shop/v1/chat/completions',data=payload,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
+            _astra_exchange_notification(task_id,stage,'started',user)
             with urlopen(req,timeout=240) as response:
                 # Returning HTTP response headers confirms the request was dispatched.
                 _astra_exchange_notification(task_id,stage,'sent',user)
