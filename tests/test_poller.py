@@ -11,7 +11,8 @@ from local_agent.poller import _not_expired
 
 def test_scheduled_task_target_diagnostic_only_returns_match(tmp_path):
     from local_agent import poller
-    root = tmp_path / "Octava Studio"
+    prefix = tmp_path / "AI-Agent"
+    root = Path(str(prefix) + "-Studio-Octava")
     xml = (
         "<Task><Actions><Exec><Command>python.exe</Command>"
         "<Arguments>-c import os; os.chdir('"
@@ -19,6 +20,7 @@ def test_scheduled_task_target_diagnostic_only_returns_match(tmp_path):
         + "')</Arguments></Exec></Actions></Task>"
     )
     assert poller._scheduled_task_targets_root(xml, root) is True
+    assert poller._scheduled_task_targets_root(xml, prefix) is False
     assert poller._scheduled_task_targets_root(xml, tmp_path / "Other") is False
     assert poller._scheduled_task_targets_root("<Task>", root) is None
     assert poller._scheduled_task_targets_root("x" * 65537, root) is None
