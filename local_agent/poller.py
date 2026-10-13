@@ -2846,6 +2846,26 @@ def main() -> int:
                 if _worker_restart_due():
                     print("Controlled operator restart requested; returning code 75.")
                     return 75
+                if time.monotonic() >= next_update_check:
+                    next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
+                    try:
+                        from local_agent.studio_server import telegram_flush_outbox
+                        telegram_flush_outbox(max_messages=4)
+                    except (ImportError, OSError, RuntimeError, ValueError):
+                        pass
+                    try:
+                        if get_opt_in()["enabled"]:
+                            updated = process_pending(
+                                client,
+                                publish=lambda update_id, result: _publish_result_durable(client, update_id, result),
+                            )
+                            if updated and updated.get("restart_needed"):
+                                _telegram_signal("update-ok", str(updated.get("update_id", "release")),
+                                                 "Blender AI Agent: проверенное обновление установлено. Перезапуск программы.")
+                                print("Trusted update applied and tested; restarting local mailbox agent.")
+                                return 75
+                    except TrustedUpdateError as exc:
+                        print(f"Trusted update safely refused: {exc}")
                 result_outbox = _result_outbox()
                 pending_before_flush = result_outbox.pending_task_ids()
                 pending_results = result_outbox.flush(client)
@@ -2939,26 +2959,6 @@ def main() -> int:
                 if not load_runtime_control()["paused"]:
                     state = _poll_repair_once(client, state)
                     state = _maybe_mailbox_idle_tick(state, github_reachable=True)
-                if time.monotonic() >= next_update_check:
-                    next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
-                    try:
-                        from local_agent.studio_server import telegram_flush_outbox
-                        telegram_flush_outbox(max_messages=4)
-                    except (ImportError, OSError, RuntimeError, ValueError):
-                        pass
-                    try:
-                        if get_opt_in()["enabled"]:
-                            updated = process_pending(
-                                client,
-                                publish=lambda update_id, result: _publish_result_durable(client, update_id, result),
-                            )
-                            if updated and updated.get("restart_needed"):
-                                _telegram_signal("update-ok", str(updated.get("update_id", "release")),
-                                                 "Blender AI Agent: проверенное обновление установлено. Перезапуск программы.")
-                                print("Trusted update applied and tested; restarting local mailbox agent.")
-                                return 75
-                    except TrustedUpdateError as exc:
-                        print(f"Trusted update safely refused: {exc}")
                 backoff = interval
                 time.sleep(interval)
             except KeyboardInterrupt:
