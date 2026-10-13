@@ -1200,12 +1200,13 @@ def test_cancelable_blender_process_stops_on_signal(monkeypatch, tmp_path):
 
 # Direct Astra master-brief operation tests.
 import base64 as _base64
+import json as _json
 import urllib.request as _urllib_request
 from local_agent.control_protocol import ProtocolError as _ProtocolError
 
 def _astra_task_envelope(operation="astra_season_response", arguments=None, approval=True):
     now=datetime.now(timezone.utc)
-    return json.dumps({"protocol_version":1,"task_id":"astra-response-test",
+    return _json.dumps({"protocol_version":1,"task_id":"astra-response-test",
         "operation":operation,"created_at":now.isoformat(),
         "expires_at":(now+timedelta(hours=1)).isoformat(),
         "requires_local_approval":approval,"arguments":arguments or {}})
@@ -1237,7 +1238,7 @@ def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path,
         def __exit__(self,*args): return False
         def read(self,limit):
             assert limit==180001
-            return json.dumps({"choices":[{"message":{"content":"Ответ Астры"}}]}).encode()
+            return _json.dumps({"choices":[{"message":{"content":"Ответ Астры"}}]}).encode()
     captured={}
     def fake_urlopen(request,timeout):
         captured.update(request=request,timeout=timeout)
@@ -1262,3 +1263,4 @@ def test_astra_operation_stops_when_local_provider_consent_is_off(monkeypatch):
         def _request(self,*args,**kwargs): raise AssertionError("must stop before network")
     assert poller._run_astra_season_response(NoNetwork(),"astra-response-test")=={
         "status":"blocked","reason":"local_octava_permission_disabled"}
+
