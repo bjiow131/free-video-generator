@@ -1288,6 +1288,8 @@ def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids
     monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
     monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
     monkeypatch.setattr(credentials,"model_for_tier",lambda tier:"gpt-6-luna")
+    monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
+        "imported":True,"episodes":[{"episode_id":"S01E01"}]})
     monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda episode_id:{
         "episode_id":episode_id,"full_text":episode_text,"asset_ids":asset_ids})
     monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda project,name:{
@@ -1333,3 +1335,14 @@ def test_luna_full_episode_blocks_when_simple_model_is_not_luna(monkeypatch, tmp
     assert poller._run_luna_s01e01_reference_test()["reason"]=="configured_simple_model_is_not_gpt_6_luna"
 
 
+
+def test_luna_full_episode_reports_missing_import_without_provider_call(monkeypatch, tmp_path):
+    from local_agent import poller
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
+    monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
+        "imported":False,"episodes":[]})
+    monkeypatch.setattr("local_agent.octava_credentials.read_key",
+                        lambda: (_ for _ in ()).throw(AssertionError("must not call provider")))
+    result=poller._run_luna_s01e01_reference_test()
+    assert result=={"status":"blocked","reason":"season_script_not_imported_in_studio"}
