@@ -8,6 +8,9 @@ import json
 import os
 import re
 import shutil
+import hashlib
+import sqlite3
+from contextlib import contextmanager
 import subprocess
 import sys
 import threading
@@ -50,6 +53,286 @@ MAX_REVIEW_JOBS = 40
 _JOB_RE = re.compile(r"[a-f0-9]{32}\Z")
 _LOCK = threading.RLock()
 
+
+
+_SEASON_HEADER = re.compile(r"(?m)^=== СЕРИЯ (\d{2}) \| ([^\r\n]+?) ===\s*$")
+_EPISODE_MARKER = re.compile(r"(?m)^EPISODE_ID:\s*(S01E\d{2})\s*$")
+_SCENE_HEADER = re.compile(r"(?m)^##\s+(S01E\d{2}_SC\d{2})\s+\|\s*([^\r\n]+?)\s*$")
+_ASSET_ID = re.compile(r"\b(?:char|set|prop|fx)\.[A-Za-z0-9_.-]+\b")
+_EPISODE_ID = re.compile(r"S01E(?:0[1-9]|[12]\d|30)\Z")
+_EPISODE_DB_LOCK = threading.RLock()
+_MAX_SEASON_BYTES = 1_000_000
+_SEASON_DB = ROOT / ".local_agent" / "season_episodes.sqlite3"
+
+
+@contextmanager
+def _episode_db():
+    folder = _SEASON_DB.parent
+    if folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():
+        raise StudioError("Unsafe episode database directory")
+    folder.mkdir(parents=True, exist_ok=True)
+    if not folder.resolve().is_relative_to(ROOT.resolve()) or _SEASON_DB.is_symlink():
+        raise StudioError("Unsafe episode database path")
+    db = sqlite3.connect(_SEASON_DB, timeout=10)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS seasons (
+            season_id TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            source_sha256 TEXT NOT NULL,
+            imported_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS episodes (
+            season_id TEXT NOT NULL,
+            episode_id TEXT NOT NULL,
+            episode_number INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            full_text TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            scenes_json TEXT NOT NULL,
+            assets_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (season_id, episode_id),
+            UNIQUE (season_id, episode_number),
+            FOREIGN KEY (season_id) REFERENCES seasons(season_id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS episode_revisions (
+            season_id TEXT NOT NULL,
+            episode_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            full_text TEXT NOT NULL,
+            saved_at TEXT NOT NULL,
+            PRIMARY KEY (season_id, episode_id, revision),
+            FOREIGN KEY (season_id, episode_id) REFERENCES episodes(season_id, episode_id) ON DELETE CASCADE
+        );
+    """)
+    try:
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _parse_episode_block(block: str, number: int) -> dict:
+    expected_id = f"S01E{number:02d}"
+    header = _SEASON_HEADER.match(block)
+    if not header or int(header.group(1)) != number:
+        raise StudioError(f"Серия {number:02d}: отсутствует или неверен заголовок серии.")
+    markers = list(_EPISODE_MARKER.finditer(block))
+    if len(markers) != 1 or markers[0].group(1) != expected_id:
+        raise StudioError(f"Серия {number:02d}: ожидается уникальный ID {expected_id}.")
+    scene_matches = list(_SCENE_HEADER.finditer(block))
+    scene_ids = [match.group(1) for match in scene_matches]
+    if len(scene_ids) < 5:
+        raise StudioError(f"{expected_id}: нужно не менее пяти сцен с отдельными ID.")
+    expected_scenes = [f"{expected_id}_SC{index:02d}" for index in range(1, len(scene_ids) + 1)]
+    if scene_ids != expected_scenes:
+        raise StudioError(f"{expected_id}: ID сцен должны быть уникальны и идти по порядку.")
+    scenes = []
+    assets = set()
+    for index, match in enumerate(scene_matches):
+        end = scene_matches[index + 1].start() if index + 1 < len(scene_matches) else len(block)
+        scene_text = block[match.start():end]
+        scene_assets = sorted(set(_ASSET_ID.findall(scene_text)))
+        assets.update(scene_assets)
+        scenes.append({
+            "scene_id": match.group(1),
+            "title": match.group(2).strip(),
+            "asset_ids": scene_assets,
+        })
+    return {
+        "episode_id": expected_id,
+        "episode_number": number,
+        "title": header.group(2).strip(),
+        "full_text": block.strip(),
+        "scenes": scenes,
+        "asset_ids": sorted(assets),
+    }
+
+
+def parse_season_screenplay(text: str) -> list[dict]:
+    if not isinstance(text, str) or not text.strip():
+        raise StudioError("Файл сценария пуст.")
+    if "\x00" in text or len(text.encode("utf-8")) > _MAX_SEASON_BYTES:
+        raise StudioError("Сценарий содержит недопустимые данные или превышает 1 МБ.")
+    headers = list(_SEASON_HEADER.finditer(text))
+    numbers = [int(match.group(1)) for match in headers]
+    duplicates = sorted({number for number in numbers if numbers.count(number) > 1})
+    if duplicates:
+        raise StudioError("Повторяются номера серий: " + ", ".join(f"{n:02d}" for n in duplicates))
+    missing = sorted(set(range(1, 31)) - set(numbers))
+    extra = sorted(set(numbers) - set(range(1, 31)))
+    if missing or extra or len(headers) != 30:
+        details = []
+        if missing:
+            details.append("не хватает серий " + ", ".join(f"{n:02d}" for n in missing))
+        if extra:
+            details.append("лишние номера " + ", ".join(str(n) for n in extra))
+        raise StudioError("Нужно ровно 30 серий по порядку; " + "; ".join(details or ["найдены некорректные заголовки"]))
+    if numbers != list(range(1, 31)):
+        raise StudioError("Серии должны идти в порядке от 01 до 30.")
+    episodes = []
+    for index, match in enumerate(headers):
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+        episodes.append(_parse_episode_block(text[match.start():end], index + 1))
+    return episodes
+
+
+def import_season_screenplay(filename: str, raw: bytes) -> dict:
+    if (not isinstance(filename, str) or Path(filename).name != filename
+            or "/" in filename or "\\" in filename or not filename.lower().endswith(".txt")):
+        raise StudioError("Выберите обычный файл с расширением .txt.")
+    if not isinstance(raw, bytes) or not raw or len(raw) > _MAX_SEASON_BYTES:
+        raise StudioError("Файл сценария пуст или превышает 1 МБ.")
+    try:
+        text = raw.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise StudioError("Не удалось прочитать сценарий: сохраните TXT в кодировке UTF-8.") from exc
+    episodes = parse_season_screenplay(text)
+    checksum = hashlib.sha256(raw).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
+    with _EPISODE_DB_LOCK, _episode_db() as db:
+        existing = db.execute("SELECT source_sha256 FROM seasons WHERE season_id='S01'").fetchone()
+        if existing:
+            if existing["source_sha256"] != checksum:
+                raise StudioConflict("Первый сезон уже импортирован. Измените отдельную серию или восстановите её из истории.")
+            return {"season_id": "S01", "source_sha256": checksum, "episodes": 30, "already_imported": True}
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("INSERT INTO seasons VALUES(?,?,?,?)", ("S01", filename, checksum, now))
+        for episode in episodes:
+            db.execute(
+                "INSERT INTO episodes VALUES(?,?,?,?,?,?,?,?,?)",
+                ("S01", episode["episode_id"], episode["episode_number"], episode["title"],
+                 episode["full_text"], 1, json.dumps(episode["scenes"], ensure_ascii=False),
+                 json.dumps(episode["asset_ids"], ensure_ascii=False), now),
+            )
+            db.execute(
+                "INSERT INTO episode_revisions VALUES(?,?,?,?,?)",
+                ("S01", episode["episode_id"], 1, episode["full_text"], now),
+            )
+    return {"season_id": "S01", "source_sha256": checksum, "episodes": 30, "already_imported": False}
+
+
+
+def get_season_episode_history(episode_id: str) -> list[dict]:
+    if not isinstance(episode_id, str) or not _EPISODE_ID.fullmatch(episode_id):
+        raise StudioError("Некорректный ID серии.")
+    with _EPISODE_DB_LOCK, _episode_db() as db:
+        rows = db.execute(
+            "SELECT revision, full_text, saved_at FROM episode_revisions "
+            "WHERE season_id='S01' AND episode_id=? ORDER BY revision DESC",
+            (episode_id,),
+        ).fetchall()
+    return [{"revision": row["revision"], "full_text": row["full_text"], "saved_at": row["saved_at"]}
+            for row in rows]
+
+
+def _episode_asset_readiness(episode: dict, store: StudioStore) -> dict:
+    registered = {}
+    try:
+        from local_agent.asset_registry import read_asset_registry
+        registered = read_asset_registry(store.root, store.project)
+    except (ImportError, OSError, ValueError):
+        registered = {}
+    mia_reference_ready = False
+    try:
+        mia_reference_ready = approved_status(store.workspace).get("status") == "ready"
+    except (StudioError, OSError, ValueError):
+        pass
+    assets = []
+    for asset_id in episode["asset_ids"]:
+        if asset_id == "char.mia.master" and mia_reference_ready:
+            status, path = "approved_reference", "/api/approved-reference-image/mia"
+        elif asset_id in registered:
+            status, path = "registered", registered[asset_id]["path"]
+        else:
+            status, path = "missing", ""
+        assets.append({"asset_id": asset_id, "status": status, "path": path})
+    missing = [asset["asset_id"] for asset in assets if asset["status"] == "missing"]
+    return {
+        "assets": assets,
+        "missing_assets": missing,
+        "reference_readiness": "blocked_missing_references" if missing else "references_present",
+        "animation_readiness": "not_verified",
+    }
+
+
+def _episode_row_json(row, *, include_text: bool = False) -> dict:
+    result = {
+        "episode_id": row["episode_id"],
+        "episode_number": row["episode_number"],
+        "title": row["title"],
+        "revision": row["revision"],
+        "scenes": json.loads(row["scenes_json"]),
+        "asset_ids": json.loads(row["assets_json"]),
+        "updated_at": row["updated_at"],
+    }
+    if include_text:
+        result["full_text"] = row["full_text"]
+    return result
+
+
+def list_season_episodes() -> dict:
+    with _EPISODE_DB_LOCK, _episode_db() as db:
+        season = db.execute("SELECT * FROM seasons WHERE season_id='S01'").fetchone()
+        if not season:
+            return {"season_id": "S01", "imported": False, "episodes": []}
+        rows = db.execute("SELECT * FROM episodes WHERE season_id='S01' ORDER BY episode_number").fetchall()
+    return {
+        "season_id": "S01", "imported": True, "source_filename": season["filename"],
+        "source_sha256": season["source_sha256"],
+        "episodes": [_episode_row_json(row) for row in rows],
+    }
+
+
+def get_season_episode(episode_id: str) -> dict:
+    if not isinstance(episode_id, str) or not _EPISODE_ID.fullmatch(episode_id):
+        raise StudioError("Некорректный ID серии.")
+    with _EPISODE_DB_LOCK, _episode_db() as db:
+        row = db.execute("SELECT * FROM episodes WHERE season_id='S01' AND episode_id=?", (episode_id,)).fetchone()
+    if not row:
+        raise StudioError("Серия не найдена.")
+    return _episode_row_json(row, include_text=True)
+
+
+def edit_season_episode(episode_id: str, revision: int, text: str) -> dict:
+    if not isinstance(episode_id, str) or not _EPISODE_ID.fullmatch(episode_id):
+        raise StudioError("Некорректный ID серии.")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        raise StudioError("Некорректная ревизия серии.")
+    if not isinstance(text, str) or len(text.encode("utf-8")) > 100_000:
+        raise StudioError("Текст серии должен быть не больше 100 КБ.")
+    number = int(episode_id[-2:])
+    episode = _parse_episode_block(text, number)
+    if episode["episode_id"] != episode_id:
+        raise StudioError("ID текста не совпадает с выбранной серией.")
+    now = datetime.now(timezone.utc).isoformat()
+    with _EPISODE_DB_LOCK, _episode_db() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT revision FROM episodes WHERE season_id='S01' AND episode_id=?",
+            (episode_id,),
+        ).fetchone()
+        if not row:
+            raise StudioError("Серия не найдена.")
+        if row["revision"] != revision:
+            raise StudioConflict("Серия изменилась в другом окне. Перезагрузите её перед сохранением.")
+        next_revision = revision + 1
+        db.execute("INSERT INTO episode_revisions VALUES(?,?,?,?,?)",
+                   ("S01", episode_id, next_revision, episode["full_text"], now))
+        db.execute(
+            "UPDATE episodes SET title=?, full_text=?, revision=?, scenes_json=?, assets_json=?, updated_at=? "
+            "WHERE season_id='S01' AND episode_id=?",
+            (episode["title"], episode["full_text"], next_revision,
+             json.dumps(episode["scenes"], ensure_ascii=False),
+             json.dumps(episode["asset_ids"], ensure_ascii=False), now, episode_id),
+        )
+        row = db.execute("SELECT * FROM episodes WHERE season_id='S01' AND episode_id=?", (episode_id,)).fetchone()
+    return _episode_row_json(row, include_text=True)
 
 _OCTAVA_RESUME_LOCK = threading.Lock()
 
@@ -844,6 +1127,25 @@ class StudioHandler(BaseHTTPRequestHandler):
                 return self._json(200, self.server.store.load())
             except StudioError as exc:
                 return self._json(500, {"error": str(exc)})
+        if path == "/api/episodes":
+            result = list_season_episodes()
+            for episode in result["episodes"]:
+                episode.update(_episode_asset_readiness(episode, self.server.store))
+            return self._json(200, result)
+        if path.startswith("/api/episodes/"):
+            suffix = path.removeprefix("/api/episodes/")
+            if suffix.endswith("/history"):
+                episode_id = suffix.removesuffix("/history").rstrip("/")
+                try:
+                    return self._json(200, {"episode_id": episode_id, "revisions": get_season_episode_history(episode_id)})
+                except StudioError as exc:
+                    return self._json(404, {"error": str(exc)})
+            try:
+                episode = get_season_episode(suffix)
+                episode.update(_episode_asset_readiness(episode, self.server.store))
+                return self._json(200, episode)
+            except StudioError as exc:
+                return self._json(404, {"error": str(exc)})
         if path == "/api/studio-latest":
             return self._json(200, {"job": self.server.jobs.latest()})
         if path == "/api/agent-task":
@@ -996,6 +1298,22 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if set(body) != {"revision"}:
                     raise StudioError("Only project revision is allowed")
                 return self._json(200, attach_approved_mia(self.server.store, body["revision"]))
+            if path == "/api/episodes/import":
+                if set(body) != {"filename", "content_base64"}:
+                    raise StudioError("Ожидаются только имя TXT-файла и его данные.")
+                encoded = body.get("content_base64")
+                if not isinstance(encoded, str) or len(encoded) > 1_400_000:
+                    raise StudioError("Некорректный или слишком большой файл сценария.")
+                raw = base64.b64decode(encoded, validate=True)
+                result = import_season_screenplay(body.get("filename"), raw)
+                result["season"] = list_season_episodes()
+                return self._json(201 if not result["already_imported"] else 200, result)
+            if path == "/api/episodes/edit":
+                if set(body) != {"episode_id", "revision", "text"}:
+                    raise StudioError("Ожидаются ID серии, ревизия и полный текст серии.")
+                episode = edit_season_episode(body["episode_id"], body["revision"], body["text"])
+                episode.update(_episode_asset_readiness(episode, self.server.store))
+                return self._json(200, episode)
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)
