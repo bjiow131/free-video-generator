@@ -52,7 +52,7 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_s01e01_reference_test"}:
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -1003,7 +1003,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test",
 })
 
 
