@@ -259,8 +259,20 @@ def _dismiss_known_windows_error_dialogs() -> int:
         return 0
     try:
         import ctypes
+        from ctypes import wintypes
         user32 = ctypes.windll.user32
-        enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.GetWindowTextW.restype = ctypes.c_int
+        user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.GetClassNameW.restype = ctypes.c_int
+        user32.EnumChildWindows.argtypes = [wintypes.HWND, enum_proc, wintypes.LPARAM]
+        user32.EnumChildWindows.restype = wintypes.BOOL
+        user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                        wintypes.WPARAM, wintypes.LPARAM]
+        user32.PostMessageW.restype = wintypes.BOOL
+        user32.EnumWindows.argtypes = [enum_proc, wintypes.LPARAM]
+        user32.EnumWindows.restype = wintypes.BOOL
         dismissed = 0
 
         @enum_proc
