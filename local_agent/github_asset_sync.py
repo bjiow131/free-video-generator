@@ -227,13 +227,19 @@ def _download_one(
             if not content_range.startswith(f"bytes {offset}-"):
                 raise AssetSyncError("invalid_resume_range")
         mode = "ab" if offset else "wb"
+        downloaded_bytes = offset
+        too_large = False
         with part.open(mode) as stream:
             for chunk in response.iter_content(64 * 1024):
                 if chunk:
+                    downloaded_bytes += len(chunk)
+                    if downloaded_bytes > _MAX_FILE_BYTES:
+                        too_large = True
+                        break
                     stream.write(chunk)
             stream.flush()
             os.fsync(stream.fileno())
-        if part.stat().st_size > _MAX_FILE_BYTES:
+        if too_large or part.stat().st_size > _MAX_FILE_BYTES:
             part.unlink(missing_ok=True)
             raise AssetSyncError("asset_too_large")
         if _digest(part) != expected:
