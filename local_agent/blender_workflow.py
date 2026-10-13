@@ -2803,7 +2803,7 @@ for y in range(height):
         # Near-neutral gray background is the ONLY transparent key.
         # Hard-clip the scanned sheet's gray top/bottom edges, which otherwise
         # turn into two long floating horizontal strokes in the rendered movie.
-        inside_figure_region = (.05 < top < .94 and .06 < horizontal < .94)
+        inside_figure_region = (.05 < top < .94 and .06 < ((x + .5) / width) < .94)
         foreground = inside_figure_region and (spread > .108 or distance > .135)
         if not foreground:
             continue
