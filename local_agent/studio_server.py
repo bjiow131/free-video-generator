@@ -1043,7 +1043,7 @@ _MAX_SEARCH = 24
 
 
 def _png_scanlines(path: Path) -> tuple[tuple[int, ...], bytes] | None:
-    """Return decoded, PNG-filtered scanlines (without ancillary metadata).
+    """Return reconstructed pixel bytes (without metadata or PNG filters).
 
     Identical Blender frames may have different file metadata. Comparing IDAT
     content rather than whole-file bytes prevents that metadata defeating dedup.
@@ -1100,13 +1100,44 @@ def _png_scanlines(path: Path) -> tuple[tuple[int, ...], bytes] | None:
             return None
         if len(image) != uncompressed_size:
             return None
-        return dimensions, image
+        # PNG filters encode differences, not pixel values. Undo each row before
+        # comparing: the same pixels can use different encoder/filter choices.
+        stride = width * channels * (depth // 8)
+        bpp = channels * (depth // 8)
+        pixels = bytearray(height * stride)
+        previous = bytearray(stride)
+        for row in range(height):
+            start = row * (stride + 1)
+            kind = image[start]
+            if kind > 4:
+                return None
+            current = bytearray(image[start + 1:start + 1 + stride])
+            for i in range(stride):
+                left = current[i - bpp] if i >= bpp else 0
+                up = previous[i]
+                diagonal = previous[i - bpp] if i >= bpp else 0
+                if kind == 1:
+                    predictor = left
+                elif kind == 2:
+                    predictor = up
+                elif kind == 3:
+                    predictor = (left + up) // 2
+                elif kind == 4:
+                    estimate = left + up - diagonal
+                    da, db, dc = abs(estimate-left), abs(estimate-up), abs(estimate-diagonal)
+                    predictor = left if da <= db and da <= dc else up if db <= dc else diagonal
+                else:
+                    predictor = 0
+                current[i] = (current[i] + predictor) & 255
+            pixels[row * stride:(row + 1) * stride] = current
+            previous = current
+        return dimensions, bytes(pixels)
     except (OSError, ValueError, struct.error, zlib.error, OverflowError):
         return None
 
 
 def front_difference(first: Path, second: Path) -> dict[str, object] | None:
-    """Normalized difference of bounded PNG scanline samples.
+    """Normalized difference of bounded reconstructed pixel samples.
 
     The metric is deliberately conservative: it is only a repeated-render
     warning, not a perceptual similarity/identity approval.
@@ -1138,6 +1169,7 @@ def find_recent_duplicate(project: Path, review: Path) -> dict[str, object] | No
             if p != review and p.is_dir() and not p.is_symlink()
             and not getattr(p, "is_junction", lambda: False)()
             and (p / "front.png").is_file()
+            and (p / "front.png").stat().st_mtime <= current.stat().st_mtime
         ]
         previous.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         for old in previous[:_MAX_SEARCH]:
@@ -1147,6 +1179,7 @@ def find_recent_duplicate(project: Path, review: Path) -> dict[str, object] | No
     except OSError:
         return None
     return None
+
 
 
 def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict:

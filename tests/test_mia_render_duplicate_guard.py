@@ -65,7 +65,7 @@ def test_find_duplicate_for_separate_review_jobs(tmp_path):
 
 def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path):
     original = make_review(tmp_path, "model_first", (90, 80, 70), b"initial")
-    repeat = make_review(tmp_path, "model_again", (90, 80, 70), b"rerender")
+
     monkeypatch.setattr(studio, "_telegram_credentials",
                         lambda: ("123456:" + "A" * 32, "12345"))
     monkeypatch.setattr(studio, "telegram_notifications_enabled", lambda: True)
@@ -82,6 +82,7 @@ def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path
     result = studio.telegram_send_mia_review_photos(tmp_path, "model_first")
     assert result["status"] == "delivered"
     assert len(posted) == 4
+    repeat = make_review(tmp_path, "model_again", (90, 80, 70), b"rerender")
     result2 = studio.telegram_send_mia_review_photos(tmp_path, "model_again")
     assert result2["status"] == "suppressed_duplicate"
     assert result2["duplicate_of"] == "model_first"
@@ -89,3 +90,23 @@ def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path
     assert studio.telegram_send_mia_review_photos(tmp_path, "model_first")["status"] == "already_delivered"
     assert (original / "front.png").is_file()
     assert (repeat / "front.png").is_file()
+
+
+def test_identical_pixels_with_different_png_filters(tmp_path):
+    from PIL import Image
+    a, b = tmp_path / "raw.png", tmp_path / "filtered.png"
+    a.write_bytes(png((50, 130, 200)))
+    Image.new("RGB", (32, 32), (50, 130, 200)).save(b)
+    assert front_difference(a, b)["duplicate"] is True
+    assert studio.front_difference(a, b)["duplicate"] is True
+
+
+def test_newer_unreviewed_render_does_not_suppress_first(tmp_path):
+    import os
+    first = make_review(tmp_path, "first", (90, 80, 70))
+    later = make_review(tmp_path, "later", (90, 80, 70))
+    os.utime(first / "front.png", (100, 100))
+    os.utime(later / "front.png", (200, 200))
+    assert find_recent_duplicate(first.parent, first) is None
+    assert studio.find_recent_duplicate(first.parent, first) is None
+    assert find_recent_duplicate(first.parent, later)["matched_review"] == "first"
