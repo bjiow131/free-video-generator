@@ -1,0 +1,39 @@
+name: Studio auth tests
+
+on:
+  push:
+    branches:
+      - security/studio-api-auth-20261013
+    paths:
+      - "server.py"
+      - "tests/test_server_security.py"
+      - "static/ai-studio.html"
+      - ".github/workflows/studio-auth-tests.yml"
+
+jobs:
+  studio-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install application dependencies
+        run: pip install -r requirements.txt
+      - name: Install test client
+        run: pip install httpx
+      - name: Compile server and tests
+        run: python -m py_compile server.py tests/test_server_security.py
+      - name: Run Studio security suite
+        timeout-minutes: 8
+        run: python -m pytest -vv -s tests/test_server_security.py
+      - name: Validate Studio JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("static/ai-studio.html").read_text(encoding="utf-8")
+          script = html.rsplit("<script>", 1)[1].split("</script>", 1)[0]
+          Path("/tmp/ai-studio.js").write_text(script, encoding="utf-8")
+          PY
+          node --check /tmp/ai-studio.js
