@@ -100,10 +100,10 @@
     },
     {
       "category": "animal_reference",
-      "asset_id": "char.spiral.master",
+      "asset_id": "char.snail_spiral.master",
       "source_repository": "bjiow131/local-agent-mailbox",
       "path": "private_assets/season1/generated/char.spiral.master_draft_20261013.jpg",
-      "destination": "assets/references/drafts/char.spiral.master.jpg",
+      "destination": "assets/references/drafts/char.snail_spiral.master.jpg",
       "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
       "size_bytes": 132366,
       "sha256": "4e093502bbe2b4adb6f3b34da859c1b650b21596bb018dc715e574a2f9fc71b0",
