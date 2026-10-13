@@ -28,7 +28,13 @@ def test_astra_operation_uses_strict_envelope_and_no_arguments():
         poller._parse_task_with_restart(envelope(approval=False))
 
 
-def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("reported_model", "expected_match"),
+    [("gpt-6-astra", True), ("other-model", False), (None, None)],
+)
+def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(
+    tmp_path, monkeypatch, reported_model, expected_match
+):
     import local_agent.octava_credentials as credentials
     master="# MASTER WORK TASK\nFIRST MANDATORY END-TO-END TEST\n"+("details "*300)
     encoded=base64.b64encode(master.encode()).decode()
@@ -46,7 +52,10 @@ def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path,
         def __exit__(self,*args): return False
         def read(self,limit):
             assert limit==180001
-            return json.dumps({"choices":[{"message":{"content":"Ответ Астры"}}]}).encode()
+            payload={"choices":[{"message":{"content":"Ответ Астры"}}]}
+            if reported_model is not None:
+                payload["model"]=reported_model
+            return json.dumps(payload).encode()
     captured={}
     def fake_urlopen(request, timeout):
         captured["request"]=request
@@ -62,6 +71,10 @@ def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path,
     assert "MASTER WORK TASK" in body["messages"][1]["content"]
     assert captured["timeout"]==180
     assert result["status"]=="completed"
+    assert result["model_reported_by_provider"]==reported_model
+    assert result["model_label_matches_requested"] is expected_match
+    assert result["model_identity_verified"] is False
+    assert "model_verified_by_response" not in result
     assert result["answer"]=="Ответ Астры"
     assert (tmp_path/"reports/astra-response-test_astra_response.txt").read_text()=="Ответ Астры"
     assert result["executed_commands"] is False
