@@ -1,4 +1,5 @@
 import ast
+import re
 import json
 import os
 from pathlib import Path
@@ -10,9 +11,9 @@ import pytest
 @pytest.fixture
 def ns():
     tree=ast.parse((Path(__file__).resolve().parents[1]/'local_agent'/'poller.py').read_text())
-    names={'_audit_safe_text','_audit_collect','_run_astra_project_audit'}
+    names={'_audit_safe_text','_audit_collect','_run_astra_project_audit','_astra_exchange_notification'}
     module=ast.Module(body=[x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name in names],type_ignores=[])
-    result=dict(Path=Path,json=json,os=os,Any=Any,GitHubQueueClient=object,QueueTransportError=RuntimeError)
+    result=dict(Path=Path,json=json,os=os,Any=Any,GitHubQueueClient=object,QueueTransportError=RuntimeError,re=re,_telegram_signal=lambda *args:None)
     exec(compile(module,'audit_helpers','exec'),result)
     return result
 
