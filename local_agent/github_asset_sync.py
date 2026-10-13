@@ -87,8 +87,15 @@ def _load_manifest(path: Path) -> dict[str, Any]:
             raise AssetSyncError("asset_commit_mismatch")
         if source_repository == data["repository"] and source_commit != commit:
             raise AssetSyncError("asset_commit_mismatch")
-        if source_repository == _PRIVATE_REFERENCE_REPOSITORY and item["category"] != "character_reference":
-            raise AssetSyncError("private_repository_category_not_allowed")
+        if source_repository == _PRIVATE_REFERENCE_REPOSITORY:
+            if (item["category"] not in {"character_reference", "animal_reference", "prop", "environment"}
+                    or source.suffix.lower() not in _IMAGE_EXTENSIONS):
+                raise AssetSyncError("private_repository_category_not_allowed")
+            review_status = item.get("review_status", "approved")
+            if review_status not in {"approved", "draft"}:
+                raise AssetSyncError("invalid_reference_review_status")
+            if review_status == "draft" and destination.parts[:3] != ("assets", "references", "drafts"):
+                raise AssetSyncError("draft_reference_destination_not_allowlisted")
         item["source_repository"] = source_repository
         item["commit_sha"] = source_commit
         key = destination.as_posix().casefold()
