@@ -95,3 +95,11 @@ def test_detail_refinement_uses_last_saved_model_and_fixed_sources():
  assert r.refine_saved_source_details('same','same')['status']=='rejected'
  import ast
  ast.parse(r.SOURCE_DETAILS_SCRIPT)
+
+
+def test_source_polish_never_rebuilds_or_overwrites_last_model():
+ value=json.loads(envelope({'source_project':'v3','project_name':'v4'}));value['operation']='blender_mia_source_polish'
+ assert parse_task(json.dumps(value)).arguments['source_project']=='v3'
+ assert r.polish_saved_source_model('same','same')['status']=='rejected'
+ import ast
+ ast.parse(r.SOURCE_POLISH_SCRIPT)
