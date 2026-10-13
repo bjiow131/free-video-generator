@@ -2749,3 +2749,411 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str, single_pass: bool = False) ->
             "reference_sha256":_MIA_V2_REF_SHA,"original_model_preserved":True,
             "animation_created":False,"user_identity_approved":False,
             "checkpoint":str(checkpoint)}
+
+
+# First reference-locked 2.5D prototype. Unlike the parametric 3D Mia model,
+# the actual approved source pixels are used as animated Blender cutout cards.
+# No returned AI text/script is executed. Camera motion is limited.
+_MIA_25D_REFERENCE_SHA256 = "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+
+def _mia_25d_blender_script() -> str:
+    """Pinned local Blender 5.2 script for transparent reference cutout cards."""
+    return r'''
+import bpy
+import json
+import math
+import os
+import sys
+from array import array
+from pathlib import Path
+
+argv = sys.argv[sys.argv.index("--") + 1:]
+config = json.loads(Path(argv[0]).read_text(encoding="utf-8"))
+source = Path(config["crop_png"])
+output = Path(config["output"])
+output.mkdir(parents=True, exist_ok=True)
+bpy.ops.object.select_all(action="SELECT")
+bpy.ops.object.delete(use_global=False)
+img = bpy.data.images.load(str(source), check_existing=False)
+width, height = img.size
+if not (150 <= width <= 450 and 300 <= height <= 650):
+    raise RuntimeError("Approved front crop dimensions outside known layout")
+original = array("f", [0.0]) * (width * height * 4)
+img.pixels.foreach_get(original)
+# Determine the neutral gray sheet background from pixels well outside Mia.
+def rgb(x, y):
+    start = 4 * (y * width + x)
+    return (original[start], original[start + 1], original[start + 2])
+sample = [rgb(x, y) for x, y in (
+    (2, 2), (width - 3, 2), (2, height - 3), (width - 3, height - 3)
+)]
+bg = tuple(sorted(p[i] for p in sample)[len(sample) // 2] for i in range(3))
+# Manual zones separate the original reference, not an AI-generated substitute.
+layers = ("torso", "head", "left_arm", "right_arm", "left_leg", "right_leg")
+pixel_data = {name: array("f", [0.0]) * len(original) for name in layers}
+visible_counts = {name: 0 for name in layers}
+for y in range(height):
+    top = 1.0 - (y + .5) / height
+    for x in range(width):
+        i = (y * width + x) * 4
+        red, green, blue = original[i], original[i + 1], original[i + 2]
+        spread = max(red, green, blue) - min(red, green, blue)
+        distance = max(abs(red - bg[0]), abs(green - bg[1]), abs(blue - bg[2]))
+        # Preserve brown hair, skin, teal jacket, yellow straps and boots.
+        # Near-neutral gray background is the ONLY transparent key.
+        foreground = spread > .108 or distance > .135
+        if not foreground:
+            continue
+        horizontal = (x + .5) / width
+        if top < .310 and .09 <= horizontal <= .92:
+            layer = "head"
+        elif top > .645:
+            layer = "left_leg" if horizontal < .50 else "right_leg"
+        elif .31 <= top < .72 and horizontal < .345:
+            layer = "left_arm"
+        elif .31 <= top < .72 and horizontal > .695:
+            layer = "right_arm"
+        else:
+            layer = "torso"
+        arr = pixel_data[layer]
+        arr[i] = red
+        arr[i + 1] = green
+        arr[i + 2] = blue
+        arr[i + 3] = 1.0
+        visible_counts[layer] += 1
+
+if sum(visible_counts.values()) < width * height * .09:
+    raise RuntimeError("Approved Mia cutout foreground segmentation was empty")
+sprite_dir = output / "layers"
+sprite_dir.mkdir(parents=True, exist_ok=True)
+world_width = 2.3
+world_height = world_width * height / width
+def to_xy(horizontal, top):
+    return ((horizontal - .5) * world_width, (.5 - top) * world_height)
+anchors = {
+    "torso": (.50, .49),
+    "head": (.50, .30),
+    "left_arm": (.33, .37),
+    "right_arm": (.69, .37),
+    "left_leg": (.435, .645),
+    "right_leg": (.565, .645),
+}
+depth = {"torso": 0.005, "left_leg": .009, "right_leg": .010,
+         "left_arm": .015, "right_arm": .018, "head": .022}
+controls = {}
+for name in layers:
+    rgba = bpy.data.images.new("Mia_APPROVED_" + name, width=width, height=height, alpha=True)
+    rgba.pixels.foreach_set(pixel_data[name])
+    png = sprite_dir / (name + ".png")
+    rgba.filepath_raw = str(png)
+    rgba.file_format = "PNG"
+    rgba.save()
+    bpy.data.images.remove(rgba)
+    texture = bpy.data.images.load(str(png), check_existing=False)
+    material = bpy.data.materials.new("Mia_REF_" + name)
+    material.use_nodes = True
+    nt = material.node_tree
+    nt.nodes.clear()
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = texture
+    tex.interpolation = "Linear"
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    emissive = nt.nodes.new("ShaderNodeEmission")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(tex.outputs["Alpha"], mix.inputs[0])
+    nt.links.new(transparent.outputs[0], mix.inputs[1])
+    nt.links.new(tex.outputs["Color"], emissive.inputs["Color"])
+    nt.links.new(emissive.outputs[0], mix.inputs[2])
+    node_output = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(mix.outputs[0], node_output.inputs["Surface"])
+    if hasattr(material, "surface_render_method"):
+        material.surface_render_method = "DITHERED"
+    coords = [(-world_width / 2, -world_height / 2, 0),
+              (world_width / 2, -world_height / 2, 0),
+              (world_width / 2, world_height / 2, 0),
+              (-world_width / 2, world_height / 2, 0)]
+    mesh = bpy.data.meshes.new("Mia_cutout_" + name)
+    mesh.from_pydata(coords, [], [(0, 1, 2, 3)])
+    mesh.update()
+    uv = mesh.uv_layers.new(name="ReferenceUV")
+    for poly in mesh.polygons:
+        for j in poly.loop_indices:
+            vid = mesh.loops[j].vertex_index
+            uv.data[j].uv = [(0, 0), (1, 0), (1, 1), (0, 1)][vid]
+    plane = bpy.data.objects.new("Mia_layer_" + name, mesh)
+    bpy.context.collection.objects.link(plane)
+    mesh.materials.append(material)
+    anchor_x, anchor_y = to_xy(*anchors[name])
+    ctrl = bpy.data.objects.new("CTRL_" + name, None)
+    ctrl.empty_display_type = "PLAIN_AXES"
+    ctrl.empty_display_size = .08
+    ctrl.location = (anchor_x, anchor_y, 0)
+    bpy.context.collection.objects.link(ctrl)
+    plane.parent = ctrl
+    plane.location = (-anchor_x, -anchor_y, depth[name])
+    controls[name] = ctrl
+# Two on/off facial masks provide a basic blink controller without changing
+# the stored reference. More precise eyelid cutouts are a future stage.
+blink_material = bpy.data.materials.new("Blink_neutral_skin")
+blink_material.diffuse_color = (.78, .45, .34, 1)
+blink_material.use_nodes = True
+bsdf = blink_material.node_tree.nodes.get("Principled BSDF")
+if bsdf:
+    bsdf.inputs["Base Color"].default_value = (.78, .45, .34, 1)
+    bsdf.inputs["Roughness"].default_value = 1
+eye_objects = []
+for idx, xx in enumerate((.454, .616)):
+    local_x, local_y = to_xy(xx, .183)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8,
+        location=(local_x, local_y, .05))
+    lid = bpy.context.object
+    lid.name = "CTRL_blink_lid_" + str(idx)
+    lid.scale = (.080, .020, .001)
+    lid.data.materials.append(blink_material)
+    lid.parent = controls["head"]
+    lid.matrix_parent_inverse = controls["head"].matrix_world.inverted()
+    eye_objects.append(lid)
+    lid.hide_render = True
+# Animate the original image cards with bounded, subtle puppet pivots.
+def animate(name, data):
+    obj = controls[name]
+    for frame, rotation, dx, dy in data:
+        obj.rotation_euler[2] = math.radians(rotation)
+        ax, ay = to_xy(*anchors[name])
+        obj.location = (ax + dx, ay + dy, 0)
+        obj.keyframe_insert(data_path="rotation_euler", frame=frame)
+        obj.keyframe_insert(data_path="location", frame=frame)
+for name in ("torso", "head", "left_arm", "right_arm", "left_leg", "right_leg"):
+    baseline = {
+        "torso": [(1,0,0,0),(17,1.1,.018,0),(32,-1.2,-.018,0),(46,.9,.014,0),(60,0,0,0)],
+        "head": [(1,0,0,0),(17,-2.5,.009,0),(32,1.5,-.006,0),(46,-1.2,.006,0),(60,0,0,0)],
+        "left_arm": [(1,0,0,0),(30,-2,0,0),(45,4,0,0),(60,0,0,0)],
+        "right_arm": [(1,0,0,0),(18,1,0,0),(38,-9,0,.006),(50,-5,0,.006),(60,0,0,0)],
+        "left_leg": [(1,0,0,0),(20,.6,0,0),(42,-2,-.022,0),(60,0,0,0)],
+        "right_leg": [(1,0,0,0),(20,-.6,0,0),(42,3,.025,.004),(60,0,0,0)],
+    }
+    animate(name, baseline[name])
+for eye in eye_objects:
+    for frame, hidden in ((1,True),(16,True),(17,False),(19,False),
+                          (20,True),(44,True),(45,False),(47,False),(48,True),(60,True)):
+        eye.hide_render = hidden
+        eye.keyframe_insert(data_path="hide_render", frame=frame)
+# Mouth controls exist but remain neutral in the silent five-second test.
+mouth = bpy.data.objects.new("CTRL_mouth_open_close", None)
+bpy.context.collection.objects.link(mouth)
+mouth.parent = controls["head"]
+mouth["open"] = 0.0
+mouth["note"] = "Mouth deformation stub; no lip sync or speech audio."
+bpy.ops.object.camera_add(location=(0, 0, 10))
+camera = bpy.context.object
+camera.name = "Camera_2p5d_front_only"
+camera.data.type = "ORTHO"
+camera.data.ortho_scale = 6.1
+bpy.context.scene.camera = camera
+scene = bpy.context.scene
+scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.resolution_x = 360
+scene.render.resolution_y = 640
+scene.render.resolution_percentage = 100
+scene.render.film_transparent = False
+scene.render.image_settings.file_format = "PNG"
+scene.render.fps = 12
+scene.frame_start = 1
+scene.frame_end = 60
+scene.world.color = (.55, .55, .55)
+scene.view_settings.view_transform = "Standard"
+scene["mia_source"] = "APPROVED_REFERENCE_PIXELS"
+scene["mia_identity"] = "reference_locked"
+scene["animation_type"] = "2.5D layered cutout"
+scene["limits"] = "no camera orbit; 1 front-view photo; approximate joints/eyelids"
+blend_path = output / "mia_25d_prototype.blend"
+bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+frames = output / "frames"
+frames.mkdir(parents=True, exist_ok=True)
+for frame in range(1, 61):
+    scene.frame_set(frame)
+    scene.render.filepath = str(frames / ("frame_%04d.png" % frame))
+    bpy.ops.render.render(write_still=True)
+manifest = {
+    "status": "rendered_frames",
+    "original_approved_reference_sha256": config["reference_sha256"],
+    "identity_source": "only pixels cropped from approved original image",
+    "crop": "front third of approved turnaround sheet",
+    "source_dimensions": [width, height],
+    "fps": 12, "frames": 60, "duration_seconds": 5,
+    "output_resolution": [360,640], "output_ratio": "9:16",
+    "layers": [{"name": name, "visible_pixels": visible_counts[name],
+                "pivot_normalized": list(anchors[name]),
+                "texture": "layers/" + name + ".png",
+                "editable": True} for name in layers],
+    "controllers": ["head tilt", "torso sway", "arm lift", "leg step",
+                    "blink", "mouth placeholder"],
+    "limitations": ["approximate cutout masks", "front camera only",
+                    "mouth requires refined texture", "cannot freely rotate"],
+    "blend": str(blend_path),
+    "video_created_in_blender": False,
+    "no_text_no_audio": True
+}
+(output / "layer_manifest.json").write_text(
+    json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+'''
+
+def _mia_25d_astra_guidance(canonical: Path, out: Path) -> dict[str, Any]:
+    """Ask Astra for a read-only cutout critique. Never execute provider output."""
+    import base64
+    from urllib.request import Request, urlopen
+    try:
+        from local_agent.octava_credentials import read_key
+        key, _ = read_key()
+        if not key:
+            return {"status": "unavailable", "reason": "astra_key_missing"}
+        raw = canonical.read_bytes()
+        prompt = (
+            "You are Astra, the visual production supervisor. Inspect this EXACT "
+            "approved turnaround of 4-year-old Mia. The FIRST figure is the front "
+            "view to be used directly as the pixel source for a Blender 2.5D puppet. "
+            "Do not create a new Mia. Give a concise concrete cutout, pivot, blink "
+            "and parallax plan for a FIVE-second 9:16 test, retaining her identity. "
+            "No scripts, no URLs, no promises of 3D orbit. Plain text under 1200 "
+            "characters, English."
+        )
+        content = [{"type": "text", "text": prompt},
+                   {"type": "image_url", "image_url": {
+                       "url": "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii"),
+                       "detail": "high"}}]
+        payload = json.dumps({"model": "gpt-6-astra",
+            "messages": [{"role": "user", "content": content}],
+            "max_tokens": 550, "temperature": 0.2}).encode("utf-8")
+        req = Request("https://octavapi.shop/v1/chat/completions", data=payload,
+            method="POST", headers={
+                "Authorization": "Bearer " + key,
+                "Content-Type": "application/json"})
+        with urlopen(req, timeout=90) as response:
+            data = response.read(40000)
+        advice = json.loads(data.decode("utf-8"))["choices"][0]["message"]["content"]
+        if not isinstance(advice, str) or not advice.strip():
+            return {"status": "failed", "reason": "empty_astra_response"}
+        (out / "astra_2p5d_notes.txt").write_text(advice[:3000], encoding="utf-8")
+        return {"status": "completed", "notes_saved": True,
+                "source_reference_attached": True}
+    except Exception as exc:
+        return {"status": "failed", "error_type": type(exc).__name__,
+                "note": "Blender reference cutout will continue using pinned safe defaults"}
+
+def run_mia_2p5d_prototype(*, task_id: str) -> dict[str, Any]:
+    """Render a reference-based five-second Mia 2.5D prototype on local Blender."""
+    import hashlib
+    import re
+    from local_agent.mailbox_policy import load_policy
+    from local_agent.studio_server import _telegram_credentials
+    if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}",task_id):
+        return {"status":"blocked", "reason":"invalid_25d_task_id"}
+    p=load_policy()
+    if not (p.get("enabled") and p.get("allow_blender") and p.get("allow_octava")):
+        return {"status":"blocked", "reason":"local_blender_and_astra_permissions_required"}
+    blender=find_blender_executable()
+    ffmpeg=shutil.which("ffmpeg")
+    raw_workspace=os.environ.get("LOCAL_AGENT_WORKSPACE","")
+    if blender is None or not ffmpeg or not raw_workspace:
+        return {"status":"blocked","reason":"local_blender_ffmpeg_or_workspace_missing"}
+    ws=Path(raw_workspace).expanduser().resolve()
+    canonical=ws/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    if is_link_or_junction(canonical) or not canonical.is_file():
+        return {"status":"blocked","reason":"approved_mia_source_missing"}
+    digest=hashlib.sha256(canonical.read_bytes()).hexdigest()
+    if digest!=_MIA_25D_REFERENCE_SHA256:
+        return {"status":"blocked","reason":"approved_mia_sha256_mismatch"}
+    output=ws/"MIA_REFERENCE_REVIEW"/("MIA_25D_"+task_id)
+    if is_link_or_junction(output) or output.exists():
+        return {"status":"blocked","reason":"unique_output_directory_exists_or_unsafe"}
+    if shutil.disk_usage(ws).free<1_200_000_000:
+        return {"status":"blocked","reason":"low_disk"}
+    output.mkdir(parents=True,exist_ok=False)
+    crop=output/"approved_front_crop.png"
+    # Exact approved turnaround dimensions and known front position.
+    crop_cmd=[ffmpeg,"-nostdin","-hide_banner","-loglevel","error","-y",
+        "-i",str(canonical),"-vf","crop=trunc(iw*0.34/2)*2:trunc(ih*0.31/2)*2:0:trunc(ih*0.346/2)*2",
+        "-frames:v","1",str(crop)]
+    try:
+        cropped=subprocess.run(crop_cmd,cwd=output,timeout=45,
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,check=False,shell=False)
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        return {"status":"failed","stage":"crop", "error_type":type(exc).__name__}
+    if cropped.returncode or not crop.is_file() or crop.stat().st_size<500:
+        return {"status":"failed","stage":"crop","reason":"reference_crop_failed"}
+    astra=_mia_25d_astra_guidance(canonical,output)
+    with tempfile.TemporaryDirectory(prefix=".mia-25d-",dir=output) as temp:
+        script=Path(temp)/"render_approved_mia_25d.py"
+        config=Path(temp)/"config.json"
+        script.write_text(_mia_25d_blender_script(),encoding="utf-8")
+        config.write_text(json.dumps({"crop_png":str(crop),"output":str(output),
+             "reference_sha256":digest},ensure_ascii=False),encoding="utf-8")
+        result,cancelled,timed_out,_,error=_run_cancellable_process(
+            [str(blender),"--background","--factory-startup","--disable-autoexec",
+             "--offline-mode","--python-exit-code","1","--python",str(script),
+             "--",str(config)],cwd=output,timeout=1200,task_id=task_id)
+    if cancelled:
+        return {"status":"cancelled","stage":"render", "astra":astra}
+    if timed_out or error or not result or result.returncode:
+        return {"status":"incomplete","stage":"render","error_type":error or
+               ("Timeout" if timed_out else "BlenderExit"),
+               "astra":astra,"output_directory":str(output)}
+    frames=output/"frames"
+    frame_count=sum(1 for frame in frames.glob("frame_*.png") if frame.is_file())
+    manifest=output/"layer_manifest.json"
+    blend=output/"mia_25d_prototype.blend"
+    if frame_count!=60 or not manifest.is_file() or not blend.is_file():
+        return {"status":"incomplete","reason":"missing_60_frames_or_blend",
+                "frame_count":frame_count,"astra":astra}
+    final=output/"mia_25d_prototype_5s.mp4"
+    encode=[ffmpeg,"-hide_banner","-loglevel","error","-nostdin","-y",
+        "-framerate","12","-i",str(frames/"frame_%04d.png"),
+        "-vf","scale=720:1280:flags=lanczos",
+        "-c:v","libx264","-preset","veryfast","-crf","19",
+        "-pix_fmt","yuv420p","-movflags","+faststart","-an",str(final)]
+    try:
+        encoded=subprocess.run(encode,cwd=output,timeout=150,
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,check=False,shell=False)
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        return {"status":"incomplete","stage":"encode",
+                "error_type":type(exc).__name__,"astra":astra}
+    if encoded.returncode or not final.is_file() or final.stat().st_size<15000:
+        return {"status":"incomplete","stage":"encode","reason":"ffmpeg_export_failed","astra":astra}
+    previews={}
+    for label,index in (("front",1),("blink",18),("gesture",40)):
+        src=frames/("frame_%04d.png"%index)
+        dest=output/("preview_"+label+".png")
+        shutil.copy2(src,dest)
+        previews[label]=str(dest)
+    delivery={"video":"not_configured","photo":"not_configured"}
+    try:
+        import requests
+        token,chat=_telegram_credentials()
+        if token and chat:
+            with final.open("rb") as handle:
+                response=requests.post("https://api.telegram.org/bot"+token+"/sendVideo",
+                    data={"chat_id":chat,"caption":"Мия 2.5D • 5 секунд • original reference"},
+                    files={"video":(final.name,handle,"video/mp4")},timeout=(10,90),
+                    allow_redirects=False)
+                delivery["video"]="delivered" if response.status_code==200 and response.json().get("ok") else "failed"
+            with Path(previews["gesture"]).open("rb") as handle:
+                response=requests.post("https://api.telegram.org/bot"+token+"/sendPhoto",
+                    data={"chat_id":chat,"caption":"2.5D Мия: жест, кадр 40/60"},
+                    files={"photo":("gesture.png",handle,"image/png")},
+                    timeout=(10,45),allow_redirects=False)
+                delivery["photo"]="delivered" if response.status_code==200 and response.json().get("ok") else "failed"
+    except Exception as exc:
+        delivery["error_type"]=type(exc).__name__
+    technical={
+        "status":"completed","stage":"approved_reference_2p5d_proof",
+        "reference_sha256":digest,"reference_pixels_not_regenerated":True,
+        "blend_path":str(blend),"mp4_path":str(final),
+        "output_folder":str(output),"layer_manifest":str(manifest),
+        "previews":previews,"duration_seconds":5,
+        "resolution":"720x1280","fps":12,"rendered_frames":frame_count,
+        "astra":astra,"telegram":delivery,
+        "limitations":["front-view reference only","simple mask joints",
+                       "no free camera orbit","mouth placeholder"] }
+    (output/"technical_report.json").write_text(
+        json.dumps(technical,ensure_ascii=False,indent=2),encoding="utf-8")
+    return technical
