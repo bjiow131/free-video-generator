@@ -310,9 +310,34 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
             notes.append(answer)
             summary['chunks_sent'] = number+1
             (folder/'progress.json').write_text(json.dumps(summary,ensure_ascii=False),encoding='utf-8')
-        context = 'SOURCE INDEX:\n'+compact_index+'\nAUDIT NOTES:\n'+'\n'.join(notes)
+        # Keep every raw answer on disk, then reduce notes hierarchically. The old
+        # implementation concatenated all 70 notes into one prompt; it hit the
+        # model context limit after spending the full audit budget and left no
+        # final report. Each reduction is saved before the next request so the
+        # exact material used for the final answer remains inspectable.
+        level = notes
+        level_number = 0
+        while len('\n'.join(level)) > 90000:
+            level_number += 1
+            reduced = []
+            for group_number, offset in enumerate(range(0, len(level), 8), 1):
+                group = level[offset:offset+8]
+                prompt_text = (
+                    'Synthesize this group of audit notes into a concise, precise set of findings. '
+                    'Preserve paths, concrete evidence, severity, dependencies, and unresolved questions. '
+                    'Do not invent tests or claim assets were inspected. Keep the answer under 9000 characters. '
+                    'This is an intermediate summary, not the final audit.\n\n'
+                    + '\n\n--- NOTE ---\n\n'.join(group)
+                )
+                answer = ask(prompt_text, f'reduce_{level_number}_{group_number}')
+                if len(answer) > 12000:
+                    return {**summary, 'reason':'reduction_answer_size_limit; raw_notes_preserved', 'reduction_level':level_number}
+                reduced.append(answer)
+                (folder/'progress.json').write_text(json.dumps({**summary,'reduction_level':level_number,'reduction_groups_completed':group_number},ensure_ascii=False),encoding='utf-8')
+            level = reduced
+        context = 'SOURCE INDEX:\n'+compact_index+'\nAUDIT NOTES (hierarchically reduced; original part answers retained locally):\n'+'\n\n--- REDUCED NOTE ---\n\n'.join(level)
         if len(context)>140000:
-            return {**summary, 'reason':'synthesis_context_limit; preserve_all_partial_notes'}
+            return {**summary, 'reason':'synthesis_context_limit_after_hierarchical_reduction; raw_notes_preserved'}
         transcript = context
         for turn in range(9):
             answer = ask(transcript+'\nReturn final audit_report and work_prompt JSON, or file_requests JSON. Binary assets are NOT inspected. State full audit scope limitations.', 'synthesis_'+str(turn))
