@@ -1269,6 +1269,7 @@ def test_luna_full_episode_operation_requires_fixed_no_argument_envelope():
     task=poller._parse_task_with_restart(_astra_task_envelope(
         operation="luna_s01e01_reference_test"))
     assert task.operation=="luna_s01e01_reference_test"
+    assert task.operation in poller._SPECIALIZED_OPERATIONS
     with pytest.raises(_ProtocolError):
         poller._parse_task_with_restart(_astra_task_envelope(
             operation="luna_s01e01_reference_test",arguments={"prompt":"arbitrary"}))
