@@ -598,13 +598,44 @@ class SeasonFeedbackCoordinator:
             raise StudioJobError('Unsafe season state')
         if not self.path.is_file():
             return {'schema_version':1,'status':'not_started','episodes':{k:'pending' for k in self.EPISODES},
+                    'episode_evidence':{k:None for k in self.EPISODES},
                     'actions':{},'pending_action':None,'last_feedback':None,'cycle':0}
         if self.path.stat().st_size>4_000_000:
             raise StudioJobError('Season snapshot capacity reached; archive before continuing')
         data=json.loads(self.path.read_text(encoding='utf-8'))
         if set(data.get('episodes',{}))!=set(self.EPISODES):
             raise StudioJobError('Expected exactly 30 episode records')
+        data.setdefault('episode_evidence',{k:None for k in self.EPISODES})
+        if set(data['episode_evidence'])!=set(self.EPISODES):
+            raise StudioJobError('Expected exact episode evidence records')
         return data
+
+    @staticmethod
+    def _valid_episode_evidence(episode, result, evidence):
+        """Require local evidence bound to the output; a boolean claim is insufficient."""
+        import re
+        if not isinstance(evidence,dict) or set(evidence)!={'episode_id','video_sha256','technical','visual','assets'}:
+            return False
+        digest=re.compile(r'[a-f0-9]{64}\Z')
+        if evidence['episode_id']!=episode or evidence['video_sha256']!=result.get('sha256') or not digest.fullmatch(str(evidence['video_sha256'])):
+            return False
+        technical=evidence['technical'];visual=evidence['visual'];assets=evidence['assets']
+        if not isinstance(technical,dict) or technical.get('status')!='technical_checks_passed' or technical.get('sha256')!=evidence['video_sha256']:
+            return False
+        if not isinstance(visual,dict) or visual.get('status')!='astra_approved' or not digest.fullmatch(str(visual.get('review_sha256',''))):
+            return False
+        if not isinstance(assets,list) or not assets:
+            return False
+        seen=set();mia_approved=False
+        for item in assets:
+            if not isinstance(item,dict) or set(item)!={'asset_id','sha256','approval'} or not isinstance(item['asset_id'],str) or not digest.fullmatch(str(item['sha256'])):
+                return False
+            if item['asset_id'] in seen or item['approval'] not in ('astra_approved','user_approved'):
+                return False
+            seen.add(item['asset_id'])
+            if item['asset_id'].startswith('char.mia.'):
+                mia_approved=item['approval']=='user_approved'
+        return mia_approved
 
     def _persist(self,state,event):
         from local_agent.reporting import _redact_value
@@ -685,14 +716,20 @@ class SeasonFeedbackCoordinator:
             # Verification is a separate local adapter, never a model-returned flag.
             episode=reply['arguments'].get('episode_id')
             if episode in self.EPISODES and result.get('status')=='completed':
-                verified=verify_episode(episode,result)
-                if verified is True:
+                evidence=verify_episode(episode,result)
+                if self._valid_episode_evidence(episode,result,evidence):
                     state['episodes'][episode]='verified_complete'
+                    state['episode_evidence'][episode]=evidence
                 else:
                     state['last_feedback']['episode_verification']='failed_or_blocked'
             if all(v=='verified_complete' for v in state['episodes'].values()):
                 # Revalidate all recorded complete episodes before season completion.
-                valid=all(verify_episode(e,{'revalidate':True}) is True for e in self.EPISODES)
+                valid=True
+                for e in self.EPISODES:
+                    evidence=state['episode_evidence'][e]
+                    result={'revalidate':True,'sha256':evidence['video_sha256']}
+                    if not self._valid_episode_evidence(e,result,verify_episode(e,{'revalidate':True,'evidence':evidence,'sha256':result['sha256']})):
+                        valid=False;break
                 state['status']='completed' if valid else 'verification_failed'
             self._persist(state,{'event':'execution_verified_and_feedback_saved','feedback':state['last_feedback'],
                                  'episodes':state['episodes'],'status':state['status']})
