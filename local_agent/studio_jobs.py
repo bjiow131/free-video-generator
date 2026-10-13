@@ -466,3 +466,246 @@ def agent_task_cancel_requested(task_id: str | None) -> bool:
         return False
     request = _read_agent_control(_AGENT_CANCEL_TASK)
     return bool(request and request.get("task_id") == task_id)
+
+
+class AssetQualityStore:
+    """Version-bound visual approvals; Astra cannot grant owner approval to Mia."""
+    MIA_REFERENCE_SHA = '7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383'
+
+    def __init__(self, project_root):
+        self.root = Path(project_root).resolve()
+        self.directory = self.root/'asset_quality'
+        if self.directory.is_symlink() or getattr(self.directory,'is_junction',lambda:False)():
+            raise StudioJobError('Unsafe quality directory')
+        self.directory.mkdir(parents=True,exist_ok=True)
+        self.lock = threading.RLock()
+
+    def _record_path(self, asset_id):
+        if not isinstance(asset_id,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,119}',asset_id):
+            raise StudioJobError('Invalid quality asset ID')
+        path=self.directory/(asset_id+'.json')
+        if path.is_symlink():
+            raise StudioJobError('Unsafe quality record')
+        return path
+
+    def _hash(self, relative):
+        path=Path(relative)
+        if path.is_absolute() or '..' in path.parts or not path.parts:
+            raise StudioJobError('Asset path must be project-relative')
+        full=self.root/path
+        parent=full
+        while parent!=self.root:
+            if parent.is_symlink() or getattr(parent,'is_junction',lambda:False)():
+                raise StudioJobError('Linked asset path rejected')
+            parent=parent.parent
+        if not full.is_file() or not full.resolve().is_relative_to(self.root) or full.stat().st_size>1_000_000_000:
+            raise StudioJobError('Missing or oversized asset')
+        with full.open('rb') as stream:
+            return hashlib.file_digest(stream,'sha256').hexdigest()
+
+    def _write(self, asset_id, record):
+        target=self._record_path(asset_id)
+        temporary=self.directory/('.quality-'+uuid.uuid4().hex+'.tmp')
+        with temporary.open('x',encoding='utf-8') as stream:
+            json.dump(record,stream,ensure_ascii=False);stream.flush();os.fsync(stream.fileno())
+        os.replace(temporary,target)
+        return record
+
+    def snapshot(self, asset_id):
+        path=self._record_path(asset_id)
+        if not path.is_file():
+            return {'asset_id':asset_id,'status':'unreviewed'}
+        if path.stat().st_size>64000:
+            raise StudioJobError('Oversized quality record')
+        data=json.loads(path.read_text(encoding='utf-8'))
+        if data.get('asset_id')!=asset_id:
+            raise StudioJobError('Quality record identity mismatch')
+        try:
+            changed=(self._hash(data['source_path'])!=data['source_sha256'] or
+                     self._hash(data['candidate_path'])!=data['candidate_sha256'] or
+                     any(self._hash(path)!=digest for path,digest in data.get('views',{}).items()))
+        except (OSError,KeyError,StudioJobError):
+            changed=True
+        if changed:
+            return {**data,'status':'version_changed_requires_review'}
+        return data
+
+    def register(self, asset_id, source_path, candidate_path, views):
+        with self.lock:
+            if not isinstance(views,list) or not 1<=len(views)<=12:
+                raise StudioJobError('Actual rendered views required')
+            source_sha=self._hash(source_path)
+            if asset_id.startswith('char.mia.') and source_sha!=self.MIA_REFERENCE_SHA:
+                raise StudioJobError('Mia source identity mismatch')
+            record={'asset_id':asset_id,'source_path':source_path,'source_sha256':source_sha,
+                    'candidate_path':candidate_path,'candidate_sha256':self._hash(candidate_path),
+                    'views':{path:self._hash(path) for path in views},'status':'awaiting_astra_review',
+                    'user_approved':False,'astra_review':None,'updated_at':time.time()}
+            return self._write(asset_id,record)
+
+    def record_astra_review(self, asset_id, *, source_sha256, candidate_sha256,
+                            view_hashes, vision_confirmed, criteria, unresolved):
+        with self.lock:
+            record=self.snapshot(asset_id)
+            if record['status'] in ('unreviewed','version_changed_requires_review'):
+                raise StudioJobError('Review does not match current asset version')
+            if (record['source_sha256']!=source_sha256 or record['candidate_sha256']!=candidate_sha256
+                    or record['views']!=view_hashes):
+                raise StudioJobError('Review evidence hashes mismatch')
+            if (type(vision_confirmed) is not bool or not isinstance(criteria,dict) or
+                not criteria or any(type(v) is not bool for v in criteria.values()) or
+                not isinstance(unresolved,list) or any(not isinstance(x,str) or len(x)>300 for x in unresolved)):
+                raise StudioJobError('Invalid visual review evidence')
+            accepted=vision_confirmed and all(criteria.values()) and not unresolved
+            status=('awaiting_mia_owner_approval' if asset_id.startswith('char.mia.') else 'astra_approved') if accepted else 'needs_revision'
+            record.update(status=status,user_approved=False,updated_at=time.time(),
+                astra_review={'vision_confirmed':vision_confirmed,'criteria':criteria,'unresolved':unresolved})
+            return self._write(asset_id,record)
+
+    def owner_approve_mia(self, asset_id, expected_candidate_sha256):
+        with self.lock:
+            record=self.snapshot(asset_id)
+            if not asset_id.startswith('char.mia.') or record['status']!='awaiting_mia_owner_approval' or record['candidate_sha256']!=expected_candidate_sha256:
+                raise StudioJobError('Mia must match the reviewed candidate')
+            record.update(status='user_approved',user_approved=True,updated_at=time.time())
+            return self._write(asset_id,record)
+
+    def ready(self, asset_id):
+        status=self.snapshot(asset_id)['status']
+        return status=='user_approved' if asset_id.startswith('char.mia.') else status in ('astra_approved','user_approved')
+
+
+
+class SeasonFeedbackCoordinator:
+    """Durable ask -> execute -> verify -> feedback loop with exactly 30 episode gates.
+
+    Provider and executor adapters must supply actual implementations. This class
+    never treats model claims or a plan as episode completion.
+    """
+    EPISODES = tuple(f'S01E{i:02d}' for i in range(1,31))
+
+    def __init__(self, project_root):
+        self.root=Path(project_root).resolve()
+        self.directory=self.root/'season_control'
+        if self.directory.is_symlink() or getattr(self.directory,'is_junction',lambda:False)():
+            raise StudioJobError('Unsafe season control directory')
+        self.directory.mkdir(parents=True,exist_ok=True)
+        self.path=self.directory/'state.json'
+        self.lock=threading.RLock()
+
+    def snapshot(self):
+        if self.path.is_symlink():
+            raise StudioJobError('Unsafe season state')
+        if not self.path.is_file():
+            return {'schema_version':1,'status':'not_started','episodes':{k:'pending' for k in self.EPISODES},
+                    'actions':{},'pending_action':None,'last_feedback':None,'cycle':0}
+        if self.path.stat().st_size>4_000_000:
+            raise StudioJobError('Season snapshot capacity reached; archive before continuing')
+        data=json.loads(self.path.read_text(encoding='utf-8'))
+        if set(data.get('episodes',{}))!=set(self.EPISODES):
+            raise StudioJobError('Expected exactly 30 episode records')
+        return data
+
+    def _persist(self,state,event):
+        from local_agent.reporting import _redact_value
+        state=_redact_value(state)
+        record=_redact_value({'at':time.time(),**event})
+        journal=self.directory/'history.jsonl'
+        if journal.is_symlink():
+            raise StudioJobError('Unsafe season history')
+        with journal.open('a',encoding='utf-8') as stream:
+            stream.write(json.dumps(record,ensure_ascii=False)+'\n');stream.flush();os.fsync(stream.fileno())
+        temp=self.directory/('.state-'+uuid.uuid4().hex+'.tmp')
+        with temp.open('x',encoding='utf-8') as stream:
+            json.dump(state,stream,ensure_ascii=False);stream.flush();os.fsync(stream.fileno())
+        os.replace(temp,self.path)
+
+    def start(self):
+        with self.lock:
+            state=self.snapshot()
+            if state['status']=='not_started':
+                state['status']='ready';self._persist(state,{'event':'season_started','goal':30})
+            return state
+
+    def cycle_once(self, ask_astra, executors, verify_episode):
+        with self.lock:
+            state=self.start()
+            if state['status']=='completed':
+                return state
+            if state['pending_action']:
+                # A crash does not establish whether a side effect happened.
+                pending=state['pending_action'];state['pending_action']=None
+                state['status']='needs_reconciliation'
+                state['last_feedback']={'status':'execution_outcome_uncertain','action':pending,
+                    'instruction':'Inspect actual artifacts before issuing a retry with a new action ID.'}
+                self._persist(state,{'event':'interrupted_action_reconciliation','action':pending})
+                return state
+            question={'goal':'30 verified complete episodes','episodes':state['episodes'],
+                      'feedback':state['last_feedback'],'supported_operations':sorted(executors),
+                      'instruction':'Return one JSON action with action_id, operation, arguments. Use feedback and inspect actual artifacts; unsupported commands are never executed.'}
+            self._persist(state,{'event':'astra_request','request':question})
+        # API and side effects run outside the snapshot lock.
+        reply=ask_astra(question)
+        if not isinstance(reply,dict) or set(reply)!={'action_id','operation','arguments'}:
+            raise StudioJobError('Invalid production action envelope')
+        identifier=reply['action_id']
+        if not isinstance(identifier,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}',identifier) or not isinstance(reply['operation'],str) or not isinstance(reply['arguments'],dict):
+            raise StudioJobError('Invalid production action fields')
+        from local_agent.reporting import _redact_value
+        if _redact_value(reply)!=reply:
+            raise StudioJobError('Credentials may not be included in a production action')
+        encoded=json.dumps(reply,sort_keys=True,ensure_ascii=False)
+        if len(encoded.encode())>64000:
+            raise StudioJobError('Production action exceeds limit')
+        digest=hashlib.sha256(encoded.encode()).hexdigest()
+        with self.lock:
+            state=self.snapshot();previous=state['actions'].get(identifier)
+            if previous:
+                if previous['sha256']!=digest:
+                    raise StudioJobError('Immutable action ID reused with different instructions')
+                state['last_feedback']={'status':'already_executed_no_replay','action_id':identifier,'result':previous['result']}
+                self._persist(state,{'event':'duplicate_action_not_replayed','action_id':identifier})
+                return state
+            state['pending_action']=reply;state['status']='executing'
+            self._persist(state,{'event':'astra_answer_saved_before_execution','answer':reply})
+        handler=executors.get(reply['operation'])
+        try:
+            result=handler(reply['arguments']) if handler else {'status':'blocked','reason':'unsupported_operation'}
+            if not isinstance(result,dict):
+                raise StudioJobError('Executor must return factual structured evidence')
+        except Exception as exc:
+            # Keep credentials and arbitrary exception text out of the feedback.
+            result={'status':'failed','error_type':type(exc).__name__}
+        with self.lock:
+            state=self.snapshot()
+            state['actions'][identifier]={'sha256':digest,'result':_redact_value(result)}
+            state['pending_action']=None;state['cycle']+=1;state['status']='ready'
+            state['last_feedback']={'action_id':identifier,'operation':reply['operation'],
+                'executed':handler is not None,'result':_redact_value(result)}
+            # Verification is a separate local adapter, never a model-returned flag.
+            episode=reply['arguments'].get('episode_id')
+            if episode in self.EPISODES and result.get('status')=='completed':
+                verified=verify_episode(episode,result)
+                if verified is True:
+                    state['episodes'][episode]='verified_complete'
+                else:
+                    state['last_feedback']['episode_verification']='failed_or_blocked'
+            if all(v=='verified_complete' for v in state['episodes'].values()):
+                # Revalidate all recorded complete episodes before season completion.
+                valid=all(verify_episode(e,{'revalidate':True}) is True for e in self.EPISODES)
+                state['status']='completed' if valid else 'verification_failed'
+            self._persist(state,{'event':'execution_verified_and_feedback_saved','feedback':state['last_feedback'],
+                                 'episodes':state['episodes'],'status':state['status']})
+            return state
+
+    def run(self,ask_astra,executors,verify_episode,stop_event):
+        while not stop_event.is_set():
+            state=self.cycle_once(ask_astra,executors,verify_episode)
+            if state['status'] in ('completed','needs_reconciliation','verification_failed'):
+                return state
+            # Prevent repeatedly billing for an identical unsupported instruction.
+            if state['last_feedback'] and state['last_feedback'].get('status')=='already_executed_no_replay':
+                return {**state,'status':'awaiting_new_strategy'}
+        return {**self.snapshot(),'status':'paused'}
+
+
