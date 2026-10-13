@@ -12,6 +12,7 @@ on:
       - feature/chatgpt-repair-channel
     paths:
       - "local_agent/**"
+      - "tests/test_mia_render_duplicate_guard.py"
       - "tests/test_blender_*.py"
       - "tests/test_local_agent_*.py"
       - "tests/test_local_project_runner.py"
@@ -42,6 +43,7 @@ on:
     branches:
       - feature/local-first-migration
       - audit/repair-channel-hardening-20261011
+      - fix/mia-render-duplicate-source-first-20261014
     paths:
       - "local_agent/**"
       - "tests/test_blender_*.py"
@@ -82,6 +84,9 @@ jobs:
       - name: Run complete local Blender-agent tests (no cloud API or web app)
         timeout-minutes: 10
         run: python -m local_agent.test_scope all
+      - name: Run Mia duplicate-render regression (focus)
+        if: always()
+        run: python -m pytest -q tests/test_mia_render_duplicate_guard.py tests/test_mia_model_review_delivery.py tests/test_supervisor_instance_count.py
 
   portable-security:
     name: Portable security contracts (supplemental)

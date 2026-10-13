@@ -1094,6 +1094,24 @@ def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
         return []
 
 
+def _supervisor_instance_count(processes: list[dict[str, Any]]) -> int:
+    """Count independent supervisor trees, not Python venv launcher processes.
+
+    On Windows, the virtual-env python.exe shim may parent another python.exe
+    running the same '-m local_agent.poller --supervise' command. Both match
+    process diagnostics, yet they represent ONE supervisor installation.
+    """
+    parents = {
+        p["pid"]: p["parent_pid"]
+        for p in processes
+        if p.get("role") == "supervisor"
+        and type(p.get("pid")) is int
+        and type(p.get("parent_pid")) is int
+    }
+    # Root nodes correspond to separately launched supervisor invocations.
+    return sum(1 for parent_pid in parents.values() if parent_pid not in parents)
+
+
 _WINDOWS_ERROR_MODE_FLAGS = 0x0001 | 0x0002 | 0x8000
 
 
@@ -1326,12 +1344,14 @@ def doctor_with_supervisor() -> dict[str, Any]:
     result["telegram_network"] = network
     processes = _mailbox_process_diagnostics()
     supervisor_count = sum(1 for item in processes if item.get("role") == "supervisor")
+    supervisor_instance_count = _supervisor_instance_count(processes)
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
         "scheduled_recovery_registered": scheduled,
         "scheduled_target_matches_install": scheduled_target_matches_install,
         "supervisor_process_count": supervisor_count,
-        "duplicate_supervisors_detected": supervisor_count > 1,
+        "supervisor_instance_count": supervisor_instance_count,
+        "duplicate_supervisors_detected": supervisor_instance_count > 1,
         "log_detected": logfile.is_file(),
         "recent_event_types": recent,
         "service_restart_check_seconds": 2,
