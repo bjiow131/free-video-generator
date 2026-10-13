@@ -223,7 +223,10 @@ def _scheduled_task_targets_root(xml_text: str, root: Path) -> bool | None:
         if element.tag.rsplit("}", 1)[-1] in ("Command", "Arguments", "WorkingDirectory"):
             if isinstance(element.text, str):
                 fields.append(element.text)
-    return str(root).casefold() in "\n".join(fields).casefold()
+    target = str(root).replace("/", "\\").casefold()
+    haystack = "\n".join(fields).replace("/", "\\").replace("\\\\", "\\").casefold()
+    pattern = r"(?<![a-z0-9_.-])" + re.escape(target) + r"(?![a-z0-9_.-])"
+    return re.search(pattern, haystack) is not None
 
 
 def doctor_with_supervisor() -> dict[str, Any]:
