@@ -1411,3 +1411,53 @@ def test_season_parser_accepts_four_scenes_only_for_source_episode_26():
     assert len(_parse_episode_block(block(26, 4), 26)["scenes"]) == 4
     with pytest.raises(StudioError):
         _parse_episode_block(block(25, 4), 25)
+
+
+def test_luna_image_model_preflight_reads_only_model_catalog(monkeypatch):
+    from local_agent import poller
+    import json as _json
+    import local_agent.octava_credentials as credentials
+
+    monkeypatch.setattr(poller, "load_policy", lambda: {"allow_octava": True})
+    monkeypatch.setattr(credentials, "read_key", lambda: ("local-test-key", "windows_vault"))
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, limit):
+            assert limit == 100_001
+            return _json.dumps({"data": [
+                {"id": "gpt-6-luna"},
+                {"id": "gpt-image-1-mini"},
+                {"id": "other"},
+            ]}).encode()
+
+    captured = {}
+    def fake_urlopen(request, timeout):
+        captured["method"] = request.method
+        captured["url"] = request.full_url
+        captured["data"] = request.data
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    result = poller._run_luna_image_model_preflight()
+    assert result["status"] == "completed"
+    assert result["request_method"] == "GET"
+    assert result["generation_request_sent"] is False
+    assert result["prompt_sent"] is False
+    assert result["candidate_image_models"] == ["gpt-image-1-mini"]
+    assert captured == {
+        "method": "GET", "url": "https://octavapi.shop/v1/models",
+        "data": None, "timeout": 20,
+    }
+
+
+def test_luna_image_model_preflight_does_not_call_provider_without_consent(monkeypatch):
+    from local_agent import poller
+    monkeypatch.setattr(poller, "load_policy", lambda: {"allow_octava": False})
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("provider must not be called")))
+    assert poller._run_luna_image_model_preflight() == {
+        "status": "blocked", "reason": "local_octava_permission_disabled"
+    }

@@ -52,7 +52,7 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test"}:
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -293,6 +293,70 @@ def _run_luna_s01e01_reference_test(client: GitHubQueueClient) -> dict[str, Any]
             "assets_seen": assets, "decision": decision, "usage": safe_usage,
             "image_generated": False, "asset_uploaded": False,
             "follow_up": "Image generation is a separate, currently unsupported action."}
+
+
+def _run_luna_image_model_preflight() -> dict[str, Any]:
+    """Read the provider's model catalog; never submit a prompt or image request."""
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+    from local_agent.octava_credentials import OctavaKeyError, read_key
+
+    try:
+        if not load_policy().get("allow_octava"):
+            return {"status": "blocked", "reason": "local_octava_permission_disabled"}
+        key, source = read_key()
+    except OctavaKeyError:
+        return {"status": "blocked", "reason": "octava_credential_unavailable"}
+    except (MailboxPolicyError, OSError, ValueError, TypeError):
+        return {"status": "blocked", "reason": "local_octava_permission_or_credential_unavailable"}
+    if source != "windows_vault" and os.environ.get("LOCAL_AGENT_ALLOW_OCTAVA") != "1":
+        return {"status": "blocked", "reason": "octava_credential_not_locally_opted_in"}
+    if not key or key != key.strip() or any(char in key for char in "\\r\\n"):
+        return {"status": "blocked", "reason": "octava_credential_unavailable"}
+
+    request = Request(
+        "https://octavapi.shop/v1/models",
+        headers={"Authorization": "Bearer " + key, "Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            raw = response.read(100_001)
+        if len(raw) > 100_000:
+            return {"status": "error", "reason": "model_catalog_exceeds_fixed_100kb_limit"}
+        data = json.loads(raw.decode("utf-8"))
+    except HTTPError as exc:
+        return {"status": "error", "reason": "octavapi_model_catalog_http_error",
+                "http_code": exc.code}
+    except (URLError, OSError, TimeoutError):
+        return {"status": "error", "reason": "octavapi_model_catalog_connection_failed"}
+    except (ValueError, TypeError, UnicodeError):
+        return {"status": "error", "reason": "octavapi_model_catalog_invalid"}
+
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list) or len(items) > 5000:
+        return {"status": "error", "reason": "octavapi_model_catalog_shape_invalid"}
+    known_image_ids = {
+        "gpt-image-1-mini", "gpt-image-1", "gpt-image-1.5",
+        "gpt-image-2", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
+    }
+    available = sorted({
+        item["id"] for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+        and item["id"] in known_image_ids
+    })
+    return {
+        "status": "completed",
+        "request_method": "GET",
+        "request_path": "/v1/models",
+        "generation_request_sent": False,
+        "prompt_sent": False,
+        "candidate_image_models": available,
+        "catalog_item_count": len(items),
+        "next_step": "No model identified; do not attempt paid image generation."
+            if not available else
+            "Image model IDs found; verify provider price and image endpoint before generation.",
+    }
 
 
 def _run_astra_season_response(client: GitHubQueueClient, task_id: str) -> dict[str, Any]:
@@ -1078,7 +1142,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
 })
 
 
@@ -2217,7 +2281,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         _publish_result_durable(client, task.task_id, result)
         return
     unattended = policy["enabled"]
-    authorization_operation = "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test") else task.operation
+    authorization_operation = "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight") else task.operation
     if unattended and not is_auto_authorized(authorization_operation, policy) and not remote_restart:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
         _publish_result_durable(client, task.task_id, result)
@@ -2429,6 +2493,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_astra_season_response(client, task.task_id)
             elif task.operation == "luna_s01e01_reference_test":
                 details = _run_luna_s01e01_reference_test(client)
+            elif task.operation == "luna_image_model_preflight":
+                details = _run_luna_image_model_preflight()
             else:
                 details = handler()
             result_status = details.get("status", "completed")
@@ -2500,7 +2566,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
-    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test"):
+    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight"):
         label = str(task.operation).replace("_", " ")[:48]
         if outcome == "completed":
             _telegram_signal("task-ok", task.task_id,
