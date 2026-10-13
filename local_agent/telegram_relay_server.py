@@ -46,15 +46,19 @@ def forward(data: dict) -> tuple[int, dict]:
     token, method, params = data["token"], data["method"], data["params"]
     if not isinstance(token, str) or not BOT_TOKEN.fullmatch(token):
         return 400, {"ok": False, "description": "Invalid token format"}
-    if method not in ALLOWED or not isinstance(params, dict):
+    if not isinstance(method, str) or method not in ALLOWED or not isinstance(params, dict):
         return 400, {"ok": False, "description": "Unsupported method"}
     if method == "getMe" and params:
         return 400, {"ok": False, "description": "Unexpected parameters"}
-    if method == "getUpdates" and (set(params) != {"limit", "timeout"}
+    if method == "getUpdates" and (not {"limit", "timeout"}.issubset(params)
+                                   or not set(params).issubset({"limit", "timeout", "offset", "allowed_updates"})
                                    or type(params["limit"]) is not int
                                    or type(params["timeout"]) is not int
                                    or not 1 <= params["limit"] <= 100
-                                   or params["timeout"] != 0):
+                                   or params["timeout"] != 0
+                                   or ("offset" in params and (type(params["offset"]) is not int
+                                       or not 0 <= params["offset"] <= 2**63 - 1))
+                                   or ("allowed_updates" in params and params["allowed_updates"] != ["message"])):
         return 400, {"ok": False, "description": "Invalid polling parameters"}
     if method == "sendMessage":
         if set(params) != {"chat_id", "text"}:
@@ -155,3 +159,4 @@ if __name__ == "__main__":
     if not 1024 <= port <= 65535:
         raise SystemExit("Invalid port")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever(poll_interval=0.5)
+
