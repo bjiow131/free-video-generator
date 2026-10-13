@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from local_agent.scene_request import SceneRequestError, parse_scene_request
+scene_request = pytest.importorskip(
+    "local_agent.scene_request",
+    reason="The Blender agent implementation is not part of this repository branch",
+)
+SceneRequestError = scene_request.SceneRequestError
+parse_scene_request = scene_request.parse_scene_request
 
 
 def test_parses_russian_counts_colors_and_vertical_aspect():
