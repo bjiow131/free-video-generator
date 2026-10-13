@@ -112,7 +112,7 @@ def find_recent_duplicate(project: Path, review: Path) -> dict[str, object] | No
             if p != review and p.is_dir() and not p.is_symlink()
             and not getattr(p, "is_junction", lambda: False)()
             and (p / "front.png").is_file()
-            and p.stat().st_mtime_ns < review.stat().st_mtime_ns
+            and (p / "front.png").stat().st_mtime_ns < current.stat().st_mtime_ns
         ]
         previous.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         for old in previous[:_MAX_SEARCH]:
