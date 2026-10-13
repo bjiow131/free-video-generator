@@ -290,7 +290,7 @@ def _asset_reference_image(store: StudioStore, asset_id: str) -> tuple[bytes, st
     relpath = Path(relative)
     if relpath.is_absolute() or any(part in ("", ".", "..") for part in relpath.parts):
         return None
-    project = (store.root / store.project).resolve()
+    project = store.root.resolve()
     assets_root = (project / "assets").resolve()
     candidate = project / relpath
     current = candidate
@@ -307,9 +307,9 @@ def _asset_reference_image(store: StudioStore, asset_id: str) -> tuple[bytes, st
     except (OSError, RuntimeError):
         return None
     ext = resolved.suffix.lower()
-    if ext == ".png" and raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if ext == ".png" and raw.startswith(b"\x89PNG\r\n\x1a\n"):
         return raw, "image/png"
-    if ext in (".jpg", ".jpeg") and raw.startswith(b"\\xff\\xd8\\xff"):
+    if ext in (".jpg", ".jpeg") and raw.startswith(b"\xff\xd8\xff"):
         return raw, "image/jpeg"
     if ext == ".webp" and len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
         return raw, "image/webp"
