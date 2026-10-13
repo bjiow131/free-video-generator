@@ -87,3 +87,11 @@ def test_neutral_source_copy_rejects_unsafe_or_overwrite_inputs(args):
 
 def test_neutral_copy_never_overwrites_source_identity():
  assert r.neutralize_saved_source_model('same','same')['status']=='rejected'
+
+
+def test_detail_refinement_uses_last_saved_model_and_fixed_sources():
+ value=json.loads(envelope({'source_project':'previous','project_name':'next'}));value['operation']='blender_mia_source_details'
+ assert parse_task(json.dumps(value)).arguments['source_project']=='previous'
+ assert r.refine_saved_source_details('same','same')['status']=='rejected'
+ import ast
+ ast.parse(r.SOURCE_DETAILS_SCRIPT)
