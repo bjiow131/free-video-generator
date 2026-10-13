@@ -1056,6 +1056,20 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 return {"status": "blocked", "reason": "unsafe_review_directory"}
         if not review.is_dir() or not review.resolve().is_relative_to(base):
             return {"status": "blocked", "reason": "review_directory_missing"}
+        # A repeated task ID or nearly unchanged rendered image must not spam Telegram.
+        from local_agent.mia_review_guard import find_recent_duplicate
+        marker = review / ".telegram_delivery.json"
+        if marker.is_symlink() or getattr(marker, "is_junction", lambda: False)():
+            return {"status": "blocked", "reason": "unsafe_telegram_marker"}
+        if marker.exists():
+            return {"status": "already_delivered", "sent": [], "failed": []}
+        duplicate = find_recent_duplicate(project, review)
+        if duplicate:
+            return {"status": "suppressed_duplicate",
+                    "reason": "unchanged_mia_front_render",
+                    "duplicate_of": duplicate["matched_review"],
+                    "render_delta": duplicate["average_abs_byte_delta"],
+                    "identity_verified": False, "sent": [], "failed": []}
         url = "https://api.telegram.org/bot" + token + "/sendPhoto"
         sent = []
         failed = []
@@ -1087,6 +1101,20 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 sent.append(view)
             else:
                 failed.append(view)
+        if sent:
+            # Store only a local delivery receipt, never credentials or media.
+            try:
+                tmp = review / ".telegram_delivery.tmp"
+                if tmp.is_symlink() or getattr(tmp, "is_junction", lambda: False)():
+                    return {"status": "partial", "sent": sent, "failed": failed,
+                            "reason": "unsafe_delivery_marker"}
+                tmp.write_text(json.dumps({"task_id": task_id,
+                    "views_sent": sent, "identity_verified": False}, sort_keys=True),
+                    encoding="utf-8")
+                tmp.replace(marker)
+            except OSError:
+                return {"status": "partial", "sent": sent, "failed": failed,
+                        "reason": "delivery_marker_write_failed"}
         return {"status": "delivered" if len(sent) == 4 else
                 "partial" if sent else "failed", "sent": sent, "failed": failed,
                 "transport": "direct_telegram_multipart",
