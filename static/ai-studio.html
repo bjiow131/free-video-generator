@@ -1303,13 +1303,18 @@ function historyCard(x){
   const type=x.task_type==='image'?'Изображение':'Видео';
   const ready=x.status==='completed'&&x.task_id;
   const failed=x.status==='failed';
+  const statusLabel=escapeHtml(x.status);
   const pct=Math.max(0,Math.min(100,Number(x.progress||0)));
   const statusText=ready?'Готово':failed?'Ошибка':(x.progress_message||'Подготовка');
-  const action=ready?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="openResult(\''+x.task_id+'\',\''+(x.task_type==='image'?'image':'video')+'\')">Открыть результат</button><a class="ghost" href="'+(x.task_type==='image'?'/api/image/':'/api/video/')+encodeURIComponent(x.task_id)+'/download" download="'+(x.task_type==='image'?'ai-studio.png':'ai-studio-video.mp4')+'" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a></div>':'';
+  const action=ready?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" type="button" data-open-result="'+escapeHtml(x.task_id)+'" data-result-type="'+(x.task_type==='image'?'image':'video')+'" title="Состояние: '+statusLabel+'">Открыть результат</button><a class="ghost" href="'+(x.task_type==='image'?'/api/image/':'/api/video/')+encodeURIComponent(x.task_id)+'/download" download="'+(x.task_type==='image'?'ai-studio.png':'ai-studio-video.mp4')+'" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a></div>':'';
   const progress=(!ready&&!failed)?'<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#6d7168"><b>'+pct.toFixed(0)+'%</b><span>'+escapeHtml(formatEta(x.eta_seconds))+'</span></div><div style="height:7px;margin-top:7px;border-radius:99px;background:#e7e3d9;overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:#55755d;border-radius:99px;transition:width .4s ease"></i></div><div style="margin-top:7px;font-size:11px;color:#8a8e85">'+escapeHtml(statusText)+'</div></div>':'<span class="tag">'+escapeHtml(statusText)+'</span>';
   const providerId=x.video_id?'<p style="overflow-wrap:anywhere;font-size:12px;color:#8a8e85">ID Agnes: '+escapeHtml(x.video_id)+'</p>':'';
   return '<div class="card"><b>'+escapeHtml(type+' · '+(x.creative_name||x.task_id))+'</b><p>Задача '+escapeHtml(x.task_id||'ID отсутствует')+'</p>'+providerId+progress+action+'</div>';
 }
+$('#historyList').addEventListener('click',event=>{
+  const button=event.target.closest('button[data-open-result]');
+  if(button)openResult(button.dataset.openResult,button.dataset.resultType);
+});
 async function loadHistory(){
   try{
     let r=await api('/api/tasks');let d=await r.json();
