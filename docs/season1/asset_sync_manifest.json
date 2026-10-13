@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "title": "Episode 1 pinned asset manifest",
+  "title": "Season 1 reference manifest including S01E01 visual drafts",
   "repository": "bjiow131/free-video-generator",
   "commit_sha": "2190ac150c559a1b1cd0e44bcae7bef8c3d9e8b6",
   "assets": [
@@ -80,6 +80,118 @@
       "dimensions": {
         "width": 941,
         "height": 1672
+      }
+    },
+    {
+      "category": "environment",
+      "asset_id": "set.family_home",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/set.family_home_draft_20261013.jpg",
+      "destination": "assets/references/drafts/set.family_home.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 377893,
+      "sha256": "c9e8008452a475c757949b7f279f2e4dcc3e1d6ffdc84170aba3548b2bf53dc2",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      }
+    },
+    {
+      "category": "animal_reference",
+      "asset_id": "char.spiral.master",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/char.spiral.master_draft_20261013.jpg",
+      "destination": "assets/references/drafts/char.spiral.master.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 132366,
+      "sha256": "4e093502bbe2b4adb6f3b34da859c1b650b21596bb018dc715e574a2f9fc71b0",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1774,
+        "height": 887
+      }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.scooter_mia_yellow",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.scooter_helmet_pair_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.scooter_mia_yellow.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 131054,
+      "sha256": "19638a9ebe556181fbf1879088179ae5e02b49b6b53d3f84d267021f2ab287e7",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.helmet_mia",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.scooter_helmet_pair_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.helmet_mia.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 131054,
+      "sha256": "19638a9ebe556181fbf1879088179ae5e02b49b6b53d3f84d267021f2ab287e7",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.discovery_book",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.discovery_kit_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.discovery_book.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 172751,
+      "sha256": "cecd2c8afa13c1de7aa4b2cd3aeef1c7150b4f304deacb4e5581c17acfc0009f",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.pencil_set",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.discovery_kit_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.pencil_set.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 172751,
+      "sha256": "cecd2c8afa13c1de7aa4b2cd3aeef1c7150b4f304deacb4e5581c17acfc0009f",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.path_markers",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.discovery_kit_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.path_markers.jpg",
+      "commit_sha": "908707b4e2b7a06e41d70e5dbb0dd03c20bc4a3b",
+      "size_bytes": 172751,
+      "sha256": "cecd2c8afa13c1de7aa4b2cd3aeef1c7150b4f304deacb4e5581c17acfc0009f",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
       }
     }
   ],
