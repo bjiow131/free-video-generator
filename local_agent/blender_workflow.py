@@ -2033,6 +2033,47 @@ def _mia_autoloop_astra(api_key: str, approved_jpeg64: str,
     return _mia_autoloop_command(data["choices"][0]["message"]["content"])
 
 
+def _send_mia_autoloop_front_once(requests_module, *, token: str, chat: str,
+                                    image_path: Path, cycle: int) -> tuple[bool | None, str]:
+    """Send one review frame once; never retry an ambiguous Telegram outcome.
+
+    Telegram sendPhoto has no idempotency key. A read timeout or dropped response
+    can happen after Telegram accepted the photo, so retrying could create duplicates.
+    """
+    try:
+        with image_path.open("rb") as stream:
+            response = requests_module.post(
+                "https://api.telegram.org/bot" + token + "/sendPhoto",
+                data={"chat_id": chat,
+                      "caption": "Мия FRONT • цикл %03d/100 • черновая 3D" % cycle},
+                files={"photo": ("front.png", stream, "image/png")},
+                timeout=(8, 40), allow_redirects=False,
+            )
+    except requests_module.exceptions.ConnectTimeout:
+        # Connection was not established, so Telegram could not have accepted the upload.
+        return False, "telegram_connect_timeout"
+    except requests_module.exceptions.RequestException:
+        return None, "telegram_delivery_outcome_unknown"
+    except (ValueError, TypeError, OSError):
+        return None, "telegram_delivery_outcome_unknown"
+
+    if response.status_code != 200:
+        return None, "telegram_delivery_outcome_unknown"
+    if not response.headers.get("Content-Type", "").startswith("application/json"):
+        return None, "telegram_delivery_outcome_unknown"
+    try:
+        payload = response.json()
+    except (ValueError, TypeError):
+        return None, "telegram_delivery_outcome_unknown"
+    if not isinstance(payload, dict):
+        return None, "telegram_delivery_outcome_unknown"
+    if payload.get("ok") is True:
+        return True, "delivered"
+    if payload.get("ok") is False:
+        return False, "telegram_rejected_photo"
+    return None, "telegram_delivery_outcome_unknown"
+
+
 def run_mia_astra_autoloop_100(*, task_id: str) -> dict[str, Any]:
     """One mailbox job, ONE FINAL mailbox result, 100 Telegram FRONT photos.
 
@@ -2186,25 +2227,11 @@ def run_mia_astra_autoloop_100(*, task_id: str) -> dict[str, Any]:
         if not valid or not result.get("changed_vertices_or_materials"):
             return {"status":"incomplete","reason":"bad_front_or_no_mesh_edit",
                     "completed_cycles":state["completed_cycles"],"cycle":cycle}
-        delivered=False
-        for attempt in range(3):
-            try:
-                with img.open("rb") as stream:
-                    response=requests.post(
-                        "https://api.telegram.org/bot"+token+"/sendPhoto",
-                        data={"chat_id":chat,
-                              "caption":"Мия FRONT • цикл %03d/100 • черновая 3D"%cycle},
-                        files={"photo":("front.png",stream,"image/png")},
-                        timeout=(8,40),allow_redirects=False)
-                    delivered=(response.status_code==200 and
-                               response.headers.get("Content-Type","").startswith("application/json")
-                               and response.json().get("ok") is True)
-            except (requests.RequestException,ValueError,TypeError,OSError):
-                delivered=False
-            if delivered:break
-            if attempt<2:time.sleep(6)
-        if not delivered:
-            return {"status":"incomplete","reason":"telegram_front_delivery_failed",
+        delivered,delivery_status=_send_mia_autoloop_front_once(
+            requests,token=token,chat=chat,image_path=img,cycle=cycle)
+        if delivered is not True:
+            return {"status":"incomplete","reason":delivery_status,
+                    "delivery_outcome_unknown":delivered is None,
                     "cycle":cycle,"completed_cycles":state["completed_cycles"],
                     "front_saved_locally":str(img),"checkpoint":str(checkpoint)}
         (folder/"telegram_delivery.json").write_text(json.dumps(
