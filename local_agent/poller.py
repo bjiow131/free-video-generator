@@ -52,7 +52,7 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit"}:
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_project_audit"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -846,7 +846,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit",
 })
 
 
@@ -1985,7 +1985,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         _publish_result_durable(client, task.task_id, result)
         return
     unattended = policy["enabled"]
-    authorization_operation = "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit") else task.operation
+    authorization_operation = "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit", "luna_project_audit") else task.operation
     if unattended and not is_auto_authorized(authorization_operation, policy) and not remote_restart:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
         _publish_result_durable(client, task.task_id, result)
@@ -2191,7 +2191,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     # 20-per-day local quota. Local OctavAPI consent still applies.
                     reserve_octava_call()
                 details = _run_octava_advice(task.arguments)
-            elif task.operation == "astra_project_audit":
+            elif task.operation in ("astra_project_audit", "luna_project_audit"):
                 details = _run_astra_project_audit(client, task.task_id)
             elif task.operation == "astra_season_response":
                 details = _run_astra_season_response(client, task.task_id)
