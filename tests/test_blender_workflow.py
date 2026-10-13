@@ -6,6 +6,16 @@ import struct
 from local_agent import blender_workflow as workflow
 
 
+def _write_supported_windows_executable(path: Path) -> None:
+    """Write the minimal AMD64 PE headers accepted by Blender path validation."""
+    image = bytearray(70)
+    image[:2] = b"MZ"
+    image[0x3C:0x40] = (64).to_bytes(4, "little")
+    image[64:68] = b"PE\0\0"
+    image[68:70] = (0x8664).to_bytes(2, "little")
+    path.write_bytes(image)
+
+
 def test_discover_blender_reports_missing_executable(monkeypatch, tmp_path):
     monkeypatch.setenv("BLENDER_EXECUTABLE", str(tmp_path / "missing-blender.exe"))
     monkeypatch.setattr(workflow.shutil, "which", lambda name: None)
@@ -55,7 +65,7 @@ def test_blockout_does_not_overwrite_existing_outputs(monkeypatch, tmp_path):
 
 def configured_project(monkeypatch, tmp_path):
     exe = tmp_path / "blender.exe"
-    exe.write_bytes(b"placeholder")
+    _write_supported_windows_executable(exe)
     project = tmp_path / "workspace" / "mia"
     project.mkdir(parents=True)
     (project / "mia_blockout.blend").write_bytes(b"original")
