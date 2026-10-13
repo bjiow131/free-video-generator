@@ -1273,6 +1273,25 @@ def test_luna_full_episode_operation_requires_fixed_no_argument_envelope():
             operation="luna_s01e01_reference_test",approval=False))
 
 
+
+
+def _mock_luna_season_import(monkeypatch, poller, raw=b"verified private season"):
+    import hashlib
+    from local_agent import studio_server
+
+    source_sha = hashlib.sha256(raw).hexdigest()
+    episode_ids = [f"S01E{number:02d}" for number in range(1, 31)]
+    monkeypatch.setattr(poller, "_fetch_luna_season_source", lambda _client: raw)
+    monkeypatch.setattr(studio_server, "import_season_screenplay", lambda _filename, _raw: {
+        "source_sha256": source_sha, "episodes": 30,
+    })
+    monkeypatch.setattr(studio_server, "list_season_episodes", lambda: {
+        "imported": True,
+        "source_sha256": source_sha,
+        "episodes": [{"episode_id": episode_id} for episode_id in episode_ids],
+    })
+
+
 def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids(monkeypatch, tmp_path):
     from local_agent import poller
     import local_agent.octava_credentials as credentials
@@ -1281,10 +1300,13 @@ def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
     monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
+    _mock_luna_season_import(monkeypatch, poller)
     monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
     monkeypatch.setattr(credentials,"model_for_tier",lambda tier:"gpt-6-luna")
     monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
-        "imported":True,"episodes":[{"episode_id":"S01E01"}]})
+        "imported":True,
+        "source_sha256":__import__("hashlib").sha256(b"verified private season").hexdigest(),
+        "episodes":[{"episode_id":f"S01E{number:02d}"} for number in range(1,31)]})
     monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda episode_id:{
         "episode_id":episode_id,"full_text":episode_text,"asset_ids":asset_ids})
     monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda project,name:{
@@ -1304,7 +1326,7 @@ def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids
         captured["timeout"]=timeout
         return ProviderResponse()
     monkeypatch.setattr("urllib.request.urlopen",fake_urlopen)
-    result=poller._run_luna_s01e01_reference_test()
+    result=poller._run_luna_s01e01_reference_test(object())
     sent=captured["body"]["messages"][1]["content"]
     assert captured["body"]["model"]=="gpt-6-luna"
     assert captured["body"]["max_tokens"]==700
@@ -1322,27 +1344,29 @@ def test_luna_full_episode_blocks_when_simple_model_is_not_luna(monkeypatch, tmp
     import local_agent.octava_credentials as credentials
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    _mock_luna_season_import(monkeypatch, poller)
     monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
-        "imported":True,"episodes":[{"episode_id":"S01E01"}]})
+        "imported":True,"source_sha256":__import__("hashlib").sha256(b"verified private season").hexdigest(),
+        "episodes":[{"episode_id":f"S01E{number:02d}"} for number in range(1,31)]})
     monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda _: {
         "full_text":"S01E01 full text","asset_ids":["char.snail_spiral.master"]})
     monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda *_:{})
     monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
     monkeypatch.setattr(credentials,"model_for_tier",lambda tier:"other-model")
-    assert poller._run_luna_s01e01_reference_test()["reason"]=="configured_simple_model_is_not_gpt_6_luna"
+    assert poller._run_luna_s01e01_reference_test(object())["reason"]=="configured_simple_model_is_not_gpt_6_luna"
 
 
 
-def test_luna_full_episode_reports_missing_import_without_provider_call(monkeypatch, tmp_path):
+def test_luna_full_episode_blocks_on_private_source_failure_without_provider_call(monkeypatch, tmp_path):
     from local_agent import poller
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
-    monkeypatch.setattr("local_agent.studio_server.list_season_episodes",lambda:{
-        "imported":False,"episodes":[]})
+    monkeypatch.setattr(poller,"_fetch_luna_season_source",
+                        lambda _client: (_ for _ in ()).throw(ValueError("source mismatch")))
     monkeypatch.setattr("local_agent.octava_credentials.read_key",
                         lambda: (_ for _ in ()).throw(AssertionError("must not call provider")))
-    result=poller._run_luna_s01e01_reference_test()
-    assert result=={"status":"blocked","reason":"season_script_not_imported_in_studio"}
+    result=poller._run_luna_s01e01_reference_test(object())
+    assert result=={"status":"blocked","reason":"private_screenplay_missing_or_changed"}
 
 
 
