@@ -136,8 +136,18 @@ def _run_astra_season_response(client: GitHubQueueClient, task_id: str) -> dict[
         return {"status":"error","reason":"astra_response_checkpoint_already_exists"}
     with report.open("x",encoding="utf-8") as stream:
         stream.write(answer)
+    reported_model = data.get("model")
+    if not isinstance(reported_model, str) or not reported_model.strip():
+        reported_model = None
+    else:
+        reported_model = reported_model.strip()[:120]
     return {"status":"completed","model_requested":"gpt-6-astra",
-            "model_verified_by_response":True,"provider":"OctavAPI third-party",
+            "model_reported_by_provider":reported_model,
+            "model_label_matches_requested":(
+                None if reported_model is None else reported_model == "gpt-6-astra"
+            ),
+            # OctavAPI is a third party; a response label is not cryptographic proof.
+            "model_identity_verified":False,"provider":"OctavAPI third-party",
             "master_task_sha256":hashlib.sha256(raw).hexdigest(),
             "master_task_bytes":len(raw),"answer":answer,
             "local_checkpoint":str(report),"executed_commands":False,
