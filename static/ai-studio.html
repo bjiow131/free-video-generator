@@ -333,7 +333,7 @@ function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
-async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>{if(!x)return '';const loc=Array.isArray(x.loc)?x.loc.join('.'):x.loc;const msg=x.msg||x.detail||JSON.stringify(x);return loc?loc+': '+msg:msg}).filter(Boolean).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
+async function api(path,opt={},retryAuth=true){let r=await fetch(path,{...opt,credentials:'same-origin'});if(r.status===401&&retryAuth&&!path.startsWith('/api/auth/')){const token=prompt('Введите пароль доступа к Studio');if(!token)throw Error('Вход отменён');const login=await fetch('/api/auth/session',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!login.ok){const d=await login.json().catch(()=>({}));throw Error(d.detail||'Не удалось войти в Studio')}return api(path,opt,false)}if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>{if(!x)return '';const loc=Array.isArray(x.loc)?x.loc.join('.'):x.loc;const msg=x.msg||x.detail||JSON.stringify(x);return loc?loc+': '+msg:msg}).filter(Boolean).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
 async function refreshSettings(){
   const source=$('#settingsSource'),input=$('#settingsApiKey'),save=$('#settingsSave'),help=$('#settingsHelp'),result=$('#settingsResult');
   source.textContent='Проверяем настройки…';result.textContent='';
@@ -592,7 +592,7 @@ async function openSaveModal(taskId,type='image'){
   $('#saveContinue').textContent='Загрузка…'; saveFileBlob=null;
   try{
     const endpoint=type==='video'?'/api/video/':'/api/image/';
-    const response=await fetch(endpoint+encodeURIComponent(taskId),{cache:'no-store'});
+    const response=await api(endpoint+encodeURIComponent(taskId),{cache:'no-store'});
     if(!response.ok)throw Error('Не удалось получить '+(type==='video'?'видео':'изображение'));
     saveFileBlob=await response.blob();
     if(!saveFileBlob.size)throw Error('Получен пустой файл');
