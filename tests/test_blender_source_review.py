@@ -45,3 +45,22 @@ def test_hash_mismatch_never_opens_blender(monkeypatch,tmp_path):
  monkeypatch.setenv('LOCAL_AGENT_WORKSPACE',str(tmp_path));monkeypatch.setattr(r,'find_blender_executable',lambda:exe)
  monkeypatch.setattr(r.subprocess,'run',lambda *a,**k:pytest.fail('must not launch'))
  assert r.review_blender_source('spring','inspection')['reason']=='source_digest_mismatch'
+
+@pytest.mark.parametrize('args',[{'project_name':'../x'},{'project_name':'safe','script':'evil'},{}])
+def test_source_adaptation_rejects_unsafe_inputs(args):
+ value=json.loads(envelope(args));value['operation']='blender_mia_source_adapt'
+ with pytest.raises(ProtocolError):parse_task(json.dumps(value))
+
+def test_source_adaptation_requires_fixed_inputs(monkeypatch):
+ monkeypatch.setattr(r,'find_blender_executable',lambda:None)
+ assert r.adapt_spring_source_to_mia('pilot')['status']=='blocked'
+ assert r.adapt_spring_source_to_mia('../outside')['status']=='rejected'
+
+
+def test_source_adapt_script_parses_and_preserves_saved_geometry():
+ import ast
+ ast.parse(r.SOURCE_ADAPT_SCRIPT)
+ assert 'saved_geometry_reopened_verified' in r.SOURCE_ADAPT_SCRIPT
+ assert 'face_tests' in r.SOURCE_ADAPT_SCRIPT
+ assert 'Mia_APPROVED_REFERENCE' in r.SOURCE_ADAPT_SCRIPT
+ assert 'bone_snap' in r.SOURCE_ADAPT_SCRIPT
