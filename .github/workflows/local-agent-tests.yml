@@ -12,6 +12,7 @@ on:
       - feature/chatgpt-repair-channel
     paths:
       - "local_agent/**"
+      - "tests/test_mia_render_duplicate_guard.py"
       - "tests/test_blender_*.py"
       - "tests/test_local_agent_*.py"
       - "tests/test_local_project_runner.py"
@@ -42,6 +43,7 @@ on:
     branches:
       - feature/local-first-migration
       - audit/repair-channel-hardening-20261011
+      - fix/mia-render-duplicate-source-first-20261014
     paths:
       - "local_agent/**"
       - "tests/test_blender_*.py"
