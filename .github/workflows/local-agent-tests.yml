@@ -84,6 +84,8 @@ jobs:
       - name: Run complete local Blender-agent tests (no cloud API or web app)
         timeout-minutes: 10
         run: python -m local_agent.test_scope all
+      - name: Run Mia duplicate-render regression (focus)
+        run: python -m pytest -q tests/test_mia_render_duplicate_guard.py tests/test_mia_model_review_delivery.py
 
   portable-security:
     name: Portable security contracts (supplemental)
