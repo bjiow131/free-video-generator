@@ -197,3 +197,160 @@ def create_mia_skeleton(project_name: str) -> dict[str, Any]:
         "unbound_objects": result["unbound_objects"],
         "note": "Proxy parts follow bones rigidly; this is not smooth production skinning and needs visual validation.",
     }
+
+
+# Added for the bounded Spring full-rig transfer pilot.
+SPRING_TRANSFER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
+SPRING_TRANSFER_ARCHIVE_URL = "https://studio.blender.org/download-source/files/1b/1bffff08b464375d842e7da43b4f5293/1bffff08b464375d842e7da43b4f5293.zip"
+SPRING_TRANSFER_ARCHIVE_SHA256 = "4574b8161f517f0c6ca02af9f5eeded307a26d7015bd71f66bd55bea9173b2cd"
+SPRING_TRANSFER_BLEND_SHA256 = "8005f5cedb70faccd5557e6b0b001662f8681436f761d1f83e64feb9e02f0502"
+
+SPRING_TRANSFER_SCRIPT = r'''
+import bpy, json, os, sys
+from mathutils import Matrix, Vector
+from mathutils.kdtree import KDTree
+blend_path,out_path,report_path=[os.path.realpath(p) for p in sys.argv[sys.argv.index("--")+1:]]
+bpy.ops.wm.open_mainfile(filepath=os.path.join(os.path.dirname(out_path),"mia_reference_model.blend"),load_ui=False)
+scene=bpy.context.scene
+mia=[o for o in scene.objects if o.type=="MESH" and o.name.lower() not in {"studio_floor","stage_ground","ground"}]
+if not mia or sum(len(o.data.vertices) for o in mia)<1000: raise RuntimeError("expected Mia meshes were not found")
+with bpy.data.libraries.load(blend_path,link=False) as (src,dst):
+    names=list(src.objects); dst.objects=names; dst.texts=list(src.texts)
+spring=[o for o in dst.objects if o]
+rig=bpy.data.objects.get("RIG-Spring")
+if len(spring)<100 or rig is None or rig.type!="ARMATURE" or len(rig.data.bones)<2000: raise RuntimeError("full Spring rig did not append")
+col=bpy.data.collections.new("Spring rig transfer dependencies"); scene.collection.children.link(col)
+spring_set=set(spring)
+for o in spring:
+    if col.name not in {c.name for c in o.users_collection}: col.objects.link(o)
+points=[o.matrix_world@v.co for o in mia for v in o.data.vertices]
+zlo=min(p.z for p in points); zhi=max(p.z for p in points)
+xmid=(min(p.x for p in points)+max(p.x for p in points))*0.5
+ymid=(min(p.y for p in points)+max(p.y for p in points))*0.5
+deform=[b for b in rig.data.bones if b.use_deform]
+srcz=[(rig.matrix_world@b.head_local).z for b in deform]+[(rig.matrix_world@b.tail_local).z for b in deform]
+scale=(zhi-zlo)/(max(srcz)-min(srcz))
+root=bpy.data.objects.new("Spring rig fit scale",None); col.objects.link(root)
+root.location=(xmid,ymid,zlo); root.scale=(scale,scale,scale)
+old_world={o:o.matrix_world.copy() for o in spring if o.parent not in spring_set}
+for o,m in old_world.items():
+    o.parent=root; o.matrix_parent_inverse=Matrix.Identity(4); o.matrix_basis=m
+for o in spring:
+    if o.type=="MESH": o.hide_render=True; o.hide_set(True)
+rig.hide_render=True; rig.show_in_front=True
+bpy.context.view_layer.update()
+def segdist(p,a,b):
+    d=b-a; den=d.length_squared
+    t=0.0 if den<1e-12 else max(0.0,min(1.0,(p-a).dot(d)/den))
+    return (p-(a+d*t)).length
+def words(name):
+    n=name.lower()
+    if any(x in n for x in ("head","face","eye","iris","brow","nose","mouth","lip","ear","hair","fringe","bun")): return ("head","eye","brow","nose","cheek","jaw","lip","mouth","hair","ear")
+    if any(x in n for x in ("arm","sleeve","hand","cuff")): return ("arm","forearm","elbow","hand","wrist","shoulder","sleeve")
+    if any(x in n for x in ("leg","boot","shoe","foot")): return ("thigh","knee","shin","foot","ankle","leg")
+    if any(x in n for x in ("torso","body","jacket","hood","backpack","shirt","sweater","coat")): return ("spine","chest","torso","waist","hip","pelvis","body")
+    return ()
+def sample_eval(obj):
+    dg=bpy.context.evaluated_depsgraph_get(); ev=obj.evaluated_get(dg); me=ev.to_mesh()
+    result=[ev.matrix_world@me.vertices[i].co for i in range(0,len(me.vertices),max(1,len(me.vertices)//800))]
+    ev.to_mesh_clear(); return result
+bound=[]; unbound=[]; assignments=0
+for obj in mia:
+    keys=words(obj.name); candidates=[b for b in deform if not keys or any(k in b.name.lower() for k in keys)]
+    if not candidates: candidates=deform
+    tree=KDTree(3*len(candidates)); seg=[]
+    for i,b in enumerate(candidates):
+        a=rig.matrix_world@b.head_local; z=rig.matrix_world@b.tail_local; seg.append((b.name,a,z))
+        for j,p in enumerate((a,(a+z)*0.5,z)): tree.insert(p,3*i+j)
+    tree.balance(); buckets={}; ngroups=set()
+    for vi,v in enumerate(obj.data.vertices):
+        p=obj.matrix_world@v.co; near=tree.find_n(p,min(24,3*len(candidates))); ids=[]
+        for _,idx,_ in near:
+            k=idx//3
+            if k not in ids: ids.append(k)
+        scores=sorted(((segdist(p,seg[k][1],seg[k][2]),seg[k][0]) for k in ids))[:4]
+        raw=[(name,1.0/((d+0.018)*(d+0.018))) for d,name in scores]; total=sum(w for _,w in raw)
+        for name,w in raw:
+            q=max(1,min(100,round(100*w/total))); buckets.setdefault((name,q),[]).append(vi); ngroups.add(name)
+    for (name,q),indices in buckets.items():
+        vg=obj.vertex_groups.get(name) or obj.vertex_groups.new(name=name); vg.add(indices,q/100.0,"REPLACE")
+    if ngroups:
+        mod=obj.modifiers.new("Spring full rig | transferred weights","ARMATURE"); mod.object=rig; mod.use_vertex_groups=True; mod.use_bone_envelopes=False
+        obj.modifiers.move(len(obj.modifiers)-1,0); bound.append({"object":obj.name,"vertices":len(obj.data.vertices),"groups":len(ngroups)})
+        assignments+=sum(len(v) for v in buckets.values())
+    else: unbound.append(obj.name)
+if not bound: raise RuntimeError("no Mia meshes received weights")
+bpy.context.view_layer.update(); test_obj=next((o for o in mia if any(k in o.name.lower() for k in ("sleeve","forearm","arm"))),max(mia,key=lambda o:len(o.data.vertices))); before=sample_eval(test_obj)
+test_name=next((n for n in ("master_torso","master_body","master") if n in rig.pose.bones),None)
+max_delta=0.0
+if test_name:
+    pb=rig.pose.bones[test_name]; pb.rotation_mode="XYZ"; pb.rotation_euler[1]=0.12; bpy.context.view_layer.update(); after=sample_eval(test_obj)
+    max_delta=max(((a-b).length for a,b in zip(before,after)),default=0.0); pb.rotation_euler=(0,0,0); bpy.context.view_layer.update()
+bpy.ops.wm.save_as_mainfile(filepath=out_path)
+report={"status":"completed","bone_count":len(rig.data.bones),"deform_bone_count":len(deform),"pose_constraint_count":sum(len(p.constraints) for p in rig.pose.bones),"driver_count":len(rig.animation_data.drivers) if rig.animation_data else 0,"mia_mesh_count":len(mia),"bound_mesh_count":len(bound),"unbound_mesh_count":len(unbound),"vertex_count":sum(x["vertices"] for x in bound),"weight_assignments":assignments,"scale_to_mia_height":scale,"pose_test_bone":test_name,"pose_test_passed":max_delta>1e-5,"max_pose_vertex_displacement":max_delta,"output_blend":out_path,"bound_objects":bound,"unbound_objects":unbound,"limitations":["Proximity weights need visual correction at joints","Separate Mia eye and mouth meshes do not inherit Spring facial topology or shape keys","Spring custom-property setup was preserved but not executed","Blender compatibility and target-PC performance need review"]}
+with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_ascii=False,indent=2)
+'''
+
+
+def _spring_sha256(path: Path) -> str:
+    h=hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda:f.read(1024*1024),b""): h.update(block)
+    return h.hexdigest()
+
+
+def transfer_spring_rig_to_mia(project_name: str) -> dict[str, Any]:
+    """Create a separate Mia .blend with all 2,259 Spring bones and a pose test."""
+    if not isinstance(project_name,str) or not SPRING_TRANSFER_PROJECT_RE.fullmatch(project_name): return {"status":"rejected","reason":"invalid_project_name"}
+    exe=os.environ.get("BLENDER_EXECUTABLE","").strip(); root=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
+    if not exe or not root: return {"status":"blocked","reason":"local_blender_or_workspace_not_configured"}
+    blender=Path(exe).expanduser().resolve(); workspace=Path(root).expanduser().resolve()
+    if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
+    project=(workspace/"MIA_REFERENCE_REVIEW"/project_name).resolve()
+    if not project.is_relative_to(workspace) or project==workspace or project.is_symlink(): return {"status":"rejected","reason":"unsafe_project_path"}
+    source_mia=project/"mia_reference_model.blend"; output=project/"mia_reference_model_spring_rig.blend"; report=project/"spring_rig_transfer_result.json"
+    if not source_mia.is_file(): return {"status":"blocked","reason":"mia_reference_model_missing"}
+    if output.exists() or report.exists(): return {"status":"blocked","reason":"output_exists_no_overwrite"}
+    cache=workspace/".local_agent"/"cache"/"spring-rig-source-v1"; cache.mkdir(parents=True,exist_ok=True)
+    archive=cache/"spring-source.zip"; source=cache/"spring"/"spring"/"spring.blend"
+    if not source.is_file() or _spring_sha256(source)!=SPRING_TRANSFER_BLEND_SHA256:
+        if not archive.is_file() or _spring_sha256(archive)!=SPRING_TRANSFER_ARCHIVE_SHA256:
+            try:
+                from urllib.request import Request,urlopen
+                request=Request(SPRING_TRANSFER_ARCHIVE_URL,headers={"User-Agent":"OctavaLocalAgent/1.0"})
+                temp=None
+                with urlopen(request,timeout=60) as response, tempfile.NamedTemporaryFile(prefix="spring-",suffix=".tmp",dir=cache,delete=False) as f:
+                    temp=Path(f.name); total=0
+                    while True:
+                        chunk=response.read(1024*1024)
+                        if not chunk: break
+                        total+=len(chunk)
+                        if total>500*1024*1024: raise ValueError("fixed archive size limit exceeded")
+                        f.write(chunk)
+                if _spring_sha256(temp)!=SPRING_TRANSFER_ARCHIVE_SHA256: raise ValueError("archive checksum mismatch")
+                os.replace(temp,archive)
+            except Exception as exc:
+                try:
+                    if temp: temp.unlink(missing_ok=True)
+                except Exception: pass
+                return {"status":"blocked","reason":"spring_download_or_checksum_failed","error_type":type(exc).__name__}
+        try:
+            import zipfile
+            with zipfile.ZipFile(archive) as zf:
+                if zf.testzip(): raise ValueError("archive CRC failure")
+                for member in zf.infolist():
+                    parts=Path(member.filename).parts
+                    if member.filename.startswith("spring/spring/") and ".." not in parts: zf.extract(member,cache)
+        except Exception as exc: return {"status":"failed","reason":"spring_extract_failed","error_type":type(exc).__name__}
+        if not source.is_file() or _spring_sha256(source)!=SPRING_TRANSFER_BLEND_SHA256: return {"status":"failed","reason":"spring_blend_checksum_mismatch"}
+    try:
+        with tempfile.TemporaryDirectory(prefix=".spring-rig-",dir=project) as td:
+            script=Path(td)/"transfer.py"; script.write_text(SPRING_TRANSFER_SCRIPT,encoding="utf-8")
+            proc=subprocess.run([str(blender),"--disable-autoexec","--background","--factory-startup","--python-exit-code","1","--python",str(script),"--",str(source),str(output),str(report)],cwd=str(project),capture_output=True,text=True,timeout=14400,check=False,shell=False)
+    except subprocess.TimeoutExpired: return {"status":"timeout","reason":"transfer_exceeded_4_hours"}
+    except OSError as exc: return {"status":"error","error_type":type(exc).__name__}
+    if proc.returncode or not output.is_file() or not report.is_file(): return {"status":"failed","reason":"blender_transfer_failed","return_code":proc.returncode,"stderr_tail":(proc.stderr or "")[-2500:]}
+    try: data=json.loads(report.read_text("utf-8"))
+    except (OSError,ValueError): return {"status":"failed","reason":"transfer_report_unreadable"}
+    if data.get("status")!="completed" or data.get("bone_count",0)<2000 or data.get("bound_mesh_count",0)<1: return {"status":"failed","reason":"transfer_validation_failed","transfer":data}
+    return {"status":"completed","task":"blender_mia_spring_rig_transfer","blend_path":str(output),"report_path":str(report),"bone_count":data["bone_count"],"deform_bone_count":data["deform_bone_count"],"pose_test_passed":data["pose_test_passed"],"max_pose_vertex_displacement":data["max_pose_vertex_displacement"],"bound_mesh_count":data["bound_mesh_count"],"unbound_mesh_count":data["unbound_mesh_count"],"scale_to_mia_height":data["scale_to_mia_height"],"limitations":data["limitations"]}
