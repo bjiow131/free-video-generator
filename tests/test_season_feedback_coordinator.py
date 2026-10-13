@@ -1,5 +1,6 @@
-from local_agent.studio_jobs import SeasonFeedbackCoordinator,StudioJobError
-import pytest,json
+from local_agent.studio_jobs import SeasonFeedbackCoordinator,StudioJobError,verify_episode_artifact
+import pytest,json,subprocess
+from types import SimpleNamespace
 
 def test_executes_and_returns_actual_feedback_to_next_astra_call(tmp_path):
     c=SeasonFeedbackCoordinator(tmp_path);requests=[];executions=[]
@@ -49,3 +50,31 @@ def test_all_thirty_need_independent_verification_and_revalidation(tmp_path):
         state=c.cycle_once(lambda _,i=i:{'action_id':'a'+str(i),'operation':'render','arguments':{'episode_id':f'S01E{i:02d}'}},
             {'render':lambda _:{'status':'completed'}},lambda *_:True)
         assert (state['status']=='completed')==(i==30)
+
+def test_episode_media_gate_checks_exact_mp4_contract_without_claiming_visual_quality(tmp_path,monkeypatch):
+    target=tmp_path/'episodes'/'S01E01'/'final.mp4';target.parent.mkdir(parents=True);target.write_bytes(b'x'*1_000_001)
+    metadata={'format':{'format_name':'mov,mp4,m4a','duration':'300'},'streams':[{
+        'codec_type':'video','codec_name':'h264','width':720,'height':1280,
+        'pix_fmt':'yuv420p','avg_frame_rate':'24/1','nb_read_frames':'7200'}]}
+    monkeypatch.setattr('shutil.which',lambda _: '/usr/bin/ffprobe')
+    monkeypatch.setattr(subprocess,'run',lambda *a,**k:SimpleNamespace(returncode=0,stdout=json.dumps(metadata).encode()))
+    result=verify_episode_artifact(tmp_path,'S01E01')
+    assert result['status']=='technical_checks_passed'
+    assert len(result['sha256'])==64 and result['visual_review_required'] is True
+    assert result['season_completion_eligible'] is False
+
+def test_episode_media_gate_rejects_audio_and_short_episode(tmp_path,monkeypatch):
+    target=tmp_path/'episodes'/'S01E01'/'final.mp4';target.parent.mkdir(parents=True);target.write_bytes(b'x'*1_000_001)
+    monkeypatch.setattr('shutil.which',lambda _: '/usr/bin/ffprobe')
+    video={'codec_type':'video','codec_name':'h264','width':720,'height':1280,
+        'pix_fmt':'yuv420p','avg_frame_rate':'24/1','nb_read_frames':'2880'}
+    metadata={'format':{'format_name':'mp4','duration':'120'},'streams':[video, {'codec_type':'audio'}]}
+    monkeypatch.setattr(subprocess,'run',lambda *a,**k:SimpleNamespace(returncode=0,stdout=json.dumps(metadata).encode()))
+    assert verify_episode_artifact(tmp_path,'S01E01')['reason']=='unexpected_media_streams'
+    metadata['streams']=metadata['streams'][:1]
+    assert verify_episode_artifact(tmp_path,'S01E01')['reason']=='episode_duration_out_of_range'
+
+def test_episode_media_gate_rejects_wrong_id_and_linked_output(tmp_path):
+    assert verify_episode_artifact(tmp_path,'../S01E01')['reason']=='invalid_episode_id'
+    episodes=tmp_path/'episodes';episodes.mkdir();(episodes/'S01E01').symlink_to(tmp_path)
+    assert verify_episode_artifact(tmp_path,'S01E01')['reason']=='episode_path_is_link'
