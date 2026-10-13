@@ -2606,6 +2606,100 @@ def _worker_restart_due() -> bool:
     return acknowledge_runtime_restart()
 
 
+class _PeriodicMailboxReporter:
+    """Independent ten-minute reports; never blocks the task or uploads raw logs."""
+    INTERVAL_SECONDS = 600
+
+    def __init__(self, config):
+        import uuid
+        self.config = config
+        self.session_id = uuid.uuid4().hex[:12]
+        self.lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.active = None
+        self.last_task = None
+        self.sequence = 0
+
+    def begin(self, task):
+        with self.lock:
+            self.active = {'task_id': task.task_id, 'operation': task.operation,
+                           'started_at': datetime.now(timezone.utc).isoformat(),
+                           'started_monotonic': time.monotonic()}
+
+    def finish(self):
+        with self.lock:
+            if self.active:
+                self.last_task = {'task_id': self.active['task_id'],
+                                  'operation': self.active['operation'],
+                                  'state': 'handler_returned; inspect final task result'}
+            self.active = None
+
+    def snapshot(self):
+        with self.lock:
+            active = dict(self.active) if self.active else None
+            last = dict(self.last_task) if self.last_task else None
+        report = {'report_type': 'periodic_agent_progress', 'interval_seconds': 600,
+                  'reported_at': datetime.now(timezone.utc).isoformat(),
+                  'worker_state': 'executing_task' if active else 'idle',
+                  'last_task': last, 'automatic_commands_executed': False,
+                  'raw_logs_or_credentials_included': False}
+        try:
+            report['paused'] = load_runtime_control()['paused']
+        except Exception:
+            report['paused'] = 'unknown'
+        if active:
+            task_id = active['task_id']
+            report['active_task'] = {k: v for k,v in active.items() if k != 'started_monotonic'}
+            report['active_task']['elapsed_seconds'] = max(0,int(time.monotonic()-active['started_monotonic']))
+            # Fixed path, fixed fields: no arbitrary model text, tracebacks or filesystem dumps.
+            if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',task_id):
+                path = ROOT/'.local_agent'/'reports'/task_id/'progress.json'
+                try:
+                    if any(p.is_symlink() or getattr(p,'is_junction',lambda:False)() for p in (path,path.parent,path.parent.parent)):
+                        raise ValueError('unsafe_progress_path')
+                    if path.is_file() and path.stat().st_size <= 64000:
+                        progress = json.loads(path.read_text(encoding='utf-8'))
+                        details = {k:progress[k] for k in ('source_chunks','chunks_sent','files_in_archive')
+                                   if type(progress.get(k)) is int and progress[k]>=0}
+                        report['active_task']['progress'] = details
+                        report['active_task']['progress_file_updated_at'] = datetime.fromtimestamp(path.stat().st_mtime,timezone.utc).isoformat()
+                except (OSError,ValueError,TypeError):
+                    report['active_task']['progress_available'] = False
+        return report
+
+    def emit(self, client, outbox):
+        self.sequence += 1
+        task_id = f'progress-{self.session_id}-{self.sequence:06d}'
+        report = {'task_id': task_id, **self.snapshot()}
+        # Local durable evidence is retained even if GitHub is offline.
+        outbox.enqueue(task_id,report)
+        outbox.flush(client)
+        return report
+
+    def run(self):
+        # Own HTTP session and outbox avoid races with the task worker's transport.
+        client = GitHubQueueClient(self.config)
+        root = _ensure_agent_dir()/'periodic_reports_outbox'
+        if root.is_symlink() or getattr(root,'is_junction',lambda:False)():
+            return
+        outbox = ResultOutbox(root)
+        while not self.stop_event.is_set():
+            try:
+                self.emit(client,outbox)
+            except Exception as exc:
+                print('Periodic report deferred: '+type(exc).__name__)
+            if self.stop_event.wait(self.INTERVAL_SECONDS):
+                break
+
+    def start(self):
+        self.thread = threading.Thread(target=self.run,name='mailbox-progress-10min',daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+
+
 def main() -> int:
     _apply_windows_error_mode()
     # Remote task intake is deliberately opt-in; the normal local Blender launcher
@@ -2677,6 +2771,8 @@ def main() -> int:
         _telegram_signal("mailbox-online", str(int(time.time())),
                          "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
 
+    reporter = _PeriodicMailboxReporter(config)
+    reporter.start()
     try:
         while True:
             try:
@@ -2701,7 +2797,11 @@ def main() -> int:
                             state, task.task_id, manifest_sha, status="in_progress"
                         )
                         _save_state(state)
-                        _run_one(client, task, manifest_sha)
+                        reporter.begin(task)
+                        try:
+                            _run_one(client, task, manifest_sha)
+                        finally:
+                            reporter.finish()
                         last_seen, last_sha = task.task_id, manifest_sha
                         delivery_status = _task_delivery_status(
                             task.task_id, result_outbox.pending_task_ids()
@@ -2815,6 +2915,7 @@ def main() -> int:
                 backoff = min(max(interval, backoff * 2), 300)
     
     finally:
+        reporter.stop()
         fallback_stop.set()
         lock_handle.close()
 
