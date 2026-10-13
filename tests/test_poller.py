@@ -1248,7 +1248,7 @@ def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path,
     monkeypatch.setattr(_urllib_request,"urlopen",fake_urlopen)
     monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
     result=poller._run_astra_season_response(Client(),"astra-response-test")
-    body=json.loads(captured["request"].data)
+    body=_json.loads(captured["request"].data)
     assert body["model"]=="gpt-6-astra"
     assert "MASTER WORK TASK" in body["messages"][1]["content"]
     assert captured["timeout"]==180
@@ -1263,4 +1263,3 @@ def test_astra_operation_stops_when_local_provider_consent_is_off(monkeypatch):
         def _request(self,*args,**kwargs): raise AssertionError("must stop before network")
     assert poller._run_astra_season_response(NoNetwork(),"astra-response-test")=={
         "status":"blocked","reason":"local_octava_permission_disabled"}
-
