@@ -131,6 +131,7 @@ def test_supervisor_recovery_enters_install_directory_before_import(tmp_path, mo
     root.mkdir()
     # _supervisor_recovery_command needs a list-returning command-line
     # formatter for this assertion, but subprocess.run needs the real formatter.
+    # The real formatter must be restored before subprocess.run starts.
     with monkeypatch.context() as isolated:
         isolated.setattr(poller.subprocess, "list2cmdline", lambda args: args)
         args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
