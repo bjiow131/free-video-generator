@@ -271,7 +271,8 @@ def sync_approved_assets(
     """
     if not isinstance(project_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,47}", project_name):
         raise AssetSyncError("invalid_project_name")
-    if project_name != "episode1":
+    # Keep downloads confined to the existing pilot project or Octava Studio's configured season project.
+    if project_name not in {"episode1", "mia_story"}:
         raise AssetSyncError("project_not_allowlisted")
     raw_root = Path(workspace).expanduser()
     if raw_root.is_symlink() or getattr(raw_root, "is_junction", lambda: False)():
