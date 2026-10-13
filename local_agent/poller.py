@@ -52,7 +52,7 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics"}:
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -374,6 +374,22 @@ def _run_luna_s01e01_reference_image_test(client: GitHubQueueClient) -> dict[str
     if not workspace:
         return {"status": "blocked", "reason": "workspace_not_configured",
                 "image_generated": False, "studio_draft_saved": False}
+    try:
+        checkpoint = _luna_mia_image_checkpoint_path()
+        if checkpoint.exists() or checkpoint.is_symlink():
+            return {"status": "blocked", "reason": "prior_generated_image_checkpoint_pending_recovery",
+                    "image_generated": False, "studio_draft_saved": False}
+        from local_agent.studio_server import StudioStore
+        from local_agent.asset_registry import read_asset_registry
+        preflight_store = StudioStore(workspace, "mia_story")
+        draft_id = "char.mia.master.luna_draft"
+        draft_path = preflight_store.root / "assets" / "references" / "drafts" / (draft_id + ".png")
+        if draft_path.exists() or draft_id in read_asset_registry(preflight_store.root, preflight_store.project):
+            return {"status": "blocked", "reason": "luna_draft_already_exists_no_overwrite",
+                    "image_generated": False, "studio_draft_saved": False}
+    except Exception as exc:
+        return {"status": "blocked", "reason": "local_draft_preflight_failed",
+                "error_type": type(exc).__name__, "image_generated": False, "studio_draft_saved": False}
 
     result_path = "queue/results/luna-s01e01-ref-selection-20261013-01.json"
     try:
@@ -474,14 +490,32 @@ def _run_luna_s01e01_reference_image_test(client: GitHubQueueClient) -> dict[str
                 "image_generated": False, "studio_draft_saved": False}
 
     try:
-        from local_agent.studio_server import StudioStore, save_season_asset_draft
+        checkpoint = _luna_mia_image_checkpoint_path()
+        with checkpoint.open("xb") as stream:
+            stream.write(image_bytes)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception as exc:
+        return {
+            "status": "error", "reason": "local_image_checkpoint_failed",
+            "error_type": type(exc).__name__, "image_generated": True,
+            "studio_draft_saved": False, "checkpoint_saved": False,
+            "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
+        }
+
+    try:
+        from local_agent.studio_server import StudioStore, save_season_asset_draft, StudioError
         store = StudioStore(workspace, "mia_story")
         saved_draft = save_season_asset_draft(
             store, "char.mia.master.luna_draft", image_bytes, "png")
+        checkpoint.unlink()
     except Exception as exc:
+        safe_message = (str(exc)[:180] if isinstance(exc, StudioError) else type(exc).__name__)
         return {
             "status": "error", "reason": "local_studio_draft_save_failed",
-            "error_type": type(exc).__name__, "image_generated": True,
+            "error_type": type(exc).__name__, "save_error": safe_message,
+            "image_generated": True, "checkpoint_saved": checkpoint.is_file(),
+            "checkpoint_path": "pending_images/luna_mia_master.png",
             "studio_draft_saved": False, "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
         }
     return {
@@ -494,6 +528,59 @@ def _run_luna_s01e01_reference_image_test(client: GitHubQueueClient) -> dict[str
         "sha256": saved_draft["sha256"], "bytes": saved_draft["bytes"],
         "studio_image_url": saved_draft["image_url"],
     }
+
+
+def _luna_mia_image_checkpoint_path() -> Path:
+    """Return one fixed local checkpoint slot without following links."""
+    folder = _ensure_agent_dir() / "pending_images"
+    if folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():
+        raise OSError("Unsafe pending image checkpoint directory")
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():
+        raise OSError("Unsafe pending image checkpoint directory")
+    path = folder / "luna_mia_master.png"
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise OSError("Unsafe pending image checkpoint")
+    return path
+
+
+def _run_luna_mia_draft_recovery() -> dict[str, Any]:
+    """Recover the fixed locally checkpointed draft without calling a provider."""
+    import hashlib
+    workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not workspace:
+        return {"status": "blocked", "reason": "workspace_not_configured",
+                "provider_request_sent": False}
+    try:
+        checkpoint = _luna_mia_image_checkpoint_path()
+        if not checkpoint.is_file():
+            return {"status": "completed", "recovered": False, "reason": "no_pending_image_checkpoint",
+                    "provider_request_sent": False}
+        raw = checkpoint.read_bytes()
+        if not raw or len(raw) > 15_000_000 or not raw.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10))):
+            return {"status": "error", "reason": "pending_image_checkpoint_invalid",
+                    "provider_request_sent": False}
+        from local_agent.studio_server import StudioStore, save_season_asset_draft
+        from local_agent.asset_registry import read_asset_registry
+        store = StudioStore(workspace, "mia_story")
+        asset_id = "char.mia.master.luna_draft"
+        destination = store.root / "assets" / "references" / "drafts" / (asset_id + ".png")
+        current = read_asset_registry(store.root, store.project).get(asset_id)
+        digest = hashlib.sha256(raw).hexdigest()
+        if destination.is_file() and not destination.is_symlink():
+            existing_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
+            if existing_hash == digest and isinstance(current, dict):
+                checkpoint.unlink()
+                return {"status": "completed", "recovered": True, "already_saved": True,
+                        "provider_request_sent": False, "asset_id": asset_id,
+                        "sha256": digest, "bytes": len(raw)}
+        saved = save_season_asset_draft(store, asset_id, raw, "png")
+        checkpoint.unlink()
+        return {"status": "completed", "recovered": True, "provider_request_sent": False,
+                **saved}
+    except Exception as exc:
+        return {"status": "error", "reason": "local_draft_recovery_failed",
+                "error_type": type(exc).__name__, "provider_request_sent": False}
 
 
 def _run_luna_mia_draft_diagnostics() -> dict[str, Any]:
@@ -1319,7 +1406,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
     "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
-    "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics",
+    "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
 
 
@@ -2458,7 +2545,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         _publish_result_durable(client, task.task_id, result)
         return
     unattended = policy["enabled"]
-    authorization_operation = ("status" if task.operation == "luna_mia_draft_diagnostics" else
+    authorization_operation = ("status" if task.operation in ("luna_mia_draft_diagnostics", "luna_mia_draft_recovery") else
                                "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test") else task.operation)
     if unattended and not is_auto_authorized(authorization_operation, policy) and not remote_restart:
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
@@ -2677,6 +2764,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_luna_s01e01_reference_image_test(client)
             elif task.operation == "luna_mia_draft_diagnostics":
                 details = _run_luna_mia_draft_diagnostics()
+            elif task.operation == "luna_mia_draft_recovery":
+                details = _run_luna_mia_draft_recovery()
             else:
                 details = handler()
             result_status = details.get("status", "completed")
@@ -2748,7 +2837,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
-    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics"):
+    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"):
         label = str(task.operation).replace("_", " ")[:48]
         if outcome == "completed":
             _telegram_signal("task-ok", task.task_id,
