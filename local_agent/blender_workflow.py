@@ -2951,7 +2951,9 @@ camera.data.type = "ORTHO"
 camera.data.ortho_scale = 6.1
 bpy.context.scene.camera = camera
 scene = bpy.context.scene
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+engine_ids = {i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items}
+scene.render.engine = ("BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engine_ids
+                       else "BLENDER_EEVEE")
 scene.render.resolution_x = 360
 scene.render.resolution_y = 640
 scene.render.resolution_percentage = 100
@@ -3095,8 +3097,20 @@ def run_mia_2p5d_prototype(*, task_id: str) -> dict[str, Any]:
     if cancelled:
         return {"status":"cancelled","stage":"render", "astra":astra}
     if timed_out or error or not result or result.returncode:
+        err_text=(result.stderr or "") if result else ""
+        out_text=(result.stdout or "") if result else ""
+        # Only local Blender stdout/stderr, never provider or credential logs.
+        safe_tail=[line[-240:] for line in (err_text+"\n"+out_text).splitlines()
+                   if any(word in line for word in
+                       ("Traceback","Error:","RuntimeError:","AttributeError:",
+                        "TypeError:","ValueError:","KeyError:","Exception:",
+                        "Python:","bpy.ops"))][-12:]
+        (output/"blender_error_diagnostic.txt").write_text(
+            "\n".join(safe_tail),encoding="utf-8")
         return {"status":"incomplete","stage":"render","error_type":error or
                ("Timeout" if timed_out else "BlenderExit"),
+               "return_code":result.returncode if result else None,
+               "blender_error_lines":safe_tail,
                "astra":astra,"output_directory":str(output)}
     frames=output/"frames"
     frame_count=sum(1 for frame in frames.glob("frame_*.png") if frame.is_file())
