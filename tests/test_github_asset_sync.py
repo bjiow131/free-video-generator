@@ -184,3 +184,67 @@ def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tm
     url, kwargs = session.calls[0]
     assert url.startswith("https://api.github.com/repos/bjiow131/season1-private-bible/")
     assert kwargs["headers"] == {"Authorization": "Bearer test-private-token"}
+
+
+def test_syncs_private_environment_draft_only_into_draft_reference_folder(tmp_path, monkeypatch):
+    private_commit = "c" * 40
+    private_path = "private_assets/season1/generated/forest_gate_draft.jpg"
+    destination = "assets/references/drafts/set.forest_gate.jpg"
+    image_bytes = b"draft-jpeg-reference"
+    digest = hashlib.sha256(image_bytes).hexdigest()
+    manifest = make_manifest(tmp_path)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["assets"] = [{
+        "category": "environment",
+        "asset_id": "set.forest_gate",
+        "source_repository": "bjiow131/local-agent-mailbox",
+        "path": private_path,
+        "destination": destination,
+        "commit_sha": private_commit,
+        "size_bytes": len(image_bytes),
+        "sha256": digest,
+        "review_status": "draft",
+    }]
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    response = Response(200, payload={
+        "type": "file", "path": private_path, "size": len(image_bytes),
+        "encoding": "base64", "content": base64.b64encode(image_bytes).decode("ascii"),
+    })
+
+    class RecordingSession(Session):
+        def __init__(self):
+            super().__init__([response])
+            self.calls = []
+        def get(self, url, *args, **kwargs):
+            self.calls.append((url, kwargs))
+            return super().get(url, *args, **kwargs)
+
+    session = RecordingSession()
+    monkeypatch.setattr("local_agent.windows_credentials.read_credential", lambda: "test-private-token")
+    workspace = tmp_path / "workspace"
+    result = sync_approved_assets(workspace, "episode1", manifest, session=session)
+    assert result["counts"] == {"downloaded": 1}
+    assert result["downloaded_private_data"] is True
+    assert (workspace / "episode1" / destination).read_bytes() == image_bytes
+    assert session.calls[0][0].startswith(
+        "https://api.github.com/repos/bjiow131/local-agent-mailbox/contents/"
+    )
+    assert session.calls[0][1]["headers"] == {"Authorization": "Bearer test-private-token"}
+
+
+def test_private_draft_manifest_rejects_non_draft_destination(tmp_path):
+    manifest = make_manifest(tmp_path)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    item = data["assets"][0]
+    item.update({
+        "category": "environment",
+        "source_repository": "bjiow131/local-agent-mailbox",
+        "path": "private_assets/season1/generated/forest_gate_draft.jpg",
+        "destination": "assets/environments/set.forest_gate.jpg",
+        "commit_sha": "c" * 40,
+        "review_status": "draft",
+    })
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(AssetSyncError, match="draft_reference_destination_not_allowlisted"):
+        asset_sync._load_manifest(manifest)
+
