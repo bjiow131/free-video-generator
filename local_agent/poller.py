@@ -193,6 +193,38 @@ def _audit_collect(root: Path, destination: Path) -> tuple[list[dict], dict[str,
     return index, texts
 
 
+def _astra_exchange_notification(task_id: str, stage: str, kind: str, text: str) -> None:
+    """Send bounded, credential-free details to the already paired Telegram bot."""
+    import hashlib
+    try:
+        if kind == 'sent':
+            paths = re.findall(r'^FILE (.+?) OFFSET ', text, flags=re.MULTILINE)
+            if paths:
+                brief = 'Проверка исходников: '+', '.join(dict.fromkeys(paths[:4]))
+            else:
+                brief = 'Сводный аудит проекта и запрос дополнительных файлов/итогового отчёта.'
+            title = 'Отправил задачу Астре'
+        else:
+            title = 'Получил ответ от Астры'
+            brief = text.strip()
+            try:
+                data = json.loads(brief.strip('`').removeprefix('json').strip())
+                if isinstance(data, dict):
+                    if data.get('file_requests'):
+                        brief = 'Запрошены файлы: '+', '.join(str(x) for x in data['file_requests'][:5])
+                    elif data.get('audit_report'):
+                        brief = str(data['audit_report'])
+            except (ValueError,TypeError):
+                pass
+        brief = re.sub(r'\s+',' ',_audit_safe_text(brief.encode())).strip()[:380]
+        message = title+'\nЭтап: '+stage[:40]+'\nЗадача: '+task_id[:70]+'\n'+brief
+        identity = hashlib.sha256((task_id+'|'+stage+'|'+kind).encode()).hexdigest()[:40]
+        _telegram_signal('astra-'+kind,identity,message[:600])
+    except Exception:
+        # Bot availability must never change the success/failure of the AI request.
+        pass
+
+
 def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[str, Any]:
     """Archive installed source, audit all text chunks, fulfill bounded file requests."""
     import base64
@@ -243,6 +275,8 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
             (folder/('request_'+stage+'.txt')).write_text(_audit_safe_text(user.encode()),encoding='utf-8')
             req = Request('https://octavapi.shop/v1/chat/completions',data=payload,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
             with urlopen(req,timeout=240) as response:
+                # Returning HTTP response headers confirms the request was dispatched.
+                _astra_exchange_notification(task_id,stage,'sent',user)
                 raw = response.read(200001)
             if len(raw)>200000:
                 raise ValueError('response_size_limit')
@@ -255,6 +289,7 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
             model_names.append(str(data.get('model','unknown')))
             answer = _audit_safe_text(answer.encode())
             (folder/(stage+'.txt')).write_text(answer,encoding='utf-8')
+            _astra_exchange_notification(task_id,stage,'received',answer)
             return answer
         # Every included file is transmitted without silent cropping; large files split.
         chunks, current = [], ''
