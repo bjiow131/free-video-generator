@@ -1112,6 +1112,47 @@ class StudioHTTPServer(ThreadingHTTPServer):
         return dict(self.render_status)
 
 
+def astra_monitor_snapshot(root: Path | None = None) -> dict:
+    """Expose only bounded audit checkpoints, never arbitrary local files."""
+    root = root or Path(__file__).resolve().parents[1]/'.local_agent'/'reports'
+    result = {'tasks': [], 'observed_at': datetime.now(timezone.utc).isoformat(),
+              'notice': 'Сохранённый обмен. Отсутствие новых записей не доказывает остановку процесса.'}
+    def safe(path):
+        return not path.is_symlink() and not getattr(path,'is_junction',lambda:False)()
+    def clean(text):
+        text = re.sub(r'(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,})','[REDACTED]',text)
+        text = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9_.-]{15,}',r'\1[REDACTED]',text)
+        return re.sub(r'(?im)([\"\']?(?:api[_-]?key|token|password|secret)[\"\']?\s*[=:]\s*)[\"\'][^\"\'\n]{8,}[\"\']',r'\1"[REDACTED]"',text)
+    if not safe(root) or not root.is_dir():
+        return result
+    try:
+        folders = [p for p in root.iterdir() if safe(p) and p.is_dir() and re.fullmatch(r'astra[A-Za-z0-9._-]{0,120}',p.name)]
+        folders.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+        for folder in folders[:8]:
+            task = {'task_id':folder.name, 'events':[], 'progress':{}}
+            progress = folder/'progress.json'
+            if safe(progress) and progress.is_file() and progress.stat().st_size<=64000:
+                try:
+                    data=json.loads(progress.read_text(encoding='utf-8'))
+                    task['progress']={k:data[k] for k in ('source_chunks','chunks_sent','files_in_archive') if type(data.get(k)) is int}
+                except (OSError,ValueError,UnicodeError,TypeError):
+                    task['progress_unreadable']=True
+            files=[p for p in folder.iterdir() if safe(p) and p.is_file() and re.fullmatch(r'(?:PROMPT\.txt|AUDIT_REPORT\.md|WORK_PROMPT\.txt|(?:request_)?(?:part|synthesis)_\d+\.txt)',p.name)]
+            files.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+            for path in files[:12]:
+                if path.stat().st_size>500000:
+                    continue
+                with path.open('r',encoding='utf-8',errors='replace') as stream:
+                    text=stream.read(10001)
+                kind='request' if path.name.startswith('request_') or path.name=='PROMPT.txt' else 'response'
+                task['events'].append({'file':path.name,'kind':kind,'time':datetime.fromtimestamp(path.stat().st_mtime,timezone.utc).isoformat(),'text':clean(text[:10000]),'truncated':len(text)>10000})
+            task['final_report_saved']=(folder/'AUDIT_REPORT.md').is_file() and safe(folder/'AUDIT_REPORT.md')
+            result['tasks'].append(task)
+    except OSError:
+        result['read_error']=True
+    return result
+
+
 class StudioHandler(BaseHTTPRequestHandler):
     server: StudioHTTPServer
 
@@ -1151,6 +1192,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             self._json(403, {"error": "Host rejected"})
             return
         path = urlsplit(self.path).path
+        if path == "/api/astra-monitor":
+            return self._json(200, astra_monitor_snapshot())
         if path == "/api/health":
             return self._json(200, {"status": "ok", "offline": True})
         if path == "/api/octava-key":
