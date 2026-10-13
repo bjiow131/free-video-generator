@@ -119,3 +119,24 @@ def test_large_audit_reduces_saved_notes_before_final_synthesis(ns,tmp_path,monk
     assert calls[-1].startswith('SOURCE INDEX:')
     assert (tmp_path/'state/reports/large-audit/part_50.txt').read_text()=='N'*2000
     assert (tmp_path/'state/reports/large-audit/reduce_1_1.txt').exists()
+
+
+def test_request_start_notification_is_not_delivery_claim(ns):
+    events=[]
+    ns['_telegram_signal']=lambda *args:events.append(args)
+    ns['_astra_exchange_notification']('task','part_1','started','FILE app.py OFFSET 0\nsecret source')
+    assert events[0][0]=='astra-started'
+    assert 'Начинаю запрос к Астре' in events[0][2]
+    assert 'Отправил задачу' not in events[0][2]
+    assert 'app.py' in events[0][2]
+    assert 'secret source' not in events[0][2]
+
+
+def test_request_start_precedes_blocking_provider_call():
+    source=(Path(__file__).resolve().parents[1]/'local_agent'/'poller.py').read_text()
+    tree=ast.parse(source)
+    audit=next(x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name=='_run_astra_project_audit')
+    ask=next(x for x in ast.walk(audit) if isinstance(x,ast.FunctionDef) and x.name=='ask')
+    start=next(x for x in ast.walk(ask) if isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id=='_astra_exchange_notification' and any(isinstance(a,ast.Constant) and a.value=='started' for a in x.args))
+    network=next(x for x in ast.walk(ask) if isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id=='urlopen')
+    assert start.lineno < network.lineno
