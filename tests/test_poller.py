@@ -10,6 +10,56 @@ from local_agent.poller import _not_expired
 
 
 
+def test_windows_error_mode_flags_are_applied_safely(monkeypatch):
+    from local_agent import poller
+    observed = []
+    assert poller._apply_windows_error_mode(observed.append) is True
+    assert observed == [0x0001 | 0x0002 | 0x8000]
+
+
+def test_unsupported_16bit_dialog_requires_exact_title_class_and_message():
+    from local_agent import poller
+    russian = (
+        "Не удалось запустить программу или компонент из-за несовместимости "
+        "с 64-разрядной версией Windows."
+    )
+    assert poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "#32770", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "Chrome_WidgetWin_1", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Ошибка приложения", "#32770", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "#32770", "Unrelated text")
+
+
+
+
+def test_windows_error_mode_flags_are_applied_safely(monkeypatch):
+    from local_agent import poller
+    observed = []
+    assert poller._apply_windows_error_mode(observed.append) is True
+    assert observed == [0x0001 | 0x0002 | 0x8000]
+
+
+def test_unsupported_16bit_dialog_requires_exact_title_class_and_message():
+    from local_agent import poller
+    russian = (
+        "Не удалось запустить программу или компонент из-за несовместимости "
+        "с 64-разрядной версией Windows."
+    )
+    assert poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "#32770", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "Chrome_WidgetWin_1", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Ошибка приложения", "#32770", russian)
+    assert not poller._is_unsupported_16bit_dialog(
+        "Неподдерживаемое 16-разрядное приложение", "#32770", "Unrelated text")
+
+
+
+
 def test_scheduled_task_target_diagnostic_only_returns_match(tmp_path):
     from local_agent import poller
     prefix = tmp_path / "AI-Agent"
