@@ -250,7 +250,8 @@ def _episode_asset_readiness(episode: dict, store: StudioStore) -> dict:
             status, path = "approved_reference", "/api/approved-reference-image/mia"
             image_url = path
         elif asset_id in registered:
-            status, path = "registered", registered[asset_id]["path"]
+            path = registered[asset_id]["path"]
+            status = "draft" if path.replace("\\", "/").startswith("assets/references/drafts/") else "registered"
             if Path(path).suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
                 image_url = "/api/asset-image/" + asset_id
         else:
@@ -258,10 +259,13 @@ def _episode_asset_readiness(episode: dict, store: StudioStore) -> dict:
         assets.append({"asset_id": asset_id, "status": status, "path": path,
                        "image_url": image_url})
     missing = [asset["asset_id"] for asset in assets if asset["status"] == "missing"]
+    drafts = [asset["asset_id"] for asset in assets if asset["status"] == "draft"]
     return {
         "assets": assets,
-        "missing_assets": missing,
-        "reference_readiness": "blocked_missing_references" if missing else "references_present",
+        "missing_assets": missing + drafts,
+        "draft_assets": drafts,
+        "reference_readiness": "blocked_missing_references" if missing else
+                               "blocked_draft_references" if drafts else "references_present",
         "animation_readiness": "not_verified",
     }
 
@@ -328,6 +332,7 @@ def list_season_asset_library(store: StudioStore) -> dict:
                 "status": item["status"],
                 "image_url": item.get("image_url", ""),
                 "review_status": "approved" if item["status"] == "approved_reference" else
+                                 "draft" if item["status"] == "draft" else
                                  "unverified" if item["status"] == "registered" else "missing",
                 "episodes": [],
                 "scenes": [],
