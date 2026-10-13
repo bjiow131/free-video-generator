@@ -104,7 +104,7 @@ def test_large_audit_reduces_saved_notes_before_final_synthesis(ns,tmp_path,monk
         def read(self,n):return json.dumps({'model':'fake','choices':[{'message':{'content':self.answer},'finish_reason':'stop'}]}).encode()
     def urlopen(req,timeout):
         user=json.loads(req.data)['messages'][1]['content'];calls.append(user)
-        if 'CURRENT REQUEST AND PROJECT DATA:\\nPART ' in user: answer='N'*2000
+        if 'CURRENT REQUEST AND PROJECT DATA:\nPART ' in user: answer='N'*2000
         elif 'Synthesize this group' in user: answer='R'*5000
         else: answer=json.dumps({'audit_report':'report','work_prompt':'prompt','file_requests':[]})
         return Response(answer)
