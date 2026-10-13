@@ -28,6 +28,9 @@ class Response:
     def iter_content(self, chunk_size):
         yield self._content
 
+    def close(self):
+        self.closed = True
+
 
 class Session:
     def __init__(self, responses):
@@ -151,13 +154,15 @@ def test_aborts_oversized_stream_before_writing_past_limit(tmp_path, monkeypatch
             "docs/season1/character_passports/mia.json"
         ),
     }
-    session = Session([Response(200, payload=metadata), Response(200, content=b"oversize")])
+    oversized_response = Response(200, content=b"oversize")
+    session = Session([Response(200, payload=metadata), oversized_response])
     project = tmp_path / "workspace" / "episode1"
     result = sync_approved_assets(tmp_path / "workspace", "episode1", manifest, session=session)
     target = project / "assets/characters/passports/mia.json"
     assert result["counts"] == {"asset_too_large": 1}
     assert not target.exists()
     assert not target.with_name(target.name + ".part").exists()
+    assert oversized_response.closed is True
 
 
 def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tmp_path, monkeypatch):
