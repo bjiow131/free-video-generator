@@ -9,6 +9,14 @@ on:
       - "tests/test_server_security.py"
       - "static/ai-studio.html"
       - ".github/workflows/studio-auth-tests.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "server.py"
+      - "tests/test_server_security.py"
+      - "static/ai-studio.html"
+      - ".github/workflows/studio-auth-tests.yml"
 
 jobs:
   studio-auth:
