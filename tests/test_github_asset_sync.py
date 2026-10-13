@@ -248,3 +248,10 @@ def test_private_draft_manifest_rejects_non_draft_destination(tmp_path):
     with pytest.raises(AssetSyncError, match="draft_reference_destination_not_allowlisted"):
         asset_sync._load_manifest(manifest)
 
+def test_studio_project_is_explicitly_allowlisted_for_pinned_sync(tmp_path):
+    manifest = make_manifest(tmp_path)
+    workspace = tmp_path / "workspace"
+    result = sync_approved_assets(workspace, "mia_story", manifest, session=session_for())
+    target = workspace / "mia_story/assets/characters/passports/mia.json"
+    assert result["counts"] == {"downloaded": 1}
+    assert target.read_bytes() == DATA
