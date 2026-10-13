@@ -24,6 +24,14 @@ Effective 2026-10-14. Experimental recovery branch only; no main modifications.
 - Stylized Cartoon Child Girl Rigify: https://www.blendkit.com/asset-gallery-detail/239bdaa8-459d-4ee6-a267-edcb90aa99d4/
   Child body candidate but site identifies Full Plan access, so DO NOT treat as a verified freely downloadable source.
 
+
+- Little Girl by xGhostArtx7 (Blendswap): https://blendswap.com/blend/10927
+  A girl mesh with an existing facial rig and skinning, published as CC0, Blender 2.6x, 1.83 MB. **Found, not downloaded or tested.** Closer age/category than Spring, but legacy geometry and child-identity similarity still unverified.
+- Low Poly Girl (Blendswap): https://blendswap.com/blend/14317
+  CC0, Blender 2.7x, has a rig and animations; found only. Simplified mesh is not automatically suitable for approved Mia face.
+- Tiby Female (OpenGameArt): https://opengameart.org/content/tiby-3d-rigged-model
+  CC0 archive with .blend, replaceable hair, IK limbs, female variants. Found only; ~900 vertices means a topology donor/rig learning source rather than Mia final.
+
 ## Root-cause evidence (GitHub code plus live mailbox)
 
 - local_agent/blender_workflow.py, _mia_reference_model_script(): procedural modeling with fixed random.seed(268). It does not reconstruct Mia face from input image.
