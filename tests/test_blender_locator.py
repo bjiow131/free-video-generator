@@ -11,6 +11,16 @@ import pytest
 from local_agent import blender_cli, blender_locator, cli
 
 
+def _write_supported_windows_executable(path: Path) -> None:
+    """Write the minimal AMD64 PE headers accepted by Blender path validation."""
+    image = bytearray(70)
+    image[:2] = b"MZ"
+    image[0x3C:0x40] = (64).to_bytes(4, "little")
+    image[64:68] = b"PE\0\0"
+    image[68:70] = (0x8664).to_bytes(2, "little")
+    path.write_bytes(image)
+
+
 def _installation(root: Path, release: str) -> Path:
     executable = root / "Blender Foundation" / f"Blender {release}" / "blender.exe"
     executable.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +102,7 @@ def test_unrecognised_installer_folder_is_ignored(tmp_path):
 
 def test_locator_check_verifies_version_without_launching_gui(monkeypatch, tmp_path, capsys):
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"placeholder")
+    _write_supported_windows_executable(executable)
     monkeypatch.setattr(blender_locator, "find_blender_executable", lambda: executable)
     calls = []
 
@@ -222,7 +232,7 @@ def test_mia_rigging_detects_blender_before_complaining_about_missing_blockout(t
     from local_agent import blender_rigging as rigging
 
     exe = tmp_path / "blender.exe"
-    exe.write_bytes(b"fixture")
+    _write_supported_windows_executable(exe)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
