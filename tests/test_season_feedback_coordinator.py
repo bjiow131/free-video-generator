@@ -47,9 +47,25 @@ def test_interrupted_action_requires_reconciliation_without_blind_replay(tmp_pat
 def test_all_thirty_need_independent_verification_and_revalidation(tmp_path):
     c=SeasonFeedbackCoordinator(tmp_path)
     for i in range(1,31):
+        episode=f'S01E{i:02d}';video_sha=(f'{i:064x}')
+        def verify(ep,result):
+            if result.get('revalidate'):
+                return result['evidence']
+            return {'episode_id':ep,'video_sha256':video_sha,
+                'technical':{'status':'technical_checks_passed','sha256':video_sha},
+                'visual':{'status':'astra_approved','review_sha256':'b'*64},
+                'assets':[{'asset_id':'char.mia.main','sha256':'c'*64,'approval':'user_approved'},
+                          {'asset_id':'prop.ball','sha256':'d'*64,'approval':'astra_approved'}]}
         state=c.cycle_once(lambda _,i=i:{'action_id':'a'+str(i),'operation':'render','arguments':{'episode_id':f'S01E{i:02d}'}},
-            {'render':lambda _:{'status':'completed'}},lambda *_:True)
+            {'render':lambda _,s=video_sha:{'status':'completed','sha256':s}},verify)
         assert (state['status']=='completed')==(i==30)
+
+def test_boolean_verdict_cannot_mark_episode_complete(tmp_path):
+    state=SeasonFeedbackCoordinator(tmp_path).cycle_once(
+        lambda _:{'action_id':'boolean','operation':'render','arguments':{'episode_id':'S01E01'}},
+        {'render':lambda _:{'status':'completed','sha256':'a'*64}},lambda *_:True)
+    assert state['episodes']['S01E01']=='pending'
+    assert state['last_feedback']['episode_verification']=='failed_or_blocked'
 
 def test_episode_media_gate_checks_exact_mp4_contract_without_claiming_visual_quality(tmp_path,monkeypatch):
     target=tmp_path/'episodes'/'S01E01'/'final.mp4';target.parent.mkdir(parents=True);target.write_bytes(b'x'*1_000_001)
