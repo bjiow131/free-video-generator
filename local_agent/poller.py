@@ -510,7 +510,7 @@ def _run_luna_s01e01_reference_image_test(client: GitHubQueueClient) -> dict[str
             store, "char.mia.master.luna_draft", image_bytes, "png")
         checkpoint.unlink()
     except Exception as exc:
-        safe_message = (str(exc)[:180] if isinstance(exc, StudioError) else type(exc).__name__)
+        safe_message = (str(exc)[:180] if type(exc).__name__ == "StudioError" else type(exc).__name__)
         return {
             "status": "error", "reason": "local_studio_draft_save_failed",
             "error_type": type(exc).__name__, "save_error": safe_message,
@@ -605,8 +605,10 @@ def _run_luna_mia_draft_diagnostics() -> dict[str, Any]:
         visible = next((item for item in list_season_asset_library(store)["assets"]
                         if item.get("asset_id") == asset_id), None)
         image_present = destination.is_file() and not unsafe
+        checkpoint = _luna_mia_image_checkpoint_path()
         return {
             "status": "completed",
+            "pending_image_checkpoint_present": checkpoint.is_file() and not checkpoint.is_symlink(),
             "provider_request_sent": False,
             "draft_file_present": image_present,
             "draft_file_bytes": destination.stat().st_size if image_present else 0,
