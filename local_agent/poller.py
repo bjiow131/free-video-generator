@@ -63,6 +63,17 @@ def _parse_task_with_restart(raw: str):
 
 _github_queue.parse_task=_parse_task_with_restart
 
+
+def _queue_error_detail(exc: QueueTransportError) -> str:
+    """Expose a bounded, redacted protocol reason without logging manifest data."""
+    cause = exc.__cause__
+    if not isinstance(cause, ProtocolError):
+        return ""
+    detail = _redact_value(str(cause))
+    return f" ({detail[:200]})"
+
+
+
 def _run_astra_season_response(client: GitHubQueueClient, task_id: str) -> dict[str, Any]:
     """Send the privately stored master task to Astra as bounded, inert text."""
     import base64
@@ -2964,7 +2975,8 @@ def main() -> int:
             except QueueTransportError as exc:
                 if not load_runtime_control()["paused"]:
                     state = _maybe_mailbox_idle_tick(state, github_reachable=False)
-                print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
+                detail = _queue_error_detail(exc)
+                print(f"Mailbox check failed: {exc}{detail}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError, MailboxPolicyError) as exc:
