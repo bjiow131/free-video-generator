@@ -148,11 +148,13 @@ def _run_astra_season_response(client: GitHubQueueClient, task_id: str) -> dict[
 def _audit_safe_text(raw: bytes) -> str:
     import re
     value = raw.decode('utf-8', errors='strict')
-    value = re.sub(r'(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,})', '[REDACTED]', value)
+    value = re.sub(r'(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,}|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,})', '[REDACTED]', value)
     value = re.sub(r'(?im)^([^\n]*(?:api[_-]?key|access[_-]?token|password|secret)\s*[=:]\s*)[\"\'][^\"\'\n]{8,}[\"\']', r'\1"[REDACTED]"', value)
+    # Config formats commonly store credentials as unquoted YAML/INI values.
+    # Redact the entire value while retaining indentation, key, and comments.
+    value = re.sub(r'(?im)^([^\r\n#]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|secret|credential)[^\r\n:=]*[:=]\s*)([^\s\"\' #][^\r\n#]*)(\s*(?:#.*)?)$', r'\1[REDACTED]\3', value)
     value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9_.-]{15,}', r'\1[REDACTED]', value)
     return value
-
 
 def _audit_collect(root: Path, destination: Path) -> tuple[list[dict], dict[str, str]]:
     """Snapshot installed source only; secrets, runtime stores and symlinks excluded."""
