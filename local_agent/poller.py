@@ -209,6 +209,23 @@ def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
         return []
 
 
+def _scheduled_task_targets_root(xml_text: str, root: Path) -> bool | None:
+    """Inspect Task Scheduler XML in memory and reveal only an install-root match."""
+    if not isinstance(xml_text, str) or len(xml_text) > 65536:
+        return None
+    try:
+        import xml.etree.ElementTree as ET
+        document = ET.fromstring(xml_text)
+    except (ET.ParseError, ValueError, TypeError):
+        return None
+    fields = []
+    for element in document.iter():
+        if element.tag.rsplit("}", 1)[-1] in ("Command", "Arguments", "WorkingDirectory"):
+            if isinstance(element.text, str):
+                fields.append(element.text)
+    return str(root).casefold() in "\n".join(fields).casefold()
+
+
 def doctor_with_supervisor() -> dict[str, Any]:
     """Read-only Windows watchdog health; never reveal account names or secrets."""
     result = doctor()
@@ -216,6 +233,7 @@ def doctor_with_supervisor() -> dict[str, Any]:
         return result
     autostart = False
     scheduled = False
+    scheduled_target_matches_install: bool | None = None
     recent = []
     try:
         import winreg
@@ -229,10 +247,14 @@ def doctor_with_supervisor() -> dict[str, Any]:
         pass
     try:
         found = subprocess.run(
-            ["schtasks.exe", "/Query", "/TN", "BlenderOctavaStudioSupervisor"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL, timeout=8, check=False, shell=False)
+            ["schtasks.exe", "/Query", "/TN", "BlenderOctavaStudioSupervisor", "/XML"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, timeout=8, check=False, shell=False,
+            text=True, encoding="utf-8", errors="replace")
         scheduled = found.returncode == 0
+        if scheduled and len(found.stdout) <= 65536:
+            scheduled_target_matches_install = _scheduled_task_targets_root(
+                found.stdout, ROOT)
     except (OSError, subprocess.TimeoutExpired):
         pass
     logfile = ROOT / ".local_agent" / "octava_supervisor.log"
@@ -318,14 +340,19 @@ def doctor_with_supervisor() -> dict[str, Any]:
         except (ValueError, UnicodeError):
             network["relay_to_telegram"] = "invalid_response"
     result["telegram_network"] = network
+    processes = _mailbox_process_diagnostics()
+    supervisor_count = sum(1 for item in processes if item.get("role") == "supervisor")
     result["windows_supervisor"] = {
         "autostart_after_user_login": autostart,
         "scheduled_recovery_registered": scheduled,
+        "scheduled_target_matches_install": scheduled_target_matches_install,
+        "supervisor_process_count": supervisor_count,
+        "duplicate_supervisors_detected": supervisor_count > 1,
         "log_detected": logfile.is_file(),
         "recent_event_types": recent,
         "service_restart_check_seconds": 2,
         "mailbox_failures": _mailbox_failure_diagnostics(),
-        "agent_processes": _mailbox_process_diagnostics(),
+        "agent_processes": processes,
     }
     return result
 
