@@ -2529,6 +2529,30 @@ def _mailbox_is_stale(*, now_wall: float, started_at_wall: float) -> bool:
     return now_wall - stamp >= _MAILBOX_STALE_SECONDS
 
 
+def _mailbox_status_label(*, process_alive: bool, task_claimed: bool,
+                          heartbeat_mtime: float | None, now_wall: float,
+                          started_at_wall: float,
+                          stale_seconds: float = _MAILBOX_STALE_SECONDS) -> str:
+    """Report liveness separately from a running PID and preserve task context."""
+    if not process_alive:
+        return "не запущен"
+    uptime = max(0.0, now_wall - started_at_wall)
+    heartbeat_age = (None if heartbeat_mtime is None
+                     else max(0.0, now_wall - heartbeat_mtime))
+    if heartbeat_age is None:
+        if uptime < stale_seconds:
+            return "запускается; heartbeat ещё не получен"
+        if task_claimed:
+            return "задача числится активной; heartbeat отсутствует"
+        return "нет heartbeat; отклик mailbox не подтверждён"
+    age_minutes = int(heartbeat_age // 60)
+    if task_claimed:
+        if heartbeat_age >= stale_seconds:
+            return f"задача числится активной; heartbeat не обновлялся {age_minutes} мин"
+        return f"выполняет задачу; heartbeat обновлён {int(heartbeat_age)} с назад"
+    if heartbeat_age >= stale_seconds:
+        return f"нет отклика: heartbeat не обновлялся {age_minutes} мин"
+    return f"работает; heartbeat обновлён {int(heartbeat_age)} с назад"
 
 
 def _mailbox_idle_initialize(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
@@ -3531,19 +3555,37 @@ def supervise_windows() -> int:
                     return "работает" if p is not None and p.poll() is None else "не запущена"
                 control = load_runtime_control()
                 state_label = "пауза" if control["paused"] else "активен"
-                status_line = ("Blender AI Agent:\nGitHub-агент: " + alive("mailbox") +
-                               "\nStudio: " + alive("studio") +
-                               "\nПриём заданий: " + state_label)
+                now_wall = time.time()
+                worker = processes.get("mailbox")
+                worker_alive = worker is not None and worker.poll() is None
+                started_wall = now_wall - max(
+                    0.0, time.monotonic() - started_at.get("mailbox", time.monotonic()))
+                heartbeat_mtime = None
+                try:
+                    if (not _MAILBOX_HEARTBEAT.is_symlink()
+                            and _MAILBOX_HEARTBEAT.is_file()):
+                        heartbeat_mtime = _MAILBOX_HEARTBEAT.stat().st_mtime
+                except OSError:
+                    pass
                 try:
                     manifest = _load_state()
                     task_id = manifest.get("last_task_id")
                     task_id = task_id if isinstance(task_id, str) and len(task_id) <= 128 else "нет"
                     record = manifest.get("processed_tasks", {}).get(task_id, {})
                     outcome = str(record.get("status", "ожидание"))[:40] if isinstance(record, dict) else "неизвестно"
+                    task_claimed = isinstance(record, dict) and record.get("status") == "in_progress"
                     tasks_line = ("Последняя задача: " + task_id +
                                   "\nСостояние: " + outcome)
                 except (OSError, RuntimeError, ValueError):
+                    task_claimed = False
                     tasks_line = "Состояние задач временно недоступно."
+                mailbox_status = _mailbox_status_label(
+                    process_alive=worker_alive, task_claimed=task_claimed,
+                    heartbeat_mtime=heartbeat_mtime, now_wall=now_wall,
+                    started_at_wall=started_wall)
+                status_line = ("Blender AI Agent:\nGitHub-агент: " + mailbox_status +
+                               "\nStudio: " + alive("studio") +
+                               "\nПриём заданий: " + state_label)
                 logs_line = "Последние события supervisor:\n"
                 try:
                     lines = events_file.read_text(encoding="utf-8").splitlines()[-80:]
