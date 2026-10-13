@@ -22,6 +22,16 @@ def test_secret_redaction(ns):
     value=ns['_audit_safe_text'](s.encode())
     assert 'abcdefghijklmno' not in value and 'a'*32 not in value and 'b'*32 not in value
 
+def test_unquoted_config_and_common_cloud_keys_are_redacted(ns):
+    aws='AKIA'+'A'*16
+    google='AIza'+'B'*35
+    source=(f'api_key: unquoted-secret-value\npassword = another-secret # keep comment\n'
+            f'cloud_key={aws}\nclient_key={google}\n')
+    value=ns['_audit_safe_text'](source.encode())
+    for secret in ('unquoted-secret-value','another-secret',aws,google):
+        assert secret not in value
+    assert '# keep comment' in value
+
 def test_archive_scope_and_integrity(ns,tmp_path):
     root=tmp_path/'source';root.mkdir()
     (root/'app.py').write_text('print(1)')
@@ -56,6 +66,16 @@ def test_no_archive_overwrite(ns,tmp_path):
 def test_policy_blocks_before_io(ns):
     ns['load_policy']=lambda:{'allow_octava':False}
     assert ns['_run_astra_project_audit'](None,'id')['status']=='blocked'
+
+def test_symlinked_reports_directory_is_rejected_before_network(ns,tmp_path,monkeypatch):
+    agent_root=tmp_path/'state';agent_root.mkdir()
+    reports=agent_root/'reports'
+    monkeypatch.setattr(Path,'is_symlink',lambda path:path==reports)
+    ns.update(load_policy=lambda:{'allow_octava':True},
+              _ensure_agent_dir=lambda:agent_root)
+    result=ns['_run_astra_project_audit'](None,'audit-id')
+    assert result=={'status':'blocked','reason':'unsafe_audit_report_directory'}
+    assert not (reports/'audit-id').exists()
 
 def test_full_request_loop(ns,tmp_path,monkeypatch):
     import base64,sys,urllib.request

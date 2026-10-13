@@ -148,11 +148,13 @@ def _run_astra_season_response(client: GitHubQueueClient, task_id: str) -> dict[
 def _audit_safe_text(raw: bytes) -> str:
     import re
     value = raw.decode('utf-8', errors='strict')
-    value = re.sub(r'(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,})', '[REDACTED]', value)
+    value = re.sub(r'(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,}|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,})', '[REDACTED]', value)
     value = re.sub(r'(?im)^([^\n]*(?:api[_-]?key|access[_-]?token|password|secret)\s*[=:]\s*)[\"\'][^\"\'\n]{8,}[\"\']', r'\1"[REDACTED]"', value)
+    # Config formats commonly store credentials as unquoted YAML/INI values.
+    # Redact the entire value while retaining indentation, key, and comments.
+    value = re.sub(r'(?im)^([^\r\n#]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|secret|credential)[^\r\n:=]*[:=]\s*)([^\s\"\' #][^\r\n#]*)(\s*(?:#.*)?)$', r'\1[REDACTED]\3', value)
     value = re.sub(r'(?i)(Bearer\s+)[A-Za-z0-9_.-]{15,}', r'\1[REDACTED]', value)
     return value
-
 
 def _audit_collect(root: Path, destination: Path) -> tuple[list[dict], dict[str, str]]:
     """Snapshot installed source only; secrets, runtime stores and symlinks excluded."""
@@ -232,10 +234,21 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
     from urllib.request import Request, urlopen
     if not load_policy().get('allow_octava'):
         return {'status':'blocked', 'reason':'local_octava_permission_disabled'}
-    folder = _ensure_agent_dir()/'reports'/task_id
+    agent_root = _ensure_agent_dir()
+    reports_root = agent_root/'reports'
+    if reports_root.is_symlink() or getattr(reports_root,'is_junction',lambda:False)():
+        return {'status':'blocked', 'reason':'unsafe_audit_report_directory'}
+    try:
+        reports_root.mkdir(parents=True,exist_ok=True)
+        reports_root = reports_root.resolve()
+        if not reports_root.is_relative_to(agent_root.resolve()):
+            return {'status':'blocked', 'reason':'unsafe_audit_report_directory'}
+    except OSError:
+        return {'status':'error', 'reason':'audit_report_directory_unavailable'}
+    folder = reports_root/task_id
     if folder.exists() or folder.is_symlink():
         return {'status':'blocked', 'reason':'audit_checkpoint_exists_no_overwrite'}
-    folder.mkdir(parents=True)
+    folder.mkdir()
     summary = {'status':'partial', 'local_directory':str(folder), 'scope':'installed source only; binary assets and private season repository not included', 'zip_uploaded_to_provider':False, 'executed_astra_commands':False, 'windows_or_blender_tests_run':False}
     try:
         item = client._request('GET', 'contents/private_tasks/astra_project_audit_20261013.txt', params={'ref':'main'}).json()
