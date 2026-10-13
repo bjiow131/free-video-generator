@@ -193,6 +193,22 @@
         "width": 1536,
         "height": 1024
       }
+    },
+    {
+      "category": "prop",
+      "asset_id": "prop.snail_trail",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/prop.snail_trail_draft_20261013.jpg",
+      "destination": "assets/references/drafts/prop.snail_trail.jpg",
+      "commit_sha": "ba0403c1fe16f77a6052d3fbaff4086f9f31b673",
+      "size_bytes": 325544,
+      "sha256": "70e31e320b88a8e9c5baf6217dbf83aa511c5c17a0a026a339e95c701873d150",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      }
     }
   ],
   "unavailable_categories": [
