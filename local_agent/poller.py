@@ -483,7 +483,7 @@ def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
         "$_.CommandLine -match '-m\\s+local_agent\\.(poller|studio_server)(\\s|$)'"
         "} | ForEach-Object {"
         "$role=if($_.CommandLine -match 'studio_server'){'studio'}"
-        "elseif($_.CommandLine -match '--supervise'){'supervisor'}else{'mailbox'};"
+        "elseif($_.CommandLine -match '--supervise'){'supervisor'}elseif($_.CommandLine -match '--health-watch'){'watchdog'}else{'mailbox'};"
         "[pscustomobject]@{pid=[int]$_.ProcessId;parent_pid=[int]$_.ParentProcessId;role=$role}"
         "}) | ConvertTo-Json -Compress")
     try:
@@ -499,7 +499,7 @@ def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
         return [{key: item[key] for key in ("pid", "parent_pid", "role")}
                 for item in items[:30] if isinstance(item, dict)
                 and type(item.get("pid")) is int and type(item.get("parent_pid")) is int
-                and item.get("role") in ("mailbox", "studio", "supervisor")]
+                and item.get("role") in ("mailbox", "studio", "supervisor", "watchdog")]
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
         return []
 
@@ -2807,6 +2807,7 @@ def main() -> int:
         _telegram_signal("mailbox-online", str(int(time.time())),
                          "Blender AI Agent: GitHub-агент запущен и проверяет задания.")
 
+    _launch_health_watchdog()
     reporter = _PeriodicMailboxReporter(config)
     reporter.start()
     try:
@@ -3117,6 +3118,187 @@ def _supervisor_recovery_command(program: Path, root: Path) -> str:
     code = ("import os,runpy;os.chdir(" + repr(str(root)) + ");"
             "runpy.run_module('local_agent.poller',run_name='__main__')")
     return subprocess.list2cmdline([str(program), "-c", code, "--supervise"])
+
+
+def _watchdog_classify(*, worker_alive: bool, studio_alive: bool,
+                       heartbeat_age: float | None, task_claimed: bool,
+                       astra_checkpoint_age: float | None) -> str:
+    """A suspicion is not a proven crash; normal long work is distinguished."""
+    if not worker_alive:
+        return 'agent_process_down'
+    if task_claimed and astra_checkpoint_age is not None and astra_checkpoint_age > 600:
+        return 'astra_progress_stalled_suspected'
+    if not task_claimed and heartbeat_age is not None and heartbeat_age > 120:
+        return 'agent_loop_stalled_suspected'
+    if not studio_alive:
+        return 'studio_process_down'
+    return 'no_detected_fault'
+
+
+def _supervisor_health_snapshot(processes: dict) -> dict:
+    def alive(name):
+        process = processes.get(name)
+        return process is not None and process.poll() is None
+    now = time.time()
+    age = None
+    heartbeat = ROOT/'.local_agent'/'mailbox_loop_heartbeat'
+    try:
+        if not heartbeat.is_symlink() and heartbeat.is_file():
+            age = max(0,now-heartbeat.stat().st_mtime)
+    except OSError:
+        pass
+    task_id, claimed, checkpoint_age = None, False, None
+    try:
+        state = _load_state()
+        task_id = state.get('last_task_id')
+        if not isinstance(task_id,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',task_id):
+            task_id = None
+        record = state.get('processed_tasks',{}).get(task_id,{})
+        claimed = isinstance(record,dict) and record.get('status')=='in_progress'
+        if claimed and task_id and task_id.startswith('astra'):
+            folder=ROOT/'.local_agent'/'reports'/task_id
+            if not folder.is_symlink() and not getattr(folder,'is_junction',lambda:False)() and folder.is_dir():
+                times=[p.stat().st_mtime for p in folder.iterdir() if p.is_file() and not p.is_symlink() and re.fullmatch(r'(?:progress\.json|PROMPT\.txt|(?:request_)?(?:part|synthesis)_\d+\.txt|AUDIT_REPORT\.md)',p.name)]
+                if times:
+                    checkpoint_age=max(0,now-max(times))
+    except (OSError,RuntimeError,ValueError,TypeError):
+        pass
+    worker_alive, studio_alive = alive('mailbox'), alive('studio')
+    status = _watchdog_classify(worker_alive=worker_alive,studio_alive=studio_alive,
+                heartbeat_age=age,task_claimed=claimed,astra_checkpoint_age=checkpoint_age)
+    return {'schema_version':1,'reporter':'independent_windows_watchdog',
+            'observed_at':datetime.now(timezone.utc).isoformat(), 'status':status,
+            'worker_process_alive':worker_alive, 'studio_process_alive':studio_alive,
+            'task_id':task_id, 'task_claimed':claimed,
+            'loop_heartbeat_age_seconds':int(age) if age is not None else None,
+            'astra_checkpoint_age_seconds':int(checkpoint_age) if checkpoint_age is not None else None,
+            'raw_logs_or_credentials_included':False,
+            'interpretation':'Suspected stalls require diagnosis; long render alone is not failure.'}
+
+
+class _SupervisorHealthReporter:
+    """Separate supervisor thread and transport survive failure of the worker."""
+    def __init__(self, snapshot):
+        self.snapshot = snapshot
+        self.stop_event = threading.Event()
+        self.thread = None
+
+    def publish_latest(self, client, report):
+        import base64
+        client._require_private_repo()
+        path='health/supervisor_latest.json'
+        sha=None
+        try:
+            sha=client._request('GET','contents/'+path,params={'ref':client.config.ref}).json()['sha']
+        except QueueTransportError as exc:
+            if 'Mailbox item not found' not in str(exc):
+                raise
+        data={'message':'agent: independent supervisor health', 'branch':client.config.ref,
+              'content':base64.b64encode(json.dumps(report,ensure_ascii=False).encode()).decode()}
+        if sha:
+            data['sha']=sha
+        return client._request('PUT','contents/'+path,json=data)
+
+    def run(self):
+        import uuid
+        session=uuid.uuid4().hex[:12]
+        client=None
+        outbox=None
+        last_status=None
+        last_delivery=0.0
+        sequence=0
+        while not self.stop_event.is_set():
+            try:
+                report=self.snapshot()
+                root=_ensure_agent_dir()
+                # Write atomic, credential-free local diagnostics before the network.
+                target=root/'supervisor_health_latest.json'
+                if target.is_symlink():
+                    raise RuntimeError('unsafe_health_path')
+                with tempfile.NamedTemporaryFile(dir=root,suffix='.tmp',delete=False) as stream:
+                    temp=Path(stream.name)
+                    stream.write(json.dumps(report,ensure_ascii=False).encode());stream.flush();os.fsync(stream.fileno())
+                os.replace(temp,target)
+                status=report['status']
+                changed=status!=last_status
+                due=time.monotonic()-last_delivery>=600
+                if changed or due:
+                    if client is None:
+                        client=GitHubQueueClient(QueueConfig.from_environment())
+                        box=root/'supervisor_health_outbox'
+                        if box.is_symlink() or getattr(box,'is_junction',lambda:False)():
+                            raise RuntimeError('unsafe_health_outbox')
+                        outbox=ResultOutbox(box)
+                    sequence+=1
+                    incident='supervisor-'+session+'-'+str(sequence)
+                    # Evidence survives a GitHub outage; no shared worker outbox.
+                    outbox.enqueue(incident,{'task_id':incident,**report})
+                    if status!='no_detected_fault':
+                        _telegram_signal('supervisor-fault',incident,
+                            'Независимый supervisor: '+status+'\nЗадача: '+str(report.get('task_id') or 'нет')+
+                            '\nАгенту может требоваться восстановление. Диагностика сохранена отдельно; это не доказательство ошибки Астры.')
+                    elif last_status not in (None,'no_detected_fault'):
+                        _telegram_signal('supervisor-recovered',incident,'Supervisor: признаки предыдущего сбоя больше не обнаружены.')
+                    last_status=status
+                    last_delivery=time.monotonic()
+                    outbox.flush(client)
+                    self.publish_latest(client,report)
+                elif outbox is not None:
+                    # Independent retry; a dead agent is not needed for delivery.
+                    outbox.flush(client)
+            except Exception as exc:
+                print('Supervisor health delivery deferred: '+type(exc).__name__)
+            self.stop_event.wait(30)
+
+    def start(self):
+        self.thread=threading.Thread(target=self.run,name='independent-supervisor-health',daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+
+
+def _watchdog_process_snapshot():
+    from types import SimpleNamespace
+    items = _mailbox_process_diagnostics()
+    if not items:
+        return {'schema_version':1,'reporter':'independent_windows_watchdog',
+                'observed_at':datetime.now(timezone.utc).isoformat(),
+                'status':'process_probe_unavailable','task_id':None,
+                'raw_logs_or_credentials_included':False}
+    processes = {name:SimpleNamespace(poll=lambda:None) for name in ('mailbox','studio')
+                 if any(item.get('role')==name for item in items)}
+    return _supervisor_health_snapshot(processes)
+
+
+def run_health_watchdog():
+    if os.name != 'nt':
+        return 2
+    try:
+        handle = _acquire_instance_lock(_ensure_agent_dir()/'health_watchdog.lock')
+    except RuntimeError:
+        return 0
+    reporter = _SupervisorHealthReporter(_watchdog_process_snapshot)
+    try:
+        reporter.run()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        handle.close()
+    return 0
+
+
+def _launch_health_watchdog():
+    if os.name != 'nt':
+        return
+    try:
+        with (_ensure_agent_dir()/'health_watchdog.log').open('ab') as stream:
+            subprocess.Popen([sys.executable,'-m','local_agent.poller','--health-watch'],
+                cwd=ROOT,env=dict(os.environ),stdin=subprocess.DEVNULL,
+                stdout=stream,stderr=subprocess.STDOUT,shell=False,close_fds=True,
+                creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    except OSError:
+        print('Independent health watchdog launch unavailable')
 
 
 def supervise_windows() -> int:
@@ -3446,6 +3628,8 @@ def supervise_windows() -> int:
         lock_stream.close()
 
 if __name__ == "__main__":
+    if "--health-watch" in sys.argv[1:]:
+        raise SystemExit(run_health_watchdog())
     if "--supervise" in sys.argv[1:] or (os.name == "nt" and os.environ.get("LOCAL_AGENT_MAILBOX_WORKER") != "1"):
         raise SystemExit(supervise_windows())
     raise SystemExit(main())
