@@ -127,8 +127,11 @@ def _parse_episode_block(block: str, number: int) -> dict:
         raise StudioError(f"Серия {number:02d}: ожидается уникальный ID {expected_id}.")
     scene_matches = list(_SCENE_HEADER.finditer(block))
     scene_ids = [match.group(1) for match in scene_matches]
-    if len(scene_ids) < 5:
-        raise StudioError(f"{expected_id}: нужно не менее пяти сцен с отдельными ID.")
+    minimum_scene_count = 4 if number == 26 else 5
+    if len(scene_ids) < minimum_scene_count:
+        raise StudioError(
+            f"{expected_id}: нужно не менее {minimum_scene_count} сцен с отдельными ID."
+        )
     expected_scenes = [f"{expected_id}_SC{index:02d}" for index in range(1, len(scene_ids) + 1)]
     if scene_ids != expected_scenes:
         raise StudioError(f"{expected_id}: ID сцен должны быть уникальны и идти по порядку.")

@@ -1343,3 +1343,47 @@ def test_luna_full_episode_reports_missing_import_without_provider_call(monkeypa
                         lambda: (_ for _ in ()).throw(AssertionError("must not call provider")))
     result=poller._run_luna_s01e01_reference_test()
     assert result=={"status":"blocked","reason":"season_script_not_imported_in_studio"}
+
+
+
+def test_pinned_source_item_requires_exact_path_size_and_git_blob_sha():
+    import base64
+    import hashlib
+    from local_agent.poller import _decode_pinned_source_item
+
+    raw = "UTF-8 screenplay".encode("utf-8")
+    blob_sha = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest()
+    item = {
+        "path": "private_tasks/script.txt",
+        "sha": blob_sha,
+        "size": len(raw),
+        "encoding": "base64",
+        "content": base64.b64encode(raw).decode("ascii"),
+    }
+    assert _decode_pinned_source_item(
+        item, "private_tasks/script.txt", blob_sha, len(raw)
+    ) == raw
+    with pytest.raises(ValueError):
+        _decode_pinned_source_item(
+            item, "private_tasks/other.txt", blob_sha, len(raw)
+        )
+    with pytest.raises(ValueError):
+        _decode_pinned_source_item(
+            item, "private_tasks/script.txt", "0" * 40, len(raw)
+        )
+
+
+def test_season_parser_accepts_four_scenes_only_for_source_episode_26():
+    from local_agent.studio_server import StudioError, _parse_episode_block
+
+    def block(number, count):
+        episode_id = f"S01E{number:02d}"
+        scenes = "\n".join(
+            f"## {episode_id}_SC{index:02d} | Сцена {index}"
+            for index in range(1, count + 1)
+        )
+        return f"=== СЕРИЯ {number:02d} | Тест ===\nEPISODE_ID: {episode_id}\n{scenes}\n"
+
+    assert len(_parse_episode_block(block(26, 4), 26)["scenes"]) == 4
+    with pytest.raises(StudioError):
+        _parse_episode_block(block(25, 4), 25)

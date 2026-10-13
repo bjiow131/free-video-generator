@@ -63,7 +63,40 @@ def _parse_task_with_restart(raw: str):
 
 _github_queue.parse_task=_parse_task_with_restart
 
-def _run_luna_s01e01_reference_test() -> dict[str, Any]:
+def _decode_pinned_source_item(item: Any, expected_path: str,
+                              expected_blob_sha: str, expected_size: int) -> bytes:
+    """Decode one pinned private-repository file without trusting API metadata alone."""
+    import base64
+    import hashlib
+
+    if (not isinstance(item, dict) or item.get("path") != expected_path
+            or item.get("sha") != expected_blob_sha
+            or item.get("size") != expected_size or item.get("encoding") != "base64"):
+        raise ValueError("private_source_identity_mismatch")
+    encoded = item.get("content")
+    if not isinstance(encoded, str) or len(encoded) > 1_500_000:
+        raise ValueError("private_source_content_invalid")
+    encoded = "".join(encoded.split())
+    raw = base64.b64decode(encoded, validate=True)
+    if len(raw) != expected_size:
+        raise ValueError("private_source_size_mismatch")
+    git_blob = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+    if hashlib.sha1(git_blob).hexdigest() != expected_blob_sha:
+        raise ValueError("private_source_blob_hash_mismatch")
+    raw.decode("utf-8-sig", errors="strict")
+    return raw
+
+
+def _fetch_luna_season_source(client: GitHubQueueClient) -> bytes:
+    """Fetch the exact screenplay revision previously verified in the private mailbox."""
+    path = "private_tasks/season1_30_episodes_library_import.txt"
+    item = client._request("GET", "contents/" + path, params={"ref": "main"}).json()
+    return _decode_pinned_source_item(
+        item, path, "4ffe1aa057af28e4e7abb5689e48679be36034ec", 245293,
+    )
+
+
+def _run_luna_s01e01_reference_test(client: GitHubQueueClient) -> dict[str, Any]:
     """Send the complete locally imported S01E01 text and asset IDs to Luna once.
 
     This is a bounded text-only decision test. It does not generate images,
@@ -81,20 +114,43 @@ def _run_luna_s01e01_reference_test() -> dict[str, Any]:
         return {"status": "blocked", "reason": "workspace_not_configured"}
     try:
         from local_agent.studio_server import (
-            StudioError, get_season_episode, list_season_episodes,
+            StudioConflict, StudioError, get_season_episode, import_season_screenplay,
+            list_season_episodes,
         )
         from local_agent.asset_registry import read_asset_registry
     except (ImportError, OSError, RuntimeError, ValueError):
         return {"status": "error", "reason": "local_studio_module_unavailable"}
     try:
+        season_bytes = _fetch_luna_season_source(client)
+    except Exception:
+        return {"status": "blocked", "reason": "private_screenplay_missing_or_changed"}
+    import hashlib
+    source_sha256 = hashlib.sha256(season_bytes).hexdigest()
+    try:
+        import_result = import_season_screenplay(
+            "season1_30_episodes_library_import.txt", season_bytes,
+        )
+    except StudioConflict:
+        return {"status": "blocked", "reason": "different_season_already_imported_in_studio"}
+    except StudioError:
+        return {"status": "blocked", "reason": "private_screenplay_failed_studio_validation"}
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return {"status": "error", "reason": "local_episode_database_unavailable"}
+    if import_result.get("source_sha256") != source_sha256:
+        return {"status": "error", "reason": "studio_import_checksum_mismatch"}
+    try:
         season = list_season_episodes()
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
         return {"status": "error", "reason": "local_episode_database_unavailable"}
-    if season.get("imported") is not True:
-        return {"status": "blocked", "reason": "season_script_not_imported_in_studio"}
-    if not any(item.get("episode_id") == "S01E01" for item in season.get("episodes", [])
-               if isinstance(item, dict)):
-        return {"status": "blocked", "reason": "s01e01_missing_from_imported_season"}
+    expected_episode_ids = [f"S01E{number:02d}" for number in range(1, 31)]
+    actual_episode_ids = [
+        item.get("episode_id") for item in season.get("episodes", [])
+        if isinstance(item, dict)
+    ]
+    if (season.get("imported") is not True
+            or season.get("source_sha256") != source_sha256
+            or actual_episode_ids != expected_episode_ids):
+        return {"status": "blocked", "reason": "studio_season_import_verification_failed"}
     try:
         episode = get_season_episode("S01E01")
     except StudioError:
@@ -2372,7 +2428,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "astra_season_response":
                 details = _run_astra_season_response(client, task.task_id)
             elif task.operation == "luna_s01e01_reference_test":
-                details = _run_luna_s01e01_reference_test()
+                details = _run_luna_s01e01_reference_test(client)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
@@ -2444,7 +2500,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
-    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2"):
+    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test"):
         label = str(task.operation).replace("_", " ")[:48]
         if outcome == "completed":
             _telegram_signal("task-ok", task.task_id,
