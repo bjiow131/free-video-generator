@@ -2801,7 +2801,10 @@ for y in range(height):
         distance = max(abs(red - bg[0]), abs(green - bg[1]), abs(blue - bg[2]))
         # Preserve brown hair, skin, teal jacket, yellow straps and boots.
         # Near-neutral gray background is the ONLY transparent key.
-        foreground = spread > .108 or distance > .135
+        # Hard-clip the scanned sheet's gray top/bottom edges, which otherwise
+        # turn into two long floating horizontal strokes in the rendered movie.
+        inside_figure_region = (.05 < top < .94 and .06 < horizontal < .94)
+        foreground = inside_figure_region and (spread > .108 or distance > .135)
         if not foreground:
             continue
         horizontal = (x + .5) / width
@@ -2894,24 +2897,32 @@ for name in layers:
     controls[name] = ctrl
 # Two on/off facial masks provide a basic blink controller without changing
 # the stored reference. More precise eyelid cutouts are a future stage.
-blink_material = bpy.data.materials.new("Blink_neutral_skin")
-blink_material.diffuse_color = (.78, .45, .34, 1)
+# Reference-matched unlit eyelid patches. The initial version had dark,
+# shaded 3D spheres mis-parented to the head, creating eyebrow-like artifacts.
+skin_x, skin_y = int(width*.51), int(height*.145)
+skin_rgb = rgb(skin_x,skin_y)
+if not (.3 < max(skin_rgb) < 1.0):
+    skin_rgb = (.79,.45,.34)
+blink_material = bpy.data.materials.new("Mia_blink_reference_skin")
 blink_material.use_nodes = True
-bsdf = blink_material.node_tree.nodes.get("Principled BSDF")
-if bsdf:
-    bsdf.inputs["Base Color"].default_value = (.78, .45, .34, 1)
-    bsdf.inputs["Roughness"].default_value = 1
+nodes = blink_material.node_tree.nodes
+nodes.clear()
+em = nodes.new("ShaderNodeEmission")
+em.inputs["Color"].default_value = (*skin_rgb,1)
+em.inputs["Strength"].default_value = 1.0
+output_node = nodes.new("ShaderNodeOutputMaterial")
+blink_material.node_tree.links.new(em.outputs[0],output_node.inputs["Surface"])
 eye_objects = []
-for idx, xx in enumerate((.454, .616)):
-    local_x, local_y = to_xy(xx, .183)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8,
-        location=(local_x, local_y, .05))
+head_x, head_y = to_xy(*anchors["head"])
+for idx, xx in enumerate((.413, .602)):
+    x, y = to_xy(xx, .187)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=8)
     lid = bpy.context.object
     lid.name = "CTRL_blink_lid_" + str(idx)
-    lid.scale = (.080, .020, .001)
-    lid.data.materials.append(blink_material)
     lid.parent = controls["head"]
-    lid.matrix_parent_inverse = controls["head"].matrix_world.inverted()
+    lid.location = (x-head_x, y-head_y, .055)
+    lid.scale = (.075, .033, .001)
+    lid.data.materials.append(blink_material)
     eye_objects.append(lid)
     lid.hide_render = True
 # Animate the original image cards with bounded, subtle puppet pivots.
@@ -2926,11 +2937,11 @@ def animate(name, data):
 for name in ("torso", "head", "left_arm", "right_arm", "left_leg", "right_leg"):
     baseline = {
         "torso": [(1,0,0,0),(17,1.1,.018,0),(32,-1.2,-.018,0),(46,.9,.014,0),(60,0,0,0)],
-        "head": [(1,0,0,0),(17,-2.5,.009,0),(32,1.5,-.006,0),(46,-1.2,.006,0),(60,0,0,0)],
+        "head": [(1,0,0,0),(17,-4.5,.012,0),(32,2.4,-.010,0),(46,-2.2,.008,0),(60,0,0,0)],
         "left_arm": [(1,0,0,0),(30,-2,0,0),(45,4,0,0),(60,0,0,0)],
-        "right_arm": [(1,0,0,0),(18,1,0,0),(38,-9,0,.006),(50,-5,0,.006),(60,0,0,0)],
-        "left_leg": [(1,0,0,0),(20,.6,0,0),(42,-2,-.022,0),(60,0,0,0)],
-        "right_leg": [(1,0,0,0),(20,-.6,0,0),(42,3,.025,.004),(60,0,0,0)],
+        "right_arm": [(1,0,0,0),(18,2,0,0),(34,-21,0,.012),(43,-19,0,.012),(52,-8,0,.006),(60,0,0,0)],
+        "left_leg": [(1,0,0,0),(20,1,0,0),(42,-3,-.027,0),(60,0,0,0)],
+        "right_leg": [(1,0,0,0),(20,-1,0,0),(42,4,.028,.005),(60,0,0,0)],
     }
     animate(name, baseline[name])
 for eye in eye_objects:
@@ -2994,7 +3005,7 @@ manifest = {
                     "mouth requires refined texture", "cannot freely rotate"],
     "blend": str(blend_path),
     "video_created_in_blender": False,
-    "no_text_no_audio": True
+    "no_text_no_audio": True, "iteration": "reference_mask_edges_and_blink_patch_v2"
 }
 (output / "layer_manifest.json").write_text(
     json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
