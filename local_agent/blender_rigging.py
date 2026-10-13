@@ -468,11 +468,22 @@ def review_blender_source(asset: str, project_name: str) -> dict[str, Any]:
     unchanged=_spring_sha256(source)==digest
     if not unchanged or data.get('autoexec_enabled') is True:
         return {'status':'failed','reason':'source_changed_or_autoexec_enabled'}
+    duplicate_checks=[]
+    try:
+        from local_agent.studio_server import front_difference
+        reviews=workspace/'MIA_REFERENCE_REVIEW'
+        fronts=[p/'front.png' for p in reviews.iterdir() if not is_link_or_junction(p) and (p/'front.png').is_file()]
+        fronts.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+        for first,second in zip(fronts[:6],fronts[1:7]):
+            comparison=front_difference(first,second)
+            duplicate_checks.append({'first':first.parent.name,'second':second.parent.name,'comparison':comparison})
+    except (OSError,ValueError):
+        duplicate_checks=[]
     return {'status':'completed','stage':'source_inventory_only','asset':asset,'source_sha256':digest,
         'source_url':source_url,'license':license_name,'source_path':str(source),'report_path':str(report),
-        'source_unchanged':unchanged,'identity_verified':False,
+        'source_unchanged':unchanged,'identity_verified':False,'recent_review_duplicate_checks':duplicate_checks,
         'mesh_count':data['mesh_count'],'vertex_count':data['vertex_count'],
         'installed_module_sha256':_spring_sha256(Path(__file__)),
-        'meshes':data['meshes'][:35],
+        'meshes':sorted(data['meshes'],key=lambda m:(not any(m['materials']),m['name'].startswith(('cs_','BlenRig_')), -m['vertices']))[:45],
         'rigs':[{k:v for k,v in r.items() if k!='bone_names'} for r in data['rigs']],
         'images':data['images'][:25],'embedded_texts':data['embedded_texts'][:20]}
