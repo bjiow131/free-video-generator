@@ -80,38 +80,57 @@ def _run_luna_s01e01_reference_test() -> dict[str, Any]:
     if not workspace:
         return {"status": "blocked", "reason": "workspace_not_configured"}
     try:
-        from local_agent.studio_server import get_season_episode
+        from local_agent.studio_server import (
+            StudioError, get_season_episode, list_season_episodes,
+        )
         from local_agent.asset_registry import read_asset_registry
-        episode = get_season_episode("S01E01")
-        text = episode.get("full_text")
-        if not isinstance(text, str) or not text.strip():
-            return {"status": "blocked", "reason": "s01e01_not_imported"}
-        raw_text = text.encode("utf-8")
-        if len(raw_text) > 80_000:
-            return {"status": "blocked", "reason": "episode_exceeds_fixed_80kb_input_limit",
-                    "episode_bytes": len(raw_text)}
-        if re.search(rb"(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\b\d{7,12}:[A-Za-z0-9_-]{30,})", raw_text):
-            return {"status": "blocked", "reason": "episode_contains_credential_like_text"}
-        asset_ids = episode.get("asset_ids")
-        if not isinstance(asset_ids, list) or not asset_ids or len(asset_ids) > 100:
-            return {"status": "blocked", "reason": "episode_asset_id_list_invalid"}
-        if any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", item)
-               for item in asset_ids):
-            return {"status": "blocked", "reason": "episode_asset_id_list_invalid"}
-        project = Path(workspace).expanduser().resolve() / "mia_story"
-        registry = read_asset_registry(project, "mia_story")
-        assets = []
-        for asset_id in asset_ids:
-            item = registry.get(asset_id)
-            if item is None:
-                state = "missing"
-            else:
-                relative = str(item.get("path", "")).replace("\\", "/")
-                state = "draft" if "/drafts/" in "/" + relative else "registered"
-            assets.append({"asset_id": asset_id, "status": state,
-                           "extension": item.get("extension", "") if item else ""})
+    except (ImportError, OSError, RuntimeError, ValueError):
+        return {"status": "error", "reason": "local_studio_module_unavailable"}
+    try:
+        season = list_season_episodes()
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
-        return {"status": "error", "reason": "local_episode_or_asset_registry_unavailable"}
+        return {"status": "error", "reason": "local_episode_database_unavailable"}
+    if season.get("imported") is not True:
+        return {"status": "blocked", "reason": "season_script_not_imported_in_studio"}
+    if not any(item.get("episode_id") == "S01E01" for item in season.get("episodes", [])
+               if isinstance(item, dict)):
+        return {"status": "blocked", "reason": "s01e01_missing_from_imported_season"}
+    try:
+        episode = get_season_episode("S01E01")
+    except StudioError:
+        return {"status": "blocked", "reason": "s01e01_missing_from_imported_season"}
+    except (OSError, RuntimeError):
+        return {"status": "error", "reason": "local_episode_database_unavailable"}
+    text = episode.get("full_text")
+    if not isinstance(text, str) or not text.strip():
+        return {"status": "blocked", "reason": "s01e01_not_imported"}
+    raw_text = text.encode("utf-8")
+    if len(raw_text) > 80_000:
+        return {"status": "blocked", "reason": "episode_exceeds_fixed_80kb_input_limit",
+                "episode_bytes": len(raw_text)}
+    if re.search(rb"(?i)(gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|\\b\\d{7,12}:[A-Za-z0-9_-]{30,})", raw_text):
+        return {"status": "blocked", "reason": "episode_contains_credential_like_text"}
+    asset_ids = episode.get("asset_ids")
+    if not isinstance(asset_ids, list) or not asset_ids or len(asset_ids) > 100:
+        return {"status": "blocked", "reason": "episode_asset_id_list_invalid"}
+    if any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", item)
+           for item in asset_ids):
+        return {"status": "blocked", "reason": "episode_asset_id_list_invalid"}
+    project = Path(workspace).expanduser().resolve() / "mia_story"
+    try:
+        registry = read_asset_registry(project, "mia_story")
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return {"status": "error", "reason": "local_asset_registry_unavailable"}
+    assets = []
+    for asset_id in asset_ids:
+        item = registry.get(asset_id)
+        if item is None:
+            state = "missing"
+        else:
+            relative = str(item.get("path", "")).replace("\\\\", "/")
+            state = "draft" if "/drafts/" in "/" + relative else "registered"
+        assets.append({"asset_id": asset_id, "status": state,
+                       "extension": item.get("extension", "") if item else ""})
     try:
         key, source = read_key()
     except OctavaKeyError:
