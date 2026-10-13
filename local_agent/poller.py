@@ -209,6 +209,90 @@ def _mailbox_process_diagnostics() -> list[dict[str, Any]]:
         return []
 
 
+_WINDOWS_ERROR_MODE_FLAGS = 0x0001 | 0x0002 | 0x8000
+
+
+def _apply_windows_error_mode(api=None) -> bool:
+    """Suppress Windows critical, GP fault, and missing-file system dialogs.
+
+    The process error mode is inherited by child processes. This prevents a
+    broken temporary executable from displaying a modal Windows dialog that
+    blocks the mailbox or test runner.
+    """
+    if os.name != "nt" and api is None:
+        return False
+    if api is None:
+        try:
+            import ctypes
+            api = ctypes.windll.kernel32.SetErrorMode
+        except (AttributeError, OSError):
+            return False
+    try:
+        api(_WINDOWS_ERROR_MODE_FLAGS)
+        return True
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
+def _is_unsupported_16bit_dialog(title: str, window_class: str, body: str) -> bool:
+    """Match only the known Windows 16-bit compatibility dialog and message."""
+    if window_class != "#32770":
+        return False
+    normalized_title = (title or "").strip().casefold()
+    supported_titles = {
+        "unsupported 16-bit application",
+        "неподдерживаемое 16-разрядное приложение",
+    }
+    if normalized_title not in supported_titles:
+        return False
+    normalized_body = " ".join((body or "").casefold().split())
+    english = ("incompatibility with 64-bit versions of windows" in normalized_body or
+               "not designed to run on windows" in normalized_body)
+    russian = ("не удалось запустить программу или компонент" in normalized_body and
+               "несовместимости с 64-разрядной версией windows" in normalized_body)
+    return english or russian
+
+
+def _dismiss_known_windows_error_dialogs() -> int:
+    """Close only the positively identified unsupported-16-bit system dialog."""
+    if os.name != "nt":
+        return 0
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        dismissed = 0
+
+        @enum_proc
+        def inspect_window(hwnd, _):
+            nonlocal dismissed
+            title_buf = ctypes.create_unicode_buffer(512)
+            class_buf = ctypes.create_unicode_buffer(128)
+            user32.GetWindowTextW(hwnd, title_buf, len(title_buf))
+            user32.GetClassNameW(hwnd, class_buf, len(class_buf))
+            body_parts = []
+
+            @enum_proc
+            def inspect_child(child, __):
+                child_buf = ctypes.create_unicode_buffer(2048)
+                user32.GetWindowTextW(child, child_buf, len(child_buf))
+                if child_buf.value:
+                    body_parts.append(child_buf.value)
+                return True
+
+            user32.EnumChildWindows(hwnd, inspect_child, 0)
+            if _is_unsupported_16bit_dialog(
+                    title_buf.value, class_buf.value, " ".join(body_parts)):
+                if user32.PostMessageW(hwnd, 0x0010, 0, 0):
+                    dismissed += 1
+            return True
+
+        user32.EnumWindows(inspect_window, 0)
+        return dismissed
+    except (AttributeError, OSError, TypeError, ValueError):
+        return 0
+
+
 def _scheduled_task_targets_root(xml_text: str, root: Path) -> bool | None:
     """Inspect Task Scheduler XML in memory and reveal only an install-root match."""
     if not isinstance(xml_text, str) or len(xml_text) > 65536:
@@ -2247,6 +2331,7 @@ def _worker_restart_due() -> bool:
 
 
 def main() -> int:
+    _apply_windows_error_mode()
     # Remote task intake is deliberately opt-in; the normal local Blender launcher
     # never starts a GitHub polling loop by accident.
     if os.environ.get("LOCAL_AGENT_ENABLE_GITHUB_MAILBOX") != "1":
@@ -2637,6 +2722,7 @@ def supervise_windows() -> int:
     import urllib.request
     import threading
 
+    _apply_windows_error_mode()
     state_dir = _ensure_agent_dir()
     lock_path = state_dir / "octava_supervisor.lock"
     if lock_path.is_symlink():
@@ -2681,6 +2767,10 @@ def supervise_windows() -> int:
                 fh.write(item)
         except OSError:
             pass
+
+    dismissed = _dismiss_known_windows_error_dialogs()
+    if dismissed:
+        log(f"Dismissed known unsupported 16-bit application dialog count={dismissed}")
 
     # Remove only the legacy startup shortcut created by our old installer.
     # That shortcut starts an interactive Blender helper instead of the
@@ -2849,6 +2939,9 @@ def supervise_windows() -> int:
         log("Studio and mailbox supervisor active; worker heartbeat every 2s")
         while True:
             time.sleep(2)
+            dismissed = _dismiss_known_windows_error_dialogs()
+            if dismissed:
+                log(f"Dismissed known unsupported 16-bit application dialog count={dismissed}")
             now = time.monotonic()
             try:
                 control = load_runtime_control()
