@@ -546,3 +546,85 @@ def test_episode1_export_accepts_only_gzip_wrapped_blender_headers(tmp_path):
     invalid = tmp_path / "invalid.blend"
     invalid.write_bytes(gzip.compress(b"unrelated-private-data"))
     assert not _is_blender_project_file(invalid, invalid.read_bytes()[:8])
+
+
+def _synthetic_season() -> str:
+    blocks = []
+    for number in range(1, 31):
+        episode_id = f"S01E{number:02d}"
+        lines = [f"=== СЕРИЯ {number:02d} | Тестовая серия {number:02d} ===",
+                 f"EPISODE_ID: {episode_id}", ""]
+        for scene in range(1, 6):
+            lines.extend([
+                f"## {episode_id}_SC{scene:02d} | Сцена {scene}",
+                "Действие: персонаж идёт по тропинке.",
+                "ASSET_IDS: char.mia.master",
+                "",
+            ])
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def test_season_parser_validates_all_episodes_scenes_and_asset_ids():
+    from local_agent import studio_server
+
+    episodes = studio_server.parse_season_screenplay(_synthetic_season())
+    assert len(episodes) == 30
+    assert [item["episode_id"] for item in episodes] == [
+        f"S01E{number:02d}" for number in range(1, 31)
+    ]
+    assert all(len(item["scenes"]) == 5 for item in episodes)
+    assert episodes[0]["asset_ids"] == ["char.mia.master"]
+
+
+def test_season_parser_rejects_duplicate_missing_and_out_of_order_episodes():
+    from local_agent import studio_server
+
+    text = _synthetic_season()
+    with pytest.raises(studio_server.StudioError, match="Повторяются"):
+        studio_server.parse_season_screenplay(text.replace(
+            "=== СЕРИЯ 02 |", "=== СЕРИЯ 01 |", 1
+        ))
+    with pytest.raises(studio_server.StudioError, match="не хватает серий"):
+        studio_server.parse_season_screenplay(text.rsplit("=== СЕРИЯ 30 |", 1)[0])
+    reordered = text.replace("=== СЕРИЯ 01 |", "=== СЕРИЯ 00 |", 1)
+    with pytest.raises(studio_server.StudioError):
+        studio_server.parse_season_screenplay(reordered)
+
+
+def test_season_import_persists_independent_episode_revisions(tmp_path, monkeypatch):
+    from local_agent import studio_server
+
+    monkeypatch.setattr(studio_server, "ROOT", tmp_path)
+    monkeypatch.setattr(studio_server, "_SEASON_DB",
+                        tmp_path / ".local_agent" / "season_episodes.sqlite3")
+    screenplay = _synthetic_season()
+    encoded = screenplay.encode("utf-8")
+    result = studio_server.import_season_screenplay("season.txt", encoded)
+    assert result["episodes"] == 30
+    assert result["source_sha256"] == hashlib.sha256(encoded).hexdigest()
+    assert studio_server.list_season_episodes()["episodes"][0]["episode_id"] == "S01E01"
+    assert studio_server.import_season_screenplay("season.txt", encoded)["already_imported"] is True
+
+    episode = studio_server.get_season_episode("S01E01")
+    edited = episode["full_text"].replace("Тестовая серия 01", "Исправленная серия 01", 1)
+    updated = studio_server.edit_season_episode("S01E01", 1, edited)
+    assert updated["revision"] == 2
+    assert updated["title"] == "Исправленная серия 01"
+    assert studio_server.get_season_episode("S01E02")["revision"] == 1
+    assert [item["revision"] for item in
+            studio_server.get_season_episode_history("S01E01")] == [2, 1]
+    with pytest.raises(studio_server.StudioConflict):
+        studio_server.edit_season_episode("S01E01", 1, edited)
+
+
+def test_season_import_rejects_invalid_utf8_without_writing(tmp_path, monkeypatch):
+    from local_agent import studio_server
+
+    monkeypatch.setattr(studio_server, "ROOT", tmp_path)
+    monkeypatch.setattr(studio_server, "_SEASON_DB",
+                        tmp_path / ".local_agent" / "season_episodes.sqlite3")
+    with pytest.raises(studio_server.StudioError, match="UTF-8"):
+        studio_server.import_season_screenplay("season.txt", b"\xff\xfe")
+    assert studio_server.list_season_episodes()["imported"] is False
+
