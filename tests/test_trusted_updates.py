@@ -628,3 +628,26 @@ def test_season_import_rejects_invalid_utf8_without_writing(tmp_path, monkeypatc
         studio_server.import_season_screenplay("season.txt", b"\xff\xfe")
     assert studio_server.list_season_episodes()["imported"] is False
 
+
+
+def test_draft_episode_references_remain_blocked_for_animation(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from local_agent import asset_registry, studio_server
+
+    monkeypatch.setattr(asset_registry, "read_asset_registry", lambda *_args: {
+        "set.forest_gate": {"asset_id": "set.forest_gate",
+                            "path": "assets/references/drafts/set.forest_gate.jpg",
+                            "extension": ".jpg"}
+    })
+    monkeypatch.setattr(studio_server, "approved_status", lambda *_args: {"status": "missing"})
+    store = SimpleNamespace(root=tmp_path, project="mia_story", workspace=tmp_path)
+    episode = {
+        "asset_ids": ["set.forest_gate"],
+        "scenes": [{"scene_id": "S01E01_SC01", "asset_ids": ["set.forest_gate"]}],
+    }
+    readiness = studio_server._episode_asset_readiness(episode, store)
+    assert readiness["assets"][0]["status"] == "draft"
+    assert readiness["draft_assets"] == ["set.forest_gate"]
+    assert readiness["missing_assets"] == ["set.forest_gate"]
+    assert readiness["reference_readiness"] == "blocked_draft_references"
+
