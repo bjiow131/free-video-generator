@@ -709,3 +709,81 @@ class SeasonFeedbackCoordinator:
         return {**self.snapshot(),'status':'paused'}
 
 
+def verify_episode_artifact(workspace, episode_id, *, ffprobe='ffprobe'):
+    """Validate the technical contract for one finished portrait episode.
+
+    This is a hard technical gate, not a visual-quality verdict. The output name
+    is fixed per episode, media probing is shell-free, and the returned digest
+    binds a later review to the exact file bytes.
+    """
+    import hashlib
+    import json
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if not isinstance(episode_id,str) or not re.fullmatch(r'S01E(?:0[1-9]|[12][0-9]|30)',episode_id):
+        return {'status':'blocked','reason':'invalid_episode_id'}
+    root=Path(workspace).expanduser().resolve()
+    output_dir=root/'episodes'/episode_id
+    target=output_dir/'final.mp4'
+    for path in (root/'episodes',output_dir,target):
+        if path.is_symlink() or getattr(path,'is_junction',lambda:False)():
+            return {'status':'blocked','reason':'episode_path_is_link'}
+    if not target.is_file() or not target.resolve().is_relative_to(root):
+        return {'status':'blocked','reason':'episode_file_missing_or_outside_workspace'}
+    try:
+        size=target.stat().st_size
+    except OSError:
+        return {'status':'blocked','reason':'episode_file_unreadable'}
+    if size<1_000_000:
+        return {'status':'blocked','reason':'episode_file_too_small','size_bytes':size}
+    executable=shutil.which(ffprobe) if isinstance(ffprobe,str) else None
+    if executable is None:
+        return {'status':'blocked','reason':'ffprobe_unavailable'}
+    try:
+        completed=subprocess.run([executable,'-v','error','-count_frames','-show_entries',
+            'format=format_name,duration:stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate,nb_read_frames',
+            '-of','json',str(target)],capture_output=True,check=False,timeout=90,shell=False)
+        if completed.returncode!=0 or len(completed.stdout)>65536:
+            return {'status':'blocked','reason':'media_probe_failed'}
+        metadata=json.loads(completed.stdout.decode('utf-8'))
+        streams=metadata.get('streams')
+        info=metadata.get('format')
+        if not isinstance(streams,list) or len(streams)!=1 or not isinstance(info,dict):
+            return {'status':'blocked','reason':'unexpected_media_streams'}
+        video=streams[0]
+        if video.get('codec_type')!='video':
+            return {'status':'blocked','reason':'video_stream_missing'}
+        try:
+            duration=float(info['duration']);width=int(video['width']);height=int(video['height'])
+            frame_count=int(video['nb_read_frames']);num,den=(int(x) for x in video['avg_frame_rate'].split('/',1))
+        except (KeyError,TypeError,ValueError,ZeroDivisionError):
+            return {'status':'blocked','reason':'incomplete_media_metadata'}
+        fps=num/den
+        if not 300<=duration<=600:
+            return {'status':'blocked','reason':'episode_duration_out_of_range','duration_seconds':duration}
+        if width<720 or height<1280 or abs((width/height)-(9/16))>0.025:
+            return {'status':'blocked','reason':'portrait_resolution_out_of_range','width':width,'height':height}
+        if video.get('codec_name')!='h264' or video.get('pix_fmt')!='yuv420p' or not 18<=fps<=60:
+            return {'status':'blocked','reason':'video_encoding_out_of_range'}
+        if frame_count<duration*fps*0.95:
+            return {'status':'blocked','reason':'frame_count_incomplete'}
+        if 'mp4' not in str(info.get('format_name','')).split(','):
+            return {'status':'blocked','reason':'container_is_not_mp4'}
+    except (OSError,subprocess.TimeoutExpired,UnicodeError,ValueError,TypeError):
+        return {'status':'blocked','reason':'media_probe_unavailable'}
+    digest=hashlib.sha256()
+    try:
+        with target.open('rb') as stream:
+            for block in iter(lambda:stream.read(1024*1024),b''):
+                digest.update(block)
+    except OSError:
+        return {'status':'blocked','reason':'episode_hash_failed'}
+    return {'status':'technical_checks_passed','episode_id':episode_id,'path':str(target),
+        'sha256':digest.hexdigest(),'size_bytes':size,'duration_seconds':duration,
+        'width':width,'height':height,'frame_count':frame_count,
+        'visual_review_required':True,'season_completion_eligible':False}
+
+
