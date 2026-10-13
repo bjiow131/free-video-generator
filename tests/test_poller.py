@@ -129,8 +129,11 @@ def test_supervisor_recovery_enters_install_directory_before_import(tmp_path, mo
     import json
     root = tmp_path / "Studio folder's name"
     root.mkdir()
-    monkeypatch.setattr(poller.subprocess, "list2cmdline", lambda args: args)
-    args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
+    # _supervisor_recovery_command needs a list-returning command-line
+    # formatter for this assertion, but subprocess.run needs the real formatter.
+    with monkeypatch.context() as isolated:
+        isolated.setattr(poller.subprocess, "list2cmdline", lambda args: args)
+        args = poller._supervisor_recovery_command(__import__("pathlib").Path(sys.executable), root)
     (root / "local_agent").mkdir()
     (root / "local_agent" / "__init__.py").write_text("")
     (root / "local_agent" / "poller.py").write_text(
