@@ -363,3 +363,116 @@ def transfer_spring_rig_to_mia(project_name: str) -> dict[str, Any]:
     except (OSError,ValueError): return {"status":"failed","reason":"transfer_report_unreadable"}
     if data.get("status")!="completed" or data.get("bone_count",0)<2000 or data.get("bound_mesh_count",0)<1: return {"status":"failed","reason":"transfer_validation_failed","transfer":data}
     return {"status":"completed","task":"blender_mia_spring_rig_transfer","blend_path":str(output),"report_path":str(report),"bone_count":data["bone_count"],"deform_bone_count":data["deform_bone_count"],"pose_test_passed":data["pose_test_passed"],"max_pose_vertex_displacement":data["max_pose_vertex_displacement"],"bound_mesh_count":data["bound_mesh_count"],"unbound_mesh_count":data["unbound_mesh_count"],"scale_to_mia_height":data["scale_to_mia_height"],"limitations":data["limitations"]}
+
+
+# Fixed, licensed source inventory. No remote task can supply executable code,
+# download URLs or filesystem paths.
+SOURCE_REVIEW_SCRIPT = r'''
+import bpy, sys, json, os, hashlib, struct
+from mathutils import Vector
+source, report = sys.argv[sys.argv.index('--') + 1:]
+bpy.ops.wm.open_mainfile(filepath=source, load_ui=False)
+def mesh_info(o):
+    h=hashlib.sha256()
+    for v in o.data.vertices: h.update(struct.pack('<3f',*v.co))
+    coords=[o.matrix_world@v.co for v in o.data.vertices]
+    bounds=[[min(p[k] for p in coords),max(p[k] for p in coords)] for k in range(3)] if coords else []
+    return {'name':o.name,'vertices':len(o.data.vertices),'polygons':len(o.data.polygons),
+        'coordinates_sha256':h.hexdigest(),'bounds_world':bounds,'hidden_render':o.hide_render,
+        'materials':[m.name if m else None for m in o.data.materials],
+        'shape_keys':[k.name for k in o.data.shape_keys.key_blocks] if o.data.shape_keys else [],
+        'modifiers':[{'name':m.name,'type':m.type,'target':getattr(getattr(m,'object',None),'name',None)} for m in o.modifiers],
+        'vertex_groups':len(o.vertex_groups)}
+meshes=[mesh_info(o) for o in bpy.data.objects if o.type=='MESH']
+rigs=[{'name':o.name,'bones':len(o.data.bones),'deform_bones':sum(b.use_deform for b in o.data.bones),
+    'bone_names':[b.name for b in o.data.bones],
+    'drivers':len(o.animation_data.drivers) if o.animation_data else 0,
+    'constraints':sum(len(p.constraints) for p in o.pose.bones)} for o in bpy.data.objects if o.type=='ARMATURE']
+images=[{'name':i.name,'packed':bool(i.packed_file),'size':list(i.size),
+         'path':i.filepath,'missing':bool(i.filepath and not i.packed_file and not os.path.isfile(bpy.path.abspath(i.filepath)))} for i in bpy.data.images]
+data={'status':'completed','blender_version':bpy.app.version_string,'source_path':source,
+    'mesh_count':len(meshes),'vertex_count':sum(x['vertices'] for x in meshes),
+    'meshes':meshes,'rigs':rigs,'images':images,
+    'embedded_texts':[t.name for t in bpy.data.texts],
+    'autoexec_enabled':bpy.context.preferences.filepaths.use_scripts_auto_execute,
+    'source_unchanged':True,'identity_verified':False}
+with open(report,'w',encoding='utf-8') as f:json.dump(data,f,ensure_ascii=False,indent=2)
+'''
+
+
+def review_blender_source(asset: str, project_name: str) -> dict[str, Any]:
+    """Inspect a pinned donor on local Blender without executing donor scripts."""
+    if not isinstance(asset,str) or asset not in {'spring', 'tiby_female'} or not isinstance(project_name,str) or not PROJECT_RE.fullmatch(project_name):
+        return {'status':'rejected','reason':'invalid_fixed_source_review'}
+    value=os.environ.get('LOCAL_AGENT_WORKSPACE','').strip()
+    blender=find_blender_executable()
+    if not value or blender is None or not blender.is_file():
+        return {'status':'blocked','reason':'local_workspace_or_blender_missing'}
+    workspace=Path(value).expanduser().resolve()
+    output=workspace/'SOURCE_ASSET_REVIEWS'/project_name
+    if any(is_link_or_junction(p) for p in [output,*output.parents]):
+        return {'status':'rejected','reason':'unsafe_source_review_path'}
+    if output.exists():return {'status':'blocked','reason':'source_review_output_exists'}
+    if asset=='spring':
+        source=workspace/'.local_agent/cache/spring-rig-source-v1/spring/spring/spring.blend'
+        expected=SPRING_TRANSFER_BLEND_SHA256
+        source_url='https://studio.blender.org/characters/spring/v1/'
+        license_name='CC-BY-4.0'
+    else:
+        cache=workspace/'.local_agent/cache/tiby-cc0-v1'
+        if any(is_link_or_junction(p) for p in [cache,*cache.parents]):
+            return {'status':'rejected','reason':'unsafe_source_cache'}
+        cache.mkdir(parents=True,exist_ok=True)
+        source=cache/'Tiby_Character_Female/TIBYF.blend'
+        expected='00ab9444a450773b779bbe40b5793d3b9397c0e836d4c321dbfae12b7549c541'
+        source_url='https://opengameart.org/content/tiby-3d-rigged-model'
+        license_name='CC0'
+        if not source.is_file():
+            from urllib.request import urlopen
+            import zipfile
+            archive=cache/'tiby-source.zip'
+            try:
+                with urlopen('https://opengameart.org/sites/default/files/Tiby_Character_MnF_0.zip',timeout=60) as response:
+                    payload=response.read(8_000_001)
+                if len(payload)>8_000_000 or hashlib.sha256(payload).hexdigest()!='2c438d05446eedff5e59c879d93922c38fe0e42692e646be783eef278a2a744c':
+                    return {'status':'blocked','reason':'tiby_archive_digest_mismatch'}
+                if is_link_or_junction(archive):return {'status':'rejected','reason':'unsafe_source_archive'}
+                archive.write_bytes(payload)
+                with zipfile.ZipFile(archive) as z:
+                    members=[i for i in z.infolist() if i.filename.startswith('Tiby_Character_Female/') and i.filename.endswith(('.blend','.png'))]
+                    for member in members:
+                        target=cache/member.filename
+                        if '..' in Path(member.filename).parts or member.filename.startswith('/') or member.file_size>20_000_000 or (member.external_attr>>16)&0o170000==0o120000:
+                            raise ValueError('unsafe archive member')
+                        if any(is_link_or_junction(p) for p in [target,*target.parents]):raise ValueError('unsafe extraction target')
+                        target.parent.mkdir(parents=True,exist_ok=True)
+                        with z.open(member) as src,target.open('xb') as dst:
+                            dst.write(src.read(20_000_001))
+            except (OSError,ValueError,zipfile.BadZipFile) as exc:
+                return {'status':'blocked','reason':'tiby_download_or_extract_failed','error_type':type(exc).__name__}
+    if any(is_link_or_junction(p) for p in [source,*source.parents]) or not source.is_file():
+        return {'status':'blocked','reason':'pinned_source_missing'}
+    digest=_spring_sha256(source)
+    if digest!=expected:return {'status':'blocked','reason':'source_digest_mismatch'}
+    output.mkdir(parents=True,exist_ok=False)
+    report=output/'source_inventory.json'
+    with tempfile.TemporaryDirectory(prefix='.inspect-',dir=output) as td:
+        script=Path(td)/'inspect.py';script.write_text(SOURCE_REVIEW_SCRIPT,encoding='utf-8')
+        try:
+            proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(source),str(report)],cwd=output,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=300,check=False,shell=False)
+        except (OSError,subprocess.TimeoutExpired) as exc:
+            return {'status':'failed','reason':'source_inspection_failed','error_type':type(exc).__name__}
+    if proc.returncode or not report.is_file():
+        return {'status':'failed','reason':'source_inspection_failed','return_code':proc.returncode,'stderr_tail':(proc.stderr or '')[-1800:]}
+    data=json.loads(report.read_text('utf-8'))
+    unchanged=_spring_sha256(source)==digest
+    if not unchanged or data.get('autoexec_enabled') is True:
+        return {'status':'failed','reason':'source_changed_or_autoexec_enabled'}
+    return {'status':'completed','stage':'source_inventory_only','asset':asset,'source_sha256':digest,
+        'source_url':source_url,'license':license_name,'source_path':str(source),'report_path':str(report),
+        'source_unchanged':unchanged,'identity_verified':False,
+        'mesh_count':data['mesh_count'],'vertex_count':data['vertex_count'],
+        'installed_module_sha256':_spring_sha256(Path(__file__)),
+        'meshes':data['meshes'][:35],
+        'rigs':[{k:v for k,v in r.items() if k!='bone_names'} for r in data['rigs']],
+        'images':data['images'][:25],'embedded_texts':data['embedded_texts'][:20]}
