@@ -88,3 +88,17 @@ class JobTests(unittest.TestCase):
         with self.assertRaises(StudioJobError): self.jobs.video('e'*32)
 
 if __name__=='__main__':unittest.main()
+
+
+def test_reject_action_count_before_job_creation():
+    s = state()
+    prompt = "Тестовый персонаж " + ", затем ".join(["идёт", "говорит"] * 11)
+    with unittest.TestCase().assertRaisesRegex(PromptError, "максимум 20"):
+        interpret_scene(prompt, s, "scene_001")
+
+
+def test_reject_zero_length_action_windows():
+    s = state()
+    s["settings"].update(duration=1, fps=2)
+    with unittest.TestCase().assertRaisesRegex(PromptError, "Недостаточно кадров"):
+        interpret_scene("Тестовый персонаж идёт, затем говорит", s, "scene_001")

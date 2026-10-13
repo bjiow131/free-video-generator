@@ -12,6 +12,16 @@ import pytest
 from local_agent.blender_bridge import BlenderBridge, BlenderBridgeError
 
 
+def _write_supported_windows_executable(path: Path) -> None:
+    """Write the minimal AMD64 PE headers accepted by Blender path validation."""
+    image = bytearray(70)
+    image[:2] = b"MZ"
+    image[0x3C:0x40] = (64).to_bytes(4, "little")
+    image[64:68] = b"PE\0\0"
+    image[68:70] = (0x8664).to_bytes(2, "little")
+    path.write_bytes(image)
+
+
 def _write_png(path: Path, width: int, height: int) -> None:
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", binascii.crc32(kind + data) & 0xffffffff)
@@ -21,7 +31,7 @@ def _write_png(path: Path, width: int, height: int) -> None:
 
 def _bridge(tmp_path: Path, fake_run):
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"test executable placeholder")
+    _write_supported_windows_executable(executable)
     workspace = tmp_path / "workspace"
     return BlenderBridge(executable, workspace, popen=fake_run), workspace
 
@@ -100,7 +110,7 @@ def test_headless_launcher_returns_after_manifest_without_waiting_for_worker_exi
     # Make the production path recognize the fake as the configured Popen factory.
     monkeypatch.setattr("local_agent.blender_bridge.subprocess.Popen", fake_popen)
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"test executable placeholder")
+    _write_supported_windows_executable(executable)
     workspace = tmp_path / "workspace"
     bridge = BlenderBridge(executable, workspace, popen=fake_popen)
 

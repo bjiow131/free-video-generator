@@ -30,6 +30,8 @@ def main():
     actions = manifest.get("actions")
     if not isinstance(actions, list) or not actions or len(actions) > 20 or any(a not in ("walk", "turn", "wave", "speak", "idle") for a in actions):
         raise RuntimeError("Unsupported actions")
+    if fps * duration - 1 < len(actions):
+        raise RuntimeError("Insufficient frames for sequential actions")
     if manifest.get("camera") not in ("follow", "push_in", "hold"):
         raise RuntimeError("Unsupported camera")
     output = Path(sys.argv[sys.argv.index("--") + 2])

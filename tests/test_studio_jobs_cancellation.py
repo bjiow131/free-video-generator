@@ -89,3 +89,10 @@ class StudioCancellationRaceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_fixed_blender_script_is_used_without_duplicate_world_patch(tmp_path):
+    from local_agent.studio_jobs import _prepare_studio_blender_script
+    source = Path(__file__).resolve().parents[1] / "local_agent/studio_blender_scene.py"
+    assert _prepare_studio_blender_script(source, tmp_path) == source
+    assert list(tmp_path.iterdir()) == []

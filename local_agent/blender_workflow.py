@@ -964,6 +964,7 @@ def create_mia_blockout(project_name: str, *, overwrite: bool = False, duration_
                 "note": "Episode 1 opening-scene proxy set with rigid placeholder rigs; visual review required."}
 
     completed = False
+    result: dict[str, Any] = {}
     try:
         result = generate()
         if result.get("status") == "completed" and project_name == "S01E01_SC01_RELEASE":

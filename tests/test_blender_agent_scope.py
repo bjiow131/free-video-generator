@@ -126,3 +126,13 @@ def test_powershell_mailbox_setup_matches_actual_runtime_contract():
     assert "LOCAL_AGENT_ALLOW_REMOTE_APPROVAL" not in setup
     assert '$env:LOCAL_AGENT_ENABLE_GITHUB_MAILBOX = "1"' in runner
     assert "-m local_agent.poller *>>" not in runner
+
+
+def test_acceptance_and_new_agent_subsystems_are_in_operational_scope():
+    selected = set(test_scope.TEST_SUITES["all"])
+    assert {
+        "tests/test_studio_jobs_cancellation.py", "tests/test_studio_live_blender.py",
+        "tests/test_studio_assembly.py", "tests/test_prompt_pipeline.py",
+        "tests/test_github_asset_sync.py", "tests/test_trusted_updates.py",
+        "tests/test_camera_quality.py", "tests/test_multiscene_timeline.py",
+    } <= selected

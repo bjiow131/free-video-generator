@@ -33,7 +33,7 @@ def _prepare_studio_blender_script(source: Path, job_dir: Path) -> Path:
         raise StudioJobError("Blender scene script too large")
     original = source.read_text(encoding="utf-8")
     marker = "    scene.world.color = (0.08, 0.11, 0.16)"
-    if marker not in original:
+    if marker not in original or '    if scene.world is None:' in original:
         return source
     if original.count(marker) != 1 or "    bpy.ops.wm.read_factory_settings(use_empty=True)" not in original:
         raise StudioJobError("Unexpected Blender scene compatibility signature")
