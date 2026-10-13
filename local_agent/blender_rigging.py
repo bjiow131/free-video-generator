@@ -614,7 +614,7 @@ def recover_source_adaptation_result(project_name: str, source_task_id: str) -> 
                 candidate=details.get('result') if isinstance(details,dict) else None
                 if (isinstance(candidate,dict) and candidate.get('task_id')==source_task_id
                         and candidate.get('details',{}).get('blend_path')==str(blend)):
-                    result=candidate['details'];retained_report=str(p);break
+                    result=candidate['details'];result['retained_original_result_bytes']=len(json.dumps(candidate,ensure_ascii=False,indent=2).encode('utf-8'));result['mailbox_limit_bytes']=64000;retained_report=str(p);break
             except (OSError,ValueError):continue
     if result is None:
         result={'status':'completed','stage':base.get('stage'),'blend_path':str(blend),
@@ -631,3 +631,99 @@ def recover_source_adaptation_result(project_name: str, source_task_id: str) -> 
             or any(tests.get(k,0)<=.002 for k in ('blink_max_delta','mouth_open_max_delta','head_pose_max_delta','arm_pose_max_delta','leg_pose_max_delta'))):
         result['status']='failed';result['reason']='retained_source_qa_failed'
     return result
+
+
+SOURCE_NEUTRAL_SCRIPT = r'''
+import bpy,sys,json,hashlib,struct
+from pathlib import Path
+from mathutils import Vector
+source,out=map(Path,sys.argv[sys.argv.index('--')+1:])
+bpy.context.preferences.filepaths.use_scripts_auto_execute=False
+bpy.ops.wm.open_mainfile(filepath=str(source),load_ui=False)
+scene=bpy.context.scene
+head=bpy.data.objects['MiaSource_GEO-spring_head'];keys=head.data.shape_keys
+before={'key_names':[k.name for k in keys.key_blocks],'values':{k.name:k.value for k in keys.key_blocks},'drivers':len(keys.animation_data.drivers) if keys.animation_data else 0}
+keys.animation_data_clear()
+# Copies in newer Blender builds may retain corrective keys. Only the new,
+# explicitly sampled controls belong to this pilot. Preserve the donor in its
+# original file and use the verified target vertices as the neutral basis.
+for key in list(keys.key_blocks):
+ if key.name not in ('Basis','Mia_blink','Mia_mouth_open'):head.shape_key_remove(key)
+keys=head.data.shape_keys
+for point,vertex in zip(keys.key_blocks['Basis'].data,head.data.vertices):point.co=vertex.co
+for key in keys.key_blocks:key.value=0
+head.active_shape_key_index=0;head.show_only_shape_key=False
+scene.render.use_compositing=False;scene.render.use_sequencer=False;scene.render.film_transparent=False
+scene.render.image_settings.file_format='PNG';scene.cycles.samples=24
+scene.frame_set(1);bpy.context.view_layer.update()
+# Explicitly zero own controls after frame evaluation as well.
+for key in keys.key_blocks:key.value=0
+bpy.context.view_layer.update()
+output=out/'mia_spring_source_adapted.blend';bpy.ops.wm.save_as_mainfile(filepath=str(output))
+bpy.ops.wm.open_mainfile(filepath=str(output),load_ui=False)
+scene=bpy.context.scene;head=bpy.data.objects['MiaSource_GEO-spring_head'];keys=head.data.shape_keys
+neutral={k.name:k.value for k in keys.key_blocks}
+if any(abs(value)>1e-8 for value in neutral.values()):raise RuntimeError('Neutral facial state was not saved')
+camera=scene.camera
+for view,location in [('front',(0,-4,.74)),('side',(4,0,.74)),('back',(0,4,.74)),('face',(0,-4,1.22))]:
+ for k in keys.key_blocks:k.value=0
+ scene.frame_set(1);bpy.context.view_layer.update()
+ camera.location=location;target=(0,0,1.20) if view=='face' else (0,0,.72);camera.rotation_euler=(Vector(target)-camera.location).to_track_quat('-Z','Y').to_euler();camera.data.ortho_scale=.50 if view=='face' else 1.6
+ scene.render.filepath=str(out/(view+'.png'));bpy.ops.render.render(write_still=True)
+checks={}
+for name in ('Mia_blink','Mia_mouth_open'):
+ for key in keys.key_blocks:key.value=0
+ key=keys.key_blocks[name];key.value=1;bpy.context.view_layer.update()
+ checks[name+'_max_delta']=max(((a.co-b.co).length for a,b in zip(key.data,keys.key_blocks['Basis'].data)),default=0)
+ camera.location=(0,-4,1.22);camera.rotation_euler=(Vector((0,0,1.20))-camera.location).to_track_quat('-Z','Y').to_euler();camera.data.ortho_scale=.50
+ scene.render.filepath=str(out/(name+'.png'));bpy.ops.render.render(write_still=True)
+for key in keys.key_blocks:key.value=0
+bpy.context.view_layer.update()
+report={'status':'completed','stage':'neutral_render_state_review','source_blend':str(source),'blend_path':str(output),'facial_state_before':before,'saved_neutral_values':neutral,'facial_shape_deltas':checks,'render_compositing_disabled':True,'source_geometry_reused':True,'identity_verified':False,'production_ready':False}
+(out/'neutral_state_report.json').write_text(json.dumps(report,indent=2))
+'''
+
+
+def neutralize_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
+    """Correct facial/render state using the saved pilot, never rebuild a donor."""
+    if any(not isinstance(n,str) or not PROJECT_RE.fullmatch(n) for n in (source_project,project_name)) or source_project==project_name:
+        return {'status':'rejected','reason':'invalid_neutral_copy_identity'}
+    value=os.environ.get('LOCAL_AGENT_WORKSPACE','').strip();blender=find_blender_executable()
+    if not value or blender is None:return {'status':'blocked','reason':'workspace_or_blender_missing'}
+    ws=Path(value).expanduser().resolve();source=ws/'SOURCE_ADAPTATIONS'/source_project/'mia_spring_source_adapted.blend';out=ws/'SOURCE_ADAPTATIONS'/project_name
+    reference=ws/'episode1/assets/references/mia_turnaround_approved_20261012.jpeg'
+    for k in (source,out,reference):
+        if any(is_link_or_junction(p) for p in [k,*k.parents]):return {'status':'rejected','reason':'unsafe_neutral_copy_path'}
+    if not source.is_file() or out.exists():return {'status':'blocked','reason':'source_missing_or_output_exists'}
+    digest=_spring_sha256(source);out.mkdir(parents=True)
+    with tempfile.TemporaryDirectory(prefix='.neutral-',dir=out) as td:
+        script=Path(td)/'neutral.py';script.write_text(SOURCE_NEUTRAL_SCRIPT,encoding='utf-8')
+        try:
+            proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(source),str(out)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=600,check=False,shell=False)
+        except (OSError,subprocess.TimeoutExpired) as exc:return {'status':'failed','reason':'neutral_copy_process_failed','error_type':type(exc).__name__}
+    report=out/'neutral_state_report.json'
+    if proc.returncode or not report.is_file():return {'status':'failed','reason':'neutral_copy_failed','return_code':proc.returncode,'stderr_tail':(proc.stderr or '')[-1800:]}
+    data=json.loads(report.read_text('utf-8'))
+    if _spring_sha256(source)!=digest or any(abs(v)>1e-8 for v in data['saved_neutral_values'].values()):return {'status':'failed','reason':'source_changed_or_neutral_values_invalid'}
+    import base64,shutil
+    ffmpeg=shutil.which('ffmpeg');thumbs={}
+    if ffmpeg:
+        for name in ('front','face','side'):
+            p=out/(name+'_thumb.jpg')
+            proc=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(out/(name+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','5',str(p)],capture_output=True,timeout=30,check=False,shell=False)
+            if not proc.returncode and p.is_file():thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
+    astra={'status':'not_requested'}
+    try:
+        from local_agent.octava_credentials import read_key
+        import requests
+        key,_=read_key()
+        if key:
+            content=[{'type':'text','text':'Compare original approved Mia (first image) and this corrected NEUTRAL model (following images). Do not compare the blink or mouth test. Return concise JSON with likeness_approved, actual remaining differences, and actionable changes to face, side-swept hair, jacket, trousers and boots. Never infer animation state from tests not supplied. No code or URLs.'}]
+            for p in [reference,out/'face_thumb.jpg',out/'front_thumb.jpg',out/'side_thumb.jpg']:
+                content.append({'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(p.read_bytes()).decode('ascii'),'detail':'high'}})
+            response=requests.post('https://octavapi.shop/v1/chat/completions',headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},json={'model':'gpt-6-astra','messages':[{'role':'user','content':content}],'max_tokens':1400,'temperature':.2},timeout=(10,150),allow_redirects=False)
+            if response.status_code==200:
+                payload=response.json();answer=payload['choices'][0]['message']['content'];(out/'astra_neutral_critique.txt').write_text(answer[:10000],encoding='utf-8');astra={'status':'completed','model_requested':'gpt-6-astra','model_returned':payload.get('model'),'reference_sha256':_spring_sha256(reference),'original_reference_attached':True,'current_neutral_render_attached':True,'critique':answer[:5000]}
+            else:astra={'status':'failed','http_status':response.status_code}
+    except Exception as exc:astra={'status':'failed','error_type':type(exc).__name__}
+    return {'status':'completed','stage':data['stage'],'source_geometry_reused':True,'source_blend_sha256':digest,'source_unchanged':True,'blend_path':data['blend_path'],'report_path':str(report),'facial_state_before':data['facial_state_before'],'saved_neutral_values':data['saved_neutral_values'],'facial_shape_deltas':data['facial_shape_deltas'],'thumbnail_jpeg_base64':thumbs,'astra':astra,'identity_verified':False,'production_ready':False,'telegram_photo_sent':False}

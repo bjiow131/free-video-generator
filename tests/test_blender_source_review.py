@@ -78,3 +78,12 @@ def test_recover_source_output_reads_existing_evidence_without_execution(monkeyp
  assert result['identity_verified'] is False
  assert result['status']=='completed'
  assert (out/'mia_spring_source_adapted.blend').read_bytes()==b'preserved output'
+
+@pytest.mark.parametrize('args',[{'source_project':'../x','project_name':'y'},{'source_project':'x','project_name':'x'},{'source_project':'x','project_name':'y','script':'evil'}])
+def test_neutral_source_copy_rejects_unsafe_or_overwrite_inputs(args):
+ value=json.loads(envelope(args));value['operation']='blender_mia_source_neutral'
+ with pytest.raises(ProtocolError):parse_task(json.dumps(value))
+
+
+def test_neutral_copy_never_overwrites_source_identity():
+ assert r.neutralize_saved_source_model('same','same')['status']=='rejected'
