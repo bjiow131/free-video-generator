@@ -1196,3 +1196,69 @@ def test_cancelable_blender_process_stops_on_signal(monkeypatch, tmp_path):
     assert cancelled and not timed_out and error_type is None
     assert completed.returncode is not None
     assert seen and set(seen) == {"task-cancel-002"}
+
+
+# Direct Astra master-brief operation tests.
+import base64 as _base64
+import urllib.request as _urllib_request
+from local_agent.control_protocol import ProtocolError as _ProtocolError
+
+def _astra_task_envelope(operation="astra_season_response", arguments=None, approval=True):
+    now=datetime.now(timezone.utc)
+    return json.dumps({"protocol_version":1,"task_id":"astra-response-test",
+        "operation":operation,"created_at":now.isoformat(),
+        "expires_at":(now+timedelta(hours=1)).isoformat(),
+        "requires_local_approval":approval,"arguments":arguments or {}})
+
+def test_astra_operation_uses_strict_envelope_and_no_arguments():
+    from local_agent import poller
+    task=poller._parse_task_with_restart(_astra_task_envelope())
+    assert task.operation=="astra_season_response"
+    with pytest.raises(_ProtocolError):
+        poller._parse_task_with_restart(_astra_task_envelope(arguments={"prompt":"arbitrary"}))
+    with pytest.raises(_ProtocolError):
+        poller._parse_task_with_restart(_astra_task_envelope(approval=False))
+
+def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path, monkeypatch):
+    import local_agent.octava_credentials as credentials
+    from local_agent import poller
+    master="# MASTER WORK TASK\\nFIRST MANDATORY END-TO-END TEST\\n"+("details "*300)
+    encoded=_base64.b64encode(master.encode()).decode()
+    class GithubResponse:
+        def json(self): return {"type":"file","encoding":"base64","content":encoded}
+    class Client:
+        def _request(self,method,path,**kwargs):
+            assert method=="GET"
+            assert path=="contents/private_tasks/octava_season30_master_20261013.txt"
+            assert kwargs["params"]=={"ref":"main"}
+            return GithubResponse()
+    class ProviderResponse:
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def read(self,limit):
+            assert limit==180001
+            return json.dumps({"choices":[{"message":{"content":"Ответ Астры"}}]}).encode()
+    captured={}
+    def fake_urlopen(request,timeout):
+        captured.update(request=request,timeout=timeout)
+        return ProviderResponse()
+    monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
+    monkeypatch.setattr(_urllib_request,"urlopen",fake_urlopen)
+    monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
+    result=poller._run_astra_season_response(Client(),"astra-response-test")
+    body=json.loads(captured["request"].data)
+    assert body["model"]=="gpt-6-astra"
+    assert "MASTER WORK TASK" in body["messages"][1]["content"]
+    assert captured["timeout"]==180
+    assert result["status"]=="completed" and result["answer"]=="Ответ Астры"
+    assert (tmp_path/"reports/astra-response-test_astra_response.txt").read_text()=="Ответ Астры"
+    assert result["executed_commands"] is False
+
+def test_astra_operation_stops_when_local_provider_consent_is_off(monkeypatch):
+    from local_agent import poller
+    monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":False})
+    class NoNetwork:
+        def _request(self,*args,**kwargs): raise AssertionError("must stop before network")
+    assert poller._run_astra_season_response(NoNetwork(),"astra-response-test")=={
+        "status":"blocked","reason":"local_octava_permission_disabled"}
