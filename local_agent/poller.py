@@ -240,6 +240,7 @@ def _run_astra_project_audit(client: GitHubQueueClient, task_id: str) -> dict[st
                 {'role':'user','content':user}], 'max_tokens':6000}, ensure_ascii=False).encode()
             if len(payload) > 280000:
                 raise ValueError('request_size_limit')
+            (folder/('request_'+stage+'.txt')).write_text(_audit_safe_text(user.encode()),encoding='utf-8')
             req = Request('https://octavapi.shop/v1/chat/completions',data=payload,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
             with urlopen(req,timeout=240) as response:
                 raw = response.read(200001)
