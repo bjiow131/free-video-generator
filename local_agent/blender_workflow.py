@@ -2547,11 +2547,15 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str, single_pass: bool = False) ->
     root=workspace/"MIA_REFERENCE_REVIEW"
     parent=root/_MIA_V2_SOURCE
     if single_pass:
-        continuation=root/"MIA_AUTOLOOP_V2_mia-astra-loop100-v2-20261012T235752506Z"/"cycle_003"
-        if (not is_link_or_junction(continuation) and continuation.is_dir()
-            and (continuation/"mia_reference_model.blend").is_file()
-            and all((continuation/(v+".png")).is_file() for v in ("front","side","back"))):
-            parent=continuation
+        # Continue from the successful prior one-pass edit, never from an older
+        # render. The original immutable approved reference is still verified.
+        continuation=root/"MIA_AUTOLOOP_V2_mia-astra-single-maxfix-20261013T0034"/"cycle_001"
+        if (is_link_or_junction(continuation) or not continuation.is_dir()
+            or not (continuation/"mia_reference_model.blend").is_file()
+            or any(not (continuation/(v+".png")).is_file()
+                   for v in ("front","side","back"))):
+            return {"status":"blocked","reason":"previous_single_pass_model_not_ready"}
+        parent=continuation
     original=workspace/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
     job=root/("MIA_AUTOLOOP_V2_"+task_id)
     ref_folder=job/"approved_reference_crops"
