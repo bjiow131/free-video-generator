@@ -49,6 +49,38 @@
       "commit_sha": "d57596d998c926272d8996a84526a84a43ec1516",
       "size_bytes": 111601,
       "sha256": "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+    },
+    {
+      "category": "character_reference",
+      "asset_id": "char.stepa.master",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/stepa_turnaround_draft_20261013.jpg",
+      "destination": "assets/references/drafts/char.stepa.master.jpg",
+      "commit_sha": "e854d393dccdc740334100d6a9b5f8681ea1a27b",
+      "size_bytes": 283490,
+      "sha256": "d04334c779718ae405c795f1fda1cf5dfdcdf83d0ffa1aa09b68664bb1fa870d",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 1774,
+        "height": 887
+      }
+    },
+    {
+      "category": "environment",
+      "asset_id": "set.forest_gate",
+      "source_repository": "bjiow131/local-agent-mailbox",
+      "path": "private_assets/season1/generated/forest_gate_draft_20261013.jpg",
+      "destination": "assets/references/drafts/set.forest_gate.jpg",
+      "commit_sha": "e854d393dccdc740334100d6a9b5f8681ea1a27b",
+      "size_bytes": 607869,
+      "sha256": "cfb4a8416173e3f8899046a180410c99288a6d6b5cbc0bf7d26ea2657a8d7f51",
+      "review_status": "draft",
+      "revision": 1,
+      "dimensions": {
+        "width": 941,
+        "height": 1672
+      }
     }
   ],
   "unavailable_categories": [
