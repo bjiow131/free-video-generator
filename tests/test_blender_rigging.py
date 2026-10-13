@@ -5,6 +5,16 @@ import json
 from local_agent import blender_rigging as rigging
 
 
+def _write_supported_windows_executable(path: Path) -> None:
+    """Write the minimal AMD64 PE headers accepted by Blender path validation."""
+    image = bytearray(70)
+    image[:2] = b"MZ"
+    image[0x3C:0x40] = (64).to_bytes(4, "little")
+    image[64:68] = b"PE\0\0"
+    image[68:70] = (0x8664).to_bytes(2, "little")
+    path.write_bytes(image)
+
+
 def test_skeleton_requires_local_configuration(monkeypatch):
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
@@ -19,7 +29,7 @@ def test_skeleton_rejects_traversal_name():
 
 def test_skeleton_requires_existing_blockout(monkeypatch, tmp_path):
     blender = tmp_path / "blender.exe"
-    blender.write_text("placeholder")
+    _write_supported_windows_executable(blender)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     project = workspace / "mia"
@@ -33,7 +43,7 @@ def test_skeleton_requires_existing_blockout(monkeypatch, tmp_path):
 
 def test_skeleton_does_not_overwrite_existing_output(monkeypatch, tmp_path):
     blender = tmp_path / "blender.exe"
-    blender.write_text("placeholder")
+    _write_supported_windows_executable(blender)
     workspace = tmp_path / "workspace"
     project = workspace / "mia"
     project.mkdir(parents=True)
