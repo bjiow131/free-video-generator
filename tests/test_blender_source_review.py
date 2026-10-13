@@ -64,3 +64,17 @@ def test_source_adapt_script_parses_and_preserves_saved_geometry():
  assert 'face_tests' in r.SOURCE_ADAPT_SCRIPT
  assert 'Mia_APPROVED_REFERENCE' in r.SOURCE_ADAPT_SCRIPT
  assert 'bone_snap' in r.SOURCE_ADAPT_SCRIPT
+
+
+def test_recover_source_output_reads_existing_evidence_without_execution(monkeypatch,tmp_path):
+ monkeypatch.setenv('LOCAL_AGENT_WORKSPACE',str(tmp_path))
+ out=tmp_path/'SOURCE_ADAPTATIONS/pilot';out.mkdir(parents=True)
+ (out/'mia_spring_source_adapted.blend').write_bytes(b'preserved output')
+ tests={k:.03 for k in ('blink_max_delta','mouth_open_max_delta','head_pose_max_delta','arm_pose_max_delta','leg_pose_max_delta')}
+ (out/'adaptation_report.json').write_text(json.dumps({'stage':'source_geometry_pilot_needs_review','saved_geometry_reopened_verified':True,'face_tests':tests,'source_mesh_changes':[]}))
+ monkeypatch.setattr(r.subprocess,'run',lambda *a,**k:pytest.fail('must never rerun Blender'))
+ result=r.recover_source_adaptation_result('pilot','original-job')
+ assert result['recovered_existing_output'] is True and result['execution_repeated'] is False
+ assert result['identity_verified'] is False
+ assert result['status']=='completed'
+ assert (out/'mia_spring_source_adapted.blend').read_bytes()==b'preserved output'

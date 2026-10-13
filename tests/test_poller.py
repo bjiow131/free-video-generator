@@ -1505,3 +1505,25 @@ def test_season_asset_library_includes_unreferenced_local_drafts(monkeypatch, tm
         "image_url":"/api/asset-image/char.mia.master.luna_draft","review_status":"draft",
         "episodes":[],"scenes":[],
     }]
+
+
+def test_rich_source_result_is_compacted_without_losing_goal_state(tmp_path,monkeypatch):
+    from local_agent import poller
+    from local_agent.result_outbox import ResultOutbox
+    from local_agent.github_queue import MAX_RESULT_BYTES
+    import json
+    original={"task_id":"source-rich","status":"completed","local_report_path":"local/full.json",
+              "details":{"identity_verified":False,"production_ready":False,"goal_status":"mia_likeness_not_accepted",
+                         "blend_path":"local/mia.blend","thumbnail_jpeg_base64":{"front":"A"*12000,"face":"B"*12000,"side":"C"*25000,"back":"D"*25000},
+                         "source_mesh_changes":[{"name":"mesh"+str(i),"coordinates":"x"*2000}for i in range(40)]}}
+    summary=poller._bounded_result_summary(original)
+    assert len(json.dumps(summary,ensure_ascii=False,indent=2).encode())<MAX_RESULT_BYTES
+    assert summary["details"]["identity_verified"] is False
+    assert summary["local_report_path"]=="local/full.json"
+    assert len(original["details"]["source_mesh_changes"])==40
+    monkeypatch.setattr(poller,"_result_outbox",lambda:ResultOutbox(tmp_path))
+    class Client:
+        def publish_result(self,task_id,result):
+            assert result["result_compacted"] is True
+            return "commit"
+    assert poller._publish_result_durable(Client(),"source-rich",original)=="commit"

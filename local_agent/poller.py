@@ -992,9 +992,49 @@ def _result_outbox() -> ResultOutbox:
     return ResultOutbox(_ensure_agent_dir() / "pending_results")
 
 
+def _bounded_result_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Keep rich local evidence while fitting the existing mailbox byte limit."""
+    from local_agent.github_queue import MAX_RESULT_BYTES
+    import hashlib
+    limit = MAX_RESULT_BYTES - 2048
+    def size(value):
+        return len(json.dumps(_redact_value(value),ensure_ascii=False,indent=2).encode("utf-8"))
+    if size(result) <= limit:
+        return result
+    compact = json.loads(json.dumps(result,ensure_ascii=False))
+    omitted = []
+    details = compact.get("details")
+    if isinstance(details,dict):
+        thumbs=details.get("thumbnail_jpeg_base64")
+        if isinstance(thumbs,dict):
+            selected={}
+            for name in ("face","front"):
+                value=thumbs.get(name)
+                if isinstance(value,str) and len(value.encode("ascii",errors="ignore"))<=18000:
+                    selected[name]=value
+            details["thumbnail_jpeg_base64"]=selected
+            omitted.append("additional_or_oversized_thumbnails")
+        for field in ("meshes","source_mesh_changes","images","embedded_texts","thumbnail_jpeg_base64"):
+            if size(compact)<=limit:break
+            if field not in details:continue
+            value=details.pop(field)
+            details[field+"_item_count"]=len(value) if isinstance(value,(list,dict)) else 1
+            details[field+"_sha256"]=hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode("utf-8")).hexdigest()
+            omitted.append(field)
+    if size(compact)>limit:
+        # Local task report was written before this publication. Never replace
+        # its evidence or increase the remote size/security limit.
+        compact={k:result[k] for k in ("task_id","status","local_report_path","error_type","reason") if k in result}
+        compact["details"]={k:details[k] for k in ("stage","goal_status","identity_verified","production_ready","blend_path","report_path","source_unchanged","changed_mesh_count","saved_geometry_reopened_verified") if isinstance(details,dict) and k in details}
+        omitted.append("full_details_retained_locally")
+    compact["result_compacted"]=True
+    compact["compacted_fields"]=omitted
+    return compact
+
+
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
-    """Persist each result before publishing it; retain it if the network fails."""
-    return _result_outbox().publish(client, task_id, result)
+    """Persist each bounded result before publishing; retain it on network loss."""
+    return _result_outbox().publish(client, task_id, _bounded_result_summary(result))
 
 def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
@@ -1416,7 +1456,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "compile_story_plan", "scan_project_assets", "sync_approved_assets",
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
-    "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "export_mia_scene_review", "octava_advice",
+    "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "export_mia_scene_review", "octava_advice",
     "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
@@ -2664,6 +2704,9 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "blender_mia_source_recover":
+                from local_agent.blender_rigging import recover_source_adaptation_result
+                details = recover_source_adaptation_result(task.arguments["project_name"],task.arguments["source_task_id"])
             elif task.operation == "blender_mia_source_adapt":
                 from local_agent.blender_rigging import adapt_spring_source_to_mia
                 from local_agent.studio_jobs import begin_agent_task, finish_agent_task
@@ -2875,7 +2918,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
     if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"):
         label = str(task.operation).replace("_", " ")[:48]
-        if outcome == "completed":
+        if outcome == "completed" and task.operation in {"blender_mia_source_adapt","blender_mia_source_recover"}:
+            _telegram_signal("task-review", task.task_id,
+                             "Blender AI Agent: технический этап проверен. Внешность Мии ещё не принята; результат является черновиком.")
+        elif outcome == "completed":
             _telegram_signal("task-ok", task.task_id,
                              "Blender AI Agent: задача завершена. Тип: " + label)
         elif outcome in failed_outcomes:

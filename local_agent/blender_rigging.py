@@ -587,3 +587,47 @@ def adapt_spring_source_to_mia(project_name: str) -> dict[str, Any]:
         'installed_module_sha256':_spring_sha256(Path(__file__)),'blend_path':data['blend_path'],'report_path':str(report),'changed_mesh_count':changed,'source_mesh_changes':data['source_mesh_changes'],
         'saved_geometry_reopened_verified':True,'face_and_body_tests':tests,'reused_accessories':data.get('reused_accessories',[]),'thumbnail_jpeg_base64':thumbs,
         'astra':astra,'telegram_comparison':delivery,'limitations':data['limitations']}
+
+
+def recover_source_adaptation_result(project_name: str, source_task_id: str) -> dict[str, Any]:
+    """Read a saved source result after mailbox publication failed. Never rerun."""
+    if (not isinstance(project_name,str) or not PROJECT_RE.fullmatch(project_name)
+            or not isinstance(source_task_id,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}',source_task_id)):
+        return {'status':'rejected','reason':'invalid_source_recovery_identity'}
+    value=os.environ.get('LOCAL_AGENT_WORKSPACE','').strip()
+    if not value:return {'status':'blocked','reason':'workspace_missing'}
+    workspace=Path(value).expanduser().resolve();out=workspace/'SOURCE_ADAPTATIONS'/project_name
+    blend=out/'mia_spring_source_adapted.blend';report=out/'adaptation_report.json'
+    if any(is_link_or_junction(p) for k in (blend,report) for p in [k,*k.parents]):
+        return {'status':'rejected','reason':'unsafe_recovery_path'}
+    if not blend.is_file() or not report.is_file():
+        return {'status':'blocked','reason':'source_output_not_created','execution_repeated':False}
+    base=json.loads(report.read_text('utf-8'))
+    result=None;retained_report=None
+    folder=Path(__file__).resolve().parents[1]/'.local_agent/reports'
+    if folder.is_dir() and not is_link_or_junction(folder):
+        candidates=sorted((p for p in folder.glob('*.json') if not is_link_or_junction(p)),key=lambda p:p.stat().st_mtime,reverse=True)[:80]
+        for p in candidates:
+            if p.stat().st_size>2_000_000:continue
+            try:
+                data=json.loads(p.read_text('utf-8'));details=data.get('details',{})
+                candidate=details.get('result') if isinstance(details,dict) else None
+                if (isinstance(candidate,dict) and candidate.get('task_id')==source_task_id
+                        and candidate.get('details',{}).get('blend_path')==str(blend)):
+                    result=candidate['details'];retained_report=str(p);break
+            except (OSError,ValueError):continue
+    if result is None:
+        result={'status':'completed','stage':base.get('stage'),'blend_path':str(blend),
+                'source_mesh_changes':base.get('source_mesh_changes',[]),'face_and_body_tests':base.get('face_tests',{}),
+                'saved_geometry_reopened_verified':base.get('saved_geometry_reopened_verified',False),
+                'astra':{'status':'unknown'},'telegram_comparison':{'status':'unknown'},
+                'identity_verified':False,'production_ready':False}
+    result.update({'recovered_existing_output':True,'execution_repeated':False,
+        'original_task_id':source_task_id,'retained_full_task_report':retained_report,
+        'output_blend_sha256':_spring_sha256(blend),'report_path':str(report)})
+    # Validate recorded tests and saved bytes before reporting technical success.
+    tests=result.get('face_and_body_tests',{})
+    if (not result.get('saved_geometry_reopened_verified')
+            or any(tests.get(k,0)<=.002 for k in ('blink_max_delta','mouth_open_max_delta','head_pose_max_delta','arm_pose_max_delta','leg_pose_max_delta'))):
+        result['status']='failed';result['reason']='retained_source_qa_failed'
+    return result

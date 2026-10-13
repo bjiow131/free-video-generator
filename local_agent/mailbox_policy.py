@@ -26,7 +26,7 @@ READ_ONLY_OPERATIONS = frozenset({
 BLENDER_OPERATIONS = frozenset({
     'save_story_plan', 'blender_forest_preview',
     'blender_mia_blockout', 'blender_mia_skeleton',
-    'blender_mia_spring_rig_transfer', 'blender_source_review', 'blender_mia_source_adapt', 'export_mia_scene_review',
+    'blender_mia_spring_rig_transfer', 'blender_source_review', 'blender_mia_source_adapt', 'blender_mia_source_recover', 'export_mia_scene_review',
     'mia_model_review', 'mia_astra_review', 'mia_astra_pass_one', 'mia_identity_pass_two', 'mia_hair_identity_pass_three', 'mia_3d_reconstruction_preflight', 'mia_astra_autoloop_100', 'mia_astra_autoloop_100_v2', 'mia_astra_single_maxfix', 'mia_2p5d_prototype',
 })
 # Tests execute checked-out local project code. Require a separate checkbox.
