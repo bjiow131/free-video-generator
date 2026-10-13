@@ -3321,11 +3321,11 @@ def _supervisor_restart_delay(failures: int, runtime_seconds: float) -> float:
 
 
 def _supervisor_recovery_command(program: Path, root: Path) -> str:
-    """Make Task Scheduler startup independent of its default System32 directory."""
-    code = ("import os,runpy;os.chdir(" + repr(str(root)) + ");"
-            "runpy.run_module('local_agent.poller',run_name='__main__')")
-    return subprocess.list2cmdline([str(program), "-c", code, "--supervise"])
-
+    """Invoke the batch launcher, which sets its own working directory."""
+    launcher = root / "run_github_mailbox_agent.bat"
+    if not launcher.is_file():
+        raise RuntimeError("Mailbox supervisor launcher missing")
+    return subprocess.list2cmdline(["cmd.exe", "/d", "/c", str(launcher)])
 
 def _watchdog_classify(*, worker_alive: bool, studio_alive: bool,
                        heartbeat_age: float | None, task_claimed: bool,
