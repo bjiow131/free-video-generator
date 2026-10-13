@@ -1,0 +1,91 @@
+"""Regression tests: never deliver dozens of identical Mia frames to Telegram."""
+from __future__ import annotations
+
+import binascii
+import struct
+import zlib
+from pathlib import Path
+from types import SimpleNamespace
+
+from local_agent.mia_review_guard import (
+    _png_scanlines, find_recent_duplicate, front_difference,
+)
+from local_agent import studio_server as studio
+
+
+def png(color: tuple[int, int, int], *, note: bytes = b"") -> bytes:
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return (struct.pack(">I", len(payload)) + kind + payload
+                + struct.pack(">I", binascii.crc32(kind + payload) & 0xFFFFFFFF))
+    # Deliberately fixed real RGB PNG pixels; optional different metadata.
+    width, height = 32, 32
+    raw = b"".join(b"\x00" + bytes(color) * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n" +
+            chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) +
+            (chunk(b"tEXt", b"run\x00" + note) if note else b"") +
+            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def make_review(root: Path, name: str, color: tuple[int, int, int],
+                metadata: bytes = b"") -> Path:
+    folder = root / "MIA_REFERENCE_REVIEW" / name
+    folder.mkdir(parents=True)
+    for view in ("front", "three_quarter", "side", "back"):
+        (folder / (view + ".png")).write_bytes(png(color, note=metadata))
+    return folder
+
+
+def test_png_metadata_does_not_hide_identical_render(tmp_path):
+    a, b, c = [tmp_path / n for n in ("one.png", "two.png", "three.png")]
+    a.write_bytes(png((50, 130, 200), note=b"first-render"))
+    b.write_bytes(png((50, 130, 200), note=b"second-render"))
+    c.write_bytes(png((220, 30, 20)))
+    assert a.read_bytes() != b.read_bytes()
+    assert _png_scanlines(a) is not None
+    assert front_difference(a, b)["reason"] == "identical_decoded_png"
+    assert front_difference(a, b)["duplicate"] is True
+    assert front_difference(a, c)["duplicate"] is False
+
+
+def test_invalid_or_oversized_png_is_not_treated_as_duplicate(tmp_path):
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    a.write_bytes(b"\x89PNG\r\n\x1a\n" + b"broken" * 50)
+    b.write_bytes(png((1, 2, 3)))
+    assert front_difference(a, b) is None
+
+
+def test_find_duplicate_for_separate_review_jobs(tmp_path):
+    prior = make_review(tmp_path, "review_1", (100, 45, 30), b"old")
+    current = make_review(tmp_path, "review_2", (100, 45, 30), b"new")
+    match = find_recent_duplicate(tmp_path / "MIA_REFERENCE_REVIEW", current)
+    assert match is not None
+    assert match["matched_review"] == prior.name
+    assert match["duplicate"] is True
+
+
+def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path):
+    original = make_review(tmp_path, "model_first", (90, 80, 70), b"initial")
+    repeat = make_review(tmp_path, "model_again", (90, 80, 70), b"rerender")
+    monkeypatch.setattr(studio, "_telegram_credentials",
+                        lambda: ("123456:" + "A" * 32, "12345"))
+    monkeypatch.setattr(studio, "telegram_notifications_enabled", lambda: True)
+    monkeypatch.setattr(studio, "telegram_transport_settings",
+                        lambda: {"use_relay": False})
+    posted = []
+    def post(*args, **kwargs):
+        posted.append(kwargs["files"]["photo"][0])
+        return SimpleNamespace(status_code=200,
+                               headers={"Content-Type": "application/json"},
+                               json=lambda: {"ok": True})
+    import requests
+    monkeypatch.setattr(requests, "post", post)
+    result = studio.telegram_send_mia_review_photos(tmp_path, "model_first")
+    assert result["status"] == "delivered"
+    assert len(posted) == 4
+    result2 = studio.telegram_send_mia_review_photos(tmp_path, "model_again")
+    assert result2["status"] == "suppressed_duplicate"
+    assert result2["duplicate_of"] == "model_first"
+    assert len(posted) == 4
+    assert studio.telegram_send_mia_review_photos(tmp_path, "model_first")["status"] == "already_delivered"
+    assert (original / "front.png").is_file()
+    assert (repeat / "front.png").is_file()
