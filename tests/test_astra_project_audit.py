@@ -67,6 +67,16 @@ def test_policy_blocks_before_io(ns):
     ns['load_policy']=lambda:{'allow_octava':False}
     assert ns['_run_astra_project_audit'](None,'id')['status']=='blocked'
 
+def test_symlinked_reports_directory_is_rejected_before_network(ns,tmp_path,monkeypatch):
+    agent_root=tmp_path/'state';agent_root.mkdir()
+    reports=agent_root/'reports'
+    monkeypatch.setattr(Path,'is_symlink',lambda path:path==reports)
+    ns.update(load_policy=lambda:{'allow_octava':True},
+              _ensure_agent_dir=lambda:agent_root)
+    result=ns['_run_astra_project_audit'](None,'audit-id')
+    assert result=={'status':'blocked','reason':'unsafe_audit_report_directory'}
+    assert not (reports/'audit-id').exists()
+
 def test_full_request_loop(ns,tmp_path,monkeypatch):
     import base64,sys,urllib.request
     root=tmp_path/'source';root.mkdir();(root/'app.py').write_text('print(1)')
