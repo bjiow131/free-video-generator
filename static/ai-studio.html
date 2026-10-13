@@ -333,7 +333,7 @@ function escapeHtml(v){return String(v??'').replace(/[<>&"']/g,c=>({'<':'&lt;','
 function toast(t){$('#toast').textContent=t;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),2500)}
 function show(page,persist=true){const section=document.getElementById(page);if(!section)return;document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));section.classList.add('active');document.querySelectorAll('.nav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));if(persist){try{localStorage.setItem('aistudio_page',page)}catch(e){}}if(page==='history')loadHistory();window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',function(e){e.preventDefault();show(this.dataset.page)}));$$('.card[data-page]').forEach(b=>b.onclick=()=>show(b.dataset.page));
-async function api(path,opt={}){let r=await fetch(path,opt);if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>{if(!x)return '';const loc=Array.isArray(x.loc)?x.loc.join('.'):x.loc;const msg=x.msg||x.detail||JSON.stringify(x);return loc?loc+': '+msg:msg}).filter(Boolean).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
+async function api(path,opt={},retryAuth=true){let r=await fetch(path,{...opt,credentials:'same-origin'});if(r.status===401&&retryAuth&&!path.startsWith('/api/auth/')){const token=prompt('Введите пароль доступа к Studio');if(!token)throw Error('Вход отменён');const login=await fetch('/api/auth/session',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!login.ok){const d=await login.json().catch(()=>({}));throw Error(d.detail||'Не удалось войти в Studio')}return api(path,opt,false)}if(!r.ok){let d=await r.json().catch(()=>({}));let detail=d?.detail;if(Array.isArray(detail))detail=detail.map(x=>{if(!x)return '';const loc=Array.isArray(x.loc)?x.loc.join('.'):x.loc;const msg=x.msg||x.detail||JSON.stringify(x);return loc?loc+': '+msg:msg}).filter(Boolean).join('; ');else if(detail&&typeof detail==='object')detail=detail.message||detail.detail||JSON.stringify(detail);throw Error(String(detail||'Ошибка сервера'));}return r}
 async function refreshSettings(){
   const source=$('#settingsSource'),input=$('#settingsApiKey'),save=$('#settingsSave'),help=$('#settingsHelp'),result=$('#settingsResult');
   source.textContent='Проверяем настройки…';result.textContent='';
@@ -592,7 +592,7 @@ async function openSaveModal(taskId,type='image'){
   $('#saveContinue').textContent='Загрузка…'; saveFileBlob=null;
   try{
     const endpoint=type==='video'?'/api/video/':'/api/image/';
-    const response=await fetch(endpoint+encodeURIComponent(taskId),{cache:'no-store'});
+    const response=await api(endpoint+encodeURIComponent(taskId),{cache:'no-store'});
     if(!response.ok)throw Error('Не удалось получить '+(type==='video'?'видео':'изображение'));
     saveFileBlob=await response.blob();
     if(!saveFileBlob.size)throw Error('Получен пустой файл');
@@ -1303,13 +1303,18 @@ function historyCard(x){
   const type=x.task_type==='image'?'Изображение':'Видео';
   const ready=x.status==='completed'&&x.task_id;
   const failed=x.status==='failed';
+  const statusLabel=escapeHtml(x.status);
   const pct=Math.max(0,Math.min(100,Number(x.progress||0)));
   const statusText=ready?'Готово':failed?'Ошибка':(x.progress_message||'Подготовка');
-  const action=ready?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" onclick="openResult(\''+x.task_id+'\',\''+(x.task_type==='image'?'image':'video')+'\')">Открыть результат</button><a class="ghost" href="'+(x.task_type==='image'?'/api/image/':'/api/video/')+encodeURIComponent(x.task_id)+'/download" download="'+(x.task_type==='image'?'ai-studio.png':'ai-studio-video.mp4')+'" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a></div>':'';
+  const action=ready?'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="ghost" type="button" data-open-result="'+escapeHtml(x.task_id)+'" data-result-type="'+(x.task_type==='image'?'image':'video')+'" title="Состояние: '+statusLabel+'">Открыть результат</button><a class="ghost" href="'+(x.task_type==='image'?'/api/image/':'/api/video/')+encodeURIComponent(x.task_id)+'/download" download="'+(x.task_type==='image'?'ai-studio.png':'ai-studio-video.mp4')+'" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a></div>':'';
   const progress=(!ready&&!failed)?'<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#6d7168"><b>'+pct.toFixed(0)+'%</b><span>'+escapeHtml(formatEta(x.eta_seconds))+'</span></div><div style="height:7px;margin-top:7px;border-radius:99px;background:#e7e3d9;overflow:hidden"><i style="display:block;height:100%;width:'+pct+'%;background:#55755d;border-radius:99px;transition:width .4s ease"></i></div><div style="margin-top:7px;font-size:11px;color:#8a8e85">'+escapeHtml(statusText)+'</div></div>':'<span class="tag">'+escapeHtml(statusText)+'</span>';
   const providerId=x.video_id?'<p style="overflow-wrap:anywhere;font-size:12px;color:#8a8e85">ID Agnes: '+escapeHtml(x.video_id)+'</p>':'';
   return '<div class="card"><b>'+escapeHtml(type+' · '+(x.creative_name||x.task_id))+'</b><p>Задача '+escapeHtml(x.task_id||'ID отсутствует')+'</p>'+providerId+progress+action+'</div>';
 }
+$('#historyList').addEventListener('click',event=>{
+  const button=event.target.closest('button[data-open-result]');
+  if(button)openResult(button.dataset.openResult,button.dataset.resultType);
+});
 async function loadHistory(){
   try{
     let r=await api('/api/tasks');let d=await r.json();

@@ -30,7 +30,7 @@ jobs:
       - name: Import FastAPI app
         run: python -c "from server import app; print(app.title)"
       - name: Install test runner
-        run: pip install pytest
+        run: pip install pytest httpx
       - name: Run unit tests
         run: python -m pytest -q tests
       - name: Build Docker image

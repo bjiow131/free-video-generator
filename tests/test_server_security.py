@@ -3,6 +3,7 @@ from io import BytesIO
 
 import pytest
 import time
+from fastapi.testclient import TestClient
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 import server
@@ -110,6 +111,66 @@ def test_configured_host_normalization():
     assert server._normalize_configured_host("https://example.com/") == "example.com"
     assert server._normalize_configured_host("http://example.com:8443/path") == "example.com:8443"
     assert server._normalize_configured_host("") == ""
+
+
+def test_remote_studio_api_requires_token_and_http_only_session(tmp_path, monkeypatch):
+    token = "studio-test-token-" + "x" * 40
+    monkeypatch.setenv("HOST", "0.0.0.0")
+    monkeypatch.setenv("RENDER_EXTERNAL_HOSTNAME", "studio.example")
+    monkeypatch.setenv("STUDIO_ACCESS_TOKEN", token)
+    monkeypatch.setattr(server, "get_working_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(server, "_rebuild_task_dir_cache", lambda: None)
+
+    with TestClient(server.app, base_url="https://localhost") as client:
+        assert client.get("/api/tasks").status_code == 401
+        assert client.post("/api/auth/session", json={"token": "wrong"}).status_code == 401
+
+        login = client.post("/api/auth/session", json={"token": token})
+        assert login.status_code == 200
+        cookie = login.headers["set-cookie"].lower()
+        assert "httponly" in cookie
+        assert "secure" in cookie
+        assert "samesite=strict" in cookie
+        assert client.get("/api/tasks").status_code == 200
+
+        # Health probes remain available; short-lived provider image links are
+        # their own capability URLs and must not require a Studio session.
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert "api_key_configured" not in health.json()
+        assert client.get("/api/provider-image/not-registered").status_code == 404
+
+        client.post("/api/auth/logout")
+        assert client.get("/api/tasks").status_code == 401
+
+
+def test_remote_studio_fails_closed_without_access_token(monkeypatch):
+    monkeypatch.setenv("HOST", "0.0.0.0")
+    monkeypatch.delenv("STUDIO_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("RENDER_EXTERNAL_HOSTNAME", raising=False)
+    monkeypatch.delenv("PUBLIC_HOST", raising=False)
+
+    with TestClient(server.app) as client:
+        response = client.get("/api/tasks")
+        assert response.status_code == 503
+        assert "STUDIO_ACCESS_TOKEN" in response.json()["detail"]
+
+
+def test_local_studio_mode_does_not_require_access_token(monkeypatch):
+    monkeypatch.setenv("HOST", "127.0.0.1")
+    monkeypatch.delenv("STUDIO_AUTH_REQUIRED", raising=False)
+    monkeypatch.delenv("STUDIO_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("RENDER_EXTERNAL_HOSTNAME", raising=False)
+    monkeypatch.delenv("PUBLIC_HOST", raising=False)
+    with TestClient(server.app) as client:
+        assert client.get("/api/tasks").status_code == 200
+
+
+def test_studio_ui_uses_cookie_auth_for_api_and_file_downloads():
+    html = open("static/ai-studio.html", encoding="utf-8").read()
+    assert "prompt('Введите пароль доступа к Studio')" in html
+    assert "credentials:'same-origin'" in html
+    assert "await fetch(endpoint+encodeURIComponent(taskId)" not in html
 
 
 @pytest.mark.asyncio

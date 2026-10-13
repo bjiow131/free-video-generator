@@ -13,6 +13,7 @@ resume 端点根据 task_type 自动选择对应的 Pipeline。
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -166,9 +167,9 @@ def _parse_bg_color(raw: str) -> tuple:
         except ValueError as exc:
             raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100") from exc
         if 0 <= alpha <= 1:
-            alpha_value = int(alpha * 255)
+            alpha_value = round(alpha * 255)
         elif 0 <= alpha <= 100:
-            alpha_value = int(alpha / 100 * 255)
+            alpha_value = round(alpha / 100 * 255)
         else:
             raise ValueError("Прозрачность должна быть числом от 0 до 1 или от 0 до 100")
         return (*rgb, alpha_value)
@@ -373,6 +374,36 @@ def _origin_matches_host(origin: str, host: str) -> bool:
     except ValueError:
         return False
 
+def _studio_auth_required() -> bool:
+    """Require browser authentication whenever the service is reachable remotely."""
+    if os.environ.get("STUDIO_AUTH_REQUIRED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    if os.environ.get("RENDER_EXTERNAL_HOSTNAME") or os.environ.get("PUBLIC_HOST"):
+        return True
+    host = os.environ.get("HOST", "127.0.0.1").strip().lower()
+    return host not in {"", "localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _studio_access_token() -> str:
+    return os.environ.get("STUDIO_ACCESS_TOKEN", "")
+
+
+def _studio_auth_configured() -> bool:
+    return len(_studio_access_token()) >= 32
+
+
+def _studio_credentials_valid(headers, cookies) -> bool:
+    """Accept the configured token from an HttpOnly session cookie or Bearer header."""
+    expected = _studio_access_token()
+    if len(expected) < 32:
+        return False
+    supplied = cookies.get("studio_session", "")
+    authorization = headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        supplied = authorization[7:].strip()
+    return bool(supplied) and hmac.compare_digest(supplied, expected)
+
+
 @app.middleware("http")
 async def local_origin_guard(request: Request, call_next):
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -382,7 +413,54 @@ async def local_origin_guard(request: Request, call_next):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый адрес сервера"})
         if not _origin_matches_host(origin, host):
             return JSONResponse(status_code=403, content={"detail": "Недопустимый источник запроса"})
+    if request.url.path.startswith("/api/"):
+        # The provider image URL is a short-lived, random capability generated
+        # for an external provider and must remain fetchable without a browser cookie.
+        auth_exempt = request.url.path == "/api/auth/session" or request.url.path == "/api/auth/logout"
+        provider_image = request.url.path.startswith("/api/provider-image/")
+        if _studio_auth_required() and not (auth_exempt or provider_image):
+            if not _studio_auth_configured():
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Studio закрыта: задайте STUDIO_ACCESS_TOKEN длиной не менее 32 символов"},
+                )
+            if not _studio_credentials_valid(request.headers, request.cookies):
+                return JSONResponse(status_code=401, content={"detail": "Требуется вход в Studio"})
     return await call_next(request)
+
+
+@app.post("/api/auth/session")
+async def create_studio_session(request: Request):
+    """Exchange a deployment token for a time-limited HttpOnly browser cookie."""
+    if not _studio_auth_required():
+        return {"ok": True, "auth_required": False}
+    if not _studio_auth_configured():
+        raise HTTPException(status_code=503, detail="STUDIO_ACCESS_TOKEN должен содержать не менее 32 символов")
+    try:
+        payload = await request.json()
+        supplied = str(payload.get("token", "")) if isinstance(payload, dict) else ""
+    except (ValueError, TypeError):
+        supplied = ""
+    if not supplied or not hmac.compare_digest(supplied, _studio_access_token()):
+        raise HTTPException(status_code=401, detail="Неверный пароль Studio")
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        "studio_session",
+        _studio_access_token(),
+        max_age=12 * 60 * 60,
+        httponly=True,
+        secure=bool(os.environ.get("RENDER_EXTERNAL_HOSTNAME")) or request.url.scheme == "https",
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+async def delete_studio_session():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie("studio_session", path="/", httponly=True, samesite="strict")
+    return response
 
 def get_upload_dir() -> str:
     """返回当前激活工作目录下的 uploads 子目录。"""
@@ -531,6 +609,13 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
     if not _origin_matches_host(origin, host):
         await websocket.close(code=1008, reason="Недопустимый источник запроса")
         return
+    if _studio_auth_required():
+        if not _studio_auth_configured():
+            await websocket.close(code=1011, reason="Studio auth is not configured")
+            return
+        if not _studio_credentials_valid(websocket.headers, websocket.cookies):
+            await websocket.close(code=4401, reason="Требуется вход в Studio")
+            return
     await websocket.accept()
     logger.info(f"[WS] Client connected for task {task_id}")
 
@@ -581,13 +666,17 @@ async def health():
                 ffmpeg_version = match.group(1) if match else first_line[0]
         except (OSError, subprocess.TimeoutExpired) as e:
             logger.warning("[Health] FFmpeg version check failed: %s", e, exc_info=True)
-    return {
+    result = {
         "ok": True,
         "service": "AI Studio API",
         "ffmpeg": bool(ffmpeg_path),
         "ffmpeg_version": ffmpeg_version,
-        "api_key_configured": bool(get_api_key()),
     }
+    # Render health checks remain public, but do not disclose application
+    # configuration details from a remotely reachable service.
+    if not _studio_auth_required():
+        result["api_key_configured"] = bool(get_api_key())
+    return result
 
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
