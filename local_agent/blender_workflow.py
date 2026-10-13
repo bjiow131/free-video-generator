@@ -2332,14 +2332,14 @@ def _mia_v2_prepare_references(workspace: Path, canonical: Path, folder: Path) -
     return result
 
 def _mia_v2_request(key: str, refs: dict[str, Path], views: dict[str, Path],
-                    cycle: int, previous: dict[str, Any]) -> dict[str, Any]:
+                    cycle: int, previous: dict[str, Any], *, single_pass: bool = False) -> dict[str, Any]:
     """Send exactly five clean approved crops plus current front, side, back."""
     import base64
     from urllib.request import Request, urlopen
-    content=[{"type":"text","text":("Cycle %d/100. Previous edits: %s. "
+    content=[{"type":"text","text":("Cycle %d/%d. Previous edits: %s. "
        "Previous visual outcome: %s. Compare ORIGINAL approved visual identity "
        "against the THREE new renders; produce meaningful MULTI-EDIT JSON."
-       % (cycle,json.dumps(previous.get("last_commands",[]),ensure_ascii=False)[:1500],
+       % (cycle,1 if single_pass else 100,json.dumps(previous.get("last_commands",[]),ensure_ascii=False)[:1500],
           previous.get("last_change","first_cycle")))}]
     for path in [refs[x] for x in ("mia_turnaround_clean.png","mia_head_front.png",
                                   "mia_head_side.png","mia_head_back_hair.png",
@@ -2350,8 +2350,18 @@ def _mia_v2_request(key: str, refs: dict[str, Path], views: dict[str, Path],
         mime="image/png"
         content.append({"type":"image_url","image_url":{"url":"data:"+mime+";base64,"+
                         base64.b64encode(data).decode("ascii"),"detail":"high"}})
+    system_prompt = _MIA_V2_PROMPT
+    if single_pass:
+        system_prompt = system_prompt.replace("up to 100 successful cycles",
+            "exactly ONE successful cycle") + (
+            "\nSINGLE PASS MAXIMUM FIDELITY: This is the only opportunity to propose "
+            "corrections. Analyze all approved references and all current views. "
+            "Return the largest justified coordinated set of safe changes across "
+            "every mismatched supported target, not just a few small adjustments. "
+            "Keep Mia's original identity, proportions and outfit. Do not propose "
+            "unsupported edits or needless changes. No second cycle will run.\n")
     payload=json.dumps({"model":"gpt-6-astra","messages":[
-        {"role":"system","content":_MIA_V2_PROMPT},
+        {"role":"system","content":system_prompt},
         {"role":"user","content":content}],
         "max_tokens":4000,"temperature":0.2},ensure_ascii=False).encode("utf-8")
     if len(payload)>25_000_000:
@@ -2505,7 +2515,7 @@ def _mia_v2_similarity(before: Path, after: Path) -> tuple[bool,str]:
     return score<0.9994,"ssim_"+format(score,".6f")
 
 
-def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
+def run_mia_astra_autoloop_100_v2(*, task_id: str, single_pass: bool = False) -> dict[str, Any]:
     """100 sequential local attempts; one FRONT for owner, no interim Mailbox.
 
     Stop safely if the output is identical, too weak for repeated attempts,
@@ -2536,6 +2546,12 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
     workspace=Path(w).expanduser().resolve()
     root=workspace/"MIA_REFERENCE_REVIEW"
     parent=root/_MIA_V2_SOURCE
+    if single_pass:
+        continuation=root/"MIA_AUTOLOOP_V2_mia-astra-loop100-v2-20261012T235752506Z"/"cycle_003"
+        if (not is_link_or_junction(continuation) and continuation.is_dir()
+            and (continuation/"mia_reference_model.blend").is_file()
+            and all((continuation/(v+".png")).is_file() for v in ("front","side","back"))):
+            parent=continuation
     original=workspace/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
     job=root/("MIA_AUTOLOOP_V2_"+task_id)
     ref_folder=job/"approved_reference_crops"
@@ -2575,7 +2591,20 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
         temporary=job/"checkpoint.tmp"
         temporary.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding="utf-8")
         os.replace(temporary,checkpoint)
-    for cycle in range(int(state["next_cycle"]),101):
+    if single_pass and int(state["completed_cycles"]) >= 1:
+        return {"status":"completed","reason":"already_completed_no_replay",
+                "completed_cycles":1,"checkpoint":str(checkpoint)}
+    def send_bot_report(message: str) -> str:
+        if not single_pass:
+            return "not_requested"
+        try:
+            from local_agent.studio_server import _telegram_call
+            result=_telegram_call(token,"sendMessage",
+                {"chat_id":chat,"text":message[:1400]},timeout=10)
+            return "delivered" if result.get("ok") is True else "failed"
+        except (OSError,ValueError,RuntimeError,TypeError):
+            return "failed"
+    for cycle in range(int(state["next_cycle"]),2 if single_pass else 101):
         if _agent_cancel_requested(task_id):
             return {"status":"cancelled","completed_cycles":state["completed_cycles"],
                     "checkpoint":str(checkpoint)}
@@ -2589,10 +2618,13 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
             return {"status":"incomplete","reason":"previous_blend_or_views_missing",
                     "completed_cycles":state["completed_cycles"],"checkpoint":str(checkpoint)}
         try:
-            response=_mia_v2_request(key,refs,before,cycle,state)
+            response=_mia_v2_request(key,refs,before,cycle,state,single_pass=single_pass)
         except (HTTPError,URLError,OSError,TimeoutError,ValueError,IndexError,
                 KeyError,TypeError,BlenderWorkflowError) as exc:
+            bot_status=send_bot_report("Мия / Астра: запрос не выполнен, "
+                "ошибка мультимодального API: "+type(exc).__name__)
             return {"status":"incomplete","reason":"astra_multimodal_request_failed",
+                    "telegram_report_status":bot_status,
                     "error_type":type(exc).__name__,"completed_cycles":state["completed_cycles"],
                     "checkpoint":str(checkpoint)}
         folder=job/("cycle_%03d"%cycle)
@@ -2668,7 +2700,10 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
         except (OSError,requests.RequestException,ValueError,TypeError):
             delivered=False
         if not delivered:
+            bot_status=send_bot_report("Мия / Астра: Blender исправлен, "
+                "но фото не доставлено в Telegram. "+str(new_front))
             return {"status":"incomplete","reason":"telegram_photo_not_delivered",
+                    "telegram_report_status":bot_status,
                     "completed_cycles":state["completed_cycles"],
                     "front_saved_locally":str(new_front),"checkpoint":str(checkpoint)}
         (folder/"telegram_delivery.json").write_text(
@@ -2681,6 +2716,30 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str) -> dict[str, Any]:
         state["last_commands"]=response["commands"][-32:]
         state["subjective_scores"].append(response["score"])
         persist()
+        if single_pass:
+            applied=details.get("commands",[])
+            applied_count=sum(1 for item in applied if item.get("modified_elements",0)>0)
+            msg=("Мия / Астра: 1 проход завершён. Запрошено правок: %s. "
+                 "Применено: %s. Изменено элементов: %s. "
+                 "Оценка ДО правок: %s/100 (субъективная). "
+                 "SSIM/изменение: %s. Оригинальный референс проверен. "
+                 "Модель ещё не утверждена." % (len(response["commands"]),
+                     applied_count,details["total_modified_elements"],
+                     response["score"],metric))
+            bot_status=send_bot_report(msg)
+            return {"status":"completed","completed_cycles":1,
+                    "requested_corrections":len(response["commands"]),
+                    "applied_corrections":applied_count,
+                    "modified_elements":details["total_modified_elements"],
+                    "subjective_before_score":response["score"],
+                    "render_change_metric":metric,
+                    "reference_sha256":_MIA_V2_REF_SHA,
+                    "before_front_sha256":hashlib.sha256(before["front"].read_bytes()).hexdigest(),
+                    "after_front_sha256":hashlib.sha256(new_front.read_bytes()).hexdigest(),
+                    "source_blend":str(model),"updated_blend":str(new_blend),
+                    "final_front":str(new_front),"telegram_photo_delivered":True,
+                    "telegram_report_status":bot_status,
+                    "user_identity_approved":False,"checkpoint":str(checkpoint)}
     return {"status":"completed","cycles_completed":100,"front_photos_delivered":100,
             "model_folder":str(job),"last_model":str(job/"cycle_100/mia_reference_model.blend"),
             "reference_sha256":_MIA_V2_REF_SHA,"original_model_preserved":True,
