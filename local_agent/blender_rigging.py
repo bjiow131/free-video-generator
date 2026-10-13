@@ -5,6 +5,7 @@ Creates a separate .blend output with rigid per-part proxy weights; not producti
 from __future__ import annotations
 from local_agent.path_names import path_identifier_pattern, is_link_or_junction
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -304,15 +305,21 @@ def transfer_spring_rig_to_mia(project_name: str) -> dict[str, Any]:
     if not isinstance(project_name,str) or not SPRING_TRANSFER_PROJECT_RE.fullmatch(project_name): return {"status":"rejected","reason":"invalid_project_name"}
     exe=os.environ.get("BLENDER_EXECUTABLE","").strip(); root=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
     if not exe or not root: return {"status":"blocked","reason":"local_blender_or_workspace_not_configured"}
-    blender=Path(exe).expanduser().resolve(); workspace=Path(root).expanduser().resolve()
+    blender=find_blender_executable(); workspace=Path(root).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project=(workspace/"MIA_REFERENCE_REVIEW"/project_name).resolve()
-    if not project.is_relative_to(workspace) or project==workspace or project.is_symlink(): return {"status":"rejected","reason":"unsafe_project_path"}
+    if os.name=="nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender): return {"status":"blocked","reason":"blender_executable_not_supported_64_bit_windows"}
+    project=workspace/"MIA_REFERENCE_REVIEW"/project_name
+    if any(is_link_or_junction(p) for p in (project,project.parent,project.parent.parent)): return {"status":"rejected","reason":"unsafe_project_path"}
+    project=project.resolve()
+    if not project.is_relative_to(workspace) or project==workspace: return {"status":"rejected","reason":"unsafe_project_path"}
     source_mia=project/"mia_reference_model.blend"; output=project/"mia_reference_model_spring_rig.blend"; report=project/"spring_rig_transfer_result.json"
+    if any(is_link_or_junction(p) for p in (source_mia,output,report)): return {"status":"rejected","reason":"unsafe_project_file"}
     if not source_mia.is_file(): return {"status":"blocked","reason":"mia_reference_model_missing"}
     if output.exists() or report.exists(): return {"status":"blocked","reason":"output_exists_no_overwrite"}
     cache=workspace/".local_agent"/"cache"/"spring-rig-source-v1"; cache.mkdir(parents=True,exist_ok=True)
+    if is_link_or_junction(cache): return {"status":"rejected","reason":"unsafe_cache_path"}
     archive=cache/"spring-source.zip"; source=cache/"spring"/"spring"/"spring.blend"
+    if is_link_or_junction(archive) or is_link_or_junction(source): return {"status":"rejected","reason":"unsafe_cache_file"}
     if not source.is_file() or _spring_sha256(source)!=SPRING_TRANSFER_BLEND_SHA256:
         if not archive.is_file() or _spring_sha256(archive)!=SPRING_TRANSFER_ARCHIVE_SHA256:
             try:
@@ -346,7 +353,9 @@ def transfer_spring_rig_to_mia(project_name: str) -> dict[str, Any]:
     try:
         with tempfile.TemporaryDirectory(prefix=".spring-rig-",dir=project) as td:
             script=Path(td)/"transfer.py"; script.write_text(SPRING_TRANSFER_SCRIPT,encoding="utf-8")
-            proc=subprocess.run([str(blender),"--disable-autoexec","--background","--factory-startup","--python-exit-code","1","--python",str(script),"--",str(source),str(output),str(report)],cwd=str(project),capture_output=True,text=True,timeout=14400,check=False,shell=False)
+            dismissed_dialogs=[]
+            with watch_unsupported_blender_dialogs(blender,dismissed_dialogs):
+                proc=subprocess.run([str(blender),"--disable-autoexec","--background","--factory-startup","--python-exit-code","1","--python",str(script),"--",str(source),str(output),str(report)],cwd=str(project),capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=14400,check=False,shell=False)
     except subprocess.TimeoutExpired: return {"status":"timeout","reason":"transfer_exceeded_4_hours"}
     except OSError as exc: return {"status":"error","error_type":type(exc).__name__}
     if proc.returncode or not output.is_file() or not report.is_file(): return {"status":"failed","reason":"blender_transfer_failed","return_code":proc.returncode,"stderr_tail":(proc.stderr or "")[-2500:]}
