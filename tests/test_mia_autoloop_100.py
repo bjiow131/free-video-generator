@@ -120,6 +120,25 @@ def test_complete_100_cycles_deliver_one_front_each_and_no_intermediate_mailbox(
     assert json.loads((root/"checkpoint.json").read_text())["completed_cycles"]==100
 
 
+def test_telegram_photo_timeout_is_not_retried_to_avoid_duplicates(tmp_path):
+    import requests
+    calls=[]
+    def timeout_after_possible_delivery(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise requests.exceptions.ReadTimeout("response lost after upload")
+    fake_requests=SimpleNamespace(
+        post=timeout_after_possible_delivery, exceptions=requests.exceptions
+    )
+    image=tmp_path/"front.png"
+    image.write_bytes(b"\\x89PNG\\r\\n\\x1a\\nframe")
+    delivered,reason=wf._send_mia_autoloop_front_once(
+        fake_requests,token="token",chat="chat",image_path=image,cycle=1
+    )
+    assert delivered is None
+    assert reason=="telegram_delivery_outcome_unknown"
+    assert len(calls)==1
+
+
 def test_fails_closed_without_credentials_or_canonical_model(monkeypatch,tmp_path):
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     from local_agent import mailbox_policy
