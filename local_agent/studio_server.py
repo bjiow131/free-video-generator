@@ -344,7 +344,98 @@ def list_season_asset_library(store: StudioStore) -> dict:
             for scene in episode["scenes"]:
                 if asset_id in scene["asset_ids"]:
                     current["scenes"].append(scene["scene_id"])
+    try:
+        from local_agent.asset_registry import read_asset_registry
+        registered = read_asset_registry(store.root, store.project)
+    except (ImportError, OSError, ValueError, TypeError):
+        registered = {}
+    for asset_id, item in registered.items():
+        relative = str(item.get("path", "")).replace("\\", "/")
+        if (asset_id in assets or not relative.startswith("assets/references/drafts/")
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", asset_id)):
+            continue
+        category = asset_id.split(".", 1)[0]
+        assets[asset_id] = {
+            "asset_id": asset_id,
+            "category": {"char": "characters", "set": "environments",
+                         "prop": "props", "fx": "effects"}.get(category, "other"),
+            "status": "draft",
+            "image_url": "/api/asset-image/" + asset_id,
+            "review_status": "draft",
+            "episodes": [],
+            "scenes": [],
+        }
     return {"assets": sorted(assets.values(), key=lambda item: (item["category"], item["asset_id"]))}
+
+
+def save_season_asset_draft(store: StudioStore, asset_id: str, raw: bytes,
+                            extension: str) -> dict:
+    """Save one validated generated reference as a non-overwriting local draft."""
+    from local_agent.asset_registry import (
+        AssetRegistryError, read_asset_registry, scan_project_assets,
+    )
+    if asset_id != "char.mia.master.luna_draft":
+        raise StudioError("Only the fixed Luna Mia draft asset ID is allowed")
+    if extension != "png" or not isinstance(raw, bytes) or not 0 < len(raw) <= 15_000_000:
+        raise StudioError("Generated draft must be a PNG no larger than 15 MB")
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise StudioError("Generated draft PNG signature is invalid")
+    import struct
+    import zlib
+    if (len(raw) < 45 or raw[8:12] != b"\x00\x00\x00\x0d"
+            or raw[12:16] != b"IHDR" or b"IDAT" not in raw[33:-12]
+            or raw[-12:-8] != b"\x00\x00\x00\x00" or raw[-8:-4] != b"IEND"):
+        raise StudioError("Generated draft PNG structure is invalid")
+    width, height = struct.unpack(">II", raw[16:24])
+    if (width, height) != (1024, 1024):
+        raise StudioError("Generated draft must be exactly 1024x1024 pixels")
+    if (zlib.crc32(raw[12:29]) & 0xffffffff) != int.from_bytes(raw[29:33], "big"):
+        raise StudioError("Generated draft PNG header checksum is invalid")
+    if (zlib.crc32(b"IEND") & 0xffffffff) != int.from_bytes(raw[-4:], "big"):
+        raise StudioError("Generated draft PNG ending checksum is invalid")
+    workspace = Path(store.workspace).expanduser().resolve()
+    project = workspace / store.project
+    if (project.is_symlink() or getattr(project, "is_junction", lambda: False)()
+            or not project.is_dir() or not project.resolve().is_relative_to(workspace)):
+        raise StudioError("Project directory is unsafe")
+    assets_root = project / "assets"
+    for folder in (assets_root, assets_root / "references", assets_root / "references" / "drafts"):
+        if folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():
+            raise StudioError("Draft asset directory must not be a symlink or junction")
+        folder.mkdir(exist_ok=True)
+    destination = assets_root / "references" / "drafts" / (asset_id + ".png")
+    if destination.is_symlink() or getattr(destination, "is_junction", lambda: False)():
+        raise StudioError("Draft asset destination is unsafe")
+    try:
+        registered = read_asset_registry(project, store.project)
+    except (OSError, ValueError, TypeError, AssetRegistryError):
+        registered = {}
+    if asset_id in registered or destination.exists():
+        raise StudioError("Draft asset already exists; refusing to overwrite")
+    try:
+        with destination.open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        scan_project_assets(workspace, store.project)
+        verified = read_asset_registry(project, store.project).get(asset_id)
+        if not verified or verified.get("path") != destination.relative_to(project).as_posix():
+            raise StudioError("Draft asset registry verification failed")
+    except (OSError, AssetRegistryError, ValueError) as exc:
+        try:
+            destination.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if isinstance(exc, StudioError):
+            raise
+        raise StudioError("Could not safely register generated draft") from exc
+    return {
+        "asset_id": asset_id,
+        "path": destination.relative_to(project).as_posix(),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "bytes": len(raw),
+        "image_url": "/api/asset-image/" + asset_id,
+    }
 
 
 def _episode_row_json(row, *, include_text: bool = False) -> dict:

@@ -1218,7 +1218,7 @@ def test_astra_operation_uses_strict_envelope_and_no_arguments():
 def test_astra_response_reads_private_brief_uses_astra_and_checkpoints(tmp_path, monkeypatch):
     import local_agent.octava_credentials as credentials
     from local_agent import poller
-    master="# MASTER WORK TASK\\nFIRST MANDATORY END-TO-END TEST\\n"+("details "*300)
+    master="# MASTER WORK TASK\nFIRST MANDATORY END-TO-END TEST\n"+("details "*300)
     encoded=_base64.b64encode(master.encode()).decode()
     class GithubResponse:
         def json(self): return {"type":"file","encoding":"base64","content":encoded}
@@ -1295,7 +1295,7 @@ def _mock_luna_season_import(monkeypatch, poller, raw=b"verified private season"
 def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids(monkeypatch, tmp_path):
     from local_agent import poller
     import local_agent.octava_credentials as credentials
-    episode_text="S01E01 — Улитка на тропинке\\n"+"Сцена с улиткой. "*800
+    episode_text="S01E01 — Улитка на тропинке\n"+"Сцена с улиткой. "*800
     asset_ids=["char.snail_spiral.master","prop.leaf.master"]
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
     monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
@@ -1461,3 +1461,47 @@ def test_luna_image_model_preflight_does_not_call_provider_without_consent(monke
     assert poller._run_luna_image_model_preflight() == {
         "status": "blocked", "reason": "local_octava_permission_disabled"
     }
+
+
+def test_save_season_asset_draft_registers_unique_local_draft(tmp_path):
+    from types import SimpleNamespace
+    from local_agent.studio_server import StudioError, save_season_asset_draft
+    from local_agent.asset_registry import read_asset_registry
+
+    workspace = tmp_path / "workspace"
+    project = workspace / "mia_story"
+    project.mkdir(parents=True)
+    store = SimpleNamespace(workspace=workspace, project="mia_story", root=project)
+    import struct
+    import zlib
+    def chunk(kind, data):
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff))
+    image_data = zlib.compress(b"\x00" * (1025 * 1024))
+    raw = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">II5B", 1024, 1024, 8, 0, 0, 0, 0))
+           + chunk(b"IDAT", image_data) + chunk(b"IEND", b""))
+    result = save_season_asset_draft(store, "char.mia.master.luna_draft", raw, "png")
+    assert result["path"] == "assets/references/drafts/char.mia.master.luna_draft.png"
+    assert read_asset_registry(project, "mia_story")["char.mia.master.luna_draft"]["path"] == result["path"]
+    assert (project / result["path"]).read_bytes() == raw
+    with pytest.raises(StudioError):
+        save_season_asset_draft(store, "char.mia.master.luna_draft", raw, "png")
+
+
+def test_season_asset_library_includes_unreferenced_local_drafts(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from local_agent import studio_server
+
+    store = SimpleNamespace(root=tmp_path, workspace=tmp_path.parent, project="mia_story")
+    monkeypatch.setattr(studio_server, "list_season_episodes", lambda: {"episodes": []})
+    monkeypatch.setattr("local_agent.asset_registry.read_asset_registry", lambda *_:{
+        "char.mia.master.luna_draft":{"asset_id":"char.mia.master.luna_draft",
+            "path":"assets/references/drafts/char.mia.master.luna_draft.png","extension":".png"}
+    })
+    result = studio_server.list_season_asset_library(store)
+    assert result["assets"] == [{
+        "asset_id":"char.mia.master.luna_draft","category":"characters","status":"draft",
+        "image_url":"/api/asset-image/char.mia.master.luna_draft","review_status":"draft",
+        "episodes":[],"scenes":[],
+    }]
