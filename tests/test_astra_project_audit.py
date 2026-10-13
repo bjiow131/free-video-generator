@@ -22,6 +22,16 @@ def test_secret_redaction(ns):
     value=ns['_audit_safe_text'](s.encode())
     assert 'abcdefghijklmno' not in value and 'a'*32 not in value and 'b'*32 not in value
 
+def test_unquoted_config_and_common_cloud_keys_are_redacted(ns):
+    aws='AKIA'+'A'*16
+    google='AIza'+'B'*35
+    source=(f'api_key: unquoted-secret-value\npassword = another-secret # keep comment\n'
+            f'cloud_key={aws}\nclient_key={google}\n')
+    value=ns['_audit_safe_text'](source.encode())
+    for secret in ('unquoted-secret-value','another-secret',aws,google):
+        assert secret not in value
+    assert '# keep comment' in value
+
 def test_archive_scope_and_integrity(ns,tmp_path):
     root=tmp_path/'source';root.mkdir()
     (root/'app.py').write_text('print(1)')
