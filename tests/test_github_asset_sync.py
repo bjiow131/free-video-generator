@@ -182,7 +182,8 @@ def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tm
     assert (workspace / "episode1" / destination).read_bytes() == image_bytes
     assert len(session.calls) == 1
     url, kwargs = session.calls[0]
-    assert url.startswith("https://api.github.com/repos/bjiow131/season1-private-bible/")
+    assert url == ("https://api.github.com/repos/" + data["assets"][0]["source_repository"]
+                   + "/contents/" + private_path + "?ref=" + private_commit)
     assert kwargs["headers"] == {"Authorization": "Bearer test-private-token"}
 
 

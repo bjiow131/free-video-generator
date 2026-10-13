@@ -90,6 +90,10 @@ def interpret_scene(prompt: str, state: dict[str, Any], scene_id: str) -> dict[s
         raise PromptError("Многосценный текст пока не разбирается одной командой: создайте сцены по очереди")
     if not actions:
         actions = ["idle"]
+    if len(actions) > 20:
+        raise PromptError("Слишком много действий: максимум 20 на сцену")
+    if duration * fps - 1 < len(actions):
+        raise PromptError("Недостаточно кадров для последовательного выполнения действий")
     if "speak" in actions and not re.search(r"(?:говор\w*|произн\w*|по[её]т|петь|разговар\w*|сказал\w*)", text):
         raise PromptError("Неясная команда речи")
     requirements = list(dict.fromkeys(unsupported))

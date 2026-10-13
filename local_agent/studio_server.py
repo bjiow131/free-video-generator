@@ -19,6 +19,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
+from typing import Any
 
 from local_agent.scene_compiler import compile_story_plan
 from local_agent.story_plan import StoryPlanError, save_story_plan
@@ -611,7 +612,7 @@ def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[
         total_frames = job_info.get("total_frames")
         if type(total_frames) is int and 12 <= total_frames <= 60_000:
             stride = max(1, total_frames // 12)
-            vf = f"select='not(mod(n\,{stride}))',scale=180:-2,tile=4x3"
+            vf = rf"select='not(mod(n\,{stride}))',scale=180:-2,tile=4x3"
         else:
             vf = "fps=1,scale=180:-2,tile=4x3"
         _ffmpeg([str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",

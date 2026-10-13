@@ -4,53 +4,26 @@ name: Blender AI Agent — Windows regression
 # remains in this repository but is unrelated and must never be run here.
 on:
   pull_request:
-    branches:
-      - feature/local-video-agent
-      - feature/local-first-migration
-      - blender-agent-repair
-      - feature/enable-github-mailbox
-      - feature/chatgpt-repair-channel
     paths:
       - "local_agent/**"
-      - "tests/test_blender_*.py"
-      - "tests/test_local_agent_*.py"
-      - "tests/test_local_project_runner.py"
-      - "tests/test_checkpoint_schema.py"
-      - "tests/test_ffmpeg_media.py"
-      - "tests/test_github_queue.py"
-      - "tests/test_repair_channel.py"
-      - "tests/test_patch_validation.py"
-      - "tests/test_repair_replay.py"
-      - "tests/test_poller*.py"
-      - "tests/test_result_outbox.py"
-      - "tests/test_story_plan.py"
-      - "tests/test_scene_compiler.py"
-      - "tests/test_asset_registry.py"
-      - "tests/test_preflight.py"
-      - "tests/test_dialogue_cues.py"
-      - "tests/test_notifications.py"
-      - "tests/test_error_knowledge.py"
-      - "tests/test_manifest_security.py"
-      - "tests/test_control_protocol.py"
-      - "requirements-local-agent.txt"
-      - "requirements-github-mailbox.txt"
+      - "tests/**"
       - "scripts/windows/**"
+      - "requirements-github-mailbox.txt"
+      - "requirements-local-agent.txt"
       - "setup_blender_agent.bat"
       - "run_blender_agent.bat"
       - ".github/workflows/local-agent-tests.yml"
   push:
     branches:
+      - "audit/**"
       - feature/local-first-migration
       - audit/repair-channel-hardening-20261011
     paths:
       - "local_agent/**"
-      - "tests/test_blender_*.py"
-      - "tests/test_local_agent_*.py"
-      - "tests/test_local_project_runner.py"
-      - "tests/test_poller*.py"
-      - "requirements-local-agent.txt"
-      - "requirements-github-mailbox.txt"
+      - "tests/**"
       - "scripts/windows/**"
+      - "requirements-github-mailbox.txt"
+      - "requirements-local-agent.txt"
       - "setup_blender_agent.bat"
       - "run_blender_agent.bat"
       - ".github/workflows/local-agent-tests.yml"

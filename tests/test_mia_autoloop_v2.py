@@ -125,7 +125,8 @@ def test_hundred_mock_cycles_one_front_each_and_final_only(monkeypatch,tmp_path)
     monkeypatch.setattr(studio_server,"_telegram_credentials",lambda:("111:TEST_TOKEN","222"))
     monkeypatch.setattr(octava_credentials,"read_key",lambda:("KEY","vault"))
     vision=[]
-    def fake_astra(key,refs,views,cycle,state):
+    def fake_astra(key,refs,views,cycle,state,*,single_pass=False):
+        assert single_pass is False
         assert len(refs)==5 and len(views)==3
         vision.append(cycle)
         return _mia_v2_commands(json.dumps({
