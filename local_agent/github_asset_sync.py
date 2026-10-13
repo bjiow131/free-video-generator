@@ -240,6 +240,7 @@ def _download_one(
             stream.flush()
             os.fsync(stream.fileno())
         if too_large or part.stat().st_size > _MAX_FILE_BYTES:
+            response.close()
             part.unlink(missing_ok=True)
             raise AssetSyncError("asset_too_large")
         if _digest(part) != expected:
