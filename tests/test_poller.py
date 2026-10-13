@@ -1263,3 +1263,72 @@ def test_astra_operation_stops_when_local_provider_consent_is_off(monkeypatch):
         def _request(self,*args,**kwargs): raise AssertionError("must stop before network")
     assert poller._run_astra_season_response(NoNetwork(),"astra-response-test")=={
         "status":"blocked","reason":"local_octava_permission_disabled"}
+
+def test_luna_full_episode_operation_requires_fixed_no_argument_envelope():
+    from local_agent import poller
+    task=poller._parse_task_with_restart(_astra_task_envelope(
+        operation="luna_s01e01_reference_test"))
+    assert task.operation=="luna_s01e01_reference_test"
+    with pytest.raises(_ProtocolError):
+        poller._parse_task_with_restart(_astra_task_envelope(
+            operation="luna_s01e01_reference_test",arguments={"prompt":"arbitrary"}))
+    with pytest.raises(_ProtocolError):
+        poller._parse_task_with_restart(_astra_task_envelope(
+            operation="luna_s01e01_reference_test",approval=False))
+
+
+def test_luna_full_episode_sends_complete_text_to_simple_model_and_validates_ids(monkeypatch, tmp_path):
+    from local_agent import poller
+    import local_agent.octava_credentials as credentials
+    episode_text="S01E01 — Улитка на тропинке\\n"+"Сцена с улиткой. "*800
+    asset_ids=["char.snail_spiral.master","prop.leaf.master"]
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
+    monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
+    monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
+    monkeypatch.setattr(credentials,"model_for_tier",lambda tier:"gpt-6-luna")
+    monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda episode_id:{
+        "episode_id":episode_id,"full_text":episode_text,"asset_ids":asset_ids})
+    monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda project,name:{
+        asset_ids[0]:{"path":"assets/references/drafts/char.snail_spiral.master.jpg","extension":".jpg"}})
+    class ProviderResponse:
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def read(self,limit):
+            return _json.dumps({"model":"gpt-6-luna","choices":[{"finish_reason":"stop",
+                "message":{"content":_json.dumps({"required_asset_ids":asset_ids,
+                    "selected_asset_id":asset_ids[0],"reason":"черновик",
+                    "visual_brief":"Поворотная карточка персонажа"})}}],
+                "usage":{"prompt_tokens":1400,"completion_tokens":80,"total_tokens":1480}}).encode()
+    captured={}
+    def fake_urlopen(request,timeout):
+        captured["body"]=_json.loads(request.data)
+        captured["timeout"]=timeout
+        return ProviderResponse()
+    monkeypatch.setattr("urllib.request.urlopen",fake_urlopen)
+    result=poller._run_luna_s01e01_reference_test()
+    sent=captured["body"]["messages"][1]["content"]
+    assert captured["body"]["model"]=="gpt-6-luna"
+    assert captured["body"]["max_tokens"]==700
+    assert episode_text in sent
+    assert "FULL IMPORTED S01E01 TEXT (complete, not summarized)" in sent
+    assert result["status"]=="completed"
+    assert result["decision"]["selected_asset_id"]==asset_ids[0]
+    assert result["assets_seen"][0]["status"]=="draft"
+    assert result["usage"]["total_tokens"]==1480
+    assert result["image_generated"] is False
+
+
+def test_luna_full_episode_blocks_when_simple_model_is_not_luna(monkeypatch, tmp_path):
+    from local_agent import poller
+    import local_agent.octava_credentials as credentials
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
+    monkeypatch.setattr(poller,"load_policy",lambda:{"allow_octava":True})
+    monkeypatch.setattr("local_agent.studio_server.get_season_episode",lambda _: {
+        "full_text":"S01E01 full text","asset_ids":["char.snail_spiral.master"]})
+    monkeypatch.setattr("local_agent.asset_registry.read_asset_registry",lambda *_:{})
+    monkeypatch.setattr(credentials,"read_key",lambda:("local-test-key","windows_vault"))
+    monkeypatch.setattr(credentials,"model_for_tier",lambda tier:"other-model")
+    assert poller._run_luna_s01e01_reference_test()["reason"]=="configured_simple_model_is_not_gpt_6_luna"
+
+
