@@ -245,13 +245,18 @@ def _episode_asset_readiness(episode: dict, store: StudioStore) -> dict:
         pass
     assets = []
     for asset_id in episode["asset_ids"]:
+        image_url = ""
         if asset_id == "char.mia.master" and mia_reference_ready:
             status, path = "approved_reference", "/api/approved-reference-image/mia"
+            image_url = path
         elif asset_id in registered:
             status, path = "registered", registered[asset_id]["path"]
+            if Path(path).suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                image_url = "/api/asset-image/" + asset_id
         else:
             status, path = "missing", ""
-        assets.append({"asset_id": asset_id, "status": status, "path": path})
+        assets.append({"asset_id": asset_id, "status": status, "path": path,
+                       "image_url": image_url})
     missing = [asset["asset_id"] for asset in assets if asset["status"] == "missing"]
     return {
         "assets": assets,
@@ -259,6 +264,79 @@ def _episode_asset_readiness(episode: dict, store: StudioStore) -> dict:
         "reference_readiness": "blocked_missing_references" if missing else "references_present",
         "animation_readiness": "not_verified",
     }
+
+
+def _asset_reference_image(store: StudioStore, asset_id: str) -> tuple[bytes, str] | None:
+    if not isinstance(asset_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", asset_id):
+        return None
+    if asset_id == "char.mia.master":
+        raw = approved_bytes(store.workspace)
+        return (raw, "image/jpeg") if raw else None
+    try:
+        from local_agent.asset_registry import read_asset_registry
+        registered = read_asset_registry(store.root, store.project)
+    except (ImportError, OSError, ValueError):
+        return None
+    item = registered.get(asset_id)
+    if not isinstance(item, dict):
+        return None
+    relative = item.get("path")
+    if not isinstance(relative, str):
+        return None
+    relpath = Path(relative)
+    if relpath.is_absolute() or any(part in ("", ".", "..") for part in relpath.parts):
+        return None
+    project = (store.root / store.project).resolve()
+    assets_root = (project / "assets").resolve()
+    candidate = project / relpath
+    current = candidate
+    try:
+        while current != project:
+            if current.is_symlink() or getattr(current, "is_junction", lambda: False)():
+                return None
+            current = current.parent
+        resolved = candidate.resolve(strict=True)
+        if (not resolved.is_relative_to(assets_root) or not resolved.is_file()
+                or resolved.stat().st_size > 15_000_000):
+            return None
+        raw = resolved.read_bytes()
+    except (OSError, RuntimeError):
+        return None
+    ext = resolved.suffix.lower()
+    if ext == ".png" and raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        return raw, "image/png"
+    if ext in (".jpg", ".jpeg") and raw.startswith(b"\\xff\\xd8\\xff"):
+        return raw, "image/jpeg"
+    if ext == ".webp" and len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return raw, "image/webp"
+    return None
+
+
+def list_season_asset_library(store: StudioStore) -> dict:
+    season = list_season_episodes()
+    assets = {}
+    for episode in season["episodes"]:
+        readiness = _episode_asset_readiness(episode, store)
+        by_id = {item["asset_id"]: item for item in readiness["assets"]}
+        for asset_id in episode["asset_ids"]:
+            item = by_id[asset_id]
+            category = asset_id.split(".", 1)[0]
+            current = assets.setdefault(asset_id, {
+                "asset_id": asset_id,
+                "category": {"char": "characters", "set": "environments",
+                             "prop": "props", "fx": "effects"}.get(category, "other"),
+                "status": item["status"],
+                "image_url": item.get("image_url", ""),
+                "review_status": "approved" if item["status"] == "approved_reference" else
+                                 "unverified" if item["status"] == "registered" else "missing",
+                "episodes": [],
+                "scenes": [],
+            })
+            current["episodes"].append(episode["episode_id"])
+            for scene in episode["scenes"]:
+                if asset_id in scene["asset_ids"]:
+                    current["scenes"].append(scene["scene_id"])
+    return {"assets": sorted(assets.values(), key=lambda item: (item["category"], item["asset_id"]))}
 
 
 def _episode_row_json(row, *, include_text: bool = False) -> dict:
@@ -1122,6 +1200,15 @@ class StudioHandler(BaseHTTPRequestHandler):
             if raw is None:
                 return self._json(404, {"error": "Approved reference unavailable or invalid"})
             return self._send(200, raw, "image/jpeg")
+        if path == "/api/asset-library":
+            return self._json(200, list_season_asset_library(self.server.store))
+        if path.startswith("/api/asset-image/"):
+            asset_id = path.removeprefix("/api/asset-image/")
+            result = _asset_reference_image(self.server.store, asset_id)
+            if result is None:
+                return self._json(404, {"error": "Visual reference is not registered locally"})
+            raw, mime = result
+            return self._send(200, raw, mime)
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
