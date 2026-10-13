@@ -121,3 +121,5 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .episode-ref-thumb{width:36px;height:42px;object-fit:cover;vertical-align:middle;border-radius:5px;margin:0 5px 5px 0}
 .season-ref-missing{width:78px;height:96px;display:grid;place-items:center;text-align:center;padding:5px;box-sizing:border-box;border-radius:8px;background:#f3f4f6;color:#71798b;font-size:10px}
 @media(max-width:600px){.season-asset-grid{grid-template-columns:1fr}}
+
+.astra-event{white-space:pre-wrap;overflow-wrap:anywhere;max-height:480px;overflow:auto;background:#081722;padding:16px;border-radius:12px;font:13px/1.6 monospace}details{margin:12px 0}summary{cursor:pointer;padding:10px}
