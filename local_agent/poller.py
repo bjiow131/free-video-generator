@@ -1406,7 +1406,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "compile_story_plan", "scan_project_assets", "sync_approved_assets",
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
-    "blender_mia_skeleton", "export_mia_scene_review", "octava_advice",
+    "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "export_mia_scene_review", "octava_advice",
     "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
@@ -2316,6 +2316,12 @@ def _run_blender_mia_skeleton(arguments: dict[str, Any]) -> dict[str, Any]:
     from local_agent.blender_rigging import create_mia_skeleton
     return create_mia_skeleton(arguments["project_name"])
 
+def _run_blender_mia_spring_rig_transfer(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Transfer the pinned Spring rig to a separate Mia review copy."""
+    from local_agent.blender_rigging import transfer_spring_rig_to_mia
+    return transfer_spring_rig_to_mia(arguments["project_name"])
+
+
 
 def _run_export_mia_scene_review(arguments: dict[str, Any]) -> dict[str, Any]:
     """Export only fixed Episode 1 review projects to the locally opted-in Dropbox folder."""
@@ -2648,6 +2654,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_inspect_mia_project(task.arguments)
             elif task.operation == "blender_mia_skeleton":
                 details = _run_blender_mia_skeleton(task.arguments)
+            elif task.operation == "blender_mia_spring_rig_transfer":
+                details = _run_blender_mia_spring_rig_transfer(task.arguments)
             elif task.operation == "mia_3d_reconstruction_preflight":
                 details = _run_mia_3d_reconstruction_preflight(task.arguments)
             elif task.operation == "mia_2p5d_prototype":
