@@ -139,6 +139,27 @@ def test_rejects_redirects_and_bad_digest_without_creating_target(tmp_path):
     assert not (tmp_path / "workspace/episode1/assets/characters/passports/mia.json").exists()
 
 
+def test_aborts_oversized_stream_before_writing_past_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(asset_sync, "_MAX_FILE_BYTES", 7)
+    manifest = make_manifest(tmp_path)
+    metadata = {
+        "type": "file",
+        "path": "docs/season1/character_passports/mia.json",
+        "size": 6,
+        "download_url": (
+            f"https://raw.githubusercontent.com/bjiow131/free-video-generator/{COMMIT}/"
+            "docs/season1/character_passports/mia.json"
+        ),
+    }
+    session = Session([Response(200, payload=metadata), Response(200, content=b"oversize")])
+    project = tmp_path / "workspace" / "episode1"
+    result = sync_approved_assets(tmp_path / "workspace", "episode1", manifest, session=session)
+    target = project / "assets/characters/passports/mia.json"
+    assert result["counts"] == {"asset_too_large": 1}
+    assert not target.exists()
+    assert not target.with_name(target.name + ".part").exists()
+
+
 def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tmp_path, monkeypatch):
     private_commit = "a" * 40
     private_path = "private_assets/mia/mia_turnaround_approved_20261012.jpeg"
@@ -182,7 +203,7 @@ def test_downloads_pinned_private_mia_reference_with_auth_only_on_api_request(tm
     assert (workspace / "episode1" / destination).read_bytes() == image_bytes
     assert len(session.calls) == 1
     url, kwargs = session.calls[0]
-    assert url.startswith("https://api.github.com/repos/bjiow131/season1-private-bible/")
+    assert url.startswith("https://api.github.com/repos/bjiow131/local-agent-mailbox/contents/")
     assert kwargs["headers"] == {"Authorization": "Bearer test-private-token"}
 
 
