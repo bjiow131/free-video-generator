@@ -934,6 +934,19 @@ def mia_source_polish_profile(name: str) -> dict[str, Any]:
         )
     return profile
 
+
+def mia_source_polish_pass(profile: dict[str, Any], pass_index: int) -> dict[str, Any]:
+    """Build bounded Blender settings for the baseline or revision pass."""
+    if pass_index not in (0, 1):
+        raise ValueError('invalid_mia_polish_pass')
+    revision = pass_index == 1
+    return {
+        'edits': profile['edits'] if revision else [],
+        'hair_rebuild': profile['hair_rebuild'] and revision,
+        'face_refine': profile['face_refine'] and revision,
+        'proportion_fit': profile['proportion_fit'] and revision,
+    }
+
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
     import requests
@@ -1421,11 +1434,11 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
         # If there are reviewed edits, first render the unchanged input with the
         # very same renderer and cameras, then apply edits to that checkpoint.
         for i in range(2 if (edits or profile['hair_rebuild'] or profile['face_refine'] or profile['proportion_fit']) else 1):
-            pass_edits=[] if i==0 else MIA_CODEX_CORRECTION_EDITS
+            pass_settings = mia_source_polish_pass(profile, i)
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
                 script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
-                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits,'hair_rebuild':profile['hair_rebuild'] and i==1,'face_refine':profile['face_refine'] and i==1,'proportion_fit':profile['proportion_fit'] and i==1}),encoding='utf-8')
+                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),**pass_settings}),encoding='utf-8')
                 proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(cfg)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=900,check=False,shell=False)
             (folder/'blender_stdout.log').write_text((proc.stdout or '')[-200000:],encoding='utf-8')
             if proc.returncode:raise ValueError('blender_exit_'+str(proc.returncode))
