@@ -1549,5 +1549,5 @@ def deliver_mia_adaptive_bundle(root,latest):
 
 
 def polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
-    """Execute evidence-backed Blender/Astra workshop on a preserved source copy."""
-    return run_workshop(source_project, project_name)
+    """Render pinned source for Codex review; Astra workshop is not auto-started."""
+    return run_mia_adaptive_source(source_project, project_name)
