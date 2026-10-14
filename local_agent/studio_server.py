@@ -1840,8 +1840,7 @@ def main(argv=None):
     server = StudioHTTPServer(("127.0.0.1", args.port), store)
     url = f"http://127.0.0.1:{server.server_port}/"
     print("Blender AI Agent studio:", url, flush=True)
-    if not args.no_browser:
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    # Automatic browser launch is disabled; the local server remains available on loopback.
     try:
         server.serve_forever()
     except KeyboardInterrupt:
