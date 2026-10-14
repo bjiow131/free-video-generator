@@ -877,6 +877,7 @@ MIA_ADAPTIVE_REFERENCE_SHA = '7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c
 MIA_ADAPTIVE_VIEWS = ('front', 'side', 'back', 'quarter', 'face')
 # Reviewed corrections are shipped as pinned local code, never provider output.
 MIA_CODEX_CORRECTION_EDITS = []
+MIA_CODEX_DELIVERY_APPROVED = False
 
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
@@ -905,7 +906,17 @@ def acquire_mia_study_sources(ws):
             links=[x for x in links if urlparse(x).scheme=='https' and urlparse(x).hostname=='studio.blender.org' and '/download-source/files/' in urlparse(x).path]
             if not links:raise ValueError('official_download_link_not_found')
             url=links[0]
-            with requests.get(url,timeout=(10,90),stream=True,allow_redirects=False) as response:
+            # Follow only HTTPS redirects to the official site's storage CDNs.
+            response=None
+            for redirect in range(5):
+                response=requests.get(url,timeout=(10,90),stream=True,allow_redirects=False)
+                if response.status_code not in (301,302,303,307,308):break
+                target=urljoin(url,response.headers.get('Location',''));response.close()
+                host=urlparse(target).hostname or ''
+                if urlparse(target).scheme!='https' or not (host=='studio.blender.org' or host=='storage.googleapis.com' or host.endswith('.blender.org') or host.endswith('.amazonaws.com') or host.endswith('.cloudfront.net')):
+                    raise ValueError('untrusted_storage_redirect')
+                url=target
+            with response:
                 if response.status_code!=200:raise ValueError('download_http_'+str(response.status_code))
                 chunks=[];size=0
                 for chunk in response.iter_content(1048576):
@@ -1123,13 +1134,15 @@ def run_mia_adaptive_source(source_project, project_name):
         # Stable next-source path is a COPY, never overwrite the input checkpoint.
         import shutil
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
-        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':report['inventory']}
+        important=[x for x in report['inventory'] if ('miasource' in x['name'].lower() or 'mia_rain' in x['name'].lower() or 'boot_upper' in x['name'].lower() or 'cargo_side' in x['name'].lower()) and not any(k in x['name'].lower() for k in ('teeth','gums','cornea'))]
+        compact_inventory=[{'name':x['name'],'vertices':x['vertices'],'world_min':[round(v,5) for v in x['world_min']],'world_max':[round(v,5) for v in x['world_max']]} for x in important]
+        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
         import base64
         ffmpeg=shutil.which('ffmpeg');thumbs={}
         if ffmpeg:
             for view in ('front','face','side','back'):
                 thumb=latest/(view+'_codex.jpg')
-                p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(latest/(view+'.png')),'-vf','scale=240:-1','-frames:v','1','-q:v','6',str(thumb)],capture_output=True,timeout=30,check=False,shell=False)
+                p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(latest/(view+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','6',str(thumb)],capture_output=True,timeout=30,check=False,shell=False)
                 if p.returncode==0 and thumb.is_file():thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
         result['thumbnail_jpeg_base64']=thumbs
         if not result['source_unchanged']:raise ValueError('original_source_changed')
@@ -1142,8 +1155,10 @@ def run_mia_adaptive_source(source_project, project_name):
             if not gate['passed']:
                 result.update(status='blocked',goal_status='insufficient_visible_change')
                 result['telegram_documents']={'status':'suppressed_insufficient_visible_change'}
-            else:
+            elif MIA_CODEX_DELIVERY_APPROVED:
                 result['telegram_documents']=deliver_mia_adaptive_bundle(root,latest)
+            else:
+                result['telegram_documents']={'status':'awaiting_codex_visual_review'}
         else:
             result['telegram_documents']={'status':'not_sent_baseline_for_codex_only'}
         (root/'adaptive_result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
