@@ -2477,7 +2477,7 @@ if fit_profile or fast_rig:
                 "error_tail": (proc.stderr or "")[-1800:],
                 "output_folder": str(review)}
     previews = {name: str(review / (name + ".png")) for name in ("front", "side", "back")}
-    blend = review / ("mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend")
+    blend = review / ("mia_hunyuan3d2mv_fast_rig.blend" if fast_rig else ("mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend"))
     if not blend.is_file() or any(not Path(path).is_file() for path in previews.values()):
         return {"status": "incomplete", "stage": "validate_review_views",
                 "reason": "blend_or_preview_missing", "output_folder": str(review)}
@@ -2540,6 +2540,9 @@ if fit_profile or fast_rig:
             "source_model_preserved": True, "shape_only": True,
             "geometry_is_new": fit_profile, "profile_fit_applied": fit_profile,
             "identity_verified": False, "license_review_required_before_production": True,
+            "fast_rig_prototype": fast_rig,
+            "fast_rig_report_path": str(review / "fast_rig_report.json") if fast_rig else None,
+            "animation_exported": bool(fast_rig),
             "validation_note": ("Quick armature prototype with automatic weights and a wave action; no production rig claimed."
                                 if fast_rig else ("Bounded multiview cross-section fit; source GLB preserved."
                                 if fit_profile else "Existing generated GLB reused; no model inference was repeated."))}
