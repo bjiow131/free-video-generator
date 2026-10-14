@@ -147,6 +147,23 @@ def test_remote_approval_allowed_for_typed_blender_preview():
     assert task.requires_local_approval is False
 
 
+def test_accepts_fixed_local_agent_dependency_install_task():
+    task = parse_task(_task("install_local_agent_requirements", {}))
+    assert task.operation == "install_local_agent_requirements"
+
+
+def test_dependency_install_task_rejects_arguments():
+    with pytest.raises(ProtocolError, match="does not accept arguments"):
+        parse_task(_task("install_local_agent_requirements", {"command": "pip install x"}))
+
+
+def test_dependency_install_task_supports_remote_approval_only_under_local_opt_in():
+    value = json.loads(_task("install_local_agent_requirements", {}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.requires_local_approval is False
+
+
 def test_remote_approval_rejected_for_patch_operation():
     value = json.loads(_task("apply_patch", {"patch": "diff --git a/a.txt b/a.txt\\n"}))
     value["requires_local_approval"] = False
