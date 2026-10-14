@@ -2742,7 +2742,9 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 from local_agent.studio_jobs import begin_agent_task, finish_agent_task
                 begin_agent_task(task.task_id,task.operation,task.arguments["project_name"])
                 try:
-                    details=polish_saved_source_model(task.arguments["source_project"],task.arguments["project_name"])
+                    details=polish_saved_source_model(
+                        task.arguments["source_project"], task.arguments["project_name"],
+                        task.arguments.get("profile", "face"))
                 finally:
                     finish_agent_task(task.task_id)
             elif task.operation == "blender_mia_source_details":
