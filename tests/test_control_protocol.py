@@ -328,3 +328,33 @@ def test_rejects_unsafe_reference_fit_preflight_filename(source_blend):
         parse_task(_task("blender_mia_reference_fit_preflight", {
             "project_name": "mia_source", "source_blend": source_blend,
         }))
+
+
+def test_accepts_generic_reference_to_model_preflight():
+    task = parse_task(_task("blender_reference_to_model_preflight", {
+        "project_name": "mia_source",
+        "source_blend": "candidate.blend",
+    }))
+    assert task.operation == "blender_reference_to_model_preflight"
+
+
+def test_accepts_local_only_generic_reference_to_model_fit():
+    task = parse_task(_task("blender_reference_to_model_fit", {
+        "project_name": "character_source",
+        "source_blend": "candidate.blend",
+        "reference_map_file": "reference_map.json",
+        "passport_file": "reference_to_model_passport_ab12cd34ef56.json",
+        "approved_reference_sha256": "a" * 64,
+    }))
+    assert task.operation == "blender_reference_to_model_fit"
+
+
+def test_generic_reference_to_model_fit_requires_local_approval():
+    value = json.loads(_task("blender_reference_to_model_fit", {
+        "project_name": "character_source", "source_blend": "candidate.blend",
+        "reference_map_file": "reference_map.json", "passport_file": "passport.json",
+        "approved_reference_sha256": "a" * 64,
+    }))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
+        parse_task(json.dumps(value))
