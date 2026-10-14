@@ -52,13 +52,29 @@ echo.
 REM --- Start the local server ---
 start "" /b ".venv\Scripts\python.exe" server.py
 
-echo Waiting for Agnes Video Generator...
+REM --- Bounded readiness check: do not wait forever if startup fails ---
+echo Waiting for Agnes Video Generator (maximum 60 seconds)...
+set "WAIT_ATTEMPTS=0"
 
 :wait
 timeout /t 2 /nobreak >nul
-curl -s http://127.0.0.1:8765/health >nul 2>&1
-if errorlevel 1 goto wait
+curl -fsS --max-time 2 http://127.0.0.1:8765/health >nul 2>&1
+if not errorlevel 1 goto server_ready
 
+set /a WAIT_ATTEMPTS+=1
+if %WAIT_ATTEMPTS% GEQ 30 goto startup_failed
+goto wait
+
+:startup_failed
+echo.
+echo [ERROR] The server did not become ready within 60 seconds.
+echo Check the Python error output above and verify port 8765 is available.
+echo If the Python process is still running, stop it before trying again.
+echo.
+pause
+exit /b 1
+
+:server_ready
 echo.
 echo Agnes Video Generator is running!
 echo http://127.0.0.1:8765
@@ -80,9 +96,9 @@ echo   Agnes Video Generator is running!
 echo ==========================================
 echo.
 echo Local server: http://127.0.0.1:8765
-echo Agnes: API key loaded from Windows environment
+echo Agnes: API key loaded from Windows environment or local UI config
 echo.
-echo Close the Python server window or press Ctrl+C
-echo in the server console to stop the server.
+echo Close the Python server process or press Ctrl+C
+echo in its console to stop the server.
 echo.
 pause

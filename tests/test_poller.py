@@ -1,0 +1,636 @@
+"""Tests for poller expiry and task supersession helpers."""
+from types import SimpleNamespace
+from datetime import datetime, timedelta, timezone
+
+from local_agent.poller import _not_expired
+
+
+def test_not_expired_accepts_future_utc_timestamp():
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    assert _not_expired(SimpleNamespace(expires_at=future))
+
+
+def test_not_expired_rejects_expired_timestamp():
+    past = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+    assert not _not_expired(SimpleNamespace(expires_at=past))
+
+
+def test_not_expired_rejects_timestamp_without_timezone():
+    assert not _not_expired(SimpleNamespace(expires_at="2026-10-09T12:00:00"))
+
+
+
+def test_blender_preview_is_blocked_without_local_configuration(monkeypatch):
+    from local_agent.poller import _run_blender_forest_preview
+
+    monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
+    monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
+    result = _run_blender_forest_preview({"project_name": "mia"})
+    assert result["status"] == "blocked"
+    assert result["remote_paths_or_commands_accepted"] is False
+
+
+
+def test_run_one_dispatches_blender_task_after_local_approval(monkeypatch):
+    from local_agent import poller
+    from types import SimpleNamespace
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="forest-002",
+        operation="blender_forest_preview",
+        expires_at=future,
+        arguments={"project_name": "mia_forest"},
+    )
+
+    class FakeClient:
+        published = None
+
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+
+    client = FakeClient()
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setattr(
+        poller, "_run_blender_forest_preview",
+        lambda arguments: {"status": "completed", "task": "blender_forest_preview"},
+    )
+    poller._run_one(client, task)
+    assert client.published[0] == "forest-002"
+    assert client.published[1]["status"] == "completed"
+
+
+
+def test_run_one_rejects_same_id_if_task_changes_after_approval(monkeypatch):
+    from local_agent import poller
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    approved = SimpleNamespace(
+        task_id="forest-003",
+        operation="blender_forest_preview",
+        expires_at=future,
+        arguments={"project_name": "mia_forest"},
+    )
+    changed = SimpleNamespace(
+        task_id="forest-003",
+        operation="blender_forest_preview",
+        expires_at=future,
+        arguments={"project_name": "different_project"},
+    )
+
+    class FakeClient:
+        published = None
+
+        def fetch_desired_task(self):
+            return changed, "new-manifest-sha"
+
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+
+    client = FakeClient()
+    ran = []
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, approved)
+    assert ran == []
+    assert client.published[1]["status"] == "superseded"
+    assert client.published[1]["reason"] == "desired_task_changed_after_approval"
+
+
+def test_run_one_rejects_task_that_expires_during_approval(monkeypatch):
+    from local_agent import poller
+
+    task = SimpleNamespace(
+        task_id="forest-004",
+        operation="blender_forest_preview",
+        expires_at=(datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat(),
+        arguments={"project_name": "mia_forest"},
+    )
+
+    class FakeClient:
+        published = None
+
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+
+    client = FakeClient()
+    ran = []
+    def approve_but_expire(_prompt):
+        task.expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        return "YES"
+
+    monkeypatch.setattr("builtins.input", approve_but_expire)
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task)
+    assert ran == []
+    assert client.published[1]["status"] == "rejected"
+    assert client.published[1]["reason"] == "expired_while_waiting_for_local_approval"
+
+
+def test_classify_manifest_detects_new_and_same_tasks():
+    from local_agent.poller import classify_manifest
+    assert classify_manifest({}, "task-1", "sha-1") == "new"
+    state = {"last_task_id": "task-1", "manifest_sha": "sha-1"}
+    assert classify_manifest(state, "task-1", "sha-1") == "same"
+    assert classify_manifest(state, "task-2", "sha-2") == "new"
+
+
+def test_classify_manifest_rejects_reused_task_id_with_changed_content():
+    from local_agent.poller import classify_manifest
+    state = {"last_task_id": "task-1", "manifest_sha": "sha-1"}
+    assert classify_manifest(state, "task-1", "sha-2") == "reused_id"
+
+
+def test_task_history_prevents_replay_after_a_newer_task(tmp_path):
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = {}
+    state = _remember_manifest(state, "task-old", "sha-old")
+    state = _remember_manifest(state, "task-new", "sha-new")
+    assert classify_manifest(state, "task-old", "sha-old") == "same"
+
+
+def test_rejected_changed_manifest_is_not_rejected_repeatedly():
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = _remember_manifest({}, "task-1", "sha-original")
+    assert classify_manifest(state, "task-1", "sha-changed") == "reused_id"
+    state = _remember_manifest(state, "task-1", "sha-changed", rejected=True)
+    assert classify_manifest(state, "task-1", "sha-changed") == "same"
+    assert classify_manifest(state, "task-1", "sha-another") == "reused_id"
+
+
+def test_task_history_prevents_replay_after_a_newer_task(tmp_path):
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = {}
+    state = _remember_manifest(state, "task-old", "sha-old")
+    state = _remember_manifest(state, "task-new", "sha-new")
+    assert classify_manifest(state, "task-old", "sha-old") == "same"
+
+
+def test_rejected_changed_manifest_is_not_rejected_repeatedly():
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = _remember_manifest({}, "task-1", "sha-original")
+    assert classify_manifest(state, "task-1", "sha-changed") == "reused_id"
+    state = _remember_manifest(state, "task-1", "sha-changed", rejected=True)
+    assert classify_manifest(state, "task-1", "sha-changed") == "same"
+    assert classify_manifest(state, "task-1", "sha-another") == "reused_id"
+
+
+def test_in_progress_manifest_is_not_new_after_restart():
+    from local_agent.poller import _remember_manifest, classify_manifest
+    state = _remember_manifest({}, "claimed-1", "sha-1", status="in_progress")
+    assert state["processed_tasks"]["claimed-1"]["status"] == "in_progress"
+    assert classify_manifest(state, "claimed-1", "sha-1") == "same"
+    state = _remember_manifest(state, "claimed-1", "sha-1", status="interrupted")
+    assert state["processed_tasks"]["claimed-1"]["status"] == "interrupted"
+
+
+def test_poller_single_instance_lock_rejects_second_owner(tmp_path):
+    import pytest
+    from local_agent.poller import _acquire_instance_lock
+    lock_path = tmp_path / "poller.lock"
+    first = _acquire_instance_lock(lock_path)
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            _acquire_instance_lock(lock_path)
+    finally:
+        first.close()
+    second = _acquire_instance_lock(lock_path)
+    second.close()
+
+
+def test_run_one_rejects_same_envelope_when_manifest_revision_changes(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="forest-005",
+        operation="blender_forest_preview",
+        expires_at=future,
+        arguments={"project_name": "mia_forest"},
+    )
+    class FakeClient:
+        published = None
+        def fetch_desired_task(self):
+            return task, "new-manifest-sha"
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    ran = []
+    monkeypatch.setattr("builtins.input", lambda _prompt: "YES")
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task, expected_manifest_sha="original-manifest-sha")
+    assert ran == []
+    assert client.published[1]["status"] == "superseded"
+    assert client.published[1]["reason"] == "desired_task_changed_after_approval"
+
+
+def test_remote_approved_allowlisted_task_runs_without_console_prompt(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="remote-forest-006",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=False,
+        arguments={"project_name": "mia_remote"},
+    )
+    class FakeClient:
+        published = None
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", "1")
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args) or {"status": "completed"})
+    poller._run_one(client, task, expected_manifest_sha="manifest-sha")
+    assert ran == [{"project_name": "mia_remote"}]
+    assert client.published[1]["status"] == "completed"
+
+
+def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="remote-forest-007",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=False,
+        arguments={"project_name": "mia_remote"},
+    )
+    class FakeClient:
+        published = None
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.delenv("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL", raising=False)
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task)
+    assert ran == []
+    assert client.published[1]["status"] == "blocked"
+    assert client.published[1]["reason"] == "remote_approval_not_enabled_or_operation_not_allowlisted"
+
+
+def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch):
+    from local_agent import poller
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="console-required-008",
+        operation="blender_forest_preview",
+        expires_at=future,
+        requires_local_approval=True,
+        arguments={"project_name": "mia_console"},
+    )
+    class FakeClient:
+        published = None
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+    client = FakeClient()
+    monkeypatch.setattr(poller, "sys", SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: False)))
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    ran = []
+    monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
+    poller._run_one(client, task)
+    assert ran == []
+    assert client.published[1]["status"] == "blocked"
+    assert client.published[1]["reason"] == "local_console_approval_required_but_no_interactive_console"
+
+
+def test_failed_task_writes_report_and_notifies_user(monkeypatch, tmp_path):
+    from local_agent import poller
+    from types import SimpleNamespace
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="diagnostic-fail-104",
+        operation="doctor",
+        expires_at=future,
+        arguments={},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        published = None
+
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            self.published = (task_id, result)
+            return "result-commit"
+
+    client = FakeClient()
+    report = tmp_path / "report.json"
+    notifications = []
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "failed", "reason": "test_failure"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: report)
+    monkeypatch.setattr(poller, "notify_user", lambda **kwargs: notifications.append(kwargs) or True)
+
+    poller._run_one(client, task, "manifest-sha")
+
+    assert client.published[0] == task.task_id
+    assert client.published[1]["status"] == "failed"
+    assert client.published[1]["local_report_path"].endswith("report.json")
+    assert len(notifications) == 1
+    assert task.task_id in notifications[0]["title"]
+    assert ".local_agent/reports" in notifications[0]["message"]
+
+
+def test_report_survives_github_publication_failure(monkeypatch, tmp_path):
+    from local_agent import poller
+    from local_agent.github_queue import QueueTransportError
+    from types import SimpleNamespace
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="diagnostic-fail-105",
+        operation="doctor",
+        expires_at=future,
+        arguments={},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            raise QueueTransportError("network unavailable")
+
+    report = tmp_path / "retained-report.json"
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "failed", "reason": "test_failure"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: report)
+    monkeypatch.setattr(poller, "notify_user", lambda **kwargs: True)
+    from local_agent.result_outbox import ResultOutbox
+    monkeypatch.setattr(poller, "_result_outbox", lambda: ResultOutbox(tmp_path / "outbox"))
+
+    poller._run_one(FakeClient(), task, "manifest-sha")
+
+    # Both the local report and the unpublished task result survive the outage.
+    assert report.parent == tmp_path
+    pending = tmp_path / "outbox" / f"{task.task_id}.json"
+    assert pending.is_file()
+
+    class OnlineClient:
+        published = []
+
+        def publish_result(self, task_id, result):
+            self.published.append((task_id, result))
+            return "recovered-result-commit"
+
+    online = OnlineClient()
+    assert poller._result_outbox().flush(online)["published"] == 1
+    assert online.published[0][0] == task.task_id
+    assert not pending.exists()
+
+
+def test_apply_patch_uses_isolated_worktree_and_never_changes_active_checkout(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0] == "git":
+            if args[1:3] == ["rev-parse", "--verify"]:
+                return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+            if args[1:4] == ["show-ref", "--verify", "--quiet"]:
+                return SimpleNamespace(returncode=1, stdout="", stderr="")
+            if args[1:3] == ["worktree", "add"]:
+                from pathlib import Path
+                Path(args[5]).mkdir(parents=True)
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] in (["apply", "--check"], ["apply"]):
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert args[:3] == [sys.executable, "-m", "pytest"]
+        return SimpleNamespace(returncode=0, stdout="2 passed", stderr="")
+
+    monkeypatch.setattr(poller.subprocess, "run", fake_run)
+    result = poller._apply_patch("diff --git a/a b/a\n", "task-104")
+
+    assert result["status"] == "completed"
+    assert result["active_checkout_modified"] is False
+    assert result["requires_review_before_merge"] is True
+    assert result["base_commit"] == "base-sha"
+    assert any(call[0][1:3] == ["worktree", "add"] for call in calls)
+    assert any(call[0][:3] == [sys.executable, "-m", "pytest"] for call in calls)
+
+
+def test_apply_patch_removes_temporary_worktree_when_post_patch_tests_fail(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import sys
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    monkeypatch.setattr(poller, "ROOT", root)
+    calls = []
+    created_worktree = None
+
+    def fake_run(args, **kwargs):
+        nonlocal created_worktree
+        calls.append(args)
+        if args[0] == "git":
+            if args[1:3] == ["rev-parse", "--verify"]:
+                return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+            if args[1:4] == ["show-ref", "--verify", "--quiet"]:
+                return SimpleNamespace(returncode=1, stdout="", stderr="")
+            if args[1:3] == ["worktree", "add"]:
+                from pathlib import Path
+                created_worktree = Path(args[5])
+                created_worktree.mkdir(parents=True)
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] == ["worktree", "remove"]:
+                created_worktree.rmdir()
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            if args[1:3] == ["branch", "-D"]:
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert args[:3] == [sys.executable, "-m", "pytest"]
+        return SimpleNamespace(returncode=1, stdout="1 failed", stderr="failure details")
+
+    monkeypatch.setattr(poller.subprocess, "run", fake_run)
+    result = poller._apply_patch("diff --git a/a b/a\n", "task-105")
+
+    assert result["status"] == "failed_rolled_back"
+    assert result["rollback_verified"] is True
+    assert result["temporary_worktree_removed"] is True
+    assert result["temporary_branch_removed"] is True
+    assert created_worktree is not None and not created_worktree.exists()
+
+
+def test_load_state_returns_empty_only_when_state_file_is_missing(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    state_path = tmp_path / "missing.json"
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    assert poller._load_state() == {}
+
+
+def test_load_state_fails_closed_on_corrupt_json(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text("{not valid json", encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        poller._load_state()
+
+
+def test_load_state_fails_closed_on_non_object_json(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="JSON object"):
+        poller._load_state()
+
+
+def test_load_state_fails_closed_on_corrupt_replay_history(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from local_agent import poller
+
+    state_path = tmp_path / "poller_state.json"
+    state_path.write_text(json.dumps({"processed_tasks": {"task-1": {"status": "processed"}}}), encoding="utf-8")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+    with pytest.raises(RuntimeError, match="replay history"):
+        poller._load_state()
+
+
+
+def test_run_one_redacts_sensitive_arguments_from_console(monkeypatch, capsys, tmp_path):
+    from local_agent import poller
+    from types import SimpleNamespace
+    from datetime import datetime, timedelta, timezone
+
+    future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()
+    task = SimpleNamespace(
+        task_id="doctor-redaction-001",
+        operation="doctor",
+        expires_at=future,
+        arguments={"github_token": "ghp_test_secret_do_not_log"},
+        requires_local_approval=True,
+    )
+
+    class FakeClient:
+        def fetch_desired_task(self):
+            return task, "manifest-sha"
+
+        def publish_result(self, task_id, result):
+            return "result-commit"
+
+    monkeypatch.setattr("builtins.input", lambda prompt: "YES")
+    monkeypatch.setitem(poller.SUPPORTED_HANDLERS, "doctor", lambda: {"status": "completed"})
+    monkeypatch.setattr(poller, "write_report", lambda *args, **kwargs: tmp_path / "report.json")
+
+    poller._run_one(FakeClient(), task, "manifest-sha")
+
+    output = capsys.readouterr().out
+    assert "ghp_test_secret_do_not_log" not in output
+    assert "[REDACTED]" in output
+
+
+def test_not_expired_rejects_task_created_too_far_in_the_future():
+    future_created = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    future_expiry = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
+    assert not _not_expired(SimpleNamespace(created_at=future_created, expires_at=future_expiry))
+
+
+def test_load_state_rejects_symlink_to_external_file(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    state_path = tmp_path / "poller_state.json"
+    try:
+        state_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._load_state()
+    assert outside.read_text(encoding="utf-8") == "{}"
+
+
+def test_save_state_refuses_symlink_target(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("preserve", encoding="utf-8")
+    state_path = tmp_path / "poller_state.json"
+    try:
+        state_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "STATE_PATH", state_path)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._save_state({"processed_tasks": {}})
+    assert outside.read_text(encoding="utf-8") == "preserve"
+
+
+def test_poller_lock_refuses_symlink_target(tmp_path):
+    import pytest
+    from local_agent.poller import _acquire_instance_lock
+
+    outside = tmp_path / "outside.lock"
+    outside.write_text("preserve", encoding="utf-8")
+    lock_path = tmp_path / "poller.lock"
+    try:
+        lock_path.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        _acquire_instance_lock(lock_path)
+    assert outside.read_text(encoding="utf-8") == "preserve"
+
+
+def test_agent_state_directory_rejects_symlink_escape(tmp_path, monkeypatch):
+    import pytest
+    from local_agent import poller
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (root / ".local_agent").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+    monkeypatch.setattr(poller, "ROOT", root)
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        poller._ensure_agent_dir()

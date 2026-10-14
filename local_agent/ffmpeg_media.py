@@ -109,17 +109,31 @@ class FFmpegMediaTools:
         if target.resolve() == Path(video_path).resolve():
             raise MediaError("Frame output path must not overwrite the source video")
         target.parent.mkdir(parents=True, exist_ok=True)
-        self._run([
-            self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-            "-sseof", "-1", "-i", str(video_path), "-map", "0:v:0",
-            # Seek into the final second, then reverse that buffered segment so
-            # the first emitted frame is the actual final decoded frame.
-            "-vf", "reverse", "-frames:v", "1", "-f", "image2", str(target),
-        ])
-        if not target.is_file() or target.stat().st_size == 0:
-            raise MediaError("FFmpeg did not produce the final-frame image")
-        self.validate_image(str(target))
-        return str(target)
+        # Never let an old frame make a failed FFmpeg run appear successful.
+        # Generate beside the target and replace it only after validation passes.
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="frame_", suffix=target.suffix or ".png", dir=str(target.parent)
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            self._run([
+                self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                "-sseof", "-1", "-i", str(video_path), "-map", "0:v:0",
+                # Seek into the final second, then reverse that buffered segment so
+                # the first emitted frame is the actual final decoded frame.
+                "-vf", "reverse", "-frames:v", "1", "-f", "image2", str(temporary),
+            ])
+            if not temporary.is_file() or temporary.stat().st_size == 0:
+                raise MediaError("FFmpeg did not produce the final-frame image")
+            self.validate_image(str(temporary))
+            os.replace(temporary, target)
+            return str(target)
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @staticmethod
     def _stream_signature(data: dict[str, Any]) -> tuple[Any, ...]:
@@ -153,28 +167,42 @@ class FFmpegMediaTools:
         if any(Path(path).resolve() == resolved_target for path in video_paths):
             raise MediaError("Assembly output path must not overwrite a source clip")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Keep list file beside target so paths with spaces and non-ASCII characters
-        # are handled consistently by FFmpeg on Windows.
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", newline="\n", suffix=".ffconcat",
-            prefix="concat_", dir=target.parent, delete=False,
-        ) as listing:
-            list_path = Path(listing.name)
-            for path in video_paths:
-                absolute = str(Path(path).resolve()).replace("\\", "/")
-                escaped = absolute.replace("'", "'\\''")
-                listing.write(f"file '{escaped}'\n")
+        # Render to a fresh sibling file so a stale existing target cannot make
+        # a no-output or failed FFmpeg invocation appear successful.
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="concat_output_", suffix=target.suffix or ".mp4", dir=str(target.parent)
+        )
+        os.close(descriptor)
+        temporary_output = Path(temporary_name)
+        list_path: Path | None = None
         try:
+            # Keep list file beside target so paths with spaces and non-ASCII
+            # characters are handled consistently by FFmpeg on Windows.
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n", suffix=".ffconcat",
+                prefix="concat_", dir=target.parent, delete=False,
+            ) as listing:
+                list_path = Path(listing.name)
+                for path in video_paths:
+                    absolute = str(Path(path).resolve()).replace("\\", "/")
+                    escaped = absolute.replace("'", "'\\''")
+                    listing.write(f"file '{escaped}'\n")
             self._run([
                 self.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "concat", "-safe", "0", "-i", str(list_path),
-                "-c", "copy", str(target),
+                "-c", "copy", str(temporary_output),
             ])
+            if not temporary_output.is_file() or temporary_output.stat().st_size == 0:
+                raise MediaError("FFmpeg did not produce the assembled video")
+            os.replace(temporary_output, target)
+            return str(target)
         finally:
+            if list_path is not None:
+                try:
+                    list_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             try:
-                list_path.unlink(missing_ok=True)
+                temporary_output.unlink(missing_ok=True)
             except OSError:
                 pass
-        if not target.is_file() or target.stat().st_size == 0:
-            raise MediaError("FFmpeg did not produce the assembled video")
-        return str(target)

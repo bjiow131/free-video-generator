@@ -105,27 +105,33 @@ One-click launch, operate entirely in the browser. Interface available in **Russ
 ### Prerequisites
 
 - Python 3.10+
-- ffmpeg (for video concatenation and audio processing)
+- FFmpeg and ffprobe (for video processing, validation, and assembly)
 
 That's it. No GPU, no large RAM, a regular laptop is all you need.
 
 ### Option A: Windows (recommended)
 
-**Step 1 — Clone & Launch**
+**Step 1 — Clone & Prepare (first run)**
 
 ```bat
 git clone https://github.com/bjiow131/free-video-generator.git
 cd free-video-generator
+setup_windows.bat
+```
+
+The setup script checks Python 3.10+, FFmpeg, and ffprobe; creates `.venv` if missing; and installs `requirements.txt`. Install FFmpeg separately and ensure both `ffmpeg` and `ffprobe` are on PATH before setup.
+
+**Step 2 — Start the local server**
+
+```bat
 start_windows.bat
 ```
 
-`start_windows.bat` requires an existing `.venv`, a Windows `AGNES_API_KEY`, and FFmpeg in PATH. It starts FastAPI and opens `http://127.0.0.1:8765`. Create the environment first as shown by the script.
+The launcher starts FastAPI at `http://127.0.0.1:8765` and opens the browser. It checks server readiness for up to 60 seconds instead of waiting indefinitely. An Agnes API key is not required just to open the app, but generation through Agnes requires a valid key configured in the Web UI or the `AGNES_API_KEY` environment variable.
 
-For Linux/macOS, use `./start.sh`.
+**Step 3 — Configure the API key (for Agnes generation)**
 
-**Step 2 — Configure API Key**
-
-Get a free API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
+Get an API key from [Agnes AI](https://platform.agnes-ai.com), then choose one of these local options:
 
 ```bat
 REM Windows CMD
@@ -142,14 +148,17 @@ $env:AGNES_API_KEY = "your-api-key"
 export AGNES_API_KEY="your-api-key"
 ```
 
-On Windows, the launcher requires `AGNES_API_KEY` in the environment. For other local launches, the key can also be saved through the Web UI. The local endpoint accepts multipart form data:
+The key can also be saved through the Web UI. The local API configuration endpoint accepts multipart form data:
 
 ```bash
 curl -X POST http://localhost:8765/api/config -F "api_key=your-api-key"
 ```
-**Step 3 — Create Your First Video**
 
-Open `http://localhost:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
+**Step 4 — Create your first video**
+
+Open `http://127.0.0.1:8765`, choose a video mode (Simple / Creative / Manuscript / Anchor), enter your idea, and click "Start Generating".
+
+For Linux/macOS, use `./start.sh`.
 
 ### Option B: Docker (optional, local only)
 
@@ -491,3 +500,19 @@ The redesign was structurally verified on the branch, including responsive break
 - Simple, Creative, Tasks, and Settings states.
 
 The implementation is designed so these captures can be added without changing the application code.
+
+
+## Local Windows Agent (feature-branch prototype)
+
+The agent now includes an outbound HTTPS GitHub mailbox poller, a strict task protocol, private-repository enforcement, Windows Credential Manager token storage, local approval, replay protection, and redacted result reporting. Start with the [channel setup guide](docs/LOCAL_AGENT_CHANNEL_SETUP.md) and [security/design notes](docs/LOCAL_CONTROL_CHANNEL_DESIGN.md).
+
+Local diagnostics:
+- `python -m local_agent.cli doctor`
+- `python -m local_agent.cli preflight`
+- `python -m local_agent.cli status`
+- `python -m local_agent.cli logs`
+- `python -m local_agent.cli test`
+
+The poller command is `python -m local_agent.poller`. It expects a **dedicated private mailbox repository**, a manifest at `queue/desired_task.json`, and a token stored with `python -m local_agent.credentials_cli set`. Do not use the public application repository as the mailbox.
+
+**Important:** the communication channel is implemented in code but is not yet connected to the user's Windows computer. The private mailbox repository, token configuration, Windows preflight, and live request/result round-trip still need to be completed and verified. No successful Windows or Blender runtime test is claimed.

@@ -180,6 +180,22 @@ class LocalProjectRunner:
                 raise ValueError(f"{label} resolves outside the project output directory")
             return str(candidate)
 
+        def scene_output_root(scene_id: str) -> Path:
+            candidate = project_dir / scene_id
+            if candidate.is_symlink() or getattr(candidate, "is_junction", lambda: False)():
+                raise ValueError("Scene output directory must not be a symlink or junction")
+            resolved = candidate.resolve()
+            if not resolved.is_relative_to(project_dir):
+                raise ValueError("Scene output directory resolves outside the project output directory")
+            return resolved
+
+        def scene_output_path(value: str, *, scene_id: str, label: str) -> str:
+            scene_root = scene_output_root(scene_id)
+            candidate = Path(value).resolve()
+            if not candidate.is_relative_to(scene_root):
+                raise ValueError(f"{label} does not belong to scene {scene_id!r}")
+            return str(candidate)
+
         previous_frame = manifest.initial_image
 
         if previous_frame:
@@ -211,9 +227,9 @@ class LocalProjectRunner:
             checkpoint_path_error = None
             try:
                 if saved_video:
-                    saved_video = project_output_path(saved_video, label="Checkpoint video path")
+                    saved_video = scene_output_path(saved_video, scene_id=scene.scene_id, label="Checkpoint video path")
                 if saved_frame:
-                    saved_frame = project_output_path(saved_frame, label="Checkpoint frame path")
+                    saved_frame = scene_output_path(saved_frame, scene_id=scene.scene_id, label="Checkpoint frame path")
             except ValueError as exc:
                 # Treat untrusted checkpoint paths as invalid cached outputs; never
                 # open them, and regenerate the scene from the verified input frame.
@@ -287,15 +303,15 @@ class LocalProjectRunner:
                     self.store.save(state)
                     return state
                 await self._pause.wait()
-                scene_dir = project_dir / scene.scene_id
+                scene_dir = scene_output_root(scene.scene_id)
                 scene_dir.mkdir(parents=True, exist_ok=True)
-                video_path = project_output_path(
+                video_path = scene_output_path(
                     str(scene_dir / f"attempt_{attempt:02d}.mp4"),
-                    label="Backend output target",
+                    scene_id=scene.scene_id, label="Backend output target",
                 )
-                frame_path = project_output_path(
+                frame_path = scene_output_path(
                     str(scene_dir / f"attempt_{attempt:02d}_last.png"),
-                    label="Extracted frame target",
+                    scene_id=scene.scene_id, label="Extracted frame target",
                 )
                 prompt = self._compose_prompt(manifest.global_prompt, scene)
                 self.store.update_scene(
@@ -320,13 +336,13 @@ class LocalProjectRunner:
                         return state
                     if not returned_path:
                         raise RuntimeError("Backend returned no video path")
-                    returned_path = project_output_path(returned_path, label="Backend video path")
+                    returned_path = scene_output_path(returned_path, scene_id=scene.scene_id, label="Backend video path")
                     if not os.path.isfile(returned_path):
                         raise RuntimeError("Backend returned no readable video file")
                     self.store.update_scene(state, scene.scene_id, status="validating")
                     self.media.validate_video(returned_path, scene.duration_seconds)
                     extracted = self.media.extract_last_frame(returned_path, frame_path)
-                    extracted = project_output_path(extracted, label="Extracted frame path")
+                    extracted = scene_output_path(extracted, scene_id=scene.scene_id, label="Extracted frame path")
                     if self._cancel.is_set():
                         self.store.update_scene(state, scene.scene_id, status="cancelled", error="Cancelled during frame extraction")
                         state["status"] = "cancelled"

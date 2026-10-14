@@ -29,3 +29,6 @@ static/generated/
 
 /test_end.png
 /test_ref.png
+
+# Local agent reports and runtime state (never commit diagnostics by default)
+.local_agent/
