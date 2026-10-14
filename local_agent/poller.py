@@ -2078,7 +2078,7 @@ def _run_mia_hunyuan3d_mv_trial(arguments: dict[str, Any], task_id: str) -> dict
                       "--index-url","https://download.pytorch.org/whl/cu124"],timeout=2400)
         if proc.returncode:return fail("install_cuda_torch",proc,{"hardware":hardware})
         packages=["ninja","pybind11","diffusers==0.32.2","einops","opencv-python",
-          "numpy==1.26.4","transformers==4.46.3","omegaconf","tqdm","trimesh",
+          "numpy==1.26.4","transformers==4.48.0","omegaconf","tqdm","trimesh",
           "pymeshlab","pygltflib","xatlas","accelerate","huggingface_hub","safetensors",
           "Pillow"]
         proc=run(pip+["install"]+packages,timeout=2400)
@@ -2145,6 +2145,7 @@ with open(os.path.join(out_dir,"mesh_stats.json"),"w",encoding="utf-8") as f:
         env=os.environ.copy()
         env["HF_HOME"]=str(tooling/"hf_cache")
         env["HUGGINGFACE_HUB_CACHE"]=str(tooling/"hf_cache")
+        env["PYTHONPATH"]=str(repo)+os.pathsep+env.get("PYTHONPATH","")
         proc=run([python,inference,prep_dir,output,tooling/"hf_cache"],
                  cwd=repo,timeout=5400,env=env)
         if proc.returncode:return fail("hunyuan_multiview_shape_generation",proc,
