@@ -139,12 +139,22 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         if set(args) != {"project_name"} or args.get("project_name") != "S01E01_SC01_DRAFT":
             raise ProtocolError("export_mia_scene_review accepts only the fixed Episode 1 draft project.")
 
-    if value["operation"] in {"blender_mia_source_neutral","blender_mia_source_details","blender_mia_source_polish"}:
+    if value["operation"] in {"blender_mia_source_neutral","blender_mia_source_details"}:
         args=value["arguments"]
         if (set(args)!={"source_project","project_name"} or any(not isinstance(args.get(k),str)
                 or not BLENDER_PROJECT_RE.fullmatch(args[k]) for k in ("source_project","project_name"))
                 or args["source_project"]==args["project_name"]):
             raise ProtocolError("Neutral copy accepts two distinct safe project names.")
+    if value["operation"] == "blender_mia_source_polish":
+        args=value["arguments"]
+        required={"source_project","project_name"}
+        allowed=required|{"profile"}
+        if (not required.issubset(args) or set(args)-allowed
+                or any(not isinstance(args.get(k),str) or not BLENDER_PROJECT_RE.fullmatch(args[k])
+                       for k in ("source_project","project_name"))
+                or args["source_project"]==args["project_name"]
+                or args.get("profile","face") not in {"face","head_jacket","face_and_fit","eyes","proportions"}):
+            raise ProtocolError("Mia polish accepts safe project names and one fixed profile name.")
     if value["operation"] == "blender_mia_source_recover":
         args=value["arguments"]
         if (set(args)!={"project_name","source_task_id"} or not isinstance(args.get("project_name"),str)
