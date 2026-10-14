@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -192,6 +192,15 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         project_name = plan.get("project_name")
         if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
             raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
+    if value["operation"] == "blender_mia_reference_fit_preflight":
+        args = value["arguments"]
+        if set(args) != {"project_name", "source_blend"}:
+            raise ProtocolError("blender_mia_reference_fit_preflight requires project_name and source_blend.")
+        if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("ReferenceFit preflight project_name must use safe project-name characters.")
+        name = args["source_blend"]
+        if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}\\.blend", name):
+            raise ProtocolError("ReferenceFit preflight source_blend must be a safe .blend basename.")
     if value["operation"] == "blender_mia_reference_fit":
         args = value["arguments"]
         required = {"project_name", "source_blend", "reference_map_file", "approved_reference_sha256"}
