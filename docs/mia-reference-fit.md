@@ -8,7 +8,7 @@ The first stage does not move arbitrary vertices, retarget Spring, create hair, 
 
 ## Reference map
 
-Store a UTF-8 JSON file inside the local Mia project directory. It must include:
+Store a UTF-8 JSON file inside the local Mia project directory. The optimizer task must also pass the `passport_file` name returned by the read-only preflight; the passport's source SHA must match the `.blend` being fitted, and it must confirm at least two cameras, usable shape keys, and SciPy in Blender's Python. It must include:
 
 - `schema_version`: `1`.
 - `coordinate_convention`: `camera_frame_bottom_left_normalized`.
