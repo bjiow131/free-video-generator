@@ -12,7 +12,7 @@ class ReferenceToModelTests(unittest.TestCase):
     def spec_data(self):
         return {
             "schema_version": 1,
-            "character_name": "Any_Character",
+            "character_name": "Мия — зимний комплект",
             "coordinate_convention": "camera_frame_bottom_left_normalized",
             "reference_sha256": "a" * 64,
             "views": [
