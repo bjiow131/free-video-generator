@@ -346,7 +346,7 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _run_blender_mia_reference_fit(arguments: dict[str, Any]) -> dict[str, Any]:
+def _run_blender_mia_reference_fit(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
     """Fit bounded shape-key parameters to a hash-pinned multi-view map, without a full render."""
     from local_agent.mia_reference_fit import run_reference_fit
     return run_reference_fit(
@@ -354,6 +354,7 @@ def _run_blender_mia_reference_fit(arguments: dict[str, Any]) -> dict[str, Any]:
         arguments["source_blend"],
         arguments["reference_map_file"],
         arguments["approved_reference_sha256"],
+        task_id,
     )
 
 
@@ -580,7 +581,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             elif task.operation == "blender_mouth_motion":
                 details = _run_blender_mouth_motion(task.arguments)
             elif task.operation == "blender_mia_reference_fit":
-                details = _run_blender_mia_reference_fit(task.arguments)
+                details = _run_blender_mia_reference_fit(task.arguments, task.task_id)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
