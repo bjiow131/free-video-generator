@@ -46,6 +46,8 @@ BLENDER_TESTS = (
     "tests/test_blender_preview_validation.py",
     "tests/test_blender_rigging.py",
     "tests/test_blender_workflow.py",
+    "tests/test_mia_fit_metrics.py",
+    "tests/test_mia_reference_fit.py",
     "tests/test_error_knowledge.py",
     "tests/test_local_agent_core.py",
     "tests/test_local_agent_examples.py",
