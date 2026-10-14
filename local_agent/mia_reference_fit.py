@@ -299,8 +299,8 @@ def measure(values):
 initial=[entry[3] for entry in params]
 before_res,before_views=measure(initial)
 try: from scipy.optimize import least_squares
-except ImportError:
-    scene.camera=original_camera; fail("scipy_not_available_in_blender_python"); raise SystemExit(0)
+except Exception as exc:
+    scene.camera=original_camera; fail("scipy_not_available_in_blender_python",error_type=type(exc).__name__); raise SystemExit(0)
 lower=[float(p[0]["lower"]) for p in params]; upper=[float(p[0]["upper"]) for p in params]
 if any(lo>=hi or val<lo or val>hi for lo,hi,val in zip(lower,upper,initial)):
     scene.camera=original_camera; fail("invalid_parameter_bounds"); raise SystemExit(0)
@@ -401,8 +401,10 @@ bpy.ops.wm.open_mainfile(filepath=source_path,load_ui=False)
 try:
     import scipy
     scipy_version=scipy.__version__
-except ImportError:
+    scipy_import_error=None
+except Exception as exc:
     scipy_version=None
+    scipy_import_error=type(exc).__name__
 meshes=[]
 for obj in bpy.data.objects:
     if obj.type!="MESH": continue
@@ -412,7 +414,7 @@ for obj in bpy.data.objects:
 armatures=[]
 for obj in bpy.data.objects:
     if obj.type=="ARMATURE": armatures.append({"object":obj.name,"bone_count":len(obj.data.bones),"deform_bone_count":sum(1 for b in obj.data.bones if b.use_deform),"driver_count":len(obj.animation_data.drivers) if obj.animation_data else 0,"action":obj.animation_data.action.name if obj.animation_data and obj.animation_data.action else None})
-report={"status":"completed","stage":"read_only_geometry_passport","source_path":source_path,"source_sha256":source_sha,"blender_version":bpy.app.version_string,"scipy_version":scipy_version,"cameras":[o.name for o in bpy.data.objects if o.type=="CAMERA"],"mesh_objects":meshes,"mesh_count":len(meshes),"armatures":armatures,"armature_count":len(armatures),"curve_objects":[o.name for o in bpy.data.objects if o.type in {"CURVE","CURVES"}],"action_count":len(bpy.data.actions),"animation_data_cleared":False,"license":"not_verifiable_from_blend_file","full_render_performed":False}
+report={"status":"completed","stage":"read_only_geometry_passport","source_path":source_path,"source_sha256":source_sha,"blender_version":bpy.app.version_string,"scipy_version":scipy_version,"scipy_import_error":scipy_import_error,"cameras":[o.name for o in bpy.data.objects if o.type=="CAMERA"],"mesh_objects":meshes,"mesh_count":len(meshes),"armatures":armatures,"armature_count":len(armatures),"curve_objects":[o.name for o in bpy.data.objects if o.type in {"CURVE","CURVES"}],"action_count":len(bpy.data.actions),"animation_data_cleared":False,"license":"not_verifiable_from_blend_file","full_render_performed":False}
 with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_ascii=False)
 '''
 
