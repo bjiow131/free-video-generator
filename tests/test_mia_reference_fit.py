@@ -78,3 +78,11 @@ def test_shipped_reference_segments_consistent_views(fitting):
     assert len(boxes)==3
     assert all(380<=box[3]-box[1]<=430 for box in boxes.values())
     assert all(box[2]-box[0]<220 for box in boxes.values())
+
+
+def test_reference_review_isolated_from_legacy_source_reset_guard():
+    workflow = ast.parse(Path('local_agent/blender_workflow.py').read_text())
+    fn = next(n for n in workflow.body if isinstance(n, ast.FunctionDef) and n.name == 'create_reference_mia_model')
+    calls = [n.func.id for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    assert '_legacy_source_reset_guard' not in calls
+    assert any(isinstance(n, ast.Constant) and isinstance(n.value, str) and 'MIA_REFERENCE_REVIEW' in n.value for n in ast.walk(fn))
