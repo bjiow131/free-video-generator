@@ -2325,7 +2325,7 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
     return {"status": "completed", "stage": "review_of_existing_multiview_candidate",
             "output_folder": str(output), "blend_path": str(blend),
             "mesh_path": str(glb), "mesh_stats_path": str(stats),
-            "preview_paths": previews, "thumbnail_jpeg_base64": thumbnails, "mesh_sha256": glb_sha
+            "preview_paths": previews, "thumbnail_jpeg_base64": thumbnails, "mesh_sha256": glb_sha,
             "source_model_preserved": True, "shape_only": True,
             "geometry_is_new": True, "identity_verified": False,
             "license_review_required_before_production": True,
