@@ -353,6 +353,7 @@ def _run_blender_mia_reference_fit(arguments: dict[str, Any], task_id: str) -> d
         arguments["project_name"],
         arguments["source_blend"],
         arguments["reference_map_file"],
+        arguments["passport_file"],
         arguments["approved_reference_sha256"],
         task_id,
     )
