@@ -2231,14 +2231,16 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     from local_agent.path_names import is_link_or_junction
 
     if arguments == {}:
-        candidate_task_id = "mia-hunyuan3d-mv-trial-20261014-1811"
+        candidate_task_id, fit_profile = "mia-hunyuan3d-mv-trial-20261014-1811", False
     elif (isinstance(arguments, dict)
-          and set(arguments) == {"candidate_task_id"}
-          and isinstance(arguments["candidate_task_id"], str)
-          and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", arguments["candidate_task_id"])):
+          and set(arguments) in ({"candidate_task_id"}, {"candidate_task_id", "fit_profile"})
+          and isinstance(arguments.get("candidate_task_id"), str)
+          and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", arguments["candidate_task_id"])
+          and type(arguments.get("fit_profile", False)) is bool):
         candidate_task_id = arguments["candidate_task_id"]
+        fit_profile = arguments.get("fit_profile", False)
     else:
-        return {"status": "rejected", "reason": "invalid_candidate_task_id"}
+        return {"status": "rejected", "reason": "invalid_candidate_or_fit_options"}
     if not load_policy().get("allow_blender"):
         return {"status": "blocked", "reason": "local_blender_permission_required"}
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
@@ -2268,10 +2270,16 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     if blender is None or not blender.is_file():
         return {"status": "blocked", "reason": "blender_missing"}
     glb_sha = hashlib.sha256(glb.read_bytes()).hexdigest()
-    render = output / "render_candidate.py"
-    render.write_text(r'''import bpy,sys,os
+    review = output / ("profilefit" if fit_profile else "color_review")
+    if is_link_or_junction(review):
+        return {"status": "blocked", "reason": "unsafe_review_path"}
+    review.mkdir(parents=True, exist_ok=True)
+    render = review / "render_candidate.py"
+    render.write_text(r'''import bpy,sys,os,json,math
 from mathutils import Vector
-glb,out=sys.argv[sys.argv.index("--")+1:]
+glb,out,fit_flag=sys.argv[sys.argv.index("--")+1:]
+fit_profile=(fit_flag=="1")
+PROFILE_TARGETS=json.loads('{"front":[0.30488,0.39512,0.25854,0.2439,0.22927,0.22927,0.22439,0.20244,0.20732,0.22195,0.23902,0.23659,0.23659,0.22195,0.21463,0.21707,0.23659,0.23415,0.22927,0.23415,0.23415,0.22439,0.21951,0.4878,0.49024,0.4878,0.48049,0.46829,0.44878,0.45122,0.43415,0.43415,0.41951,0.39024,0.36829,0.35122,0.31951,0.3,0.28049,0.26341,0.2439,0.22195,0.19268,0.18293,0.20976,0.26829,0.28537,0.30244,0.32439,0.32683,0.33171,0.31707,0.31707,0.2878,0.28537,0.28293,0.29024,0.27317,0.2439,0.23171,0.21463,0.18293,0.11463,0.06098],"side":[0.24088,0.37956,0.19708,0.18735,0.13869,0.12652,0.11679,0.08516,0.09489,0.09732,0.10949,0.11192,0.11192,0.11679,0.11922,0.12409,0.12165,0.11679,0.12165,0.12165,0.12652,0.12409,0.13382,0.14355,0.15085,0.15815,0.18005,0.23844,0.26277,0.27981,0.27737,0.27981,0.27981,0.27737,0.26764,0.25061,0.24818,0.25061,0.24331,0.23114,0.21411,0.18735,0.17518,0.15328,0.20195,0.21655,0.29197,0.30657,0.32117,0.32847,0.32603,0.30657,0.29927,0.27494,0.27981,0.28954,0.2871,0.27981,0.27981,0.26521,0.24088,0.22384,0.17762,0.0146],"back":[0.3017,0.35766,0.25304,0.24574,0.22384,0.21898,0.21168,0.18735,0.21168,0.21655,0.23844,0.23358,0.23358,0.21411,0.21411,0.21898,0.23358,0.23358,0.22871,0.23358,0.23114,0.22141,0.34307,0.49392,0.49635,0.48905,0.48175,0.46472,0.45012,0.45255,0.44039,0.44282,0.42092,0.39173,0.36983,0.35036,0.32603,0.30414,0.28467,0.26277,0.24574,0.21898,0.19951,0.18735,0.22384,0.24818,0.3017,0.29684,0.31144,0.31873,0.32847,0.30657,0.29927,0.2871,0.27981,0.28954,0.28954,0.26764,0.25791,0.23358,0.21168,0.18491,0.12409,0.05839]}')
 bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=glb)
 meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
@@ -2282,10 +2290,54 @@ lo=Vector((min(v.x for v in coords),min(v.y for v in coords),min(v.z for v in co
 hi=Vector((max(v.x for v in coords),max(v.y for v in coords),max(v.z for v in coords)))
 center=(lo+hi)*.5;height=max(hi.z-lo.z,1e-3);scale=3.8/height
 for o in meshes:
- o.location=(o.location-center)*scale
- o.scale*=scale
+ inv=o.matrix_world.inverted()
+ for v in o.data.vertices:
+  p=o.matrix_world@v.co
+  q=Vector(((p.x-center.x)*scale,(p.y-center.y)*scale,(p.z-center.z)*scale))
+  v.co=inv@q
 bpy.context.view_layer.update()
-# Reference palette for review; no vertex coordinates or source GLB are changed.
+fit_report={"applied":False}
+if fit_profile:
+ n=64
+ points=[]
+ for o in meshes:
+  inv=o.matrix_world.inverted()
+  for v in o.data.vertices:
+   p=o.matrix_world@v.co
+   z=max(0.0,min(3.799999,p.z+1.9))
+   idx=min(n-1,int(z/3.8*n))
+   points.append((o,v,p,idx,inv))
+ mins_x=[None]*n;maxs_x=[None]*n;mins_y=[None]*n;maxs_y=[None]*n
+ for o,v,p,idx,inv in points:
+  mins_x[idx]=p.x if mins_x[idx] is None else min(mins_x[idx],p.x)
+  maxs_x[idx]=p.x if maxs_x[idx] is None else max(maxs_x[idx],p.x)
+  mins_y[idx]=p.y if mins_y[idx] is None else min(mins_y[idx],p.y)
+  maxs_y[idx]=p.y if maxs_y[idx] is None else max(maxs_y[idx],p.y)
+ def fill(a):
+  good=[i for i,x in enumerate(a) if x is not None]
+  if not good: raise RuntimeError("empty profile bins")
+  return [a[i] if a[i] is not None else a[min(good,key=lambda j:abs(j-i))] for i in range(n)]
+ mins_x,maxs_x,mins_y,maxs_y=map(fill,(mins_x,maxs_x,mins_y,maxs_y))
+ cx=[(a+b)*0.5 for a,b in zip(mins_x,maxs_x)]
+ cy=[(a+b)*0.5 for a,b in zip(mins_y,maxs_y)]
+ wx=[max(1e-4,b-a) for a,b in zip(mins_x,maxs_x)]
+ wy=[max(1e-4,b-a) for a,b in zip(mins_y,maxs_y)]
+ target_x=[((a+b)*0.5)*3.8 for a,b in zip(PROFILE_TARGETS["front"],PROFILE_TARGETS["back"])]
+ target_y=[v*3.8 for v in PROFILE_TARGETS["side"]]
+ def smooth(values):
+  return [sum(values[max(0,i-2):min(n,i+3)])/len(values[max(0,i-2):min(n,i+3)]) for i in range(n)]
+ sx=smooth([max(0.55,min(1.70,target_x[i]/wx[i])) for i in range(n)])
+ sy=smooth([max(0.55,min(1.70,target_y[i]/wy[i])) for i in range(n)])
+ for o,v,p,idx,inv in points:
+  q=Vector((cx[idx]+(p.x-cx[idx])*sx[idx],
+            cy[idx]+(p.y-cy[idx])*sy[idx],p.z))
+  v.co=inv@q
+ bpy.context.view_layer.update()
+ fit_report={"applied":True,"height_bins":n,
+             "front_back_width_scale_range":[round(min(sx),4),round(max(sx),4)],
+             "profile_depth_scale_range":[round(min(sy),4),round(max(sy),4)],
+             "method":"smoothed bounded cross-section fit to approved front/profile/back masks"}
+# Reference palette for review.
 palette=[("Hair",(0.38,0.22,0.12,1)),("Skin",(0.82,0.55,0.42,1)),
  ("Jacket",(0.025,0.24,0.30,1)),("Trousers",(0.28,0.16,0.095,1)),
  ("Backpack",(0.82,0.49,0.075,1)),("Boots",(0.20,0.105,0.055,1))]
@@ -2299,7 +2351,7 @@ for obj in meshes:
  obj.data.materials.clear()
  for m in materials: obj.data.materials.append(m)
  for poly in obj.data.polygons:
-  p=obj.matrix_world @ poly.center
+  p=obj.matrix_world@poly.center
   x,y,z=p.x,p.y,p.z
   if z < -1.48: slot=5
   elif z < -0.12: slot=3
@@ -2326,40 +2378,49 @@ def aim(loc):
  cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
+blend_name="mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend"
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,blend_name))
+if fit_profile:
+ for o in bpy.context.selected_objects:o.select_set(False)
+ for o in meshes:o.select_set(True)
+ bpy.context.view_layer.objects.active=meshes[0]
+ bpy.ops.export_scene.gltf(filepath=os.path.join(out,"mia_hunyuan3d2mv_profilefit.glb"),
+                           export_format="GLB",use_selection=True)
+ with open(os.path.join(out,"profile_fit_report.json"),"w",encoding="utf-8") as f:
+  json.dump(fit_report,f,indent=2)
 ''', encoding="utf-8")
     try:
         proc = subprocess.run(
             [str(blender), "--background", "--factory-startup", "--disable-autoexec",
              "--offline-mode", "--python-exit-code", "1", "--python", str(render),
-             "--", str(glb), str(output)],
-            cwd=str(output), capture_output=True, text=True, encoding="utf-8",
+             "--", str(glb), str(review), "1" if fit_profile else "0"],
+            cwd=str(review), capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=900, check=False, shell=False,
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
         return {"status": "incomplete", "stage": "blender_review_renders",
-                "reason": "render_timeout", "output_folder": str(output)}
+                "reason": "render_timeout", "output_folder": str(review)}
     if proc.returncode:
         return {"status": "incomplete", "stage": "blender_review_renders",
                 "return_code": proc.returncode,
                 "error_tail": (proc.stderr or "")[-1800:],
-                "output_folder": str(output)}
-    previews = {name: str(output / (name + ".png")) for name in ("front", "side", "back")}
-    blend = output / "mia_hunyuan3d2mv_candidate.blend"
+                "output_folder": str(review)}
+    previews = {name: str(review / (name + ".png")) for name in ("front", "side", "back")}
+    blend = review / ("mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend")
     if not blend.is_file() or any(not Path(path).is_file() for path in previews.values()):
         return {"status": "incomplete", "stage": "validate_review_views",
-                "reason": "blend_or_preview_missing", "output_folder": str(output)}
+                "reason": "blend_or_preview_missing", "output_folder": str(review)}
     if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
-    thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
+    thumbnail_paths = {name: review / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
     powershell_code = None
     if any(
         not path.is_file()
         or Path(previews[name]).stat().st_mtime_ns >= path.stat().st_mtime_ns
         for name, path in thumbnail_paths.items()
     ):
-        safe_root = str(output).replace("'", "''")
+        safe_root = str(review).replace("'", "''")
         powershell_code = (
             "$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Drawing;"
             "$root='" + safe_root + "';"
@@ -2375,7 +2436,7 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
         try:
             thumb_proc = subprocess.run(
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", powershell_code],
-                cwd=str(output), capture_output=True, text=True, timeout=60,
+                cwd=str(review), capture_output=True, text=True, timeout=60,
                 check=False, shell=False, stdin=subprocess.DEVNULL,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -2388,21 +2449,29 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
                 "reason": "thumbnail_missing_after_windows_conversion",
                 "windows_conversion_return_code": thumb_proc.returncode if thumb_proc else None,
                 "thumbnail_error_type": thumbnail_error,
-                "thumbnail_candidates": [path.name for path in output.iterdir()
+                "thumbnail_candidates": [path.name for path in review.iterdir()
                                          if path.name.lower().startswith("thumb_")],
-                "output_folder": str(output)}
+                "output_folder": str(review)}
         return {"status": "incomplete", "stage": "validate_review_thumbnails",
-                "reason": "thumbnail_missing", "output_folder": str(output)}
+                "reason": "thumbnail_missing", "output_folder": str(review)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
                   for name, path in thumbnail_paths.items()}
+    fitted_glb = review / "mia_hunyuan3d2mv_profilefit.glb"
+    result_glb = fitted_glb if fit_profile else glb
+    if fit_profile and not fitted_glb.is_file():
+        return {"status": "incomplete", "stage": "validate_fitted_mesh",
+                "reason": "profilefit_mesh_missing", "output_folder": str(review)}
+    result_sha = hashlib.sha256(result_glb.read_bytes()).hexdigest()
     return {"status": "completed", "stage": "review_of_existing_multiview_candidate",
-            "output_folder": str(output), "blend_path": str(blend),
-            "mesh_path": str(glb), "mesh_stats_path": str(stats),
-            "preview_paths": previews, "thumbnail_jpeg_base64": thumbnails, "mesh_sha256": glb_sha,
+            "output_folder": str(review), "blend_path": str(blend),
+            "mesh_path": str(result_glb), "mesh_stats_path": str(stats),
+            "preview_paths": previews, "thumbnail_jpeg_base64": thumbnails, "mesh_sha256": result_sha,
+            "source_mesh_path": str(glb), "source_mesh_sha256": glb_sha,
             "source_model_preserved": True, "shape_only": True,
-            "geometry_is_new": True, "identity_verified": False,
-            "license_review_required_before_production": True,
-            "validation_note": "Existing generated GLB reused; no model inference was repeated."}
+            "geometry_is_new": fit_profile, "profile_fit_applied": fit_profile,
+            "identity_verified": False, "license_review_required_before_production": True,
+            "validation_note": ("Bounded multiview cross-section geometry fit; source GLB preserved."
+                                if fit_profile else "Existing generated GLB reused; no model inference was repeated.")}
 
 
 
