@@ -2,6 +2,8 @@
 
 ReferenceFit measures a candidate model against an approved, hash-pinned reference map. It optimizes only explicitly mapped, bounded shape keys and writes an accepted result to a new `.blend` file. The source file is opened read-only by the workflow and is checked against its starting SHA-256 after Blender exits.
 
+Run `blender_mia_reference_fit_preflight` first. It produces a read-only geometry passport with the Blender version, camera names, mesh topology counts, shape keys, animation/driver counts, armature summary, curve objects, and whether SciPy imports in Blender's Python. It does not save the scene. The actual fit operation requires this passport to confirm that the chosen model and Blender installation are suitable.
+
 The first stage does not move arbitrary vertices, retarget Spring, create hair, or render with Cycles. Those are later steps after the projection fit proves useful. A shape key with animation data or drivers cannot be selected as an optimization parameter. Existing animation data is never cleared.
 
 ## Reference map
