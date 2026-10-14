@@ -947,6 +947,70 @@ def mia_source_polish_pass(profile: dict[str, Any], pass_index: int) -> dict[str
         'proportion_fit': profile['proportion_fit'] and revision,
     }
 
+
+def _mia_adaptive_render_signature() -> str:
+    return hashlib.sha256(MIA_ADAPTIVE_BLENDER_SCRIPT.encode("utf-8")).hexdigest()
+
+
+def _copy_verified_mia_cached_baseline(source: Path, target: Path,
+                                       source_sha256: str) -> dict[str, str] | None:
+    """Reuse the previous final renders only when both model and renderer match."""
+    from local_agent.path_names import is_link_or_junction
+
+    source = Path(source)
+    target = Path(target)
+    history_path = source.parent / "adaptive_history.json"
+    if target.exists() or any(is_link_or_junction(p) for p in
+                              (source, source.parent, history_path, target)):
+        return None
+    try:
+        if not source.is_file() or not history_path.is_file() or history_path.stat().st_size > 1_000_000:
+            return None
+        history = json.loads(history_path.read_text("utf-8"))
+        if not isinstance(history, list) or not history:
+            return None
+        entry = history[-1]
+        if (not isinstance(entry, dict)
+                or entry.get("blend_sha256") != source_sha256
+                or entry.get("render_signature") != _mia_adaptive_render_signature()):
+            return None
+        pass_index = entry.get("pass")
+        expected = entry.get("render_sha256")
+        if (isinstance(pass_index, bool) or not isinstance(pass_index, int)
+                or not 0 <= pass_index <= 20 or not isinstance(expected, dict)
+                or set(expected) != set(MIA_ADAPTIVE_VIEWS)):
+            return None
+        render_dir = source.parent / ("pass_" + str(pass_index))
+        if is_link_or_junction(render_dir):
+            return None
+        files = {}
+        for view in MIA_ADAPTIVE_VIEWS:
+            path = render_dir / (view + ".png")
+            if (is_link_or_junction(path) or not path.is_file()
+                    or path.stat().st_size > 16_000_000
+                    or mia_adaptive_digest(path) != expected.get(view)):
+                return None
+            files[view] = path
+        target.mkdir()
+        copied = {}
+        try:
+            import shutil
+            for view, path in files.items():
+                destination = target / (view + ".png")
+                shutil.copyfile(path, destination)
+                copied[view] = mia_adaptive_digest(destination)
+                if copied[view] != expected[view]:
+                    raise ValueError("cached_render_copy_mismatch")
+        except Exception:
+            for path in target.iterdir():
+                if not is_link_or_junction(path) and path.is_file():
+                    path.unlink()
+            target.rmdir()
+            return None
+        return copied
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
     import requests
@@ -1425,15 +1489,26 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
     if not source.is_file() or root.exists():return {'status':'blocked','reason':'source_missing_or_output_exists'}
     if not reference.is_file() or mia_adaptive_digest(reference)!=MIA_ADAPTIVE_REFERENCE_SHA:return {'status':'blocked','reason':'approved_reference_digest_mismatch'}
     original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=profile['edits'];history=[];reason='awaiting_codex_review';latest=None
+    render_signature=_mia_adaptive_render_signature()
     validate_mia_adaptive_plan({'verdict':'NEEDS_REVISION','differences':['Pinned Codex correction pass'], 'edits':edits},[{'name':e['object']} for e in edits])
     donors=acquire_mia_study_sources(ws)
     (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
     donor_structure=inspect_study_sources(ws,blender)
     (root/'study_source_structure.json').write_text(json.dumps(donor_structure,indent=2),encoding='utf-8')
     try:
-        # If there are reviewed edits, first render the unchanged input with the
-        # very same renderer and cameras, then apply edits to that checkpoint.
-        for i in range(2 if (edits or profile['hair_rebuild'] or profile['face_refine'] or profile['proportion_fit']) else 1):
+        # Reuse a hash-verified prior final render as the baseline. The renderer
+        # fingerprint prevents stale images from surviving render-code changes.
+        revision_required=bool(edits or profile['hair_rebuild'] or profile['face_refine'] or profile['proportion_fit'])
+        baseline_hashes=(_copy_verified_mia_cached_baseline(source,root/'pass_0',original_hash)
+                         if revision_required else None)
+        if baseline_hashes:
+            history.append({'pass':0,'blend_sha256':original_hash,
+                            'render_sha256':baseline_hashes,'render_signature':render_signature,
+                            'plan':{'verdict':'CACHED_BASELINE','differences':[],'edits':[]},'changes':[]})
+            pass_indices=(1,)
+        else:
+            pass_indices=range(2 if revision_required else 1)
+        for i in pass_indices:
             pass_settings = mia_source_polish_pass(profile, i)
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
@@ -1447,7 +1522,9 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
             if history and hashes==history[-1]['render_sha256']:raise ValueError('unchanged_render_set')
             latest=folder;current=folder/'mia_spring_source_adapted.blend'
             reply={'verdict':'NEEDS_REVISION','differences':['Проверку выполняет Codex через mailbox; вызов Астры отключён.'], 'edits':[]}
-            history.append({'pass':i,'blend_sha256':mia_adaptive_digest(current),'render_sha256':hashes,'plan':reply,'changes':report['changes']})
+            history.append({'pass':i,'blend_sha256':mia_adaptive_digest(current),'render_sha256':hashes,
+                            'render_signature':render_signature,
+                            'plan':reply,'changes':report['changes']})
             (root/'adaptive_history.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
             reason='awaiting_codex_review'
         # Stable next-source path is a COPY, never overwrite the input checkpoint.
@@ -1455,7 +1532,7 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
         important=[x for x in report['inventory'] if ('miasource' in x['name'].lower() or 'mia_rain' in x['name'].lower() or 'boot_upper' in x['name'].lower() or 'cargo_side' in x['name'].lower()) and not any(k in x['name'].lower() for k in ('teeth','gums','cornea'))]
         compact_inventory=[{'name':x['name'],'vertices':x['vertices'],'world_min':[round(v,5) for v in x['world_min']],'world_max':[round(v,5) for v in x['world_max']]} for x in important]
-        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'revision_profile':profile_name,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
+        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'revision_profile':profile_name,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'baseline_render_reused':bool(baseline_hashes),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
         import base64
         ffmpeg=shutil.which('ffmpeg');thumbs={}
         if ffmpeg:
