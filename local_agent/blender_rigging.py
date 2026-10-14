@@ -27,7 +27,7 @@ PROJECT_RE = path_identifier_pattern(48)
 def _make_review_thumbnail(ffmpeg: str, source: Path, target: Path, *, detailed: bool = False, quality: int = 5) -> bool:
     """Create a readable front review image while keeping secondary views small."""
     scale = "scale=720:-2:flags=lanczos" if detailed else "scale=200:-2:flags=lanczos"
-    q = 2 if detailed else quality
+    q = 4 if detailed else quality
     try:
         proc = subprocess.run(
             [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(source),
@@ -890,15 +890,10 @@ import tempfile
 MIA_ADAPTIVE_REFERENCE_SHA = '7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383'
 MIA_ADAPTIVE_VIEWS = ('front', 'side', 'back', 'quarter', 'face')
 # Reviewed corrections are shipped as pinned local code, never provider output.
-MIA_CODEX_CORRECTION_EDITS = [
-    {'object': 'MiaSource_GEO-spring_head', 'kind': 'scale', 'factors': [1.06, 1.0, 1.06],
-     'reason': 'Следующая ограниченная итерация: немного увеличить ширину и высоту головы по фронтальному референсу'},
-    {'object': 'MiaSource_GEO-spring_jacket', 'kind': 'scale', 'factors': [1.06, 1.0, 1.0],
-     'reason': 'Симметрично расширить куртку в плечах и корпусе, сохраняя её длину'},
-]
+MIA_CODEX_CORRECTION_EDITS = []
 MIA_CODEX_DELIVERY_APPROVED = False
 MIA_CODEX_HAIR_REBUILD = False
-MIA_CODEX_FACE_REFINE = False
+MIA_CODEX_FACE_REFINE = True
 MIA_CODEX_PROPORTION_FIT = False
 
 def acquire_mia_study_sources(ws):
