@@ -2080,7 +2080,7 @@ def _run_mia_hunyuan3d_mv_trial(arguments: dict[str, Any], task_id: str) -> dict
         packages=["ninja","pybind11","diffusers==0.32.2","einops","opencv-python",
           "numpy==1.26.4","transformers==4.48.0","omegaconf","tqdm","trimesh",
           "pymeshlab","pygltflib","xatlas","accelerate","huggingface_hub","safetensors",
-          "Pillow"]
+          "Pillow","scikit-image==0.24.0"]
         proc=run(pip+["install"]+packages,timeout=2400)
         if proc.returncode:return fail("install_shape_dependencies",proc,{"hardware":hardware})
         # Convert the reference's three approved columns into transparent inputs.
