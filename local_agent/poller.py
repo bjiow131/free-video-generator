@@ -1988,6 +1988,231 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 
+
+def _run_mia_hunyuan3d_mv_trial(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
+    """Generate a fresh shape-only Mia candidate from the three pinned reference views."""
+    import hashlib, json, os, shutil, subprocess, sys, time
+    from pathlib import Path
+    from local_agent.mailbox_policy import load_policy
+    from local_agent.path_names import is_link_or_junction
+    if arguments != {}:
+        return {"status":"rejected","reason":"unexpected_arguments"}
+    if not load_policy().get("allow_blender"):
+        return {"status":"blocked","reason":"local_blender_permission_required"}
+    workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","")
+    if not workspace_value:
+        return {"status":"blocked","reason":"workspace_missing"}
+    workspace=Path(workspace_value).expanduser().resolve()
+    reference=workspace/"episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    if is_link_or_junction(reference) or not reference.is_file():
+        return {"status":"blocked","reason":"approved_reference_missing"}
+    ref_sha=hashlib.sha256(reference.read_bytes()).hexdigest()
+    expected="7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+    if ref_sha!=expected:
+        return {"status":"blocked","reason":"approved_reference_hash_mismatch"}
+    root=workspace/"MIA_REFERENCE_REVIEW"
+    output=root/("MIA_HY3DMV_"+task_id)
+    tooling=root/"_Hunyuan3D2mv_trial"
+    for p in (root,output,tooling):
+        if is_link_or_junction(p):
+            return {"status":"blocked","reason":"unsafe_path"}
+    if output.exists():
+        return {"status":"blocked","reason":"unique_output_already_exists"}
+    free=shutil.disk_usage(workspace).free
+    if free<25*(1024**3):
+        return {"status":"blocked","reason":"need_25GiB_free_for_isolated_models",
+                "disk_free_gib":round(free/(1024**3),2)}
+    blender=find_blender_executable()
+    git=shutil.which("git")
+    if blender is None or not blender.is_file() or not git:
+        return {"status":"blocked","reason":"blender_or_git_missing"}
+    gpu_cmd=shutil.which("nvidia-smi")
+    if not gpu_cmd:
+        return {"status":"blocked","reason":"nvidia_smi_missing"}
+    try:
+        gpu=subprocess.run([gpu_cmd,"--query-gpu=name,memory.total,memory.free",
+          "--format=csv,noheader,nounits"],capture_output=True,text=True,
+          timeout=15,check=False,shell=False,stdin=subprocess.DEVNULL)
+        fields=[v.strip() for v in gpu.stdout.splitlines()[0].split(",")]
+        if gpu.returncode or len(fields)<3 or int(fields[1])<7000:
+            return {"status":"blocked","reason":"gpu_vram_below_trial_gate"}
+        hardware={"name":fields[0][:100],"vram_mib":int(fields[1]),
+                  "free_vram_mib":int(fields[2])}
+    except Exception as exc:
+        return {"status":"blocked","reason":"gpu_probe_failed","error_type":type(exc).__name__}
+    output.mkdir(parents=True,exist_ok=False)
+    tooling.mkdir(parents=True,exist_ok=True)
+    repo=tooling/"source"
+    venv=tooling/"venv"
+    python=venv/"Scripts/python.exe"
+    if is_link_or_junction(repo) or is_link_or_junction(venv):
+        return {"status":"blocked","reason":"unsafe_tooling_path"}
+    def run(cmd,*,cwd=None,timeout=900,env=None):
+        return subprocess.run([str(x) for x in cmd],cwd=str(cwd) if cwd else None,
+          capture_output=True,text=True,encoding="utf-8",errors="replace",
+          timeout=timeout,check=False,shell=False,stdin=subprocess.DEVNULL,env=env)
+    def fail(stage,proc,extra=None):
+        return {"status":"incomplete","stage":stage,
+          "return_code":proc.returncode if proc else None,
+          "error_tail":((proc.stderr or "")[-1800:] if proc else ""),
+          "output_folder":str(output),**(extra or {})}
+    source_commit="f8db63096c8282cb27354314d896feba5ba6ff8a"
+    model_commit="3a761b539b29fe4ff64714813aa9560fd66f5de0"
+    try:
+        if not repo.exists():
+            proc=run([git,"clone","--filter=blob:none","--no-checkout",
+              "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git",repo],timeout=600)
+            if proc.returncode:return fail("clone_official_source",proc)
+        proc=run([git,"-C",repo,"checkout","--detach",source_commit],timeout=300)
+        if proc.returncode:return fail("pin_official_source",proc)
+        if not python.is_file():
+            proc=run([sys.executable,"-m","venv",venv],timeout=300)
+            if proc.returncode:return fail("create_isolated_venv",proc)
+        if not python.is_file():
+            return {"status":"incomplete","stage":"create_isolated_venv",
+                    "reason":"venv_python_missing","output_folder":str(output)}
+        pip=[python,"-m","pip"]
+        proc=run(pip+["install","--upgrade","pip","setuptools","wheel"],timeout=900)
+        if proc.returncode:return fail("bootstrap_pip",proc)
+        proc=run(pip+["install","torch==2.5.1+cu124","torchvision==0.20.1+cu124",
+                      "--index-url","https://download.pytorch.org/whl/cu124"],timeout=2400)
+        if proc.returncode:return fail("install_cuda_torch",proc,{"hardware":hardware})
+        packages=["ninja","pybind11","diffusers==0.32.2","einops","opencv-python",
+          "numpy==1.26.4","transformers==4.46.3","omegaconf","tqdm","trimesh",
+          "pymeshlab","pygltflib","xatlas","accelerate","huggingface_hub","safetensors",
+          "Pillow"]
+        proc=run(pip+["install"]+packages,timeout=2400)
+        if proc.returncode:return fail("install_shape_dependencies",proc,{"hardware":hardware})
+        # Convert the reference's three approved columns into transparent inputs.
+        prep=output/"prepare_views.py"
+        prep.write_text(r'''from PIL import Image,ImageFilter
+import numpy as np,sys,os,json
+src,dst=sys.argv[1],sys.argv[2]
+im=Image.open(src).convert("RGB")
+if im.size!=(710,1536): raise RuntimeError("unexpected reference dimensions")
+os.makedirs(dst,exist_ok=True)
+views={"front":(0,236),"left":(236,473),"back":(473,710)}
+manifest={}
+for name,(x0,x1) in views.items():
+    tile=im.crop((x0,0,x1,1536))
+    a=np.asarray(tile).astype(np.int16)
+    hi=a.max(axis=2); lo=a.min(axis=2); chroma=hi-lo
+    mask=(chroma>9)&(hi>45)&(chroma/np.maximum(hi,1)>.20)
+    alpha=Image.fromarray((mask*255).astype("uint8")).filter(ImageFilter.MedianFilter(3))
+    bbox=alpha.getbbox()
+    if not bbox: raise RuntimeError("empty reference foreground: "+name)
+    tile=tile.crop(bbox).convert("RGBA")
+    alpha=alpha.crop(bbox)
+    tile.putalpha(alpha)
+    tile.thumbnail((480,480),Image.Resampling.LANCZOS)
+    canvas=Image.new("RGBA",(512,512),(0,0,0,0))
+    canvas.alpha_composite(tile,((512-tile.width)//2,(512-tile.height)//2))
+    path=os.path.join(dst,name+".png");canvas.save(path)
+    manifest[name]={"bbox_in_reference_column":list(bbox),"size":[512,512],
+                    "source":"approved_reference_pixels"}
+with open(os.path.join(dst,"view_manifest.json"),"w",encoding="utf-8") as f:
+    json.dump(manifest,f,indent=2)
+''',encoding="utf-8")
+        prep_dir=output/"views"
+        proc=run([python,prep,reference,prep_dir],cwd=output,timeout=180)
+        if proc.returncode:return fail("prepare_reference_views",proc)
+        inference=output/"infer_multiview.py"
+        inference.write_text(r'''import os,sys,json,torch
+from PIL import Image
+from huggingface_hub import snapshot_download
+from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
+views_dir,out_dir,cache=sys.argv[1:4]
+os.makedirs(cache,exist_ok=True)
+snapshot=snapshot_download(repo_id="tencent/Hunyuan3D-2mv",
+ revision="3a761b539b29fe4ff64714813aa9560fd66f5de0",
+ allow_patterns=["hunyuan3d-dit-v2-mv/**","LICENSE","NOTICE","README.md"],
+ cache_dir=cache)
+images={k:Image.open(os.path.join(views_dir,v+".png")).convert("RGBA")
+ for k,v in (("front","front"),("left","left"),("back","back"))}
+pipe=Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+ snapshot,subfolder="hunyuan3d-dit-v2-mv",variant="fp16")
+pipe.to("cuda")
+generator=torch.Generator(device="cpu").manual_seed(20261014)
+mesh=pipe(image=images,num_inference_steps=50,octree_resolution=256,
+ num_chunks=10000,generator=generator,output_type="trimesh")[0]
+path=os.path.join(out_dir,"mia_hunyuan3d2mv_candidate.glb")
+mesh.export(path)
+with open(os.path.join(out_dir,"mesh_stats.json"),"w",encoding="utf-8") as f:
+ json.dump({"vertices":int(len(mesh.vertices)),"faces":int(len(mesh.faces)),
+  "bounds":mesh.bounds.tolist(),"source":"three_views_from_approved_mia_reference",
+  "geometry_is_new":True,"seed":20261014},f,indent=2)
+''',encoding="utf-8")
+        env=os.environ.copy()
+        env["HF_HOME"]=str(tooling/"hf_cache")
+        env["HUGGINGFACE_HUB_CACHE"]=str(tooling/"hf_cache")
+        proc=run([python,inference,prep_dir,output,tooling/"hf_cache"],
+                 cwd=repo,timeout=5400,env=env)
+        if proc.returncode:return fail("hunyuan_multiview_shape_generation",proc,
+          {"hardware":hardware,"reference_sha256":ref_sha,
+           "source_commit":source_commit,"model_commit":model_commit})
+        glb=output/"mia_hunyuan3d2mv_candidate.glb"
+        stats=output/"mesh_stats.json"
+        if not glb.is_file() or glb.stat().st_size<10000 or not stats.is_file():
+            return {"status":"incomplete","stage":"validate_generated_mesh",
+                    "reason":"mesh_or_stats_missing","output_folder":str(output)}
+        render=output/"render_candidate.py"
+        render.write_text(r'''import bpy,sys,os,json
+from mathutils import Vector
+glb,out=sys.argv[sys.argv.index("--")+1:]
+bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete(use_global=False)
+bpy.ops.import_scene.gltf(filepath=glb)
+meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
+if not meshes:raise RuntimeError("GLB imported without mesh")
+bpy.context.view_layer.update()
+coords=[o.matrix_world@Vector(corner) for o in meshes for corner in o.bound_box]
+lo=Vector((min(v.x for v in coords),min(v.y for v in coords),min(v.z for v in coords)))
+hi=Vector((max(v.x for v in coords),max(v.y for v in coords),max(v.z for v in coords)))
+center=(lo+hi)*.5; height=max(hi.z-lo.z,1e-3); scale=3.8/height
+for o in meshes:
+ o.location=(o.location-center)*scale
+ o.scale*=scale
+bpy.context.view_layer.update()
+scene=bpy.context.scene
+scene.render.engine="BLENDER_EEVEE_NEXT"
+scene.render.resolution_x=600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
+scene.render.image_settings.file_format="PNG";scene.render.film_transparent=False
+scene.world.color=(.42,.42,.42)
+bpy.ops.object.camera_add()
+cam=bpy.context.object;cam.data.type="ORTHO";cam.data.ortho_scale=4.25
+scene.camera=cam
+def aim(loc):
+ cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
+for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
+ aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
+''',encoding="utf-8")
+        proc=run([blender,"--background","--factory-startup","--disable-autoexec",
+                  "--offline-mode","--python-exit-code","1","--python",render,
+                  "--",glb,output],cwd=output,timeout=900)
+        if proc.returncode:return fail("blender_review_renders",proc,{"hardware":hardware})
+        previews={v:str(output/(v+".png")) for v in ("front","side","back")}
+        if any(not Path(v).is_file() for v in previews.values()):
+            return {"status":"incomplete","stage":"validate_review_views",
+                    "reason":"missing_render","output_folder":str(output)}
+        return {"status":"completed","stage":"fresh_multiview_shape_candidate",
+          "task":"mia_hunyuan3d_mv_trial","output_folder":str(output),
+          "blend_path":str(output/"mia_hunyuan3d2mv_candidate.blend"),
+          "mesh_path":str(glb),"mesh_stats_path":str(stats),"preview_paths":previews,
+          "reference_sha256":ref_sha,"source_commit":source_commit,
+          "model_commit":model_commit,"hardware":hardware,"seed":20261014,
+          "shape_only":True,"geometry_is_new":True,"source_model_preserved":True,
+          "license_review_required_before_production":True,
+          "identity_verified":False,
+          "validation_note":"Candidate is a new mesh; similarity improvement must be measured against fixed views."}
+    except subprocess.TimeoutExpired as exc:
+        return {"status":"incomplete","stage":"timeout","error_type":"TimeoutExpired",
+                "output_folder":str(output),"hardware":hardware}
+    except Exception as exc:
+        return {"status":"incomplete","stage":"unexpected_error",
+                "error_type":type(exc).__name__,"output_folder":str(output),
+                "hardware":hardware}
+
+
 def _run_mia_3d_reconstruction_preflight(arguments: dict[str, Any]) -> dict[str, Any]:
     """Non-mutating readiness test for public local image-to-3D alternatives.
 
@@ -2751,6 +2976,17 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_mia_spring_rig_transfer(task.arguments)
             elif task.operation == "mia_3d_reconstruction_preflight":
                 details = _run_mia_3d_reconstruction_preflight(task.arguments)
+            elif task.operation == "mia_hunyuan3d_mv_trial":
+                from local_agent.studio_jobs import begin_agent_task, finish_agent_task, StudioJobError
+                try:
+                    begin_agent_task(task.task_id, task.operation)
+                except StudioJobError as exc:
+                    details = {"status":"blocked","reason":"agent_busy_or_local_control_error","error_type":type(exc).__name__}
+                else:
+                    try:
+                        details = _run_mia_hunyuan3d_mv_trial(task.arguments, task.task_id)
+                    finally:
+                        finish_agent_task(task.task_id)
             elif task.operation == "mia_2p5d_prototype":
                 from local_agent.blender_workflow import run_mia_2p5d_prototype
                 from local_agent.studio_jobs import (
