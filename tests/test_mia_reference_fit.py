@@ -12,6 +12,7 @@ from local_agent.mia_reference_fit import (
 def reference_map():
     return {
         "schema_version": 1,
+        "coordinate_convention": "camera_frame_bottom_left_normalized",
         "reference_sha256": "a" * 64,
         "views": [
             {"name": "front", "camera_name": "Ref_Front", "landmarks": [
