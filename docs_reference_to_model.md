@@ -6,6 +6,8 @@ The project goal is reusable: each character is a new, hash-pinned reference pac
 
 `local_agent/reference_image_analyzer.py` is the first image-ingestion stage. It reads reference images locally, uses an existing alpha channel or a conservative flat-border estimate, writes reviewable mask PNGs, samples the silhouette into normalized camera coordinates, and pins all views to a deterministic SHA-256. It rejects textured/uneven backgrounds rather than silently treating them as foreground. It does not upload images. The mask must be visually reviewed before fitting.
 
+`local_agent/visual_hull.py` carves a coarse donor-independent OBJ from reviewed masks and explicit orthographic camera bounds. It needs at least two calibrated views. This provides a measurable starting surface when no suitable donor is available; it cannot invent unseen concavities, facial detail, clothing seams, clean animation topology, or a finished rig. The mesh is marked as a draft and must pass the next quality gates.
+
 `local_agent/reference_to_model.py` is a Blender-independent core. It validates a versioned JSON specification, SHA-256 identity, camera-normalized landmarks, optional sampled silhouette contours, and bounded controls. Allowed controls are shape keys, object scale, and a selected object-location component. It computes confidence-weighted landmark loss and a symmetric sampled contour distance, plus optional regularization. `optimize()` uses bounded `scipy.optimize.least_squares` if SciPy is installed.
 
 `build_hair_curves()` creates independent stylized Curve objects from explicit local-space strand control points. These generated objects can be recreated without modifying donor hair geometry. They are a deterministic construction utility, not an automatic hairstyle extractor.
@@ -47,3 +49,18 @@ The system must not depend on one donor. For references with multiple views, the
 No cloud API is called automatically and no key is stored in the mailbox. Use one of these only after the user selects/authorizes that provider and the local machine or account credentials are configured. A generated mesh is a starting surface, not proof of identity, clean topology, facial controls, or animation readiness.
 
 Donor choice is per asset and per Blender version. The audit shortlist includes Blender Studio Storm (Blender 5.0+), Snow v4 (Blender 4.1, CC-BY), Rain, and any user-provided or legally usable source. No donor is assumed compatible until its file opens, mesh/shape-key/driver inventory is measured, and license provenance is recorded. Do not import a donor's rig into the modeling stage by default.
+
+
+### Donor-independent coarse mesh command
+
+After reviewing the masks, the orthographic view directions and world bounds must be calibrated. Then build a starting OBJ (front is horizontal X/up Z; side is horizontal Y/up Z):
+
+```powershell
+python -m local_agent.visual_hull `
+  --view front=C:\refs\analysis\mask_front.png,x,z `
+  --view side=C:\refs\analysis\mask_side.png,y,z `
+  --bounds-x -0.35 0.35 --bounds-y -0.22 0.22 --bounds-z 0 1.75 `
+  --grid-size 64 --output C:\AIStudioWorkspace\projects\referencefit\character_hull.obj
+```
+
+The OBJ is a voxel visual hull, not a finished character. Its bounds must be calibrated consistently across views; perspective photos need camera calibration first. Increase detail only after mask quality and scale consistency are checked.
