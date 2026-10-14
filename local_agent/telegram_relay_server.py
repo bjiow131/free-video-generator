@@ -1,10 +1,12 @@
 """Minimal, token-nonpersisting Telegram Bot API gateway for the owner's Render free service.
 
 The local Windows Studio opts in explicitly before sending credentials to this
-separate HTTPS gateway. It forwards only getMe/getUpdates/sendMessage, to the
-fixed Telegram Bot API hostname; it stores no bot tokens or messages.
+separate HTTPS gateway. It forwards a narrow allowlist to the fixed Telegram
+Bot API hostname; it stores no bot tokens, messages or images.
 """
 from __future__ import annotations
+import base64
+import binascii
 import json
 import os
 import re
@@ -12,12 +14,15 @@ import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-ALLOWED = {"getMe", "getUpdates", "sendMessage"}
+ALLOWED = {"getMe", "getUpdates", "sendMessage", "sendPhoto"}
 BOT_TOKEN = re.compile(r"\d{5,15}:[A-Za-z0-9_-]{20,128}\Z")
 MAX_BYTES = 4096
+MAX_PHOTO_BYTES = 8_000_000
+MAX_PHOTO_REQUEST_BYTES = 11_200_000
 WINDOW = 60
 RATE_LIMIT = 24
 _MUTEX = threading.RLock()
@@ -68,14 +73,54 @@ def forward(data: dict) -> tuple[int, dict]:
             return 400, {"ok": False, "description": "Invalid chat"}
         if not isinstance(message, str) or not 1 <= len(message) <= 800:
             return 400, {"ok": False, "description": "Invalid message"}
+    if method == "sendPhoto":
+        if set(params) != {"chat_id", "caption", "filename", "photo_base64"}:
+            return 400, {"ok": False, "description": "Invalid photo fields"}
+        chat, caption = params["chat_id"], params["caption"]
+        filename, encoded_photo = params["filename"], params["photo_base64"]
+        if not isinstance(chat, (str, int)) or not re.fullmatch(r"-?\d{1,20}", str(chat)):
+            return 400, {"ok": False, "description": "Invalid chat"}
+        if not isinstance(caption, str) or len(caption) > 800:
+            return 400, {"ok": False, "description": "Invalid caption"}
+        if filename not in {"front.jpg", "front.png"}:
+            return 400, {"ok": False, "description": "Invalid photo name"}
+        if not isinstance(encoded_photo, str) or len(encoded_photo) > 11_185_000:
+            return 413, {"ok": False, "description": "Photo too large"}
+        try:
+            photo = base64.b64decode(encoded_photo, validate=True)
+        except (ValueError, binascii.Error):
+            return 400, {"ok": False, "description": "Invalid photo encoding"}
+        if not 64 <= len(photo) <= MAX_PHOTO_BYTES:
+            return 413, {"ok": False, "description": "Photo size out of range"}
+        png = photo.startswith(b"\x89PNG\r\n\x1a\n")
+        jpeg = photo.startswith(b"\xff\xd8\xff")
+        if (filename == "front.png" and not png) or (filename == "front.jpg" and not jpeg):
+            return 400, {"ok": False, "description": "Photo format mismatch"}
     if not _limit():
         return 429, {"ok": False, "description": "Rate limited"}
-    encoded = json.dumps(params, ensure_ascii=False).encode("utf-8")
+    if method == "sendPhoto":
+        boundary = "----OctavaTelegram" + uuid4().hex
+        fields = [("chat_id", str(chat)), ("caption", caption)]
+        pieces = []
+        for name, value in fields:
+            pieces.extend([f"--{boundary}\r\n".encode(),
+                           f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                           value.encode("utf-8"), b"\r\n"])
+        mime = "image/png" if png else "image/jpeg"
+        pieces.extend([f"--{boundary}\r\n".encode(),
+                       f'Content-Disposition: form-data; name="photo"; filename="{filename}"\r\n'.encode(),
+                       f"Content-Type: {mime}\r\n\r\n".encode(), photo, b"\r\n",
+                       f"--{boundary}--\r\n".encode()])
+        encoded = b"".join(pieces)
+        content_type = "multipart/form-data; boundary=" + boundary
+    else:
+        encoded = json.dumps(params, ensure_ascii=False).encode("utf-8")
+        content_type = "application/json"
     # An attacker cannot select arbitrary hosts or URLs. Tokens occur only in
     # Telegram's mandatory HTTPS path; never logged by this relay.
     url = "https://api.telegram.org/bot" + token + "/" + method
     request = Request(url, method="POST", data=encoded,
-                      headers={"Content-Type": "application/json"})
+                      headers={"Content-Type": content_type})
     opener = build_opener(RejectRedirect())
     try:
         with opener.open(request, timeout=15) as response:
@@ -144,12 +189,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(415, {"ok": False})
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if not 0 < size <= MAX_BYTES:
+            if not 0 < size <= MAX_PHOTO_REQUEST_BYTES:
                 return self._send(413, {"ok": False})
             raw = self.rfile.read(size)
             body = json.loads(raw)
         except (ValueError, UnicodeError, OSError):
             return self._send(400, {"ok": False})
+        method = body.get("method") if isinstance(body, dict) else None
+        if method != "sendPhoto" and size > MAX_BYTES:
+            return self._send(413, {"ok": False})
         status, response = forward(body)
         self._send(status, response)
 
