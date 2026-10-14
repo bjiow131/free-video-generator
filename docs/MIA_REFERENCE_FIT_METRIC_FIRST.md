@@ -1,6 +1,6 @@
 # Mia reference fitting: measurement-first core
 
-Baseline: pinned release `33e572fb966e747bc444fc3c0475c0afac224d9f`. Work remains on experimental branches. No production `main) or installed-agent update is included here. DINOv3 is excluded; its access request was denied.
+Baseline: pinned release `33e572fb966e747bc444fc3c0475c0afac224d9f`. Work remains on experimental branches. No production `main` or installed-agent update is included here. DINOv3 is excluded; its access request was denied.
 
 ## Why the previous loop was insufficient
 
