@@ -310,3 +310,19 @@ def test_mia_reference_fit_cannot_use_remote_approval():
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="local approval is mandatory"):
         parse_task(json.dumps(value))
+
+
+def test_accepts_read_only_mia_reference_fit_preflight():
+    task = parse_task(_task("blender_mia_reference_fit_preflight", {
+        "project_name": "mia_source",
+        "source_blend": "mia_source_polished_v4.blend",
+    }))
+    assert task.operation == "blender_mia_reference_fit_preflight"
+
+
+@pytest.mark.parametrize("source_blend", ["../source.blend", "source.blend\\\\backup", "wrong.json"])
+def test_rejects_unsafe_reference_fit_preflight_filename(source_blend):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_reference_fit_preflight", {
+            "project_name": "mia_source", "source_blend": source_blend,
+        }))
