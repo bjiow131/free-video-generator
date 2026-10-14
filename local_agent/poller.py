@@ -1457,7 +1457,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_hunyuan3d_mv_trial", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
+    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_hunyuan3d_mv_trial", "mia_hunyuan3d_mv_finalize", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
 
@@ -2212,6 +2212,113 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
         return {"status":"incomplete","stage":"unexpected_error",
                 "error_type":type(exc).__name__,"output_folder":str(output),
                 "hardware":hardware}
+
+
+
+def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Render the already-generated, hash-pinned candidate without rerunning inference."""
+    import hashlib, json, os, subprocess
+    from pathlib import Path
+    from local_agent.mailbox_policy import load_policy
+    from local_agent.path_names import is_link_or_junction
+
+    if arguments != {}:
+        return {"status": "rejected", "reason": "unexpected_arguments"}
+    if not load_policy().get("allow_blender"):
+        return {"status": "blocked", "reason": "local_blender_permission_required"}
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
+    if not workspace_value:
+        return {"status": "blocked", "reason": "workspace_missing"}
+    workspace = Path(workspace_value).expanduser().resolve()
+    reference = workspace / "episode1/assets/references/mia_turnaround_approved_20261012.jpeg"
+    expected_reference = "7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383"
+    if is_link_or_junction(reference) or not reference.is_file():
+        return {"status": "blocked", "reason": "approved_reference_missing"}
+    if hashlib.sha256(reference.read_bytes()).hexdigest() != expected_reference:
+        return {"status": "blocked", "reason": "approved_reference_hash_mismatch"}
+
+    output = workspace / "MIA_REFERENCE_REVIEW" / "MIA_HY3DMV_mia-hunyuan3d-mv-trial-20261014-1811"
+    for path in (output, output / "mia_hunyuan3d2mv_candidate.glb", output / "mesh_stats.json"):
+        if is_link_or_junction(path):
+            return {"status": "blocked", "reason": "unsafe_candidate_path"}
+    glb = output / "mia_hunyuan3d2mv_candidate.glb"
+    stats = output / "mesh_stats.json"
+    if not glb.is_file() or glb.stat().st_size < 10000 or not stats.is_file():
+        return {"status": "blocked", "reason": "previous_generated_mesh_missing"}
+    try:
+        json.loads(stats.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {"status": "blocked", "reason": "previous_mesh_stats_invalid"}
+    blender = find_blender_executable()
+    if blender is None or not blender.is_file():
+        return {"status": "blocked", "reason": "blender_missing"}
+    glb_sha = hashlib.sha256(glb.read_bytes()).hexdigest()
+    render = output / "render_candidate.py"
+    render.write_text(r'''import bpy,sys,os
+from mathutils import Vector
+glb,out=sys.argv[sys.argv.index("--")+1:]
+bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete(use_global=False)
+bpy.ops.import_scene.gltf(filepath=glb)
+meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
+if not meshes:raise RuntimeError("GLB imported without mesh")
+bpy.context.view_layer.update()
+coords=[o.matrix_world@Vector(corner) for o in meshes for corner in o.bound_box]
+lo=Vector((min(v.x for v in coords),min(v.y for v in coords),min(v.z for v in coords)))
+hi=Vector((max(v.x for v in coords),max(v.y for v in coords),max(v.z for v in coords)))
+center=(lo+hi)*.5;height=max(hi.z-lo.z,1e-3);scale=3.8/height
+for o in meshes:
+ o.location=(o.location-center)*scale
+ o.scale*=scale
+bpy.context.view_layer.update()
+scene=bpy.context.scene
+scene.render.engine="BLENDER_EEVEE"
+scene.render.resolution_x=600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
+scene.render.image_settings.file_format="PNG";scene.render.film_transparent=False
+scene.world.color=(.42,.42,.42)
+bpy.ops.object.light_add(type="AREA",location=(4,-5,6))
+key=bpy.context.object;key.data.energy=1250;key.data.shape="DISK";key.data.size=5
+bpy.ops.object.camera_add()
+cam=bpy.context.object;cam.data.type="ORTHO";cam.data.ortho_scale=4.25
+scene.camera=cam
+def aim(loc):
+ cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
+for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
+ aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
+''', encoding="utf-8")
+    try:
+        proc = subprocess.run(
+            [str(blender), "--background", "--factory-startup", "--disable-autoexec",
+             "--offline-mode", "--python-exit-code", "1", "--python", str(render),
+             "--", str(glb), str(output)],
+            cwd=str(output), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=900, check=False, shell=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "incomplete", "stage": "blender_review_renders",
+                "reason": "render_timeout", "output_folder": str(output)}
+    if proc.returncode:
+        return {"status": "incomplete", "stage": "blender_review_renders",
+                "return_code": proc.returncode,
+                "error_tail": (proc.stderr or "")[-1800:],
+                "output_folder": str(output)}
+    previews = {name: str(output / (name + ".png")) for name in ("front", "side", "back")}
+    blend = output / "mia_hunyuan3d2mv_candidate.blend"
+    if not blend.is_file() or any(not Path(path).is_file() for path in previews.values()):
+        return {"status": "incomplete", "stage": "validate_review_views",
+                "reason": "blend_or_preview_missing", "output_folder": str(output)}
+    if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
+        return {"status": "error", "reason": "generated_mesh_changed_during_review"}
+    return {"status": "completed", "stage": "review_of_existing_multiview_candidate",
+            "output_folder": str(output), "blend_path": str(blend),
+            "mesh_path": str(glb), "mesh_stats_path": str(stats),
+            "preview_paths": previews, "mesh_sha256": glb_sha,
+            "source_model_preserved": True, "shape_only": True,
+            "geometry_is_new": True, "identity_verified": False,
+            "license_review_required_before_production": True,
+            "validation_note": "Existing generated GLB reused; no model inference was repeated."}
+
 
 
 def _run_mia_3d_reconstruction_preflight(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -2986,6 +3093,17 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 else:
                     try:
                         details = _run_mia_hunyuan3d_mv_trial(task.arguments, task.task_id)
+                    finally:
+                        finish_agent_task(task.task_id)
+            elif task.operation == "mia_hunyuan3d_mv_finalize":
+                from local_agent.studio_jobs import begin_agent_task, finish_agent_task, StudioJobError
+                try:
+                    begin_agent_task(task.task_id, task.operation)
+                except StudioJobError as exc:
+                    details = {"status":"blocked","reason":"agent_busy_or_local_control_error","error_type":type(exc).__name__}
+                else:
+                    try:
+                        details = _run_mia_hunyuan3d_mv_finalize(task.arguments)
                     finally:
                         finish_agent_task(task.task_id)
             elif task.operation == "mia_2p5d_prototype":
