@@ -43,10 +43,12 @@ def test_rejects_unsafe_blender_task_arguments(arguments):
         parse_task(_task("blender_forest_preview", arguments))
 
 
-def test_still_requires_local_approval_for_blender_task():
-    value = json.loads(_task("blender_forest_preview", {"project_name": "mia"}))
+def test_mia_asset_passport_still_requires_local_approval():
+    value = json.loads(_task("blender_mia_asset_preflight", {
+        "source_blend": "MIA_REFERENCE_REVIEW/prototype/mia.blend",
+    }))
     value["requires_local_approval"] = False
-    with pytest.raises(ProtocolError, match="require local approval"):
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
         parse_task(json.dumps(value))
 
 
