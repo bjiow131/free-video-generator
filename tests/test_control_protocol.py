@@ -279,3 +279,52 @@ def test_accepts_typed_blender_mouth_motion_task():
 def test_rejects_unsafe_blender_mouth_motion_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("blender_mouth_motion", arguments))
+
+
+def test_accepts_local_only_mia_reference_fit_task():
+    task = parse_task(_task("blender_mia_reference_fit", {
+        "project_name": "mia_source",
+        "source_blend": "mia_source_polished_v4.blend",
+        "reference_map_file": "mia_reference_map.json",
+        "passport_file": "mia_reference_fit_passport_ab12cd34ef56.json",
+        "approved_reference_sha256": "a" * 64,
+    }))
+    assert task.operation == "blender_mia_reference_fit"
+
+
+@pytest.mark.parametrize("arguments", [
+    {"project_name": "../outside", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "../x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "../p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "not-a-hash"},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64, "script": "bad"},
+])
+def test_rejects_unsafe_mia_reference_fit_arguments(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_reference_fit", arguments))
+
+
+def test_mia_reference_fit_cannot_use_remote_approval():
+    value = json.loads(_task("blender_mia_reference_fit", {
+        "project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json",
+        "passport_file": "p.json", "approved_reference_sha256": "a" * 64,
+    }))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
+        parse_task(json.dumps(value))
+
+
+def test_accepts_read_only_mia_reference_fit_preflight():
+    task = parse_task(_task("blender_mia_reference_fit_preflight", {
+        "project_name": "mia_source",
+        "source_blend": "mia_source_polished_v4.blend",
+    }))
+    assert task.operation == "blender_mia_reference_fit_preflight"
+
+
+@pytest.mark.parametrize("source_blend", ["../source.blend", "source.blend\\\\backup", "wrong.json"])
+def test_rejects_unsafe_reference_fit_preflight_filename(source_blend):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_reference_fit_preflight", {
+            "project_name": "mia_source", "source_blend": source_blend,
+        }))

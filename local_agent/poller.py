@@ -346,6 +346,25 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _run_blender_mia_reference_fit(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
+    """Fit bounded shape-key parameters to a hash-pinned multi-view map, without a full render."""
+    from local_agent.mia_reference_fit import run_reference_fit
+    return run_reference_fit(
+        arguments["project_name"],
+        arguments["source_blend"],
+        arguments["reference_map_file"],
+        arguments["passport_file"],
+        arguments["approved_reference_sha256"],
+        task_id,
+    )
+
+
+def _run_blender_mia_reference_fit_preflight(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
+    """Inspect mesh, rig, cameras, drivers, and Blender's SciPy without saving model data."""
+    from local_agent.mia_reference_fit import run_reference_fit_preflight
+    return run_reference_fit_preflight(arguments["project_name"], arguments["source_blend"], task_id)
+
+
 def _load_state() -> dict[str, Any]:
     """Load replay-protection state; fail closed if an existing file is unreadable."""
     if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
@@ -477,7 +496,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -487,7 +506,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
     print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
-    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender knowledge lookup, Blender discovery, Mia blockout creation, and the allowlisted forest preview.")
+    print("Supported operations: diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, Blender diagnostics, Mia blockout and reference fitting, and the allowlisted forest preview.")
     if getattr(task, "requires_local_approval", True) is False:
         if os.environ.get("LOCAL_AGENT_ALLOW_REMOTE_APPROVAL") != "1" or task.operation not in REMOTE_APPROVABLE_OPERATIONS:
             result = {"task_id": task.task_id, "status": "blocked", "reason": "remote_approval_not_enabled_or_operation_not_allowlisted"}
@@ -568,6 +587,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_blender_camera_control(task.arguments)
             elif task.operation == "blender_mouth_motion":
                 details = _run_blender_mouth_motion(task.arguments)
+            elif task.operation == "blender_mia_reference_fit":
+                details = _run_blender_mia_reference_fit(task.arguments, task.task_id)
+            elif task.operation == "blender_mia_reference_fit_preflight":
+                details = _run_blender_mia_reference_fit_preflight(task.arguments, task.task_id)
             else:
                 details = handler()
             result_status = details.get("status", "completed")
