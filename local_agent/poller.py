@@ -1054,10 +1054,16 @@ _MIA_VISUAL_OPERATIONS = frozenset({
     "mia_astra_autoloop_100_v2", "mia_2p5d_prototype",
 })
 
+# High-frequency Mia source-polish iterations retain all lossless render output
+# locally and in the mailbox result. Telegram transport is intentionally kept
+# out of this hot path to avoid JPEG encoding, relay wait, and per-run messages.
+_MIA_SILENT_OPERATIONS = frozenset({"blender_mia_source_polish"})
+
 
 def _attach_mia_front_photo_delivery(operation: str, task_id: str, details: dict[str, Any]) -> None:
     """Send each available Mia front render, including blocked review drafts."""
-    if (operation not in _MIA_VISUAL_OPERATIONS
+    if (operation in _MIA_SILENT_OPERATIONS
+            or operation not in _MIA_VISUAL_OPERATIONS
             or "telegram_photo_delivery" in details):
         return
     thumbnails = details.get("thumbnail_jpeg_base64")
@@ -1066,6 +1072,11 @@ def _attach_mia_front_photo_delivery(operation: str, task_id: str, details: dict
         return
     from local_agent.studio_server import telegram_send_mia_front_thumbnail
     details["telegram_photo_delivery"] = telegram_send_mia_front_thumbnail(task_id, front)
+
+
+def _task_telegram_notifications_enabled(operation: str) -> bool:
+    """Keep routine per-run Telegram traffic off the Mia polish hot path."""
+    return operation not in _MIA_SILENT_OPERATIONS
 
 def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
     """Deterministic, isolated result key for a rejected immutable-ID collision.
@@ -2978,7 +2989,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     except QueueTransportError as exc:
         # Do not discard local evidence when the mailbox is temporarily offline.
         print(f"Result publication failed; local report retained: {type(exc).__name__}")
-    if task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"):
+    if (_task_telegram_notifications_enabled(task.operation)
+            and task.operation not in ("doctor", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery")):
         label = str(task.operation).replace("_", " ")[:48]
         if outcome == "completed" and task.operation in {"blender_mia_source_adapt","blender_mia_source_recover","blender_mia_source_neutral","blender_mia_source_details","blender_mia_source_polish"}:
             _telegram_signal("task-review", task.task_id,
