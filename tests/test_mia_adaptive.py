@@ -1,6 +1,7 @@
 import copy
 import math
 import unittest
+from local_agent import blender_rigging as rigging
 from local_agent.blender_rigging import validate_mia_adaptive_plan as validate_plan, MIA_ADAPTIVE_BLENDER_SCRIPT as BLENDER_SCRIPT, mia_visual_change_gate as visual_change_gate
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,17 @@ class AdaptivePlanTests(unittest.TestCase):
     def test_ready_cannot_apply_edits(self):
         self.plan['verdict']='READY_FOR_USER_REVIEW'
         with self.assertRaises(ValueError):validate_plan(self.plan,self.inventory)
+
+    def test_next_codex_pass_only_applies_symmetric_eye_fit(self):
+        eyes=[{'name':'MiaSource_GEO_spring_eye.l'},{'name':'MiaSource_GEO_spring_eye.r'}]
+        plan={'verdict':'NEEDS_REVISION','differences':['Глаза и радужки недостаточно выражены на фронтальном виде'],
+              'edits':rigging.MIA_CODEX_CORRECTION_EDITS}
+        self.assertEqual(validate_plan(plan,eyes),plan)
+        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[0]['factors'],[1.06,1.0,1.06])
+        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[1]['factors'],[1.06,1.0,1.06])
+        self.assertFalse(rigging.MIA_CODEX_HAIR_REBUILD)
+        self.assertFalse(rigging.MIA_CODEX_FACE_REFINE)
+        self.assertFalse(rigging.MIA_CODEX_PROPORTION_FIT)
     def test_fixed_script_compiles(self):
         compile(BLENDER_SCRIPT,'adaptive_blender.py','exec')
     def test_identical_renders_cannot_pass_visible_change(self):
