@@ -1116,7 +1116,7 @@ if cfg.get('proportion_fit'):
   mw=o.matrix_world.copy();inv=mw.inverted();blocks=[k.data for k in o.data.shape_keys.key_blocks] if o.data.shape_keys else [o.data.vertices]
   for block in blocks:
    for v in block:
-    p=mw@v.co;p.z=fitted_z(p.z);v.co=inv@p
+    p=mw@v.co;p.z=p.z-.020 if 'backpack' in o.name.lower() or 'strap' in o.name.lower() else fitted_z(p.z);v.co=inv@p
   if o.data.shape_keys:
    for v,p in zip(o.data.vertices,o.data.shape_keys.key_blocks[0].data):v.co=p.co
  pilot=bpy.data.objects.get('Mia_Source_Pilot_Rig')
@@ -1145,7 +1145,7 @@ if cfg.get('face_refine'):
  color=head.data.color_attributes.get('Mia_Rosy_Skin')
  if color and color.domain=='POINT':
   for p,v in zip(color.data,head.data.vertices):
-   x,y,z=mw@v.co;w=.72*math.exp(-((abs(x)-.115)/.06)**2-((z-1.155)/.042)**2)*max(0,min(1,(-y-.025)/.075));base=(.70,.30,.185);rose=(.77,.17,.115)
+   x,y,z=mw@v.co;w=.62*math.exp(-((abs(x)-.115)/.06)**2-((z-1.145)/.046)**2)*max(0,min(1,(-y-.025)/.075));base=(.85,.24,.105);rose=(.86,.10,.055)
    p.color=tuple(base[i]*(1-w)+rose[i]*w for i in range(3))+(1,)
  brows=bpy.data.objects.get('MiaSource_GEO_spring_eyebrows')
  if brows:
@@ -1172,7 +1172,7 @@ if cfg.get('hair_rebuild'):
  rig=bpy.data.objects.get('Mia_Source_Pilot_Rig')
  scalp=bpy.data.objects.get('MiaSource_GEO_spring_hair_main')
  if rig is None or scalp is None or scalp.type!='MESH':raise RuntimeError('retained_donor_scalp_missing')
- for name in ('MiaSource_GEO_spring_hair_ears','Mia_Rain_Source_GEO-rain-hair_main','Mia_Rain_Source_GEO-rain-hair_strand'):
+ for name in ('MiaSource_GEO_spring_hair_ears',):
   o=bpy.data.objects.get(name)
   if o:o.hide_render=True
  scalp.hide_render=True
@@ -1182,8 +1182,8 @@ if cfg.get('hair_rebuild'):
   noise=m.node_tree.nodes.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=135;noise.inputs['Detail'].default_value=2
   bump=m.node_tree.nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.20;bump.inputs['Distance'].default_value=.0015;m.node_tree.links.new(noise.outputs['Fac'],bump.inputs['Height']);m.node_tree.links.new(bump.outputs['Normal'],bs.inputs['Normal'])
   return m
- base=hair_material('Mia_Codex_LightBrown_Scalp',(.16,.071,.025))
- mats=[hair_material('Mia_Codex_Lock_'+str(i),color) for i,color in enumerate([(.17,.077,.029),(.19,.091,.034),(.14,.059,.021),(.21,.108,.042)])]
+ base=hair_material('Mia_Codex_LightBrown_Scalp',(.11,.040,.010))
+ mats=[hair_material('Mia_Codex_Lock_'+str(i),color) for i,color in enumerate([(.12,.047,.015),(.145,.061,.020),(.10,.031,.009),(.17,.075,.027)])]
  # Derive an exactly fitted shell from the RETAINED head surface, avoiding
  # the foreign donor cap's observed visor and rear gaps.
  head=bpy.data.objects['MiaSource_GEO-spring_head'];mw=head.matrix_world.copy();center=Vector((0,.025,1.21));vertices=[]
@@ -1203,9 +1203,11 @@ if cfg.get('hair_rebuild'):
  for p in mesh.polygons:p.use_smooth=True
  rain=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_main')
  if rain is None:raise RuntimeError('retained_rain_hair_missing')
- rain.hide_render=True
+ rain.hide_render=False;rain.data.materials.clear();rain.data.materials.append(base)
+ smooth=rain.modifiers.new('Codex soften oversized lock ridges','SMOOTH');smooth.factor=.55;smooth.iterations=3
  strand=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_strand')
- if strand:strand.hide_render=True
+ if strand:
+  strand.hide_render=False;strand.data.materials.clear();strand.data.materials.append(base)
  from mathutils.bvhtree import BVHTree
  bpy.context.view_layer.update();dg=bpy.context.evaluated_depsgraph_get();ev=scalp.evaluated_get(dg);mesh=ev.to_mesh()
  surface=BVHTree.FromPolygons([ev.matrix_world@v.co for v in mesh.vertices],[tuple(p.vertices) for p in mesh.polygons]);ev.to_mesh_clear()
@@ -1251,8 +1253,27 @@ if cfg.get('hair_rebuild'):
   phase=i*2*math.pi/14
   points=[(-.035+.10*math.cos(phase+t*.8),.155+.055*math.sin(phase+t*.8),1.125+.05*math.cos(t*math.pi)) for t in (0,.25,.5,.75,1)]
   lock('Mia_Codex_Bun_Lock_'+str(i),points,.0018,i)
- changes.append({'object':'Mia_Codex_Fitted_Scalp','reason':'Head-derived fitted scalp shell and 120 surface-following fringe locks; remove donor visor and close rear gap','new_lock_meshes':164,'donor_head_surface_reused':True,'rain_front_volume_preserved':False})
+ changes.append({'object':'Mia_Codex_Fitted_Scalp','reason':'Head-derived rear filler, soften retained Rain frontal volume, finer strand texture and low bun; no donor visor','new_lock_meshes':164,'donor_head_surface_reused':True,'rain_front_volume_preserved':True})
  objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zip','backpack','strap')))]
+if cfg.get('face_refine'):
+ palette_changes=[]
+ for o in objects:
+  name=o.name.lower();color=None
+  if name=='miasource_geo-spring_jacket' or 'collapsed_hood' in name:color=(.008,.095,.130)
+  elif name=='miasource_geo_spring_pants' or 'cargo' in name or 'rolled_trouser_cuff' in name:color=(.17,.060,.014)
+  elif 'boot_upper' in name or 'boot_tongue' in name:color=(.14,.047,.015)
+  elif 'backpack' in name or 'strap' in name:color=(.60,.30,.055)
+  elif 'pale_hood_lining' in name:color=(.08,.15,.17)
+  elif 'hood_drawstring' in name:color=(.45,.20,.035)
+  if color:
+   for i,m in enumerate(list(o.data.materials)):
+    if not m or not m.use_nodes:continue
+    m=m.copy();o.data.materials[i]=m;bs=m.node_tree.nodes.get('Principled BSDF')
+    if not bs:continue
+    for link in list(bs.inputs['Base Color'].links):m.node_tree.links.remove(link)
+    bs.inputs['Base Color'].default_value=(*color,1)
+   palette_changes.append(o.name)
+ changes.append({'object':'Approved-reference garment palette','reason':'Render/reference RGB measurements showed pale teal, gray-brown hair/trousers and oversized white hood lining','changed_material_objects':palette_changes})
 bpy.context.view_layer.update()
 inventory=[]
 for o in objects:
