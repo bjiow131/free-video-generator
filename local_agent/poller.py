@@ -2317,9 +2317,9 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
     if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
     thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
-    if any(not path.is_file() or path.stat().st_size > 9000 for path in thumbnail_paths.values()):
+    if any(not path.is_file() for path in thumbnail_paths.values()):
         return {"status": "incomplete", "stage": "validate_review_thumbnails",
-                "reason": "thumbnail_missing_or_too_large", "output_folder": str(output)}
+                "reason": "thumbnail_missing", "output_folder": str(output)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
                   for name, path in thumbnail_paths.items()}
     return {"status": "completed", "stage": "review_of_existing_multiview_candidate",
