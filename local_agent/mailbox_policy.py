@@ -24,6 +24,7 @@ READ_ONLY_OPERATIONS = frozenset({
     'scan_project_assets', 'compile_story_plan',
 })
 BLENDER_OPERATIONS = frozenset({
+    'blender_s01e01_static_batch',
     'save_story_plan', 'blender_forest_preview',
     'blender_mia_blockout', 'blender_mia_skeleton',
     'blender_mia_spring_rig_transfer', 'blender_source_review', 'blender_mia_source_adapt', 'blender_mia_source_recover', 'blender_mia_source_neutral', 'blender_mia_source_details', 'blender_mia_source_polish', 'export_mia_scene_review',
@@ -594,3 +595,4 @@ class OctavaProjectMemory:
             pieces.append("Previous question: " + str(item["prompt"])[:1200])
             pieces.append("Previous answer: " + str(item["answer"])[:1800])
         return "\n".join(pieces)[:11000]
+

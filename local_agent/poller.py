@@ -1057,7 +1057,7 @@ _MIA_VISUAL_OPERATIONS = frozenset({
 # High-frequency Mia source-polish iterations retain all lossless render output
 # locally and in the mailbox result. Telegram transport is intentionally kept
 # out of this hot path to avoid JPEG encoding, relay wait, and per-run messages.
-_MIA_SILENT_OPERATIONS = frozenset({"blender_mia_source_polish"})
+_MIA_SILENT_OPERATIONS = frozenset({"blender_mia_source_polish", "blender_s01e01_static_batch"})
 
 
 def _attach_mia_front_photo_delivery(operation: str, task_id: str, details: dict[str, Any]) -> None:
@@ -1490,6 +1490,7 @@ SUPPORTED_HANDLERS = {
 }
 
 _SPECIALIZED_OPERATIONS = frozenset({
+    "blender_s01e01_static_batch",
     "apply_patch", "blender_forest_preview", "save_story_plan",
     "compile_story_plan", "scan_project_assets", "sync_approved_assets",
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
@@ -2746,6 +2747,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_export_mia_scene_review(task.arguments)
             elif task.operation == "blender_knowledge_search":
                 details = _run_blender_knowledge_search(task.arguments)
+            elif task.operation == "blender_s01e01_static_batch":
+                _publish_result_durable(client, task.task_id + "-accepted", {"task_id":task.task_id,"status":"accepted","operation":task.operation,"render_completion_confirmed":False})
+                from local_agent.blender_workflow import run_s01e01_static_batch
+                details = run_s01e01_static_batch(task.arguments["source_project"], task.arguments["project_name"], task_id=task.task_id)
             elif task.operation == "blender_preflight":
                 details = _run_blender_preflight(task.arguments)
             elif task.operation == "blender_mia_blockout":
@@ -4428,5 +4433,6 @@ if __name__ == "__main__":
     if "--supervise" in sys.argv[1:] or (os.name == "nt" and os.environ.get("LOCAL_AGENT_MAILBOX_WORKER") != "1"):
         raise SystemExit(supervise_windows())
     raise SystemExit(main())
+
 
 

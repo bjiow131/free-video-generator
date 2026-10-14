@@ -15,7 +15,7 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype"})
+ALLOWED_OPERATIONS = frozenset({"blender_s01e01_static_batch", "status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
@@ -106,6 +106,10 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             if flag in args and not isinstance(args[flag], bool):
                 raise ProtocolError(f"Blender argument {flag} must be a boolean.")
 
+    if value["operation"] == "blender_s01e01_static_batch":
+        args = value["arguments"]
+        if set(args) != {"source_project", "project_name"} or any(not isinstance(v, str) or not BLENDER_PROJECT_RE.fullmatch(v) for v in args.values()):
+            raise ProtocolError("Native batch accepts two safe project identifiers only.")
     if value["operation"] == "blender_preflight":
         if value["arguments"]:
             raise ProtocolError("blender_preflight does not accept arguments.")
@@ -270,3 +274,4 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         requires_local_approval=value["requires_local_approval"],
         arguments=value["arguments"],
     )
+
