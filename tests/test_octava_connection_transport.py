@@ -19,7 +19,7 @@ class TransportTests(unittest.TestCase):
     def test_single_request_has_60_seconds(self):
         sentinel=object();request=object()
         with patch('urllib.request.urlopen',return_value=sentinel) as call:
-            self.assertIs(transport(request,timeout=18),sentinel)
+            self.assertIs(transport(request,timeout=18).reply,sentinel)
             call.assert_called_once_with(request,timeout=60)
     def test_dns_error_does_not_echo_provider_secret(self):
         with patch('urllib.request.urlopen',side_effect=URLError(socket.gaierror(-2,'private-secret'))):
@@ -38,6 +38,12 @@ class TransportTests(unittest.TestCase):
         with patch('urllib.request.urlopen',side_effect=error):
             with self.assertRaises(HTTPError) as exc:transport(object())
             self.assertIs(exc.exception,error)
+    def test_model_body_timeout_is_also_actionable(self):
+        reply=Mock();reply.__enter__=Mock(return_value=reply);reply.__exit__=Mock(return_value=None);reply.read.side_effect=TimeoutError('private-secret')
+        with patch('urllib.request.urlopen',return_value=reply):
+            with self.assertRaisesRegex(SafeKeyError,'60 секунд') as exc:
+                with transport(object()) as response:response.read(65537)
+            self.assertNotIn('private-secret',str(exc.exception))
     def test_candidate_is_validated_once_by_original_vault_logic(self):
         scope['_replace_octava_key'].reset_mock()
         self.assertEqual(scope['replace_key']('test-candidate'),{'validated':True})
