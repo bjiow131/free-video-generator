@@ -1,5 +1,7 @@
 import copy
+import json
 import math
+import tempfile
 import unittest
 from local_agent import blender_rigging as rigging
 from local_agent.blender_rigging import validate_mia_adaptive_plan as validate_plan, MIA_ADAPTIVE_BLENDER_SCRIPT as BLENDER_SCRIPT, mia_visual_change_gate as visual_change_gate
@@ -49,6 +51,44 @@ class AdaptivePlanTests(unittest.TestCase):
         first['edits'][0]['factors'][0]=1.0
         self.assertEqual(rigging.mia_source_polish_profile('head_jacket')['edits'][0]['factors'][0],1.06)
         with self.assertRaises(ValueError):rigging.mia_source_polish_profile('arbitrary_code')
+
+    def test_profile_edits_are_sent_to_revision_pass(self):
+        profile=rigging.mia_source_polish_profile('head_jacket')
+        baseline=rigging.mia_source_polish_pass(profile,0)
+        revision=rigging.mia_source_polish_pass(profile,1)
+        self.assertEqual(baseline['edits'],[])
+        self.assertEqual(revision['edits'],profile['edits'])
+        self.assertFalse(baseline['face_refine'])
+        self.assertFalse(revision['face_refine'])
+        self.assertEqual(len(revision['edits']),2)
+        with self.assertRaises(ValueError):rigging.mia_source_polish_pass(profile,2)
+
+    def test_cached_baseline_requires_matching_source_renderer_and_view_hashes(self):
+        with tempfile.TemporaryDirectory() as td:
+            parent=Path(td)/'source';parent.mkdir()
+            source=parent/'mia_spring_source_adapted.blend';source.write_bytes(b'approved model checkpoint')
+            source_hash=rigging.mia_adaptive_digest(source)
+            render_dir=parent/'pass_1';render_dir.mkdir()
+            hashes={}
+            for view in rigging.MIA_ADAPTIVE_VIEWS:
+                path=render_dir/(view+'.png');path.write_bytes(('render-'+view).encode())
+                hashes[view]=rigging.mia_adaptive_digest(path)
+            (parent/'adaptive_history.json').write_text(json.dumps([{
+                'pass':1,'blend_sha256':source_hash,'render_sha256':hashes,
+                'render_signature':rigging._mia_adaptive_render_signature(),
+            }]),encoding='utf-8')
+            candidate_root=Path(td)/'candidate';candidate_root.mkdir()
+            target=candidate_root/'pass_0'
+            copied=rigging._copy_verified_mia_cached_baseline(source,target,source_hash)
+            self.assertEqual(copied,hashes)
+            self.assertEqual({p.stem for p in target.glob('*.png')},set(rigging.MIA_ADAPTIVE_VIEWS))
+
+            damaged=render_dir/'front.png';damaged.write_bytes(b'tampered render')
+            candidate_root2=Path(td)/'candidate2';candidate_root2.mkdir()
+            self.assertIsNone(rigging._copy_verified_mia_cached_baseline(
+                source,candidate_root2/'pass_0',source_hash))
+            self.assertFalse((candidate_root2/'pass_0').exists())
+
     def test_fixed_script_compiles(self):
         compile(BLENDER_SCRIPT,'adaptive_blender.py','exec')
     def test_identical_renders_cannot_pass_visible_change(self):
