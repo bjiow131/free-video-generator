@@ -2076,29 +2076,41 @@ def _run_mia_hunyuan3d_mv_trial(arguments: dict[str, Any], task_id: str) -> dict
         prep=output/"prepare_views.py"
         prep.write_text(r'''from PIL import Image,ImageFilter
 import numpy as np,sys,os,json
+from scipy import ndimage
 src,dst=sys.argv[1],sys.argv[2]
 im=Image.open(src).convert("RGB")
 if im.size!=(710,1536): raise RuntimeError("unexpected reference dimensions")
-os.makedirs(dst,exist_ok=True)
 views={"front":(0,236),"left":(236,473),"back":(473,710)}
+y0,y1=548,965
+os.makedirs(dst,exist_ok=True)
 manifest={}
 for name,(x0,x1) in views.items():
-    tile=im.crop((x0,0,x1,1536))
-    a=np.asarray(tile).astype(np.int16)
-    hi=a.max(axis=2); lo=a.min(axis=2); chroma=hi-lo
-    mask=(chroma>9)&(hi>45)&(chroma/np.maximum(hi,1)>.20)
+    tile=im.crop((x0,y0,x1,y1))
+    rgb=np.asarray(tile)
+    border=np.concatenate((rgb[:8].reshape(-1,3),rgb[-8:].reshape(-1,3),
+                           rgb[:,:8].reshape(-1,3),rgb[:,-8:].reshape(-1,3)))
+    background=np.median(border.astype(np.float32),axis=0)
+    distance=np.linalg.norm(rgb.astype(np.float32)-background,axis=2)
+    mask=distance>16.0
+    mask=ndimage.binary_closing(mask,structure=np.ones((3,3)))
+    mask=ndimage.binary_fill_holes(mask)
+    labels,count=ndimage.label(mask)
+    if count==0: raise RuntimeError("empty reference foreground: "+name)
+    sizes=np.bincount(labels.ravel());sizes[0]=0
+    mask=labels==sizes.argmax()
+    ys,xs=np.where(mask)
+    bbox=[int(xs.min()),int(ys.min()),int(xs.max()+1),int(ys.max()+1)]
+    rgba=tile.convert("RGBA")
     alpha=Image.fromarray((mask*255).astype("uint8")).filter(ImageFilter.MedianFilter(3))
-    bbox=alpha.getbbox()
-    if not bbox: raise RuntimeError("empty reference foreground: "+name)
-    tile=tile.crop(bbox).convert("RGBA")
-    alpha=alpha.crop(bbox)
-    tile.putalpha(alpha)
-    tile.thumbnail((480,480),Image.Resampling.LANCZOS)
+    rgba.putalpha(alpha)
+    rgba=rgba.crop(bbox)
+    rgba.thumbnail((480,480),Image.Resampling.LANCZOS)
     canvas=Image.new("RGBA",(512,512),(0,0,0,0))
-    canvas.alpha_composite(tile,((512-tile.width)//2,(512-tile.height)//2))
+    canvas.alpha_composite(rgba,((512-rgba.width)//2,(512-rgba.height)//2))
     path=os.path.join(dst,name+".png");canvas.save(path)
-    manifest[name]={"bbox_in_reference_column":list(bbox),"size":[512,512],
-                    "source":"approved_reference_pixels"}
+    manifest[name]={"bbox_in_reference_column":bbox,"background_rgb":[round(float(v),2) for v in background],
+                    "foreground_pixels":int(mask.sum()),"size":[512,512],
+                    "mask":"RGB distance from median border, threshold 16, 3x3 close, hole fill"}
 with open(os.path.join(dst,"view_manifest.json"),"w",encoding="utf-8") as f:
     json.dump(manifest,f,indent=2)
 ''',encoding="utf-8")
@@ -2121,7 +2133,7 @@ images={k:Image.open(os.path.join(views_dir,v+".png")).convert("RGBA")
 pipe=Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
  snapshot,subfolder="hunyuan3d-dit-v2-mv",variant="fp16")
 pipe.to("cuda")
-generator=torch.Generator(device="cpu").manual_seed(20261014)
+generator=torch.Generator(device="cpu").manual_seed(20261015)
 mesh=pipe(image=images,num_inference_steps=50,octree_resolution=256,
  num_chunks=10000,generator=generator,output_type="trimesh")[0]
 path=os.path.join(out_dir,"mia_hunyuan3d2mv_candidate.glb")
