@@ -5,6 +5,8 @@ character. It requires explicit world bounds and calibrated orthographic views.
 """
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 import re
 
@@ -71,7 +73,7 @@ def build_visual_hull(mask_views: list[dict], world_bounds: dict, output_obj: st
         if horizontal not in _AXES or vertical not in _AXES or horizontal == vertical:
             raise VisualHullError("view_axes_must_be_distinct_x_y_z")
         hs, vs = view.get("horizontal_sign", 1), view.get("vertical_sign", 1)
-        if hs not in (-1, 1) or vs not in (-1, 1):
+        if isinstance(hs, bool) or isinstance(vs, bool) or hs not in (-1, 1) or vs not in (-1, 1):
             raise VisualHullError("view_signs_must_be_plus_or_minus_one")
         mask_path = Path(view.get("mask_path", "")).expanduser().resolve(strict=True)
         if not mask_path.is_file():
@@ -149,3 +151,42 @@ def build_visual_hull(mask_views: list[dict], world_bounds: dict, output_obj: st
             "surface_faces": face_count, "vertex_count": len(vertices),
             "quality": "coarse_visual_hull", "production_ready": False,
             "next_gate": "inspect_smoothing_retopology_face_clothing_and_animation"}
+
+
+def _parse_view_arg(value: str) -> dict:
+    parts = value.split("=")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError("view must be NAME=MASK,horizontal_axis,vertical_axis[,horizontal_sign,vertical_sign]")
+    name, data = parts
+    fields = data.split(",")
+    if len(fields) not in (3, 5):
+        raise argparse.ArgumentTypeError("view must include a mask and two distinct axes, with optional signs")
+    view = {"name": name, "mask_path": fields[0], "horizontal_axis": fields[1], "vertical_axis": fields[2]}
+    if len(fields) == 5:
+        try:
+            view["horizontal_sign"], view["vertical_sign"] = int(fields[3]), int(fields[4])
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("view signs must be -1 or 1") from exc
+    return view
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--view", action="append", type=_parse_view_arg, required=True)
+    parser.add_argument("--bounds-x", nargs=2, type=float, required=True)
+    parser.add_argument("--bounds-y", nargs=2, type=float, required=True)
+    parser.add_argument("--bounds-z", nargs=2, type=float, required=True)
+    parser.add_argument("--grid-size", type=int, default=64)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    bounds = {"x": args.bounds_x, "y": args.bounds_y, "z": args.bounds_z}
+    try:
+        result = build_visual_hull(args.view, bounds, args.output, grid_size=args.grid_size)
+    except (VisualHullError, OSError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
