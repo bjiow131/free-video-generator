@@ -1326,11 +1326,16 @@ def mia_adaptive_ask(reference, folder, inventory, context=''):
     data=response.json()
     if data.get('model')!='gpt-6-astra':raise ValueError('provider_model_mismatch')
     answer=data['choices'][0]['message']['content'].strip()
+    if len(answer)>60000:raise ValueError('provider_answer_size_limit')
+    (folder/'astra_raw_response.txt').write_text(answer,encoding='utf-8')
     if answer.startswith('```'):
         answer='\n'.join(answer.splitlines()[1:-1])
     raw=json.loads(answer)
     if not isinstance(raw,dict) or set(raw)!={'verdict','differences','edits','evaluation','learning_notes'}:raise ValueError('workshop_reply_schema')
-    if raw['evaluation'] not in ('baseline','improved','regressed','unchanged') or not isinstance(raw['learning_notes'],str) or not 1<=len(raw['learning_notes'])<=6000:raise ValueError('workshop_evaluation_schema')
+    if isinstance(raw['evaluation'],str):raw['evaluation']=raw['evaluation'].strip().lower()
+    if raw['evaluation'] not in ('baseline','improved','regressed','unchanged'):raise ValueError('workshop_evaluation_invalid')
+    if not isinstance(raw['learning_notes'],str):raw['learning_notes']=json.dumps(raw['learning_notes'],ensure_ascii=False)
+    if not 1<=len(raw['learning_notes'])<=30000:raise ValueError('workshop_learning_notes_size')
     reply=validate_mia_adaptive_plan({k:raw[k] for k in ('verdict','differences','edits')},inventory)
     reply.update(evaluation=raw['evaluation'],learning_notes=raw['learning_notes'])
     (folder/'astra_correction_plan.json').write_text(json.dumps(reply,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -1423,6 +1428,10 @@ def workshop_study(root):
     for name,url in pages:
         try:
             response=requests.get(url,timeout=(10,30),allow_redirects=False,stream=True)
+            fetched_url=url
+            if response.status_code in (403,404):
+                response.close();fetched_url=url.replace('docs.blender.org/','docs.staging.blender.org/')
+                response=requests.get(fetched_url,timeout=(10,30),allow_redirects=False,stream=True)
             with response:
                 if response.status_code!=200:raise ValueError('documentation_http_'+str(response.status_code))
                 body=b''
@@ -1436,7 +1445,7 @@ def workshop_study(root):
             text=unescape(re.sub('<[^>]+>',' ',text));text=re.sub(r'\s+',' ',text).strip()
             if len(text)<300:raise ValueError('documentation_text_missing')
             target=docs/(name+'.txt');target.write_text(text,encoding='utf-8')
-            out.append({'url':url,'status':'downloaded_text','read_at':datetime.now(timezone.utc).isoformat(),'sha256':mia_adaptive_digest(target),'path':str(target),'excerpt':text[:5000]})
+            out.append({'url':url,'fetched_url':fetched_url,'status':'downloaded_text','read_at':datetime.now(timezone.utc).isoformat(),'sha256':mia_adaptive_digest(target),'path':str(target),'excerpt':text[:5000]})
         except Exception as exc:out.append({'url':url,'status':'blocked','reason':str(exc) if isinstance(exc,ValueError) else type(exc).__name__})
     out.append({'url':'https://www.youtube.com/@crossmindstudio','status':'not_watched','reason':'No video/transcript execution capability in this runner; do not claim viewed'})
     (root/'study_documents.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
