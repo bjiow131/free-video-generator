@@ -227,6 +227,7 @@ def sha256_file(path: str) -> str:
 
 _SAFE_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
 _SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}\.(?:blend|json)$")
+_SAFE_TASK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 
 _BLENDER_FIT_SCRIPT = r'''import bpy, json, os, sys, hashlib, math
@@ -324,7 +325,7 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_asci
 '''
 
 
-def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, approved_reference_sha256: str) -> dict:
+def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, approved_reference_sha256: str, task_id: str) -> dict:
     """Optimize the original scene in memory and save only an accepted new candidate."""
     if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
         return {"status":"rejected","reason":"invalid_project_name"}
@@ -334,6 +335,8 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         return {"status":"rejected","reason":"invalid_reference_map_filename"}
     if not isinstance(approved_reference_sha256,str) or not SHA256_RE.fullmatch(approved_reference_sha256):
         return {"status":"rejected","reason":"invalid_approved_reference_sha256"}
+    if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
+        return {"status":"rejected","reason":"invalid_task_id"}
     executable=os.environ.get("BLENDER_EXECUTABLE","").strip(); workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
     if not executable or not workspace_value:
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
@@ -343,7 +346,8 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
     if not project.is_relative_to(workspace) or project==workspace or project.is_symlink():
         return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
     source=project/source_blend; reference=project/reference_map_file
-    output=project/"mia_reference_fit_candidate.blend"; report=project/"mia_reference_fit_result.json"
+    suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
+    output=project/f"mia_reference_fit_candidate_{suffix}.blend"; report=project/f"mia_reference_fit_result_{suffix}.json"
     if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,reference,output,report)):
         return {"status":"rejected","reason":"input_or_output_path_must_not_be_linked"}
     if not source.is_file() or source.stat().st_size==0: return {"status":"blocked","reason":"source_blend_not_found"}
@@ -371,4 +375,5 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         if not output.is_file() or output.stat().st_size==0 or result.get("animation_data_preserved") is not True:
             return {"status":"failed","reason":"candidate_output_or_animation_gate_failed"}
         result["candidate_path"]=str(output)
+    result["task_id"] = task_id
     return result
