@@ -1108,7 +1108,7 @@ if cfg.get('hair_rebuild'):
  rig=bpy.data.objects.get('Mia_Source_Pilot_Rig')
  scalp=bpy.data.objects.get('MiaSource_GEO_spring_hair_main')
  if rig is None or scalp is None or scalp.type!='MESH':raise RuntimeError('retained_donor_scalp_missing')
- for name in ('Mia_Rain_Source_GEO-rain-hair_main','Mia_Rain_Source_GEO-rain-hair_strand','MiaSource_GEO_spring_hair_ears'):
+ for name in ('MiaSource_GEO_spring_hair_ears',):
   o=bpy.data.objects.get(name)
   if o:o.hide_render=True
  scalp.hide_render=False
@@ -1116,9 +1116,25 @@ if cfg.get('hair_rebuild'):
   m=bpy.data.materials.new(name);m.use_nodes=True
   bs=m.node_tree.nodes['Principled BSDF'];bs.inputs['Base Color'].default_value=(*color,1);bs.inputs['Roughness'].default_value=.48
   return m
- base=hair_material('Mia_Codex_LightBrown_Scalp',(.115,.052,.019))
- mats=[hair_material('Mia_Codex_Lock_'+str(i),color) for i,color in enumerate([(.15,.071,.026),(.20,.102,.037),(.12,.046,.016),(.235,.125,.050)])]
+ base=hair_material('Mia_Codex_LightBrown_Scalp',(.16,.071,.025))
+ mats=[hair_material('Mia_Codex_Lock_'+str(i),color) for i,color in enumerate([(.17,.077,.029),(.19,.091,.034),(.14,.059,.021),(.21,.108,.042)])]
  scalp.data.materials.clear();scalp.data.materials.append(base)
+ # Retained donor scalp is a BACK underlayer. Keep the better frontal Rain
+ # volume; shrink the oversized Spring crown inside that volume.
+ mw=scalp.matrix_world.copy();inv=mw.inverted()
+ for v in scalp.data.vertices:
+  p=mw@v.co;v.co=inv@Vector((p.x*1.16,.03+(p.y-.03)*.83,1.23+(p.z-1.23)*.88))
+ rain=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_main')
+ if rain is None:raise RuntimeError('retained_rain_hair_missing')
+ rain.hide_render=False
+ strand=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_strand')
+ if strand:strand.hide_render=False
+ from mathutils.bvhtree import BVHTree
+ bpy.context.view_layer.update();dg=bpy.context.evaluated_depsgraph_get();ev=rain.evaluated_get(dg);mesh=ev.to_mesh()
+ surface=BVHTree.FromPolygons([ev.matrix_world@v.co for v in mesh.vertices],[tuple(p.vertices) for p in mesh.polygons]);ev.to_mesh_clear()
+ def on_surface(point):
+  hit=surface.find_nearest(Vector(point))
+  return hit[0]+hit[1]*.001 if hit and hit[0] is not None else Vector(point)
  bun=bpy.data.objects.get('MiaSource_GEO_spring_hair_ponytail')
  if bun:
   bun.hide_render=False;bun.data.materials.clear();bun.data.materials.append(base)
@@ -1137,19 +1153,23 @@ if cfg.get('hair_rebuild'):
   for p in mesh.polygons:p.use_smooth=True
   return o
  # Side-swept front locks and the low gathered bun share one real 3D scalp.
- for i in range(28):
-  t=i/27;start=(.08+.065*t,-.002+.05*t,1.395-.016*t)
+ for i in range(22):
+  t=i/21;start=(.08+.065*t,-.002+.05*t,1.395-.016*t)
   end=(-.168+.26*t,-.105-.025*math.sin(t*math.pi),1.268+.044*t)
   points=[start,((start[0]*.65+end[0]*.35),-.090,1.390-.013*t),((start[0]*.30+end[0]*.70),-.130,1.340+.005*t),end]
-  lock('Mia_Codex_Swept_Fringe_'+str(i),points,.0024+.0013*math.sin(t*math.pi),i)
+  lock('Mia_Codex_Swept_Fringe_'+str(i),[on_surface(p) for p in points],.0012+.0006*math.sin(t*math.pi),i)
  for side in (-1,1):
   for i in range(12):
    t=i/11;points=[(side*(.04+.11*t),.015,1.395-.027*t),(side*(.16+.015*t),.075,1.310-.025*t),(side*(.14-.035*t),.130,1.20-.02*t),(-.035+side*.035,.160,1.135)]
-   lock('Mia_Codex_Gathered_Lock_'+str(side)+'_'+str(i),points,.0025+.001*(1-t),i)
+   lock('Mia_Codex_Gathered_Lock_'+str(side)+'_'+str(i),[on_surface(p) for p in points[:3]]+[Vector(points[3])],.0015+.0005*(1-t),i)
   for i in range(3):
    x=side*(.17+i*.003);points=[(x,-.04,1.265),(x+side*.015,-.07,1.22),(x-side*.012,-.08,1.16),(x+side*.006,-.04,1.125)]
    lock('Mia_Codex_Loose_Wisp_'+str(side)+'_'+str(i),points,.0018,i)
- changes.append({'object':'MiaSource_GEO_spring_hair_main','reason':'Reuse complete donor scalp; replace blocky Rain fringe with layered side-swept locks and loose low gathered bun','new_lock_meshes':58,'donor_scalp_reused':True})
+ for i in range(14):
+  phase=i*2*math.pi/14
+  points=[(-.035+.10*math.cos(phase+t*.8),.155+.055*math.sin(phase+t*.8),1.125+.05*math.cos(t*math.pi)) for t in (0,.25,.5,.75,1)]
+  lock('Mia_Codex_Bun_Lock_'+str(i),points,.0018,i)
+ changes.append({'object':'MiaSource_GEO_spring_hair_main','reason':'Repair rear underlayer, retain fuller frontal Rain hair volume, surface-following swept locks and textured loose bun','new_lock_meshes':66,'donor_scalp_reused':True,'rain_front_volume_preserved':True})
  objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zipper')))]
 bpy.context.view_layer.update()
 inventory=[]
