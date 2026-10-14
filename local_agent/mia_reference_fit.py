@@ -1,4 +1,4 @@
-"""Measured, non-destructive reference fitting primitives for Mia.
+"""Measured, non-destructive reference fitting primitives (Mia pilot).
 
 This module deliberately has no Blender or SciPy import at module load time so
 the schema, scoring, and quality gates can be tested on a regular Python.
@@ -8,8 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
+import os
 import re
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 
@@ -230,6 +235,19 @@ _SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}\.(?:blend|json)$"
 _SAFE_TASK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 
+def _resolve_project(workspace: Path, project_name: str) -> Path | None:
+    """Resolve only approved project roots; never accept caller-supplied paths."""
+    candidates = (workspace / project_name,
+                  workspace / "SOURCE_ADAPTATIONS" / project_name)
+    for candidate in candidates:
+        if candidate.is_symlink() or getattr(candidate, "is_junction", lambda: False)():
+            continue
+        resolved = candidate.resolve()
+        if resolved.is_relative_to(workspace) and resolved != workspace and resolved.is_dir():
+            return resolved
+    return None
+
+
 _BLENDER_FIT_SCRIPT = r'''import bpy, json, os, sys, hashlib, math
 from bpy_extras.object_utils import world_to_camera_view
 args = sys.argv[sys.argv.index("--") + 1:]
@@ -344,12 +362,9 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project_candidate=workspace/project_name
-    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
-    project=project_candidate.resolve()
-    if not project.is_relative_to(workspace) or project==workspace:
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=_resolve_project(workspace, project_name)
+    if project is None:
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked_or_missing"}
     source=project/source_blend; reference=project/reference_map_file; passport=project/passport_file
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
     output=project/f"mia_reference_fit_candidate_{suffix}.blend"; report=project/f"mia_reference_fit_result_{suffix}.json"
@@ -432,12 +447,9 @@ def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: s
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project_candidate=workspace/project_name
-    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
-    project=project_candidate.resolve()
-    if not project.is_relative_to(workspace) or project==workspace:
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=_resolve_project(workspace, project_name)
+    if project is None:
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked_or_missing"}
     source=project/source_blend
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
     report=project/f"mia_reference_fit_passport_{suffix}.json"
