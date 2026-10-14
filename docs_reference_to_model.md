@@ -4,6 +4,8 @@ The project goal is reusable: each character is a new, hash-pinned reference pac
 
 ## Current implementation
 
+`local_agent/reference_image_analyzer.py` is the first image-ingestion stage. It reads reference images locally, uses an existing alpha channel or a conservative flat-border estimate, writes reviewable mask PNGs, samples the silhouette into normalized camera coordinates, and pins all views to a deterministic SHA-256. It rejects textured/uneven backgrounds rather than silently treating them as foreground. It does not upload images. The mask must be visually reviewed before fitting.
+
 `local_agent/reference_to_model.py` is a Blender-independent core. It validates a versioned JSON specification, SHA-256 identity, camera-normalized landmarks, optional sampled silhouette contours, and bounded controls. Allowed controls are shape keys, object scale, and a selected object-location component. It computes confidence-weighted landmark loss and a symmetric sampled contour distance, plus optional regularization. `optimize()` uses bounded `scipy.optimize.least_squares` if SciPy is installed.
 
 `build_hair_curves()` creates independent stylized Curve objects from explicit local-space strand control points. These generated objects can be recreated without modifying donor hair geometry. They are a deterministic construction utility, not an automatic hairstyle extractor.
@@ -16,9 +18,23 @@ Use `schema_version: 1`, `coordinate_convention: camera_frame_bottom_left_normal
 
 Keep separate source images for each view and region. Record per-image hash and provenance in the surrounding reference package. A single view cannot determine hidden depth; the core returns `underconstrained` for one view. Three or more useful views are recommended, but do not remove the need for human review.
 
+### Local image-analysis command
+
+Install the local agent requirements, then run this from the repository root:
+
+```powershell
+python -m local_agent.reference_image_analyzer `
+  --view front=C:\refs\front.png `
+  --view left=C:\refs\left.png `
+  --view back=C:\refs\back.png `
+  --output-dir C:\AIStudioWorkspace\projects\referencefit\analysis
+```
+
+The command writes `reference_map.json` and one `mask_<view>.png` per image. Inspect every mask first. This stage produces a reviewable silhouette reference package; it deliberately reports `fit_ready: false` until the Blender cameras and model controls are calibrated. Transparent PNGs are preferred. Opaque images work only when the border is a reasonably uniform background.
+
 ## Current limits and next gates
 
-This core does not yet automatically segment reference images, infer landmarks, generate arbitrary topology, measure color-region loss, construct clothing, or produce a finished rig. Silhouette loss currently compares supplied contour samples; it is not a rasterized mask loss. Typed local mailbox operations are now wired, but have not yet been installed on the Windows agent or exercised in Blender 5.2.2. The next engineering step is automatic reference analysis and camera calibration, followed by a read-only donor passport and a low-cost projection test.
+This stage does not infer semantic landmarks, calibrate cameras, generate arbitrary topology, measure color-region loss, construct clothing, or produce a finished rig. Silhouette loss currently compares supplied contour samples; it is not a rasterized mask loss. The Blender fit adapter still needs an executable Blender 5.2.2 validation, including confirmation that SciPy is available inside Blender's bundled Python. The next engineering step is camera calibration and a generic Blender-side silhouette fit, followed by a read-only base-mesh passport and a low-cost projection test.
 
 ## Base-mesh generation options
 
