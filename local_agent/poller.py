@@ -2335,7 +2335,11 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
     thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
     powershell_code = None
-    if any(not path.is_file() for path in thumbnail_paths.values()):
+    if any(
+        not path.is_file()
+        or Path(previews[name]).stat().st_mtime_ns >= path.stat().st_mtime_ns
+        for name, path in thumbnail_paths.items()
+    ):
         safe_root = str(output).replace("'", "''")
         powershell_code = (
             "$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Drawing;"
