@@ -6,8 +6,6 @@ The project goal is reusable: each character is a new, hash-pinned reference pac
 
 `local_agent/reference_image_analyzer.py` is the first image-ingestion stage. It reads reference images locally, uses an existing alpha channel or a conservative flat-border estimate, writes reviewable mask PNGs, samples the silhouette into normalized camera coordinates, and pins all views to a deterministic SHA-256. It rejects textured/uneven backgrounds rather than silently treating them as foreground. It does not upload images. The mask must be visually reviewed before fitting.
 
-`local_agent/visual_hull.py` carves a coarse donor-independent OBJ from reviewed masks and explicit orthographic camera bounds. It needs at least two calibrated views. This provides a measurable starting surface when no suitable donor is available; it cannot invent unseen concavities, facial detail, clothing seams, clean animation topology, or a finished rig. The mesh is marked as a draft and must pass the next quality gates.
-
 `local_agent/reference_to_model.py` is a Blender-independent core. It validates a versioned JSON specification, SHA-256 identity, camera-normalized landmarks, optional sampled silhouette contours, and bounded controls. Allowed controls are shape keys, object scale, and a selected object-location component. It computes confidence-weighted landmark loss and a symmetric sampled contour distance, plus optional regularization. `optimize()` uses bounded `scipy.optimize.least_squares` if SciPy is installed.
 
 `build_hair_curves()` creates independent stylized Curve objects from explicit local-space strand control points. These generated objects can be recreated without modifying donor hair geometry. They are a deterministic construction utility, not an automatic hairstyle extractor.
@@ -34,6 +32,23 @@ python -m local_agent.reference_image_analyzer `
 
 The command writes `reference_map.json` and one `mask_<view>.png` per image. Inspect every mask first. This stage produces a reviewable silhouette reference package; it deliberately reports `fit_ready: false` until the Blender cameras and model controls are calibrated. Transparent PNGs are preferred. Opaque images work only when the border is a reasonably uniform background.
 
+### One-command geometric smoke run
+
+The donor-independent first-draft command connects mask analysis to a coarse visual hull. Supply at least two calibrated orthographic views, world-axis mapping for each view, and approximate model-space bounds. On Windows PowerShell:
+
+```powershell
+python -m local_agent.reference_to_model_pipeline `
+  --view front=C:\refs\front.png,x,z `
+  --view side=C:\refs\side.png,y,z `
+  --bounds-x -0.35 0.35 `
+  --bounds-y -0.25 0.25 `
+  --bounds-z 0 1.9 `
+  --output-dir C:\AIStudioWorkspace\projects\referencefit\first_run `
+  --grid-size 64
+```
+
+This writes review masks, a hash-pinned reference map, and an OBJ visual-hull draft. The masks and camera-axis mapping must be checked against the source before interpreting the mesh. The output is only a coarse silhouette volume; facial detail, hidden concavities, clothing seams, production topology, materials, and animation controls remain later stages. The command reports `fit_ready: false` and `production_ready: false` until those stages are implemented and verified.
+
 ## Current limits and next gates
 
 This stage does not infer semantic landmarks, calibrate cameras, generate arbitrary topology, measure color-region loss, construct clothing, or produce a finished rig. Silhouette loss currently compares supplied contour samples; it is not a rasterized mask loss. The Blender fit adapter still needs an executable Blender 5.2.2 validation, including confirmation that SciPy is available inside Blender's bundled Python. The next engineering step is camera calibration and a generic Blender-side silhouette fit, followed by a read-only base-mesh passport and a low-cost projection test.
@@ -49,18 +64,3 @@ The system must not depend on one donor. For references with multiple views, the
 No cloud API is called automatically and no key is stored in the mailbox. Use one of these only after the user selects/authorizes that provider and the local machine or account credentials are configured. A generated mesh is a starting surface, not proof of identity, clean topology, facial controls, or animation readiness.
 
 Donor choice is per asset and per Blender version. The audit shortlist includes Blender Studio Storm (Blender 5.0+), Snow v4 (Blender 4.1, CC-BY), Rain, and any user-provided or legally usable source. No donor is assumed compatible until its file opens, mesh/shape-key/driver inventory is measured, and license provenance is recorded. Do not import a donor's rig into the modeling stage by default.
-
-
-### Donor-independent coarse mesh command
-
-After reviewing the masks, the orthographic view directions and world bounds must be calibrated. Then build a starting OBJ (front is horizontal X/up Z; side is horizontal Y/up Z):
-
-```powershell
-python -m local_agent.visual_hull `
-  --view front=C:\refs\analysis\mask_front.png,x,z `
-  --view side=C:\refs\analysis\mask_side.png,y,z `
-  --bounds-x -0.35 0.35 --bounds-y -0.22 0.22 --bounds-z 0 1.75 `
-  --grid-size 64 --output C:\AIStudioWorkspace\projects\referencefit\character_hull.obj
-```
-
-The OBJ is a voxel visual hull, not a finished character. Its bounds must be calibrated consistently across views; perspective photos need camera calibration first. Increase detail only after mask quality and scale consistency are checked.
