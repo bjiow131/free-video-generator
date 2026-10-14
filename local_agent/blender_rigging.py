@@ -811,7 +811,7 @@ def refine_saved_source_details(source_project: str, project_name: str) -> dict[
 SOURCE_POLISH_SCRIPT = "import bpy,sys,json,math,hashlib,struct\nfrom pathlib import Path\nfrom mathutils import Vector\nsource,out=map(Path,sys.argv[sys.argv.index('--')+1:])\nbpy.context.preferences.filepaths.use_scripts_auto_execute=False\nbpy.ops.wm.open_mainfile(filepath=str(source),load_ui=False)\nhead=bpy.data.objects['MiaSource_GEO-spring_head'];keys=head.data.shape_keys\nfor k in keys.key_blocks:k.value=0\nfor key in keys.key_blocks:\n for p in key.data:\n  x,y,z=p.co;front=max(0,min(1,(-y-.03)/.07));cheek=math.exp(-((abs(x)-.13)/.06)**2-((z-1.145)/.05)**2)*front\n  p.co.x*=1+.025*cheek;p.co.y-=.003*cheek\n  smile=math.exp(-((abs(x)-.05)/.025)**2-((z-1.112)/.022)**2)*front;p.co.z+=.0025*smile\nfor v,p in zip(head.data.vertices,keys.key_blocks['Basis'].data):v.co=p.co\nskin=head.data.color_attributes.get('Mia_Rosy_Skin')\nif skin:\n for p,v in zip(skin.data,head.data.vertices):\n  x,y,z=v.co;w=.68*math.exp(-((abs(x)-.13)/.065)**2-((z-1.155)/.045)**2)*max(0,min(1,(-y-.03)/.08));base=(.74,.32,.19);rose=(.70,.15,.105);p.color=tuple(base[i]*(1-w)+rose[i]*w for i in range(3))+(1,)\nscene=bpy.context.scene\nfor o in scene.objects:\n label=o.name.lower()\n if o.type!='MESH':continue\n if label=='miasource_geo_spring_pants':\n  for v in o.data.vertices:\n   center=.08 if v.co.x>=0 else -.08;factor=1.12 if v.co.z>.28 else .94;v.co.x=center+(v.co.x-center)*factor\n if any(k in label for k in ['boot_','sole_tread']):\n  for v in o.data.vertices:\n   center=.08 if v.co.x>=0 else -.08;v.co.x=center+(v.co.x-center)*1.08;v.co.y*=1.05\n if 'cargo' in label:\n  for v in o.data.vertices:v.co.x+=.006 if v.co.x>=0 else -.006\n if label in ['miasource_geo-spring_jacket','collapsed_hood']:\n  for m in o.data.materials:\n   if m is None or not m.use_nodes:continue\n   bs=m.node_tree.nodes.get('Principled BSDF')\n   if bs:\n    for link in list(bs.inputs['Base Color'].links):m.node_tree.links.remove(link)\n    bs.inputs['Base Color'].default_value=(.02,.16,.205,1);bs.inputs['Roughness'].default_value=.76\n    noise=m.node_tree.nodes.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=180;noise.inputs['Detail'].default_value=3;bump=m.node_tree.nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.12;bump.inputs['Distance'].default_value=.0015;m.node_tree.links.new(noise.outputs['Fac'],bump.inputs['Height']);m.node_tree.links.new(bump.outputs['Normal'],bs.inputs['Normal'])\n if 'boot_upper' in label or 'boot_tongue' in label:\n  for m in o.data.materials:\n   if m is None or not m.use_nodes:continue\n   bs=m.node_tree.nodes.get('Principled BSDF')\n   if bs:\n    for link in list(bs.inputs['Base Color'].links):m.node_tree.links.remove(link)\n    bs.inputs['Base Color'].default_value=(.21,.09,.033,1)\n if 'mia_rain_source' in label:\n  for v in o.data.vertices:\n   if v.co.y<-.03:v.co.z+=.003*math.sin(40*v.co.x+22*v.co.z)\n  for m in o.data.materials:\n   if not m or not m.use_nodes:continue\n   bs=m.node_tree.nodes.get('Principled BSDF')\n   if bs:\n    uv=m.node_tree.nodes.new('ShaderNodeTexCoord');sep=m.node_tree.nodes.new('ShaderNodeSeparateXYZ');freq=m.node_tree.nodes.new('ShaderNodeMath');freq.operation='MULTIPLY';freq.inputs[1].default_value=450;wave=m.node_tree.nodes.new('ShaderNodeMath');wave.operation='SINE';bump=m.node_tree.nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.12;bump.inputs['Distance'].default_value=.0007;m.node_tree.links.new(uv.outputs['UV'],sep.inputs[0]);m.node_tree.links.new(sep.outputs['Y'],freq.inputs[0]);m.node_tree.links.new(freq.outputs[0],wave.inputs[0]);m.node_tree.links.new(wave.outputs[0],bump.inputs['Height']);m.node_tree.links.new(bump.outputs['Normal'],bs.inputs['Normal'])\nscene.render.use_compositing=False;scene.render.use_sequencer=False;scene.render.image_settings.file_format='PNG';scene.cycles.samples=24\nfor k in keys.key_blocks:k.value=0\nbpy.context.view_layer.update();blend=out/'mia_spring_source_adapted.blend';bpy.ops.wm.save_as_mainfile(filepath=str(blend));bpy.ops.wm.open_mainfile(filepath=str(blend),load_ui=False)\nscene=bpy.context.scene;camera=scene.camera;head=bpy.data.objects['MiaSource_GEO-spring_head']\nfor view,loc in [('front',(0,-4,.74)),('side',(4,0,.74)),('back',(0,4,.74)),('face',(0,-4,1.22))]:\n for key in head.data.shape_keys.key_blocks:key.value=0\n bpy.context.view_layer.update();camera.location=loc;target=(0,0,1.20) if view=='face' else (0,0,.72);camera.rotation_euler=(Vector(target)-camera.location).to_track_quat('-Z','Y').to_euler();camera.data.ortho_scale=.50 if view=='face' else 1.6;scene.render.filepath=str(out/(view+'.png'));bpy.ops.render.render(write_still=True)\ntests={}\nfor name in ('Mia_blink','Mia_mouth_open'):\n key=head.data.shape_keys.key_blocks[name];tests[name+'_max_delta']=max(((a.co-b.co).length for a,b in zip(key.data,head.data.shape_keys.key_blocks['Basis'].data)),default=0)\nreport={'status':'completed','stage':'source_polish_needs_user_review','source_blend':str(source),'blend_path':str(blend),'continues_last_saved_geometry':True,'neutral_values':{k.name:k.value for k in head.data.shape_keys.key_blocks},'facial_shape_deltas':tests,'identity_verified':False,'production_ready':False,'changes':['warmer rosy cheeks and subtle smile','darker textured teal jacket','roomier cargo fit','darker chunkier lace-up boots','directional hair shading and small wave variation']}\n(out/'polish_report.json').write_text(json.dumps(report,indent=2))\n"
 
 
-def polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
+def _legacy_fixed_polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
     """Apply bounded reference critique to the saved model and deliver a bundle."""
     if any(not isinstance(n,str) or not PROJECT_RE.fullmatch(n) for n in (source_project,project_name)) or source_project==project_name:
         return {'status':'rejected','reason':'invalid_source_polish_identity'}
@@ -862,3 +862,299 @@ def polish_saved_source_model(source_project: str, project_name: str) -> dict[st
     else:delivery['status']='blocked_archive_exceeds_telegram_limit'
     (out/'document_delivery_receipt.json').write_text(json.dumps(delivery,indent=2),encoding='utf-8')
     return {'status':'completed','stage':data['stage'],'continues_last_saved_geometry':True,'source_blend_sha256':source_hash,'source_unchanged':True,'output_blend_sha256':_spring_sha256(blend),'blend_path':str(blend),'bundle_path':str(bundle),'report_path':str(report),'neutral_values':data['neutral_values'],'facial_shape_deltas':data['facial_shape_deltas'],'changes':data['changes'],'thumbnail_jpeg_base64':thumbs,'astra':astra,'telegram_documents':delivery,'identity_verified':False,'production_ready':False,'goal_status':'awaiting_user_visual_acceptance','limitations':['Mapped pilot weights and advanced facial controls still require production QA','No episode rendering was started']}
+
+
+"""Bounded visual corrections of a saved Mia mesh; provider output is data only."""
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+MIA_ADAPTIVE_REFERENCE_SHA = '7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383'
+MIA_ADAPTIVE_VIEWS = ('front', 'side', 'back', 'quarter', 'face')
+
+def acquire_mia_study_sources(ws):
+    """Download fixed official study donors; never execute their embedded scripts."""
+    import requests
+    import re
+    import io
+    import zipfile
+    from urllib.parse import urljoin, urlparse
+    from html import unescape
+    from local_agent.path_names import is_link_or_junction
+    root=ws/'BLENDER_SOURCE_LIBRARY'
+    if any(is_link_or_junction(p) for p in (root,*root.parents)):
+        return [{'status':'blocked','reason':'unsafe_library_path'}]
+    root.mkdir(exist_ok=True);results=[]
+    for name,page in [('snow','https://studio.blender.org/characters/snow/v2/'),('ellie','https://studio.blender.org/characters/ellie/v1/')]:
+        folder=root/name
+        if folder.exists():
+            results.append({'asset':name,'status':'existing_not_redownloaded'});continue
+        try:
+            r=requests.get(page,timeout=(10,30),allow_redirects=False)
+            if r.status_code!=200:raise ValueError('catalog_http_'+str(r.status_code))
+            html=r.text
+            if not re.search(r'CC[- ]BY|creativecommons.org/licenses/by/',html,re.I):
+                raise ValueError('attribution_license_not_verified')
+            links=[urljoin(page,unescape(x)) for x in re.findall(r'href=[\"\x27]([^\"\x27]+)[\"\x27]',html)]
+            links=[x for x in links if urlparse(x).scheme=='https' and urlparse(x).hostname=='studio.blender.org' and '/download-source/files/' in urlparse(x).path]
+            if not links:raise ValueError('official_download_link_not_found')
+            url=links[0]
+            with requests.get(url,timeout=(10,90),stream=True,allow_redirects=False) as response:
+                if response.status_code!=200:raise ValueError('download_http_'+str(response.status_code))
+                chunks=[];size=0
+                for chunk in response.iter_content(1048576):
+                    size+=len(chunk)
+                    if size>160000000:raise ValueError('download_size_limit')
+                    chunks.append(chunk)
+            payload=b''.join(chunks);files=[]
+            if payload.startswith(b'BLENDER'):files=[('donor.blend',payload)]
+            elif zipfile.is_zipfile(io.BytesIO(payload)):
+                with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                    members=[m for m in archive.infolist() if not m.is_dir() and m.filename.lower().endswith('.blend')]
+                    if not 1<=len(members)<=5 or sum(m.file_size for m in members)>250000000:raise ValueError('archive_size_or_member_limit')
+                    files=[('donor_'+str(i)+'.blend',archive.read(m)) for i,m in enumerate(members)]
+            else:raise ValueError('unrecognized_download_format')
+            if any(not raw.startswith(b'BLENDER') for _,raw in files):raise ValueError('invalid_blend_header')
+            folder.mkdir();manifest={'asset':name,'status':'downloaded','catalog_url':page,'download_url':url,'license':'CC-BY (verify exact version in retained catalog before redistribution)','credit':name.title()+' Rig (CC) Blender Foundation | studio.blender.org','archive_sha256':hashlib.sha256(payload).hexdigest(),'files':[],'study_only':True,'embedded_scripts_executed':False}
+            (folder/'catalog.html').write_text(html,encoding='utf-8')
+            for filename,raw in files:
+                (folder/filename).write_bytes(raw);manifest['files'].append({'file':filename,'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)})
+            (folder/'source_manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8');results.append(manifest)
+        except Exception as exc:
+            results.append({'asset':name,'status':'blocked','reason':str(exc)[:120] if isinstance(exc,ValueError) else type(exc).__name__})
+    return results
+
+def mia_adaptive_digest(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1048576), b''): h.update(chunk)
+    return h.hexdigest()
+
+def mia_adaptive_numbers(value, count, low, high):
+    if not isinstance(value, list) or len(value) != count:
+        raise ValueError('invalid_vector')
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not low <= v <= high for v in value):
+        raise ValueError('out_of_bounds_vector')
+    return value
+
+def validate_mia_adaptive_plan(reply, inventory):
+    """Reject unknown objects, code, nonfinite numbers and excessive edits."""
+    if not isinstance(reply, dict) or set(reply) != {'verdict', 'differences', 'edits'}:
+        raise ValueError('invalid_reply_schema')
+    if reply['verdict'] not in ('NEEDS_REVISION', 'READY_FOR_USER_REVIEW', 'VISION_UNAVAILABLE'):
+        raise ValueError('invalid_verdict')
+    if not isinstance(reply['differences'], list) or not 1 <= len(reply['differences']) <= 12 or any(not isinstance(x, str) or not 1 <= len(x) <= 800 for x in reply['differences']):
+        raise ValueError('invalid_differences')
+    edits = reply['edits']
+    if not isinstance(edits, list) or len(edits) > 5:
+        raise ValueError('too_many_edits')
+    if reply['verdict'] != 'NEEDS_REVISION' and edits:
+        raise ValueError('unexpected_edits')
+    names = {x['name'] for x in inventory}
+    for edit in edits:
+        if not isinstance(edit, dict) or edit.get('object') not in names:
+            raise ValueError('unknown_object')
+        common = {'object', 'kind', 'reason'}
+        if not isinstance(edit.get('reason'), str) or not 1 <= len(edit['reason']) <= 800:
+            raise ValueError('missing_edit_reason')
+        if edit.get('kind') == 'scale':
+            if set(edit) != common | {'factors'}: raise ValueError('invalid_scale_schema')
+            mia_adaptive_numbers(edit['factors'], 3, .94, 1.06)
+        elif edit.get('kind') == 'translate':
+            if set(edit) != common | {'offset'}: raise ValueError('invalid_translate_schema')
+            mia_adaptive_numbers(edit['offset'], 3, -.012, .012)
+        elif edit.get('kind') == 'brush':
+            if set(edit) != common | {'center', 'radius', 'offset'}: raise ValueError('invalid_brush_schema')
+            mia_adaptive_numbers(edit['center'], 3, 0, 1)
+            mia_adaptive_numbers(edit['radius'], 3, .08, .5)
+            mia_adaptive_numbers(edit['offset'], 3, -.008, .008)
+        else: raise ValueError('invalid_edit_kind')
+    # Multiple edits on one object compound beyond per-operation limits.
+    if len({e['object'] for e in edits}) != len(edits):
+        raise ValueError('duplicate_object_edit')
+    return reply
+
+MIA_ADAPTIVE_BLENDER_SCRIPT = r'''
+import bpy, sys, json, math, hashlib, struct
+from pathlib import Path
+from mathutils import Vector
+cfg=json.loads(Path(sys.argv[sys.argv.index('--')+1]).read_text('utf-8'))
+out=Path(cfg['out']);out.mkdir(exist_ok=True)
+bpy.context.preferences.filepaths.use_scripts_auto_execute=False
+bpy.ops.wm.open_mainfile(filepath=cfg['source'],load_ui=False)
+scene=bpy.context.scene
+for arm in [o for o in scene.objects if o.type=='ARMATURE']:
+ if arm.animation_data:arm.animation_data_clear()
+ for bone in arm.pose.bones:bone.matrix_basis.identity()
+for o in scene.objects:
+ if o.type=='MESH' and o.data.shape_keys:
+  keys=o.data.shape_keys
+  if keys.animation_data:keys.animation_data_clear()
+  for key in keys.key_blocks:key.value=0
+  o.show_only_shape_key=False;o.active_shape_key_index=0
+scene.frame_set(1)
+bpy.context.view_layer.update()
+def geometry_hash(o):
+ h=hashlib.sha256()
+ for v in o.data.vertices:h.update(struct.pack('<3f',*v.co))
+ return h.hexdigest()
+objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zipper')))]
+before={o.name:geometry_hash(o) for o in objects}
+changes=[]
+for edit in cfg['edits']:
+ o=bpy.data.objects[edit['object']]
+ if o not in objects:raise RuntimeError('ineligible_mesh')
+ # Copy mesh data to avoid modifying another object through shared datablocks.
+ if o.data.users>1:o.data=o.data.copy()
+ mw=o.matrix_world.copy();inv=mw.inverted()
+ basis=o.data.shape_keys.key_blocks[0].data if o.data.shape_keys else o.data.vertices
+ points=[mw@p.co for p in basis]
+ lo=Vector(tuple(min(p[i] for p in points) for i in range(3)));hi=Vector(tuple(max(p[i] for p in points) for i in range(3)));mid=(lo+hi)/2
+ deltas=[]
+ for point in points:
+  target=point.copy()
+  if edit['kind']=='scale':
+   target=mid+Vector(tuple((point[i]-mid[i])*edit['factors'][i] for i in range(3)))
+  elif edit['kind']=='translate':target+=Vector(edit['offset'])
+  else:
+   norm=[(point[i]-lo[i])/max(hi[i]-lo[i],1e-8) for i in range(3)]
+   w=math.exp(-.5*sum(((norm[i]-edit['center'][i])/edit['radius'][i])**2 for i in range(3)))
+   target+=Vector(edit['offset'])*w
+  deltas.append(inv@target-inv@point)
+ blocks=[k.data for k in o.data.shape_keys.key_blocks] if o.data.shape_keys else [o.data.vertices]
+ for block in blocks:
+  for p,d in zip(block,deltas):p.co+=d
+ if o.data.shape_keys:
+  for v,p in zip(o.data.vertices,o.data.shape_keys.key_blocks[0].data):v.co=p.co
+ o.data.update();changes.append({'object':o.name,'max_local_delta':max(d.length for d in deltas),'reason':edit['reason']})
+bpy.context.view_layer.update()
+inventory=[]
+for o in objects:
+ pts=[o.matrix_world@v.co for v in o.data.vertices]
+ inventory.append({'name':o.name,'vertices':len(pts),'world_min':[min(p[i] for p in pts) for i in range(3)],'world_max':[max(p[i] for p in pts) for i in range(3)],'shape_keys':[k.name for k in o.data.shape_keys.key_blocks] if o.data.shape_keys else [],'armatures':[m.object.name for m in o.modifiers if m.type=='ARMATURE' and m.object]})
+after={o.name:geometry_hash(o) for o in objects}
+if cfg['edits'] and not any(before[n]!=after[n] for n in before):raise RuntimeError('no_geometry_change')
+scene.render.use_compositing=False;scene.render.use_sequencer=False;scene.render.film_transparent=False
+scene.render.image_settings.file_format='PNG';scene.render.resolution_percentage=100
+scene.render.resolution_x=720;scene.render.resolution_y=960
+if scene.render.engine=='CYCLES':scene.cycles.samples=24
+camera=scene.camera
+if camera is None:raise RuntimeError('missing_camera')
+camera.data.type='ORTHO'
+blend=out/'mia_spring_source_adapted.blend'
+bpy.ops.wm.save_as_mainfile(filepath=str(blend))
+# Reopen to verify saved geometry, rather than rendering unsaved working state.
+bpy.ops.wm.open_mainfile(filepath=str(blend),load_ui=False)
+scene=bpy.context.scene;camera=scene.camera
+for name,loc in [('front',(0,-4,.74)),('side',(4,0,.74)),('back',(0,4,.74)),('quarter',(2.8,-2.8,.74)),('face',(0,-4,1.22))]:
+ camera.location=loc;target=(0,0,1.20) if name=='face' else (0,0,.72)
+ camera.rotation_euler=(Vector(target)-camera.location).to_track_quat('-Z','Y').to_euler();camera.data.ortho_scale=.50 if name=='face' else 1.6
+ scene.render.filepath=str(out/(name+'.png'));bpy.ops.render.render(write_still=True)
+report={'inventory':inventory,'geometry_before':before,'geometry_after':after,'changes':changes,'blend_path':str(blend),'identity_verified':False,'production_ready':False}
+(out/'geometry_report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+'''
+
+def mia_adaptive_ask(reference, folder, inventory):
+    import base64
+    import requests
+    from local_agent.octava_credentials import read_key
+    key,_=read_key()
+    if not key: raise ValueError('provider_key_unavailable')
+    prompt = '''Compare APPROVED original Mia turnaround, then CURRENT front, side, rear, 3/4 and face renders. These are one real editable mesh. Original reference is sole identity authority; black margins are not hair. Age four. Do not approve category similarity. Diagnose face, eye shape, cheek/jaw, fringe, low loose bun, teal jacket fit, trousers and boots across views. Do not pretend to execute Blender. Return JSON only with exactly verdict (NEEDS_REVISION, READY_FOR_USER_REVIEW or VISION_UNAVAILABLE), differences (1-12 concrete Russian strings), edits (0-5 objects). Never claim identity approval; READY means user review only. Each edit: object exact inventory name, kind, reason. Allowed kinds: scale with factors [x,y,z] .94..1.06 around WORLD bbox center; translate with offset [x,y,z] WORLD metres -.012...012; brush with center [x,y,z] normalized WORLD bbox 0..1, radius [x,y,z] .08...5, offset WORLD metres -.008...008, Gaussian smooth displacement. One edit per object. Coordinates +X right, front -Y, +Z up. Head edits must respect eyelids, mouth and symmetry; do not blindly scale head to enlarge eyes. No code, filenames, URLs, invented object names or hidden-view claims. If available edits cannot fix hair topology/face identity, specify that limitation and provide no misleading edits. Prioritize at most five measurable changes, avoid repeatedly widening cheeks or boots. Reassess the resulting renders on the next iteration; empty edits means halt, not success. INVENTORY: ''' + json.dumps(inventory,ensure_ascii=False)
+    content=[{'type':'text','text':prompt}]
+    for label,path in [('APPROVED_REFERENCE',reference)]+[(v,folder/(v+'.png')) for v in MIA_ADAPTIVE_VIEWS]:
+        if not path.is_file() or path.stat().st_size>8000000:raise ValueError('missing_or_oversized_review_image')
+        mime='image/jpeg' if path.suffix=='.jpeg' else 'image/png'
+        content.extend([{'type':'text','text':label},{'type':'image_url','image_url':{'url':'data:'+mime+';base64,'+base64.b64encode(path.read_bytes()).decode('ascii'),'detail':'high'}}])
+    response=requests.post('https://octavapi.shop/v1/chat/completions',headers={'Authorization':'Bearer '+key},json={'model':'gpt-6-astra','messages':[{'role':'user','content':content}],'max_tokens':3000,'temperature':.2},timeout=(10,180),allow_redirects=False)
+    if response.status_code!=200:raise ValueError('provider_http_'+str(response.status_code))
+    data=response.json()
+    if data.get('model')!='gpt-6-astra':raise ValueError('provider_model_mismatch')
+    answer=data['choices'][0]['message']['content'].strip()
+    if answer.startswith('```'):
+        answer='\n'.join(answer.splitlines()[1:-1])
+    reply=validate_mia_adaptive_plan(json.loads(answer),inventory)
+    (folder/'astra_correction_plan.json').write_text(json.dumps(reply,ensure_ascii=False,indent=2),encoding='utf-8')
+    return reply
+
+def run_mia_adaptive_source(source_project, project_name):
+    from local_agent.blender_locator import find_blender_executable
+    from local_agent.path_names import path_identifier_pattern, is_link_or_junction
+    valid=path_identifier_pattern(48)
+    if any(not isinstance(x,str) or not valid.fullmatch(x) for x in (source_project,project_name)) or source_project==project_name:
+        return {'status':'rejected','reason':'invalid_project_identity'}
+    value=os.environ.get('LOCAL_AGENT_WORKSPACE','').strip();blender=find_blender_executable()
+    if not value or blender is None:return {'status':'blocked','reason':'workspace_or_blender_missing'}
+    ws=Path(value).expanduser().resolve();source=ws/'SOURCE_ADAPTATIONS'/source_project/'mia_spring_source_adapted.blend';root=ws/'SOURCE_ADAPTATIONS'/project_name
+    reference=ws/'episode1/assets/references/mia_turnaround_approved_20261012.jpeg'
+    for p in (source,root,reference):
+        if any(is_link_or_junction(k) for k in (p,*p.parents)):return {'status':'rejected','reason':'unsafe_path'}
+    if not source.is_file() or root.exists():return {'status':'blocked','reason':'source_missing_or_output_exists'}
+    if not reference.is_file() or mia_adaptive_digest(reference)!=MIA_ADAPTIVE_REFERENCE_SHA:return {'status':'blocked','reason':'approved_reference_digest_mismatch'}
+    original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=[];history=[];reason='bounded_pass_limit_reached';latest=None
+    donors=acquire_mia_study_sources(ws)
+    (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
+    try:
+        for i in range(4):
+            folder=root/('pass_'+str(i));folder.mkdir()
+            with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
+                script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
+                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':edits}),encoding='utf-8')
+                proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(cfg)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=900,check=False,shell=False)
+            (folder/'blender_stdout.log').write_text((proc.stdout or '')[-200000:],encoding='utf-8')
+            if proc.returncode:raise ValueError('blender_exit_'+str(proc.returncode))
+            report=json.loads((folder/'geometry_report.json').read_text('utf-8'))
+            hashes={v:mia_adaptive_digest(folder/(v+'.png')) for v in MIA_ADAPTIVE_VIEWS}
+            if history and hashes==history[-1]['render_sha256']:raise ValueError('unchanged_render_set')
+            latest=folder;current=folder/'mia_spring_source_adapted.blend'
+            reply=mia_adaptive_ask(reference,folder,report['inventory'])
+            history.append({'pass':i,'blend_sha256':mia_adaptive_digest(current),'render_sha256':hashes,'plan':reply,'changes':report['changes']})
+            (root/'adaptive_history.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
+            if reply['verdict']!='NEEDS_REVISION' or not reply['edits']:
+                reason=reply['verdict'] if reply['verdict']!='NEEDS_REVISION' else 'needs_topology_or_artist_correction';break
+            edits=reply['edits']
+        # Stable next-source path is a COPY, never overwrite the input checkpoint.
+        import shutil
+        shutil.copy2(current,root/'mia_spring_source_adapted.blend')
+        result={'status':'completed','stage':'adaptive_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'completed','original_reference_attached':True,'full_resolution_views_attached':list(MIA_ADAPTIVE_VIEWS),'critique':json.dumps(history[-1]['plan'],ensure_ascii=False)}}
+        if not result['source_unchanged']:raise ValueError('original_source_changed')
+        result['study_sources']=donors
+        # Preserve donor attribution inherited from the input checkpoint.
+        attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
+        if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
+        result['telegram_documents']=deliver_mia_adaptive_bundle(root,latest)
+        (root/'adaptive_result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+        return result
+    except Exception as exc:
+        return {'status':'blocked','reason':str(exc)[:200] if isinstance(exc,ValueError) else type(exc).__name__,'passes':len(history),'review_dir':str(latest) if latest else None,'source_unchanged':mia_adaptive_digest(source)==original_hash,'identity_verified':False,'production_ready':False}
+
+def deliver_mia_adaptive_bundle(root,latest):
+    import zipfile
+    import requests
+    from local_agent.studio_server import _telegram_credentials, telegram_notifications_enabled
+    archive=root/'Mia_Adaptive_Draft.zip'
+    with zipfile.ZipFile(archive,'x',compression=zipfile.ZIP_DEFLATED) as z:
+        for path in [root/'mia_spring_source_adapted.blend',root/'adaptive_history.json',root/'study_source_acquisition.json',*[latest/(v+'.png') for v in MIA_ADAPTIVE_VIEWS]]:
+            z.write(path,path.name)
+        attr=root/'ATTRIBUTION_AND_STATUS.txt'
+        if attr.is_file():z.write(attr,attr.name)
+    receipt={'status':'not_sent','archive_sha256':mia_adaptive_digest(archive),'archive_size_bytes':archive.stat().st_size}
+    try:
+        token,chat=_telegram_credentials()
+        if token and chat and telegram_notifications_enabled() and archive.stat().st_size<=49000000:
+            with archive.open('rb') as f:
+                r=requests.post('https://api.telegram.org/bot'+token+'/sendDocument',data={'chat_id':chat,'caption':'Мия: адаптивные правки настоящей геометрии по эталону, 5 ракурсов и замечания Астры. Черновик; совпадение ещё не утверждено.'},files={'document':(archive.name,f,'application/zip')},timeout=(10,180),allow_redirects=False)
+            p=r.json() if r.status_code==200 else {}
+            receipt['status']='delivered' if p.get('ok') is True and p.get('result',{}).get('document',{}).get('file_size')==archive.stat().st_size else 'failed_or_size_unverified'
+            receipt['telegram_message_id']=p.get('result',{}).get('message_id')
+    except Exception as exc:receipt.update(status='failed',error_type=type(exc).__name__)
+    return receipt
+
+
+def polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
+    """Continue the saved checkpoint with bounded visual feedback; no fixed reset."""
+    return run_mia_adaptive_source(source_project, project_name)
