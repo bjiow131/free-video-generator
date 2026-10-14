@@ -2284,6 +2284,8 @@ scene.render.image_settings.file_format="PNG";scene.render.film_transparent=Fals
 scene.world.color=(.42,.42,.42)
 bpy.ops.object.light_add(type="AREA",location=(4,-5,6))
 key=bpy.context.object;key.data.energy=1250;key.data.shape="DISK";key.data.size=5
+bpy.ops.object.light_add(type="AREA",location=(-4,5,6))
+fill=bpy.context.object;fill.data.energy=1100;fill.data.shape="DISK";fill.data.size=5
 bpy.ops.object.camera_add()
 cam=bpy.context.object;cam.data.type="ORTHO";cam.data.ortho_scale=4.25
 scene.camera=cam
