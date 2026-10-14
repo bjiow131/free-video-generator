@@ -875,6 +875,8 @@ import tempfile
 
 MIA_ADAPTIVE_REFERENCE_SHA = '7a3194accfecdb4873bc7d4cd8015edb5a94075ca05c72013c5ad97b4a32e383'
 MIA_ADAPTIVE_VIEWS = ('front', 'side', 'back', 'quarter', 'face')
+# Reviewed corrections are shipped as pinned local code, never provider output.
+MIA_CODEX_CORRECTION_EDITS = []
 
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
@@ -1058,29 +1060,6 @@ report={'inventory':inventory,'geometry_before':before,'geometry_after':after,'c
 (out/'geometry_report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
 '''
 
-def mia_adaptive_ask(reference, folder, inventory):
-    import base64
-    import requests
-    from local_agent.octava_credentials import read_key
-    key,_=read_key()
-    if not key: raise ValueError('provider_key_unavailable')
-    prompt = '''Compare APPROVED original Mia turnaround, then CURRENT front, side, rear, 3/4 and face renders. These are one real editable mesh. Original reference is sole identity authority; black margins are not hair. Age four. Do not approve category similarity. Diagnose face, eye shape, cheek/jaw, fringe, low loose bun, teal jacket fit, trousers and boots across views. Do not pretend to execute Blender. Return JSON only with exactly verdict (NEEDS_REVISION, READY_FOR_USER_REVIEW or VISION_UNAVAILABLE), differences (1-12 concrete Russian strings), edits (0-5 objects). Never claim identity approval; READY means user review only. Each edit: object exact inventory name, kind, reason. Allowed kinds: scale with factors [x,y,z] .94..1.06 around WORLD bbox center; translate with offset [x,y,z] WORLD metres -.012...012; brush with center [x,y,z] normalized WORLD bbox 0..1, radius [x,y,z] .08...5, offset WORLD metres -.008...008, Gaussian smooth displacement. One edit per object. Coordinates +X right, front -Y, +Z up. Head edits must respect eyelids, mouth and symmetry; do not blindly scale head to enlarge eyes. No code, filenames, URLs, invented object names or hidden-view claims. If available edits cannot fix hair topology/face identity, specify that limitation and provide no misleading edits. Prioritize at most five measurable changes, avoid repeatedly widening cheeks or boots. Reassess the resulting renders on the next iteration; empty edits means halt, not success. INVENTORY: ''' + json.dumps(inventory,ensure_ascii=False)
-    content=[{'type':'text','text':prompt}]
-    for label,path in [('APPROVED_REFERENCE',reference)]+[(v,folder/(v+'.png')) for v in MIA_ADAPTIVE_VIEWS]:
-        if not path.is_file() or path.stat().st_size>8000000:raise ValueError('missing_or_oversized_review_image')
-        mime='image/jpeg' if path.suffix=='.jpeg' else 'image/png'
-        content.extend([{'type':'text','text':label},{'type':'image_url','image_url':{'url':'data:'+mime+';base64,'+base64.b64encode(path.read_bytes()).decode('ascii'),'detail':'high'}}])
-    response=requests.post('https://octavapi.shop/v1/chat/completions',headers={'Authorization':'Bearer '+key},json={'model':'gpt-6-astra','messages':[{'role':'user','content':content}],'max_tokens':3000,'temperature':.2},timeout=(10,180),allow_redirects=False)
-    if response.status_code!=200:raise ValueError('provider_http_'+str(response.status_code))
-    data=response.json()
-    if data.get('model')!='gpt-6-astra':raise ValueError('provider_model_mismatch')
-    answer=data['choices'][0]['message']['content'].strip()
-    if answer.startswith('```'):
-        answer='\n'.join(answer.splitlines()[1:-1])
-    reply=validate_mia_adaptive_plan(json.loads(answer),inventory)
-    (folder/'astra_correction_plan.json').write_text(json.dumps(reply,ensure_ascii=False,indent=2),encoding='utf-8')
-    return reply
-
 def run_mia_adaptive_source(source_project, project_name):
     from local_agent.blender_locator import find_blender_executable
     from local_agent.path_names import path_identifier_pattern, is_link_or_junction
@@ -1095,11 +1074,12 @@ def run_mia_adaptive_source(source_project, project_name):
         if any(is_link_or_junction(k) for k in (p,*p.parents)):return {'status':'rejected','reason':'unsafe_path'}
     if not source.is_file() or root.exists():return {'status':'blocked','reason':'source_missing_or_output_exists'}
     if not reference.is_file() or mia_adaptive_digest(reference)!=MIA_ADAPTIVE_REFERENCE_SHA:return {'status':'blocked','reason':'approved_reference_digest_mismatch'}
-    original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=[];history=[];reason='bounded_pass_limit_reached';latest=None
+    original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=MIA_CODEX_CORRECTION_EDITS;history=[];reason='awaiting_codex_review';latest=None
+    validate_mia_adaptive_plan({'verdict':'NEEDS_REVISION','differences':['Pinned Codex correction pass'], 'edits':edits},[{'name':e['object']} for e in edits])
     donors=acquire_mia_study_sources(ws)
     (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
     try:
-        for i in range(4):
+        for i in range(1):
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
                 script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
@@ -1111,16 +1091,24 @@ def run_mia_adaptive_source(source_project, project_name):
             hashes={v:mia_adaptive_digest(folder/(v+'.png')) for v in MIA_ADAPTIVE_VIEWS}
             if history and hashes==history[-1]['render_sha256']:raise ValueError('unchanged_render_set')
             latest=folder;current=folder/'mia_spring_source_adapted.blend'
-            reply=mia_adaptive_ask(reference,folder,report['inventory'])
+            reply={'verdict':'NEEDS_REVISION','differences':['Проверку выполняет Codex через mailbox; вызов Астры отключён.'], 'edits':[]}
             history.append({'pass':i,'blend_sha256':mia_adaptive_digest(current),'render_sha256':hashes,'plan':reply,'changes':report['changes']})
             (root/'adaptive_history.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
             if reply['verdict']!='NEEDS_REVISION' or not reply['edits']:
-                reason=reply['verdict'] if reply['verdict']!='NEEDS_REVISION' else 'needs_topology_or_artist_correction';break
+                reason='awaiting_codex_review';break
             edits=reply['edits']
         # Stable next-source path is a COPY, never overwrite the input checkpoint.
         import shutil
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
-        result={'status':'completed','stage':'adaptive_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'completed','original_reference_attached':True,'full_resolution_views_attached':list(MIA_ADAPTIVE_VIEWS),'critique':json.dumps(history[-1]['plan'],ensure_ascii=False)}}
+        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':report['inventory']}
+        import base64
+        ffmpeg=shutil.which('ffmpeg');thumbs={}
+        if ffmpeg:
+            for view in ('front','face','side','back'):
+                thumb=latest/(view+'_codex.jpg')
+                p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(latest/(view+'.png')),'-vf','scale=240:-1','-frames:v','1','-q:v','6',str(thumb)],capture_output=True,timeout=30,check=False,shell=False)
+                if p.returncode==0 and thumb.is_file():thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
+        result['thumbnail_jpeg_base64']=thumbs
         if not result['source_unchanged']:raise ValueError('original_source_changed')
         result['study_sources']=donors
         # Preserve donor attribution inherited from the input checkpoint.
@@ -1147,7 +1135,7 @@ def deliver_mia_adaptive_bundle(root,latest):
         token,chat=_telegram_credentials()
         if token and chat and telegram_notifications_enabled() and archive.stat().st_size<=49000000:
             with archive.open('rb') as f:
-                r=requests.post('https://api.telegram.org/bot'+token+'/sendDocument',data={'chat_id':chat,'caption':'Мия: адаптивные правки настоящей геометрии по эталону, 5 ракурсов и замечания Астры. Черновик; совпадение ещё не утверждено.'},files={'document':(archive.name,f,'application/zip')},timeout=(10,180),allow_redirects=False)
+                r=requests.post('https://api.telegram.org/bot'+token+'/sendDocument',data={'chat_id':chat,'caption':'Мия: настоящий .blend и 5 ракурсов для проверки Codex через mailbox. Астра отключена, её API не вызывается. Черновик.'},files={'document':(archive.name,f,'application/zip')},timeout=(10,180),allow_redirects=False)
             p=r.json() if r.status_code==200 else {}
             receipt['status']='delivered' if p.get('ok') is True and p.get('result',{}).get('document',{}).get('file_size')==archive.stat().st_size else 'failed_or_size_unverified'
             receipt['telegram_message_id']=p.get('result',{}).get('message_id')
@@ -1156,5 +1144,5 @@ def deliver_mia_adaptive_bundle(root,latest):
 
 
 def polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
-    """Continue the saved checkpoint with bounded visual feedback; no fixed reset."""
+    """Render pinned source for Codex review without an Astra API request."""
     return run_mia_adaptive_source(source_project, project_name)
