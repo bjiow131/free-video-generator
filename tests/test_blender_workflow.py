@@ -125,8 +125,8 @@ def test_failed_blockout_overwrite_preserves_prior_project(monkeypatch, tmp_path
         (project / name).write_bytes(value)
     def run(*args, **kwargs):
         (project / "mia_blockout.blend").write_bytes(b"partial new output")
-        return SimpleNamespace(returncode=1, stdout="", stderr="render failed")
-    monkeypatch.setattr(workflow.subprocess, "run", run)
+        return SimpleNamespace(returncode=1, stdout="", stderr="render failed"), False, False, "", None
+    monkeypatch.setattr(workflow, "_run_cancellable_process", run)
     assert workflow.create_mia_blockout("mia", overwrite=True)["status"] == "failed"
     for name, value in old.items():
         assert (project / name).read_bytes() == value

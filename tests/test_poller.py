@@ -1527,3 +1527,21 @@ def test_rich_source_result_is_compacted_without_losing_goal_state(tmp_path,monk
             assert result["result_compacted"] is True
             return "commit"
     assert poller._publish_result_durable(Client(),"source-rich",original)=="commit"
+
+
+def test_legacy_mia_paths_cannot_reset_a_saved_source_target(monkeypatch,tmp_path):
+    import json
+    from local_agent import blender_workflow as workflow
+    model=tmp_path/"SOURCE_ADAPTATIONS"/"source_latest"
+    model.mkdir(parents=True)
+    (model/"mia_spring_source_adapted.blend").write_bytes(b"saved native target")
+    (model/"polish_report.json").write_text(json.dumps({"status":"completed"}))
+    monkeypatch.setenv("LOCAL_AGENT_WORKSPACE",str(tmp_path))
+    monkeypatch.setattr(workflow,"find_blender_executable",lambda:pytest.fail("legacy generator must not launch"))
+    for result in [workflow.create_reference_mia_model(task_id="new_review"),
+                   workflow.run_mia_astra_autoloop_100(task_id="legacy_loop"),
+                   workflow.run_mia_astra_autoloop_100_v2(task_id="legacy_loop2")]:
+        assert result["status"]=="blocked"
+        assert result["source_project"]=="source_latest"
+        assert result["generation_performed"] is False
+        assert result["provider_request_performed"] is False
