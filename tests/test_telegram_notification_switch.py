@@ -17,6 +17,8 @@ def local_preferences(tmp_path, monkeypatch):
     monkeypatch.setattr(mailbox_policy, "TELEGRAM_NOTIFICATIONS",
                         tmp_path / ".local_agent" / "telegram_notifications.json")
     monkeypatch.setattr(studio_server, "_TELEGRAM_OUTBOX", tmp_path / ".local_agent" / "telegram_outbox")
+    # Enable the code path only inside tests that verify the preference switch.
+    monkeypatch.setattr(studio_server, "TELEGRAM_OUTBOUND_ENABLED", True)
     monkeypatch.setattr(studio_server, "_telegram_credentials", lambda: ("mock-token", "mock-chat"))
     return tmp_path
 
@@ -80,3 +82,13 @@ def test_symlink_preferences_are_rejected(local_preferences, tmp_path):
     assert not mailbox_policy.telegram_notifications_enabled()
     with pytest.raises(MailboxPolicyError):
         mailbox_policy.save_telegram_notifications({"enabled": True})
+
+
+
+def test_owner_hard_gate_blocks_outbound_messages_and_photos(local_preferences, monkeypatch):
+    monkeypatch.setattr(studio_server, "TELEGRAM_OUTBOUND_ENABLED", False)
+    with pytest.raises(studio_server.TelegramAlertError, match="отключены владельцем"):
+        studio_server._telegram_call("invalid", "sendMessage", {"text": "must not send"})
+    result = studio_server.telegram_send_mia_review_photos(
+        str(local_preferences), "mia-test-review")
+    assert result == {"status": "disabled_by_owner", "sent": [], "failed": []}
