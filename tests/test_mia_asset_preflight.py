@@ -58,7 +58,7 @@ def test_preflight_wrapper_keeps_source_unchanged_and_hides_absolute_path(tmp_pa
     monkeypatch.setenv("BLENDER_EXECUTABLE", str(fake_blender))
 
     def fake_run(command, **kwargs):
-        assert command[command.index("--") - 1] == "--python"
+        assert command[command.index("--") - 2] == "--python"
         assert "--disable-autoexec" in command
         source_arg, report_arg = command[-2:]
         assert Path(source_arg) == source.resolve()
