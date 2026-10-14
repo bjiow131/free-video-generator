@@ -917,6 +917,19 @@ _MIA_SOURCE_POLISH_PROFILES = {
          'reason': 'Симметрично усилить размер глаз по фронтальному референсу'},
     ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
     'proportions': {'edits': [], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': True},
+    # Bounded full-character silhouette pass based on Astra's run-13 review.
+    'reference_fit': {'edits': [
+        {'object': 'MiaSource_GEO-spring_head', 'kind': 'scale', 'factors': [0.97, 1.0, 1.0],
+         'reason': 'Slightly narrow the head against the approved front reference'},
+        {'object': 'MiaSource_GEO-spring_jacket', 'kind': 'scale', 'factors': [0.95, 1.0, 1.0],
+         'reason': 'Reduce excess jacket width without changing length'},
+        {'object': 'MiaSource_GEO_spring_pants', 'kind': 'scale', 'factors': [0.96, 1.0, 1.0],
+         'reason': 'Reduce baggy trouser width while preserving length and placement'},
+        {'object': 'Boot_upper_1', 'kind': 'scale', 'factors': [0.96, 1.0, 1.0],
+         'reason': 'Match right boot width to the approved front silhouette'},
+        {'object': 'Boot_upper_-1', 'kind': 'scale', 'factors': [0.96, 1.0, 1.0],
+         'reason': 'Match left boot width to the approved front silhouette'},
+    ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
 }
 
 
