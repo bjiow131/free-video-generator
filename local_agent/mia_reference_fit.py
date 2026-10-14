@@ -377,3 +377,72 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         result["candidate_path"]=str(output)
     result["task_id"] = task_id
     return result
+
+
+_BLENDER_PASSPORT_SCRIPT = r'''import bpy, json, os, sys, hashlib
+source_path, report_path = sys.argv[sys.argv.index("--") + 1:]
+def digest(path):
+    h=hashlib.sha256()
+    with open(path,"rb") as f:
+        for chunk in iter(lambda:f.read(1024*1024),b""): h.update(chunk)
+    return h.hexdigest()
+source_sha=digest(source_path)
+bpy.ops.wm.open_mainfile(filepath=source_path,load_ui=False)
+try:
+    import scipy
+    scipy_version=scipy.__version__
+except ImportError:
+    scipy_version=None
+meshes=[]
+for obj in bpy.data.objects:
+    if obj.type!="MESH": continue
+    keys=obj.data.shape_keys
+    ad=keys.animation_data if keys else None
+    meshes.append({"object":obj.name,"vertex_count":len(obj.data.vertices),"polygon_count":len(obj.data.polygons),"shape_keys":[k.name for k in keys.key_blocks] if keys else [],"shape_key_driver_count":len(ad.drivers) if ad else 0,"shape_key_action":ad.action.name if ad and ad.action else None,"lattice_modifiers":[m.name for m in obj.modifiers if m.type=="LATTICE"],"armature_modifiers":[m.name for m in obj.modifiers if m.type=="ARMATURE"]})
+armatures=[]
+for obj in bpy.data.objects:
+    if obj.type=="ARMATURE": armatures.append({"object":obj.name,"bone_count":len(obj.data.bones),"deform_bone_count":sum(1 for b in obj.data.bones if b.use_deform),"driver_count":len(obj.animation_data.drivers) if obj.animation_data else 0,"action":obj.animation_data.action.name if obj.animation_data and obj.animation_data.action else None})
+report={"status":"completed","stage":"read_only_geometry_passport","source_path":source_path,"source_sha256":source_sha,"blender_version":bpy.app.version_string,"scipy_version":scipy_version,"cameras":[o.name for o in bpy.data.objects if o.type=="CAMERA"],"mesh_objects":meshes,"mesh_count":len(meshes),"armatures":armatures,"armature_count":len(armatures),"curve_objects":[o.name for o in bpy.data.objects if o.type in {"CURVE","CURVES"}],"action_count":len(bpy.data.actions),"animation_data_cleared":False,"license":"not_verifiable_from_blend_file","full_render_performed":False}
+with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_ascii=False)
+'''
+
+
+def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: str) -> dict:
+    """Inspect a source .blend without saving or changing any model data."""
+    if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
+        return {"status":"rejected","reason":"invalid_project_name"}
+    if not isinstance(source_blend,str) or not _SAFE_FILE_RE.fullmatch(source_blend) or not source_blend.lower().endswith(".blend"):
+        return {"status":"rejected","reason":"invalid_source_blend_filename"}
+    if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
+        return {"status":"rejected","reason":"invalid_task_id"}
+    executable=os.environ.get("BLENDER_EXECUTABLE","").strip(); workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
+    if not executable or not workspace_value:
+        return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
+    blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
+    if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
+    project=(workspace/project_name).resolve()
+    if not project.is_relative_to(workspace) or project==workspace or project.is_symlink():
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    source=project/source_blend
+    suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
+    report=project/f"mia_reference_fit_passport_{suffix}.json"
+    if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,report)):
+        return {"status":"rejected","reason":"input_or_output_path_must_not_be_linked"}
+    if not source.is_file() or source.stat().st_size==0: return {"status":"blocked","reason":"source_blend_not_found"}
+    if report.exists(): return {"status":"blocked","reason":"passport_report_exists_no_overwrite"}
+    source_sha=sha256_file(str(source))
+    try:
+        with tempfile.TemporaryDirectory(prefix=".mia-reference-passport-",dir=project) as temp:
+            script=Path(temp)/"passport.py"; script.write_text(_BLENDER_PASSPORT_SCRIPT,encoding="utf-8")
+            proc=subprocess.run([str(blender),"--disable-autoexec","--background","--factory-startup","--python",str(script),"--",str(source),str(report)],cwd=str(project),capture_output=True,text=True,timeout=300,check=False,shell=False)
+    except subprocess.TimeoutExpired: return {"status":"timeout","reason":"geometry_passport_timeout"}
+    except OSError as exc: return {"status":"error","error_type":type(exc).__name__}
+    if proc.returncode!=0 or not report.is_file() or report.stat().st_size==0:
+        return {"status":"failed","reason":"geometry_passport_failed","return_code":proc.returncode,"stderr_tail":(proc.stderr or "")[-2000:]}
+    try: result=json.loads(report.read_text(encoding="utf-8"))
+    except (OSError,ValueError): return {"status":"failed","reason":"geometry_passport_report_unreadable"}
+    if sha256_file(str(source))!=source_sha or result.get("source_sha256")!=source_sha:
+        return {"status":"failed","reason":"source_blend_changed_during_read_only_passport"}
+    result["task_id"]=task_id
+    result["reference_fit_ready"] = bool(result.get("scipy_version") and len(result.get("cameras",[]))>=2 and any(mesh.get("shape_keys") for mesh in result.get("mesh_objects",[])))
+    return result
