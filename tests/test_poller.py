@@ -1520,6 +1520,7 @@ def test_rich_source_result_is_compacted_without_losing_goal_state(tmp_path,monk
     assert len(json.dumps(summary,ensure_ascii=False,indent=2).encode())<MAX_RESULT_BYTES
     assert summary["details"]["identity_verified"] is False
     assert summary["local_report_path"]=="local/full.json"
+    assert summary["details"]["thumbnail_jpeg_base64"]=={"front":"A"*12000}
     assert len(original["details"]["source_mesh_changes"])==40
     monkeypatch.setattr(poller,"_result_outbox",lambda:ResultOutbox(tmp_path))
     class Client:
