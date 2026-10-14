@@ -43,10 +43,12 @@ def test_rejects_unsafe_blender_task_arguments(arguments):
         parse_task(_task("blender_forest_preview", arguments))
 
 
-def test_still_requires_local_approval_for_blender_task():
-    value = json.loads(_task("blender_forest_preview", {"project_name": "mia"}))
+def test_still_requires_local_approval_for_reference_fit_task():
+    value = json.loads(_task("blender_reference_to_model_preflight", {
+        "project_name": "character", "source_blend": "base.blend"
+    }))
     value["requires_local_approval"] = False
-    with pytest.raises(ProtocolError, match="require local approval"):
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
         parse_task(json.dumps(value))
 
 
@@ -142,6 +144,23 @@ def test_rejects_invalid_task_timestamp_windows(created_at, expires_at):
 
 def test_remote_approval_allowed_for_typed_blender_preview():
     value = json.loads(_task("blender_forest_preview", {"project_name": "mia"}))
+    value["requires_local_approval"] = False
+    task = parse_task(json.dumps(value))
+    assert task.requires_local_approval is False
+
+
+def test_accepts_fixed_local_agent_dependency_install_task():
+    task = parse_task(_task("install_local_agent_requirements", {}))
+    assert task.operation == "install_local_agent_requirements"
+
+
+def test_dependency_install_task_rejects_arguments():
+    with pytest.raises(ProtocolError, match="does not accept arguments"):
+        parse_task(_task("install_local_agent_requirements", {"command": "pip install x"}))
+
+
+def test_dependency_install_task_supports_remote_approval_only_under_local_opt_in():
+    value = json.loads(_task("install_local_agent_requirements", {}))
     value["requires_local_approval"] = False
     task = parse_task(json.dumps(value))
     assert task.requires_local_approval is False
@@ -328,3 +347,33 @@ def test_rejects_unsafe_reference_fit_preflight_filename(source_blend):
         parse_task(_task("blender_mia_reference_fit_preflight", {
             "project_name": "mia_source", "source_blend": source_blend,
         }))
+
+
+def test_accepts_generic_reference_to_model_preflight():
+    task = parse_task(_task("blender_reference_to_model_preflight", {
+        "project_name": "mia_source",
+        "source_blend": "candidate.blend",
+    }))
+    assert task.operation == "blender_reference_to_model_preflight"
+
+
+def test_accepts_local_only_generic_reference_to_model_fit():
+    task = parse_task(_task("blender_reference_to_model_fit", {
+        "project_name": "character_source",
+        "source_blend": "candidate.blend",
+        "reference_map_file": "reference_map.json",
+        "passport_file": "reference_to_model_passport_ab12cd34ef56.json",
+        "approved_reference_sha256": "a" * 64,
+    }))
+    assert task.operation == "blender_reference_to_model_fit"
+
+
+def test_generic_reference_to_model_fit_requires_local_approval():
+    value = json.loads(_task("blender_reference_to_model_fit", {
+        "project_name": "character_source", "source_blend": "candidate.blend",
+        "reference_map_file": "reference_map.json", "passport_file": "passport.json",
+        "approved_reference_sha256": "a" * 64,
+    }))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="local approval is mandatory"):
+        parse_task(json.dumps(value))

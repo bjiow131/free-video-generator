@@ -1,4 +1,4 @@
-"""Measured, non-destructive reference fitting primitives for Mia.
+"""Measured, non-destructive reference fitting primitives (Mia pilot).
 
 This module deliberately has no Blender or SciPy import at module load time so
 the schema, scoring, and quality gates can be tested on a regular Python.
@@ -8,8 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import math
+import os
 import re
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 
@@ -230,6 +235,19 @@ _SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}\.(?:blend|json)$"
 _SAFE_TASK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
 
+def _resolve_project(workspace: Path, project_name: str) -> Path | None:
+    """Resolve only approved project roots; never accept caller-supplied paths."""
+    candidates = (workspace / project_name,
+                  workspace / "SOURCE_ADAPTATIONS" / project_name)
+    for candidate in candidates:
+        if candidate.is_symlink() or getattr(candidate, "is_junction", lambda: False)():
+            continue
+        resolved = candidate.resolve()
+        if resolved.is_relative_to(workspace) and resolved != workspace and resolved.is_dir():
+            return resolved
+    return None
+
+
 _BLENDER_FIT_SCRIPT = r'''import bpy, json, os, sys, hashlib, math
 from bpy_extras.object_utils import world_to_camera_view
 args = sys.argv[sys.argv.index("--") + 1:]
@@ -325,7 +343,7 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_asci
 '''
 
 
-def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, passport_file: str, approved_reference_sha256: str, task_id: str) -> dict:
+def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, passport_file: str, approved_reference_sha256: str, task_id: str, *, artifact_prefix: str = "mia_reference_fit") -> dict:
     """Optimize the original scene in memory and save only an accepted new candidate."""
     if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
         return {"status":"rejected","reason":"invalid_project_name"}
@@ -339,20 +357,19 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         return {"status":"rejected","reason":"invalid_approved_reference_sha256"}
     if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
         return {"status":"rejected","reason":"invalid_task_id"}
+    if not isinstance(artifact_prefix,str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",artifact_prefix):
+        return {"status":"rejected","reason":"invalid_artifact_prefix"}
     executable=os.environ.get("BLENDER_EXECUTABLE","").strip(); workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
     if not executable or not workspace_value:
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project_candidate=workspace/project_name
-    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
-    project=project_candidate.resolve()
-    if not project.is_relative_to(workspace) or project==workspace:
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=_resolve_project(workspace, project_name)
+    if project is None:
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked_or_missing"}
     source=project/source_blend; reference=project/reference_map_file; passport=project/passport_file
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
-    output=project/f"mia_reference_fit_candidate_{suffix}.blend"; report=project/f"mia_reference_fit_result_{suffix}.json"
+    output=project/f"{artifact_prefix}_candidate_{suffix}.blend"; report=project/f"{artifact_prefix}_result_{suffix}.json"
     if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,reference,passport,output,report)):
         return {"status":"rejected","reason":"input_or_output_path_must_not_be_linked"}
     if not source.is_file() or source.stat().st_size==0: return {"status":"blocked","reason":"source_blend_not_found"}
@@ -419,7 +436,7 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_asci
 '''
 
 
-def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: str) -> dict:
+def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: str, *, artifact_prefix: str = "mia_reference_fit") -> dict:
     """Inspect a source .blend without saving or changing any model data."""
     if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
         return {"status":"rejected","reason":"invalid_project_name"}
@@ -427,20 +444,19 @@ def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: s
         return {"status":"rejected","reason":"invalid_source_blend_filename"}
     if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
         return {"status":"rejected","reason":"invalid_task_id"}
+    if not isinstance(artifact_prefix,str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",artifact_prefix):
+        return {"status":"rejected","reason":"invalid_artifact_prefix"}
     executable=os.environ.get("BLENDER_EXECUTABLE","").strip(); workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
     if not executable or not workspace_value:
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project_candidate=workspace/project_name
-    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
-    project=project_candidate.resolve()
-    if not project.is_relative_to(workspace) or project==workspace:
-        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=_resolve_project(workspace, project_name)
+    if project is None:
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked_or_missing"}
     source=project/source_blend
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
-    report=project/f"mia_reference_fit_passport_{suffix}.json"
+    report=project/f"{artifact_prefix}_passport_{suffix}.json"
     if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,report)):
         return {"status":"rejected","reason":"input_or_output_path_must_not_be_linked"}
     if not source.is_file() or source.stat().st_size==0: return {"status":"blocked","reason":"source_blend_not_found"}
@@ -462,3 +478,77 @@ def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: s
     result["passport_file"]=report.name
     result["reference_fit_ready"] = bool(result.get("scipy_version") and len(result.get("cameras",[]))>=2 and any(mesh.get("shape_keys") for mesh in result.get("mesh_objects",[])))
     return result
+
+
+def run_reference_to_model_preflight(project_name: str, source_blend: str, task_id: str) -> dict:
+    """Generic, read-only donor passport for the reusable pipeline."""
+    result = run_reference_fit_preflight(project_name, source_blend, task_id,
+                                         artifact_prefix="reference_to_model")
+    result["task"] = "reference_to_model_preflight"
+    result["generic_pipeline"] = True
+    result["passport_complete"] = result.get("status") == "completed"
+    result["can_start_shape_key_projection_fit"] = bool(result.get("reference_fit_ready"))
+    result["next_stage"] = ("reference_mapping" if result["passport_complete"]
+                            else "repair_source_or_blender_environment")
+    return result
+
+
+def run_reference_to_model_fit(project_name: str, source_blend: str, reference_map_file: str,
+                               passport_file: str, approved_reference_sha256: str,
+                               task_id: str) -> dict:
+    """Run the initial generic shape-key subset through the established safe Blender runner.
+
+    Object transforms and hair construction are represented by the generic core,
+    but remain blocked in this initial executable fitter until their Blender-side
+    rollback and quality gates are implemented.
+    """
+    from .reference_to_model import parse_spec, ReferenceToModelError
+    if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
+        return {"status":"rejected","reason":"invalid_project_name"}
+    if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
+        return {"status":"rejected","reason":"invalid_task_id"}
+    workspace_value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
+    if not workspace_value:
+        return {"status":"blocked","reason":"set_LOCAL_AGENT_WORKSPACE_locally"}
+    workspace=Path(workspace_value).expanduser().resolve()
+    project=_resolve_project(workspace,project_name)
+    if project is None:
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked_or_missing"}
+    if not isinstance(reference_map_file,str) or not _SAFE_FILE_RE.fullmatch(reference_map_file) or not reference_map_file.endswith(".json"):
+        return {"status":"rejected","reason":"invalid_reference_map_filename"}
+    reference=project/reference_map_file
+    if reference.is_symlink() or getattr(reference,"is_junction",lambda:False)() or not reference.is_file():
+        return {"status":"blocked","reason":"reference_map_not_found_or_linked"}
+    try:
+        raw=json.loads(reference.read_text(encoding="utf-8"))
+        spec=parse_spec(raw,expected_sha256=approved_reference_sha256)
+    except (OSError,ValueError,UnicodeError,ReferenceToModelError) as exc:
+        return {"status":"rejected","reason":f"invalid_reference_spec:{type(exc).__name__}"}
+    unsupported=[c.name for c in spec.controls if c.kind!="shape_key"]
+    if unsupported:
+        return {"status":"blocked","reason":"blender_runner_initially_supports_shape_key_controls_only","unsupported_controls":unsupported}
+    if len(spec.views) < 2:
+        return {"status":"blocked","reason":"at_least_two_consistent_views_required_for_projection_fit"}
+    if not spec.controls:
+        return {"status":"blocked","reason":"no_bounded_controls_in_reference_spec"}
+    if any(view.contour for view in spec.views):
+        return {"status":"blocked","reason":"blender_runner_does_not_yet_evaluate_silhouette_samples"}
+    legacy={"schema_version":1,"coordinate_convention":"camera_frame_bottom_left_normalized",
+            "reference_sha256":spec.reference_sha256,"views":raw["views"],
+            "parameters":[{"name":c.name,"object_name":c.object_name,"key_name":c.property_name,
+                            "initial":c.initial,"lower":c.lower,"upper":c.upper,
+                            "regularization":c.regularization} for c in spec.controls]}
+    suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
+    temp_map=project/f".reference_to_model_map_{suffix}.json"
+    if temp_map.exists() or temp_map.is_symlink():
+        return {"status":"blocked","reason":"temporary_reference_map_exists_no_overwrite"}
+    try:
+        temp_map.write_text(json.dumps(legacy,ensure_ascii=False),encoding="utf-8")
+        result=run_reference_fit(project_name,source_blend,temp_map.name,passport_file,
+                                 approved_reference_sha256,task_id,artifact_prefix="reference_to_model")
+        result["task"]="reference_to_model_fit"
+        result["supported_control_types"]=["shape_key"]
+        result["generic_pipeline_stage"]="bounded_projection_fit"
+        return result
+    finally:
+        temp_map.unlink(missing_ok=True)

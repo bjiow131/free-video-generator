@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight", "blender_reference_to_model_preflight", "blender_reference_to_model_fit", "install_local_agent_requirements"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -20,6 +20,7 @@ REMOTE_APPROVABLE_OPERATIONS = frozenset({
     "status", "doctor", "preflight", "logs", "blender_forest_preview",
     "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search",
     "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion",
+    "install_local_agent_requirements",
 })
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -82,7 +83,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("This operation cannot use remote approval; local approval is mandatory.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
-    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup"} and value["arguments"]:
+    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "install_local_agent_requirements"} and value["arguments"]:
         raise ProtocolError("This operation does not accept arguments.")
     if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
         raise ProtocolError("Task arguments exceed the size limit.")
@@ -215,6 +216,27 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         digest = args["approved_reference_sha256"]
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise ProtocolError("approved_reference_sha256 must be a lowercase SHA-256 digest.")
+
+    if value["operation"] == "blender_reference_to_model_preflight":
+        args = value["arguments"]
+        if set(args) != {"project_name", "source_blend"}:
+            raise ProtocolError("reference_to_model_preflight requires project_name and source_blend.")
+        if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("Reference-to-Model project_name must use safe characters.")
+        if not isinstance(args["source_blend"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}[.]blend", args["source_blend"]):
+            raise ProtocolError("Reference-to-Model source_blend must be a safe .blend basename.")
+    if value["operation"] == "blender_reference_to_model_fit":
+        args = value["arguments"]
+        required = {"project_name", "source_blend", "reference_map_file", "passport_file", "approved_reference_sha256"}
+        if set(args) != required:
+            raise ProtocolError("reference_to_model_fit requires project, source, reference map, passport, and approved SHA-256.")
+        if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("Reference-to-Model project_name must use safe characters.")
+        for key, suffix in (("source_blend", ".blend"), ("reference_map_file", ".json"), ("passport_file", ".json")):
+            if not isinstance(args[key], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}" + re.escape(suffix), args[key]):
+                raise ProtocolError(f"Reference-to-Model {key} must be a safe basename.")
+        if not isinstance(args["approved_reference_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", args["approved_reference_sha256"]):
+            raise ProtocolError("approved_reference_sha256 must be lowercase SHA-256.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}
