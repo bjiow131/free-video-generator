@@ -344,8 +344,11 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project=(workspace/project_name).resolve()
-    if not project.is_relative_to(workspace) or project==workspace or project.is_symlink():
+    project_candidate=workspace/project_name
+    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=project_candidate.resolve()
+    if not project.is_relative_to(workspace) or project==workspace:
         return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
     source=project/source_blend; reference=project/reference_map_file; passport=project/passport_file
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
@@ -427,8 +430,11 @@ def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: s
         return {"status":"blocked","reason":"set_BLENDER_EXECUTABLE_and_LOCAL_AGENT_WORKSPACE_locally"}
     blender=Path(executable).expanduser().resolve(); workspace=Path(workspace_value).expanduser().resolve()
     if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    project=(workspace/project_name).resolve()
-    if not project.is_relative_to(workspace) or project==workspace or project.is_symlink():
+    project_candidate=workspace/project_name
+    if project_candidate.is_symlink() or getattr(project_candidate,"is_junction",lambda:False)():
+        return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
+    project=project_candidate.resolve()
+    if not project.is_relative_to(workspace) or project==workspace:
         return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
     source=project/source_blend
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
