@@ -924,14 +924,15 @@ def acquire_mia_study_sources(ws):
                     if size>160000000:raise ValueError('download_size_limit')
                     chunks.append(chunk)
             payload=b''.join(chunks);files=[]
-            if payload.startswith(b'BLENDER'):files=[('donor.blend',payload)]
+            signatures=(b'BLENDER',b'\x1f\x8b',b'\x28\xb5\x2f\xfd')
+            if payload.startswith(signatures):files=[('donor.blend',payload)]
             elif zipfile.is_zipfile(io.BytesIO(payload)):
                 with zipfile.ZipFile(io.BytesIO(payload)) as archive:
                     members=[m for m in archive.infolist() if not m.is_dir() and m.filename.lower().endswith('.blend')]
                     if not 1<=len(members)<=5 or sum(m.file_size for m in members)>250000000:raise ValueError('archive_size_or_member_limit')
                     files=[('donor_'+str(i)+'.blend',archive.read(m)) for i,m in enumerate(members)]
             else:raise ValueError('unrecognized_download_format')
-            if any(not raw.startswith(b'BLENDER') for _,raw in files):raise ValueError('invalid_blend_header')
+            if any(not raw.startswith(signatures) for _,raw in files):raise ValueError('invalid_blend_header')
             folder.mkdir();manifest={'asset':name,'status':'downloaded','catalog_url':page,'download_url':url,'license':'CC-BY (verify exact version in retained catalog before redistribution)','credit':name.title()+' Rig (CC) Blender Foundation | studio.blender.org','archive_sha256':hashlib.sha256(payload).hexdigest(),'files':[],'study_only':True,'embedded_scripts_executed':False}
             (folder/'catalog.html').write_text(html,encoding='utf-8')
             for filename,raw in files:
@@ -940,6 +941,41 @@ def acquire_mia_study_sources(ws):
         except Exception as exc:
             results.append({'asset':name,'status':'blocked','reason':str(exc)[:120] if isinstance(exc,ValueError) else type(exc).__name__})
     return results
+
+def inspect_study_sources(ws,blender):
+    """Read donor geometry/rig structure without rendering or script execution."""
+    from local_agent.path_names import is_link_or_junction
+    reports=[]
+    script_code=r'''
+import bpy,sys,json
+from pathlib import Path
+source,target=map(Path,sys.argv[sys.argv.index('--')+1:])
+bpy.context.preferences.filepaths.use_scripts_auto_execute=False
+bpy.ops.wm.open_mainfile(filepath=str(source),load_ui=False)
+meshes=[o for o in bpy.data.objects if o.type=='MESH']
+rigs=[o for o in bpy.data.objects if o.type=='ARMATURE']
+focus=[o for o in meshes if any(k in o.name.lower() for k in ('head','face','hair','eye','jacket','shoe','boot'))][:30]
+r={'mesh_objects':len(meshes),'vertices':sum(len(o.data.vertices) for o in meshes),'rigs':[{'name':o.name,'bones':len(o.data.bones),'deform_bones':sum(b.use_deform for b in o.data.bones),'constraints':sum(len(b.constraints) for b in o.pose.bones)} for o in rigs][:10],'focus_meshes':[{'name':o.name,'vertices':len(o.data.vertices),'polygons':len(o.data.polygons),'shape_keys':[k.name for k in o.data.shape_keys.key_blocks][:24] if o.data.shape_keys else [],'modifiers':[m.type for m in o.modifiers]} for o in focus],'embedded_texts':[t.name for t in bpy.data.texts][:20],'embedded_scripts_executed':False,'study_only':True}
+target.write_text(json.dumps(r,indent=2),encoding='utf-8')
+'''
+    for name in ('snow','ellie'):
+        folder=ws/'BLENDER_SOURCE_LIBRARY'/name;manifest=folder/'source_manifest.json'
+        if any(is_link_or_junction(p) for p in (manifest,*manifest.parents)) or not manifest.is_file():continue
+        try:
+            data=json.loads(manifest.read_text('utf-8'))
+            for f in data['files']:
+                filename=f['file']
+                if not filename.startswith('donor') or Path(filename).name!=filename or not filename.endswith('.blend'):raise ValueError('unsafe_donor_filename')
+                source=folder/filename;target=folder/(filename+'.inspection.json')
+                if is_link_or_junction(source) or is_link_or_junction(target) or mia_adaptive_digest(source)!=f['sha256']:raise ValueError('donor_hash_or_path_mismatch')
+                if not target.is_file():
+                    with tempfile.TemporaryDirectory(prefix='.study-',dir=folder) as td:
+                        script=Path(td)/'inspect.py';script.write_text(script_code,encoding='utf-8')
+                        proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(source),str(target)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=120,check=False,shell=False)
+                    if proc.returncode or not target.is_file():raise ValueError('donor_inspection_failed')
+                result=json.loads(target.read_text('utf-8'));reports.append({'asset':name,'file':filename,'status':'inspected','report':result})
+        except Exception as exc:reports.append({'asset':name,'status':'blocked','reason':str(exc)[:120] if isinstance(exc,ValueError) else type(exc).__name__})
+    return reports
 
 def mia_adaptive_digest(path):
     h = hashlib.sha256()
@@ -1022,9 +1058,8 @@ out=Path(cfg['out']);out.mkdir(exist_ok=True)
 bpy.context.preferences.filepaths.use_scripts_auto_execute=False
 bpy.ops.wm.open_mainfile(filepath=cfg['source'],load_ui=False)
 scene=bpy.context.scene
-for arm in [o for o in scene.objects if o.type=='ARMATURE']:
- if arm.animation_data:arm.animation_data_clear()
- for bone in arm.pose.bones:bone.matrix_basis.identity()
+# Preserve the saved donor/pilot rig pose and correction scales. Identity
+# matrices are NOT a neutral pose for an adapted rig and can expose eye shells.
 for o in scene.objects:
  if o.type=='MESH' and o.data.shape_keys:
   keys=o.data.shape_keys
@@ -1111,6 +1146,8 @@ def run_mia_adaptive_source(source_project, project_name):
     validate_mia_adaptive_plan({'verdict':'NEEDS_REVISION','differences':['Pinned Codex correction pass'], 'edits':edits},[{'name':e['object']} for e in edits])
     donors=acquire_mia_study_sources(ws)
     (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
+    donor_structure=inspect_study_sources(ws,blender)
+    (root/'study_source_structure.json').write_text(json.dumps(donor_structure,indent=2),encoding='utf-8')
     try:
         # If there are reviewed edits, first render the unchanged input with the
         # very same renderer and cameras, then apply edits to that checkpoint.
@@ -1147,6 +1184,7 @@ def run_mia_adaptive_source(source_project, project_name):
         result['thumbnail_jpeg_base64']=thumbs
         if not result['source_unchanged']:raise ValueError('original_source_changed')
         result['study_sources']=donors
+        result['study_source_structures']=[{'asset':x['asset'],'status':x['status'],'mesh_objects':x.get('report',{}).get('mesh_objects'),'vertices':x.get('report',{}).get('vertices'),'rigs':x.get('report',{}).get('rigs',[]),'focus_meshes':x.get('report',{}).get('focus_meshes',[])[:5]} for x in donor_structure]
         # Preserve donor attribution inherited from the input checkpoint.
         attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
         if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
