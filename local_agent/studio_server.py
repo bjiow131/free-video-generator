@@ -26,7 +26,7 @@ from local_agent.studio_state import StudioConflict, StudioError, StudioStore, t
 from local_agent.studio_references import approved_status, approved_bytes, attach_approved_mia
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
-from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key, set_default_model
+from local_agent.octava_credentials import OctavaKeyError, key_status, replace_key as _replace_octava_key, set_default_model
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, save_policy,
     load_telegram_notifications, save_telegram_notifications,
@@ -38,6 +38,60 @@ from local_agent.mailbox_policy import (
 from datetime import datetime, timezone
 import tempfile
 import time
+
+
+def _octava_key_probe_transport(request, timeout=18):
+    """A single bounded probe with actionable errors; never expose credentials."""
+    import socket
+    import ssl
+    from urllib.error import HTTPError, URLError
+    from urllib.request import urlopen
+    def checked(call):
+        try:
+            return call()
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, OSError) as exc:
+            fail(exc)
+
+    def fail(exc):
+        cause = exc.reason if isinstance(exc, URLError) else exc
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            message = "OctavAPI: не прошла проверка TLS-сертификата. Проверьте дату/время Windows и HTTPS-перехват антивируса или прокси."
+        elif isinstance(cause, ssl.SSLError):
+            message = "OctavAPI: ошибка защищённого TLS-соединения."
+        elif isinstance(cause, socket.gaierror):
+            message = "OctavAPI: DNS не смог определить адрес сервера."
+        elif isinstance(cause, (TimeoutError, socket.timeout)):
+            message = "OctavAPI: сервер не завершил проверочный запрос за 60 секунд."
+        elif isinstance(cause, ConnectionRefusedError):
+            message = "OctavAPI: сетевое подключение отклонено сервером или прокси."
+        elif isinstance(cause, ConnectionResetError):
+            message = "OctavAPI: сетевое подключение сброшено сервером или прокси."
+        else:
+            message = "OctavAPI: сбой сетевого транспорта (" + type(cause).__name__ + ")."
+        raise OctavaKeyError(message + " Новый ключ не сохранён; прежний ключ не изменён.") from None
+
+    class ProbeResponse:
+        def __init__(self, reply):
+            self.reply = reply
+        def __enter__(self):
+            self.reply = checked(self.reply.__enter__)
+            return self
+        def __exit__(self, *args):
+            return checked(lambda: self.reply.__exit__(*args))
+        def read(self, size=-1):
+            # Providers can send headers promptly but delay the model body.
+            return checked(lambda: self.reply.read(size))
+
+    # No automatic retry: a timed-out POST may already have been billed.
+    return ProbeResponse(checked(lambda: urlopen(request, timeout=60)))
+
+
+def replace_key(value):
+    """Validate the candidate once without changing existing failure semantics."""
+    return _replace_octava_key(value, transport=_octava_key_probe_transport)
+
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
@@ -1672,17 +1726,6 @@ class StudioHandler(BaseHTTPRequestHandler):
                     raise StudioError("Укажите только новый API-ключ")
                 with self.server.octava_lock:
                     result = replace_key(body["api_key"])
-                try:
-                    project_policy = load_policy()
-                except MailboxPolicyError:
-                    project_policy = {"enabled": False, "allow_octava": False}
-                if (project_policy["enabled"] and project_policy["allow_octava"]
-                        and hasattr(self.server, "store")):
-                    threading.Thread(
-                        target=_resume_octava_waiting_projects,
-                        args=(self.server.store.workspace,),
-                        name="octava-rotate-resume", daemon=True,
-                    ).start()
                 return self._json(200, result)
             if path == "/api/octava-model":
                 with self.server.octava_lock:
@@ -1841,3 +1884,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
