@@ -30,13 +30,13 @@ class AdaptivePlanTests(unittest.TestCase):
         self.plan['verdict']='READY_FOR_USER_REVIEW'
         with self.assertRaises(ValueError):validate_plan(self.plan,self.inventory)
 
-    def test_next_codex_pass_only_applies_symmetric_eye_fit(self):
-        eyes=[{'name':'MiaSource_GEO_spring_eye.l'},{'name':'MiaSource_GEO_spring_eye.r'}]
-        plan={'verdict':'NEEDS_REVISION','differences':['Глаза и радужки недостаточно выражены на фронтальном виде'],
+    def test_next_codex_pass_only_applies_bounded_head_and_jacket_fit(self):
+        targets=[{'name':'MiaSource_GEO-spring_head'},{'name':'MiaSource_GEO-spring_jacket'}]
+        plan={'verdict':'NEEDS_REVISION','differences':['Нужно заметнее скорректировать пропорции головы и ширину куртки'],
               'edits':rigging.MIA_CODEX_CORRECTION_EDITS}
-        self.assertEqual(validate_plan(plan,eyes),plan)
+        self.assertEqual(validate_plan(plan,targets),plan)
         self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[0]['factors'],[1.06,1.0,1.06])
-        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[1]['factors'],[1.06,1.0,1.06])
+        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[1]['factors'],[1.06,1.0,1.0])
         self.assertFalse(rigging.MIA_CODEX_HAIR_REBUILD)
         self.assertFalse(rigging.MIA_CODEX_FACE_REFINE)
         self.assertFalse(rigging.MIA_CODEX_PROPORTION_FIT)
