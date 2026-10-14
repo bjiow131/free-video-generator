@@ -30,15 +30,12 @@ class AdaptivePlanTests(unittest.TestCase):
         self.plan['verdict']='READY_FOR_USER_REVIEW'
         with self.assertRaises(ValueError):validate_plan(self.plan,self.inventory)
 
-    def test_next_codex_pass_only_applies_bounded_head_and_jacket_fit(self):
-        targets=[{'name':'MiaSource_GEO-spring_head'},{'name':'MiaSource_GEO-spring_jacket'}]
-        plan={'verdict':'NEEDS_REVISION','differences':['Нужно заметнее скорректировать пропорции головы и ширину куртки'],
-              'edits':rigging.MIA_CODEX_CORRECTION_EDITS}
-        self.assertEqual(validate_plan(plan,targets),plan)
-        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[0]['factors'],[1.06,1.0,1.06])
-        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS[1]['factors'],[1.06,1.0,1.0])
+    def test_next_codex_pass_only_applies_bounded_face_refinement(self):
+        plan={'verdict':'NEEDS_REVISION','differences':['Уточнить выражение и детализацию лица'], 'edits':[]}
+        self.assertEqual(validate_plan(plan,self.inventory),plan)
+        self.assertEqual(rigging.MIA_CODEX_CORRECTION_EDITS,[])
         self.assertFalse(rigging.MIA_CODEX_HAIR_REBUILD)
-        self.assertFalse(rigging.MIA_CODEX_FACE_REFINE)
+        self.assertTrue(rigging.MIA_CODEX_FACE_REFINE)
         self.assertFalse(rigging.MIA_CODEX_PROPORTION_FIT)
     def test_fixed_script_compiles(self):
         compile(BLENDER_SCRIPT,'adaptive_blender.py','exec')
