@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight", "blender_mia_asset_preflight"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -192,6 +192,17 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         project_name = plan.get("project_name")
         if not isinstance(project_name, str) or not BLENDER_PROJECT_RE.fullmatch(project_name):
             raise ProtocolError("Story plan project_name must use 1-48 letters, digits, underscores, or hyphens.")
+    if value["operation"] == "blender_mia_asset_preflight":
+        args = value["arguments"]
+        if set(args) != {"source_blend"}:
+            raise ProtocolError("blender_mia_asset_preflight requires only source_blend.")
+        path = args["source_blend"]
+        if (not isinstance(path, str) or len(path) > 512
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,511}[.]blend", path, re.IGNORECASE)
+                or "\\" in path or ":" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))):
+            raise ProtocolError("source_blend must be a safe workspace-relative .blend path.")
+
     if value["operation"] == "blender_mia_reference_fit_preflight":
         args = value["arguments"]
         if set(args) != {"project_name", "source_blend"}:
