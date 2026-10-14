@@ -1056,19 +1056,16 @@ _MIA_VISUAL_OPERATIONS = frozenset({
 
 
 def _attach_mia_front_photo_delivery(operation: str, task_id: str, details: dict[str, Any]) -> None:
-    """Attach an honest delivery status for the completed Mia front render."""
+    """Send each available Mia front render, including blocked review drafts."""
     if (operation not in _MIA_VISUAL_OPERATIONS
-            or details.get("status") != "completed"
             or "telegram_photo_delivery" in details):
         return
     thumbnails = details.get("thumbnail_jpeg_base64")
     front = thumbnails.get("front") if isinstance(thumbnails, dict) else None
+    if not isinstance(front, str):
+        return
     from local_agent.studio_server import telegram_send_mia_front_thumbnail
-    details["telegram_photo_delivery"] = (
-        telegram_send_mia_front_thumbnail(task_id, front)
-        if isinstance(front, str) else
-        {"status": "not_available", "reason": "completed_run_has_no_front_thumbnail"}
-    )
+    details["telegram_photo_delivery"] = telegram_send_mia_front_thumbnail(task_id, front)
 
 def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
     """Deterministic, isolated result key for a rejected immutable-ID collision.
@@ -2906,9 +2903,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_luna_mia_draft_recovery()
             else:
                 details = handler()
-            # Every completed Mia visual run should put its frontal render in
-            # the paired Telegram chat. The task result remains the source of
-            # truth; delivery failures are recorded and never reported as sent.
+            # Every Mia visual run with a rendered front should put that draft
+            # in the paired Telegram chat, even when the review gate blocks it.
+            # The task result remains the source of truth; delivery failures
+            # are recorded and never reported as sent.
             if isinstance(details, dict):
                 _attach_mia_front_photo_delivery(task.operation, task.task_id, details)
             result_status = details.get("status", "completed")
