@@ -67,7 +67,7 @@ for obj in list(bpy.data.objects)[:500]:
 
 report = {
     "status": "completed",
-    "source_blend": source_path,
+    "source_file_name": os.path.basename(source_path),
     "blender_version": bpy.app.version_string,
     "scene": scene.name[:200],
     "object_count": len(bpy.data.objects),
@@ -154,7 +154,7 @@ def run_mia_asset_preflight(source_blend: str, task_id: str) -> dict[str, Any]:
                     "status": "failed",
                     "reason": "blender_passport_failed",
                     "return_code": proc.returncode,
-                    "stderr_tail": (proc.stderr or "")[-2000:],
+                    "diagnostic": "Blender failed to produce a valid passport; local Blender logs should be inspected.",
                 }
             data = json.loads(report.read_text(encoding="utf-8"))
     except subprocess.TimeoutExpired:
