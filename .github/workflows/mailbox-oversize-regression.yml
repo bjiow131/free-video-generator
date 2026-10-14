@@ -1,0 +1,30 @@
+name: Mailbox oversized-result regression
+
+on:
+  push:
+    branches:
+      - fix/mailbox-oversize-fail-safe-20261014
+    paths:
+      - "local_agent/poller.py"
+      - "tests/test_result_outbox.py"
+      - ".github/workflows/mailbox-oversize-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mailbox-result-size-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mailbox test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
+      - name: Compile affected module
+        run: python -m py_compile local_agent/poller.py local_agent/result_outbox.py
+      - name: Verify bounded delivery and durable outbox
+        run: python -m pytest -q tests/test_result_outbox.py
