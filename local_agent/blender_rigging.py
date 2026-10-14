@@ -1491,10 +1491,21 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
     original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=profile['edits'];history=[];reason='awaiting_codex_review';latest=None
     render_signature=_mia_adaptive_render_signature()
     validate_mia_adaptive_plan({'verdict':'NEEDS_REVISION','differences':['Pinned Codex correction pass'], 'edits':edits},[{'name':e['object']} for e in edits])
-    donors=acquire_mia_study_sources(ws)
-    (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
-    donor_structure=inspect_study_sources(ws,blender)
-    (root/'study_source_structure.json').write_text(json.dumps(donor_structure,indent=2),encoding='utf-8')
+    import shutil
+    # Study donor assets once; source-polish iterations only need to edit and
+    # compare Mia. Reuse bounded provenance reports from the prior checkpoint
+    # rather than hashing/opening unrelated donor .blend files on every run.
+    study_reports_reused=[]
+    for name in ('study_source_acquisition.json','study_source_structure.json'):
+        prior=source.parent/name
+        if (prior.is_file() and prior.stat().st_size<=1_000_000
+                and not any(is_link_or_junction(p) for p in (prior,*prior.parents))):
+            try:
+                json.loads(prior.read_text(encoding='utf-8'))
+                shutil.copy2(prior,root/name)
+                study_reports_reused.append(name)
+            except (OSError,ValueError,json.JSONDecodeError):
+                pass
     try:
         # Reuse a hash-verified prior final render as the baseline. The renderer
         # fingerprint prevents stale images from surviving render-code changes.
@@ -1528,21 +1539,15 @@ def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
             (root/'adaptive_history.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
             reason='awaiting_codex_review'
         # Stable next-source path is a COPY, never overwrite the input checkpoint.
-        import shutil
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
         important=[x for x in report['inventory'] if ('miasource' in x['name'].lower() or 'mia_rain' in x['name'].lower() or 'boot_upper' in x['name'].lower() or 'cargo_side' in x['name'].lower()) and not any(k in x['name'].lower() for k in ('teeth','gums','cornea'))]
         compact_inventory=[{'name':x['name'],'vertices':x['vertices'],'world_min':[round(v,5) for v in x['world_min']],'world_max':[round(v,5) for v in x['world_max']]} for x in important]
         result={'status':'completed','stage':'codex_source_review','goal_status':reason,'revision_profile':profile_name,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'baseline_render_reused':bool(baseline_hashes),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
-        import base64
-        ffmpeg=shutil.which('ffmpeg');thumbs={}
-        if ffmpeg:
-            for view in ('front','face','side','back'):
-                thumb=latest/(view+'_codex.jpg')
-                if _make_review_thumbnail(ffmpeg,latest/(view+'.png'),thumb,detailed=view=='front',quality=6):thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
-        result['thumbnail_jpeg_base64']=thumbs
+        # Telegram front-photo delivery and JPEG/base64 thumbnails are disabled
+        # for source-polish runs. The lossless five-view PNG review set remains
+        # on disk and is the comparison/quality-gate input.
+        result['study_reports_reused']=study_reports_reused
         if not result['source_unchanged']:raise ValueError('original_source_changed')
-        result['study_sources']=donors
-        result['study_source_structures']=[{'asset':x['asset'],'status':x['status'],'mesh_objects':x.get('report',{}).get('mesh_objects'),'vertices':x.get('report',{}).get('vertices'),'rigs':x.get('report',{}).get('rigs',[]),'focus_meshes':x.get('report',{}).get('focus_meshes',[])[:5]} for x in donor_structure]
         # Preserve donor attribution inherited from the input checkpoint.
         attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
         if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
