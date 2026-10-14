@@ -64,8 +64,10 @@ def _finite_number(value: object) -> bool:
 
 def parse_reference_map(value: object, *, expected_sha256: str | None = None) -> ReferenceMap:
     """Validate a hand-measured map; invisible/occluded landmarks are excluded."""
-    if not isinstance(value, Mapping) or value.get("schema_version") != SCHEMA_VERSION:
+    if not isinstance(value, Mapping) or isinstance(value.get("schema_version"), bool) or value.get("schema_version") != SCHEMA_VERSION:
         raise ReferenceFitError("reference_map_schema_version_must_be_1")
+    if value.get("coordinate_convention") != "camera_frame_bottom_left_normalized":
+        raise ReferenceFitError("coordinate_convention_must_be_camera_frame_bottom_left_normalized")
     digest = value.get("reference_sha256")
     if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
         raise ReferenceFitError("reference_sha256_must_be_lowercase_sha256")
@@ -247,7 +249,7 @@ if os.path.exists(output_path) or os.path.exists(report_path):
     fail("output_exists_no_overwrite"); raise SystemExit(0)
 bpy.ops.wm.open_mainfile(filepath=source_path,load_ui=False)
 scene=bpy.context.scene; original_camera=scene.camera; source_sha=digest(source_path)
-actions_before=sorted((a.name,len(a.fcurves)) for a in bpy.data.actions)
+actions_before=sorted((a.name,len(getattr(a,"fcurves",[]))) for a in bpy.data.actions)
 drivers_before={o.name:len(o.animation_data.drivers) for o in bpy.data.objects if o.animation_data}
 params=[]
 for p in spec["parameters"]:
@@ -312,12 +314,12 @@ gain=0 if before==0 else (before-after)/before
 accepted=bool(opt.success and not regressions and after<before and gain>=.01)
 for (_,_,key,_),value in zip(params,opt.x if accepted else initial): key.value=float(value)
 scene.camera=original_camera; bpy.context.view_layer.update()
-actions_after=sorted((a.name,len(a.fcurves)) for a in bpy.data.actions)
+actions_after=sorted((a.name,len(getattr(a,"fcurves",[]))) for a in bpy.data.actions)
 drivers_after={o.name:len(o.animation_data.drivers) for o in bpy.data.objects if o.animation_data}
 if actions_before!=actions_after or drivers_before!=drivers_after:
     fail("animation_or_driver_inventory_changed_unexpectedly"); raise SystemExit(0)
 if accepted: bpy.ops.wm.save_as_mainfile(filepath=output_path)
-report={"status":"completed" if accepted else "rejected","stage":"projection_optimizer","reason":None if accepted else "quality_gate_rejected","source_sha256":source_sha,"source_sha256_after":digest(source_path),"output_path":output_path if accepted else None,"reference_sha256":approved_sha,"optimizer":{"success":bool(opt.success),"evaluations":int(opt.nfev)},"quality_gate":{"status":"accept" if accepted else "reject","before_rms":before,"after_rms":after,"relative_gain":gain,"before_by_view_pixels":before_views,"after_by_view_pixels":after_views,"regressed_views":regressions},"animation_data_preserved":True,"full_render_performed":False}
+report={"status":"completed" if accepted else "rejected","stage":"projection_optimizer","reason":None if accepted else "quality_gate_rejected","source_sha256":source_sha,"source_sha256_after":digest(source_path),"output_path":output_path if accepted else None,"reference_sha256":approved_sha,"optimized_parameters":[{"name":p[0]["name"],"initial":initial[i],"value":float(opt.x[i]) if accepted else initial[i]} for i,p in enumerate(params)],"optimizer":{"success":bool(opt.success),"evaluations":int(opt.nfev)},"quality_gate":{"status":"accept" if accepted else "reject","before_rms":before,"after_rms":after,"relative_gain":gain,"before_by_view_pixels":before_views,"after_by_view_pixels":after_views,"regressed_views":regressions},"animation_data_preserved":True,"full_render_performed":False}
 with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_ascii=False)
 '''
 
