@@ -1536,3 +1536,15 @@ def test_legacy_mia_paths_cannot_reset_a_saved_source_target(monkeypatch,tmp_pat
         assert result["source_project"]=="source_latest"
         assert result["generation_performed"] is False
         assert result["provider_request_performed"] is False
+
+
+
+def test_owner_hard_gate_blocks_telegram_network_sends(monkeypatch, tmp_path):
+    from local_agent import studio_server
+
+    monkeypatch.setattr(studio_server, "TELEGRAM_OUTBOUND_ENABLED", False)
+    with pytest.raises(studio_server.TelegramAlertError, match="отключены владельцем"):
+        studio_server._telegram_call("invalid", "sendMessage", {"text": "must not send"})
+    result = studio_server.telegram_send_mia_review_photos(
+        str(tmp_path), "mia-review-test")
+    assert result == {"status": "disabled_by_owner", "sent": [], "failed": []}
