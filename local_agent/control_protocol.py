@@ -153,7 +153,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
                 or any(not isinstance(args.get(k),str) or not BLENDER_PROJECT_RE.fullmatch(args[k])
                        for k in ("source_project","project_name"))
                 or args["source_project"]==args["project_name"]
-                or args.get("profile","face") not in {"face","head_jacket","face_and_fit","eyes","proportions","reference_fit"}):
+                or args.get("profile","face") not in {"face","head_jacket","face_and_fit","eyes","proportions","reference_fit","reference_fit_bold"}):
             raise ProtocolError("Mia polish accepts safe project names and one fixed profile name.")
     if value["operation"] == "blender_mia_source_recover":
         args=value["arguments"]
