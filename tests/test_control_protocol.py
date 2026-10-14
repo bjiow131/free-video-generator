@@ -286,16 +286,18 @@ def test_accepts_local_only_mia_reference_fit_task():
         "project_name": "mia_source",
         "source_blend": "mia_source_polished_v4.blend",
         "reference_map_file": "mia_reference_map.json",
+        "passport_file": "mia_reference_fit_passport_ab12cd34ef56.json",
         "approved_reference_sha256": "a" * 64,
     }))
     assert task.operation == "blender_mia_reference_fit"
 
 
 @pytest.mark.parametrize("arguments", [
-    {"project_name": "../outside", "source_blend": "x.blend", "reference_map_file": "m.json", "approved_reference_sha256": "a" * 64},
-    {"project_name": "mia", "source_blend": "../x.blend", "reference_map_file": "m.json", "approved_reference_sha256": "a" * 64},
-    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "approved_reference_sha256": "not-a-hash"},
-    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "approved_reference_sha256": "a" * 64, "script": "bad"},
+    {"project_name": "../outside", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "../x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "../p.json", "approved_reference_sha256": "a" * 64},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "not-a-hash"},
+    {"project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json", "passport_file": "p.json", "approved_reference_sha256": "a" * 64, "script": "bad"},
 ])
 def test_rejects_unsafe_mia_reference_fit_arguments(arguments):
     with pytest.raises(ProtocolError):
@@ -305,7 +307,7 @@ def test_rejects_unsafe_mia_reference_fit_arguments(arguments):
 def test_mia_reference_fit_cannot_use_remote_approval():
     value = json.loads(_task("blender_mia_reference_fit", {
         "project_name": "mia", "source_blend": "x.blend", "reference_map_file": "m.json",
-        "approved_reference_sha256": "a" * 64,
+        "passport_file": "p.json", "approved_reference_sha256": "a" * 64,
     }))
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="local approval is mandatory"):
