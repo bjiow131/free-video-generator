@@ -2185,6 +2185,12 @@ def aim(loc):
  cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
+scene.render.resolution_x=160;scene.render.resolution_y=240
+scene.render.image_settings.file_format="JPEG";scene.render.image_settings.quality=45
+for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
+ aim(loc);scene.render.filepath=os.path.join(out,"thumb_"+name+".jpg");bpy.ops.render.render(write_still=True)
+scene.render.resolution_x=600;scene.render.resolution_y=900
+scene.render.image_settings.file_format="PNG"
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
 ''',encoding="utf-8")
         proc=run([blender,"--background","--factory-startup","--disable-autoexec",
@@ -2217,7 +2223,7 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
 
 def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     """Render the already-generated, hash-pinned candidate without rerunning inference."""
-    import hashlib, json, os, subprocess
+    import base64, hashlib, json, os, subprocess
     from pathlib import Path
     from local_agent.mailbox_policy import load_policy
     from local_agent.path_names import is_link_or_junction
@@ -2310,10 +2316,16 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
                 "reason": "blend_or_preview_missing", "output_folder": str(output)}
     if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
+    thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
+    if any(not path.is_file() or path.stat().st_size > 12000 for path in thumbnail_paths.values()):
+        return {"status": "incomplete", "stage": "validate_review_thumbnails",
+                "reason": "thumbnail_missing_or_too_large", "output_folder": str(output)}
+    thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
+                  for name, path in thumbnail_paths.items()}
     return {"status": "completed", "stage": "review_of_existing_multiview_candidate",
             "output_folder": str(output), "blend_path": str(blend),
             "mesh_path": str(glb), "mesh_stats_path": str(stats),
-            "preview_paths": previews, "mesh_sha256": glb_sha,
+            "preview_paths": previews, "thumbnail_jpeg_base64": thumbnails, "mesh_sha256": glb_sha
             "source_model_preserved": True, "shape_only": True,
             "geometry_is_new": True, "identity_verified": False,
             "license_review_required_before_production": True,
