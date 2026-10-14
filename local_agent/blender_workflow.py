@@ -3264,7 +3264,14 @@ def run_s01e01_static_batch(source_project: str, project_name: str, *, task_id: 
     if not source.is_file():
         return {'status':'blocked','reason':'native_mia_source_not_found','source_project':source_project}
     if project.exists():
-        return {'status':'blocked','reason':'batch_exists_no_overwrite'}
+        tails = {}
+        for name in ('blender_stdout.log','blender_stderr.log'):
+            log = project / name
+            if log.is_file() and not is_link_or_junction(log):
+                with log.open('rb') as handle:
+                    handle.seek(max(0,log.stat().st_size-12000))
+                    tails[name] = handle.read(12000).decode('utf-8',errors='replace')[-6000:]
+        return {'status':'blocked','reason':'batch_exists_no_overwrite','diagnostic_tails':tails}
     project.mkdir(parents=True)
     cache.mkdir(parents=True, exist_ok=True)
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
