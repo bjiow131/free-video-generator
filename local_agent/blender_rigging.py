@@ -879,6 +879,7 @@ MIA_ADAPTIVE_VIEWS = ('front', 'side', 'back', 'quarter', 'face')
 MIA_CODEX_CORRECTION_EDITS = []
 MIA_CODEX_DELIVERY_APPROVED = False
 MIA_CODEX_HAIR_REBUILD = True
+MIA_CODEX_FACE_REFINE = True
 
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
@@ -934,7 +935,7 @@ def acquire_mia_study_sources(ws):
                     files=[('donor_'+str(i)+'.blend',archive.read(m)) for i,m in enumerate(members)]
             else:raise ValueError('unrecognized_download_format')
             if any(not raw.startswith(signatures) for _,raw in files):raise ValueError('invalid_blend_header')
-            folder.mkdir();manifest={'asset':name,'status':'downloaded','catalog_url':page,'download_url':url,'license':'CC-BY (verify exact version in retained catalog before redistribution)','credit':name.title()+' Rig (CC) Blender Foundation | studio.blender.org','archive_sha256':hashlib.sha256(payload).hexdigest(),'files':[],'study_only':True,'embedded_scripts_executed':False}
+            folder.mkdir();manifest={'asset':name,'status':'downloaded','catalog_url':page,'download_url':url.split('?')[0],'license':'CC-BY (verify exact version in retained catalog before redistribution)','credit':name.title()+' Rig (CC) Blender Foundation | studio.blender.org','archive_sha256':hashlib.sha256(payload).hexdigest(),'files':[],'study_only':True,'embedded_scripts_executed':False}
             (folder/'catalog.html').write_text(html,encoding='utf-8')
             for filename,raw in files:
                 (folder/filename).write_bytes(raw);manifest['files'].append({'file':filename,'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)})
@@ -1102,19 +1103,60 @@ for edit in cfg['edits']:
  if o.data.shape_keys:
   for v,p in zip(o.data.vertices,o.data.shape_keys.key_blocks[0].data):v.co=p.co
  o.data.update();changes.append({'object':o.name,'max_local_delta':max(d.length for d in deltas),'reason':edit['reason']})
+if cfg.get('face_refine'):
+ head=bpy.data.objects['MiaSource_GEO-spring_head'];keys=head.data.shape_keys
+ if keys is None or 'Basis' not in keys.key_blocks:raise RuntimeError('facial_basis_missing')
+ basis=keys.key_blocks['Basis'].data;mw=head.matrix_world.copy();inv=mw.inverted();deltas=[]
+ for p in basis:
+  point=mw@p.co;x,y,z=point;front=max(0,min(1,(-y-.015)/.075))
+  cheek=math.exp(-((abs(x)-.112)/.045)**2-((z-1.148)/.045)**2)*front
+  chin=math.exp(-((z-1.095)/.04)**2)*front
+  forehead=math.exp(-((z-1.29)/.065)**2-(x/.11)**2)*front
+  smile=math.exp(-((abs(x)-.041)/.022)**2-((z-1.112)/.015)**2)*front
+  target=Vector((x*(1-.035*chin),y-.0075*cheek-.004*forehead,z+.004*smile))
+  deltas.append(inv@target-p.co)
+ for key in keys.key_blocks:
+  for p,d in zip(key.data,deltas):p.co+=d
+ for v,p in zip(head.data.vertices,basis):v.co=p.co
+ color=head.data.color_attributes.get('Mia_Rosy_Skin')
+ if color and color.domain=='POINT':
+  for p,v in zip(color.data,head.data.vertices):
+   x,y,z=mw@v.co;w=.72*math.exp(-((abs(x)-.115)/.06)**2-((z-1.155)/.042)**2)*max(0,min(1,(-y-.025)/.075));base=(.70,.30,.185);rose=(.77,.17,.115)
+   p.color=tuple(base[i]*(1-w)+rose[i]*w for i in range(3))+(1,)
+ brows=bpy.data.objects.get('MiaSource_GEO_spring_eyebrows')
+ if brows:
+  for v in brows.data.vertices:
+   x=v.co.x;phase=max(0,min(1,(abs(x)-.02)/.10));v.co.z+=.008*math.sin(phase*math.pi)
+ for name in ('MiaSource_GEO_spring_eye.l','MiaSource_GEO_spring_eye.r'):
+  eye=bpy.data.objects[name]
+  for index,mat in enumerate(eye.data.materials):
+   if not mat or 'iris' not in mat.name.lower():continue
+   mat=mat.copy();eye.data.materials[index]=mat
+   bs=mat.node_tree.nodes.get('Principled BSDF') if mat.use_nodes else None
+   if bs:
+    for link in list(bs.inputs['Base Color'].links):mat.node_tree.links.remove(link)
+    bs.inputs['Base Color'].default_value=(.085,.026,.006,1);bs.inputs['Roughness'].default_value=.28
+   ids={i for p in eye.data.polygons if p.material_index==index for i in p.vertices}
+   if ids:
+    center=sum((eye.data.vertices[i].co for i in ids),Vector())/len(ids)
+    for i in ids:
+     v=eye.data.vertices[i];v.co.x=center.x+(v.co.x-center.x)*1.055;v.co.z=center.z+(v.co.z-center.z)*1.055
+ changes.append({'object':head.name,'reason':'Measured child-face pass: fuller cheek depth, softer chin, subtle smile, curved brows and warmer darker irises','max_local_delta':max(d.length for d in deltas),'all_expression_keys_receive_identical_displacement':True})
 if cfg.get('hair_rebuild'):
  # Reuse the retained Spring scalp as a complete underlayer; Rain's current
  # front cap has an observed bald opening in the rear view of the saved model.
  rig=bpy.data.objects.get('Mia_Source_Pilot_Rig')
  scalp=bpy.data.objects.get('MiaSource_GEO_spring_hair_main')
  if rig is None or scalp is None or scalp.type!='MESH':raise RuntimeError('retained_donor_scalp_missing')
- for name in ('MiaSource_GEO_spring_hair_ears',):
+ for name in ('MiaSource_GEO_spring_hair_ears','Mia_Rain_Source_GEO-rain-hair_main','Mia_Rain_Source_GEO-rain-hair_strand'):
   o=bpy.data.objects.get(name)
   if o:o.hide_render=True
  scalp.hide_render=False
  def hair_material(name,color):
   m=bpy.data.materials.new(name);m.use_nodes=True
-  bs=m.node_tree.nodes['Principled BSDF'];bs.inputs['Base Color'].default_value=(*color,1);bs.inputs['Roughness'].default_value=.48
+  bs=m.node_tree.nodes['Principled BSDF'];bs.inputs['Base Color'].default_value=(*color,1);bs.inputs['Roughness'].default_value=.54
+  noise=m.node_tree.nodes.new('ShaderNodeTexNoise');noise.inputs['Scale'].default_value=135;noise.inputs['Detail'].default_value=2
+  bump=m.node_tree.nodes.new('ShaderNodeBump');bump.inputs['Strength'].default_value=.20;bump.inputs['Distance'].default_value=.0015;m.node_tree.links.new(noise.outputs['Fac'],bump.inputs['Height']);m.node_tree.links.new(bump.outputs['Normal'],bs.inputs['Normal'])
   return m
  base=hair_material('Mia_Codex_LightBrown_Scalp',(.16,.071,.025))
  mats=[hair_material('Mia_Codex_Lock_'+str(i),color) for i,color in enumerate([(.17,.077,.029),(.19,.091,.034),(.14,.059,.021),(.21,.108,.042)])]
@@ -1123,12 +1165,12 @@ if cfg.get('hair_rebuild'):
  # volume; shrink the oversized Spring crown inside that volume.
  mw=scalp.matrix_world.copy();inv=mw.inverted()
  for v in scalp.data.vertices:
-  p=mw@v.co;v.co=inv@Vector((p.x*1.16,.03+(p.y-.03)*.83,1.23+(p.z-1.23)*.88))
+  p=mw@v.co;v.co=inv@Vector((p.x*1.25,p.y-.034,1.23+(p.z-1.23)*.99))
  rain=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_main')
  if rain is None:raise RuntimeError('retained_rain_hair_missing')
- rain.hide_render=False
+ rain.hide_render=True
  strand=bpy.data.objects.get('Mia_Rain_Source_GEO-rain-hair_strand')
- if strand:strand.hide_render=False
+ if strand:strand.hide_render=True
  from mathutils.bvhtree import BVHTree
  bpy.context.view_layer.update();dg=bpy.context.evaluated_depsgraph_get();ev=rain.evaluated_get(dg);mesh=ev.to_mesh()
  surface=BVHTree.FromPolygons([ev.matrix_world@v.co for v in mesh.vertices],[tuple(p.vertices) for p in mesh.polygons]);ev.to_mesh_clear()
@@ -1153,15 +1195,17 @@ if cfg.get('hair_rebuild'):
   for p in mesh.polygons:p.use_smooth=True
   return o
  # Side-swept front locks and the low gathered bun share one real 3D scalp.
- for i in range(22):
-  t=i/21;start=(.08+.065*t,-.002+.05*t,1.395-.016*t)
-  end=(-.168+.26*t,-.105-.025*math.sin(t*math.pi),1.268+.044*t)
-  points=[start,((start[0]*.65+end[0]*.35),-.090,1.390-.013*t),((start[0]*.30+end[0]*.70),-.130,1.340+.005*t),end]
-  lock('Mia_Codex_Swept_Fringe_'+str(i),[on_surface(p) for p in points],.0012+.0006*math.sin(t*math.pi),i)
+ for i in range(44):
+  t=i/43;start=Vector((.065+.085*t,.016+.028*t,1.393-.020*t));end=Vector((-.191+.295*t,-.142+.025*t,1.263+.055*t))
+  points=[]
+  for j in range(8):
+   u=j/7;p=start.lerp(end,u);p.y-=.055*math.sin(math.pi*u);p.z+=.026*math.sin(math.pi*u)*(1-.4*t);p.x-=.018*math.sin(math.pi*u)
+   points.append(p)
+  lock('Mia_Codex_Swept_Fringe_'+str(i),points,.0033+.0013*math.sin(t*math.pi),i)
  for side in (-1,1):
   for i in range(12):
    t=i/11;points=[(side*(.04+.11*t),.015,1.395-.027*t),(side*(.16+.015*t),.075,1.310-.025*t),(side*(.14-.035*t),.130,1.20-.02*t),(-.035+side*.035,.160,1.135)]
-   lock('Mia_Codex_Gathered_Lock_'+str(side)+'_'+str(i),[on_surface(p) for p in points[:3]]+[Vector(points[3])],.0015+.0005*(1-t),i)
+   lock('Mia_Codex_Gathered_Lock_'+str(side)+'_'+str(i),points,.0027+.0010*(1-t),i)
   for i in range(3):
    x=side*(.17+i*.003);points=[(x,-.04,1.265),(x+side*.015,-.07,1.22),(x-side*.012,-.08,1.16),(x+side*.006,-.04,1.125)]
    lock('Mia_Codex_Loose_Wisp_'+str(side)+'_'+str(i),points,.0018,i)
@@ -1169,7 +1213,7 @@ if cfg.get('hair_rebuild'):
   phase=i*2*math.pi/14
   points=[(-.035+.10*math.cos(phase+t*.8),.155+.055*math.sin(phase+t*.8),1.125+.05*math.cos(t*math.pi)) for t in (0,.25,.5,.75,1)]
   lock('Mia_Codex_Bun_Lock_'+str(i),points,.0018,i)
- changes.append({'object':'MiaSource_GEO_spring_hair_main','reason':'Repair rear underlayer, retain fuller frontal Rain hair volume, surface-following swept locks and textured loose bun','new_lock_meshes':66,'donor_scalp_reused':True,'rain_front_volume_preserved':True})
+ changes.append({'object':'MiaSource_GEO_spring_hair_main','reason':'Widen reused scalp to cover the head, lifted curved layered fringe, textured loose low bun; replace hard Rain forehead blocks','new_lock_meshes':88,'donor_scalp_reused':True,'rain_front_volume_preserved':False})
  objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zipper')))]
 bpy.context.view_layer.update()
 inventory=[]
@@ -1221,12 +1265,12 @@ def run_mia_adaptive_source(source_project, project_name):
     try:
         # If there are reviewed edits, first render the unchanged input with the
         # very same renderer and cameras, then apply edits to that checkpoint.
-        for i in range(2 if (MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD) else 1):
+        for i in range(2 if (MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD or MIA_CODEX_FACE_REFINE) else 1):
             pass_edits=[] if i==0 else MIA_CODEX_CORRECTION_EDITS
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
                 script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
-                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits,'hair_rebuild':MIA_CODEX_HAIR_REBUILD and i==1}),encoding='utf-8')
+                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits,'hair_rebuild':MIA_CODEX_HAIR_REBUILD and i==1,'face_refine':MIA_CODEX_FACE_REFINE and i==1}),encoding='utf-8')
                 proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(cfg)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=900,check=False,shell=False)
             (folder/'blender_stdout.log').write_text((proc.stdout or '')[-200000:],encoding='utf-8')
             if proc.returncode:raise ValueError('blender_exit_'+str(proc.returncode))
@@ -1258,7 +1302,7 @@ def run_mia_adaptive_source(source_project, project_name):
         # Preserve donor attribution inherited from the input checkpoint.
         attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
         if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
-        if MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD:
+        if MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD or MIA_CODEX_FACE_REFINE:
             gate=mia_visual_change_gate(root/'pass_0',latest);result['visible_change_gate']=gate
             if not gate['passed']:
                 result.update(status='blocked',goal_status='insufficient_visible_change')
