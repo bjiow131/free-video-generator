@@ -45,6 +45,17 @@ class ReferenceToModelTests(unittest.TestCase):
         self.assertEqual(characterize_ambiguity(1)["depth_confidence"], "underconstrained")
         self.assertEqual(characterize_ambiguity(3)["depth_confidence"], "multi_view_supported")
 
+    def test_bounded_optimizer_recovers_known_control_value(self):
+        from local_agent.reference_to_model import optimize
+
+        result = optimize(
+            initial=[0.0], lower=[-1.0], upper=[1.0],
+            residual_fn=lambda values: [values[0] - 0.37, 2.0 * (values[0] - 0.37)],
+        )
+        self.assertEqual(result["status"], "completed")
+        self.assertAlmostEqual(result["values"][0], 0.37, places=5)
+        self.assertLess(result["cost"], 1e-10)
+
 
 if __name__ == "__main__":
     unittest.main()
