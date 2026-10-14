@@ -1530,6 +1530,15 @@ def test_rich_source_result_is_compacted_without_losing_goal_state(tmp_path,monk
     assert poller._publish_result_durable(Client(),"source-rich",original)=="commit"
 
 
+def test_mia_source_polish_skips_telegram_transport_but_keeps_other_task_notices():
+    from local_agent import poller
+    assert not poller._task_telegram_notifications_enabled("blender_mia_source_polish")
+    assert poller._task_telegram_notifications_enabled("mia_model_review")
+    details={"status":"completed","thumbnail_jpeg_base64":{"front":"jpeg-data"}}
+    poller._attach_mia_front_photo_delivery("blender_mia_source_polish","run-quiet",details)
+    assert "telegram_photo_delivery" not in details
+
+
 def test_legacy_mia_paths_cannot_reset_a_saved_source_target(monkeypatch,tmp_path):
     import json
     from local_agent import blender_workflow as workflow
