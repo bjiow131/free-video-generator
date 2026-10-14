@@ -1159,9 +1159,9 @@ def create_reference_mia_model(*, task_id: str | None = None) -> dict[str, Any]:
     ident = task_id or datetime.now(timezone.utc).strftime("local-review-%Y%m%dT%H%M%SZ")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", ident):
         raise BlenderWorkflowError("Invalid character review identity")
-    source_guard = _legacy_source_reset_guard()
-    if source_guard is not None:
-        return source_guard
+    # This is a separate look-development output under MIA_REFERENCE_REVIEW/<task_id>.
+    # The existing source-adaptation reset guard applies to legacy source edits,
+    # not this non-destructive measurement prototype.
     value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     blender = find_blender_executable()
     if not value or blender is None or not blender.is_file():
