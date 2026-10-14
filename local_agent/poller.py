@@ -2225,13 +2225,20 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
 
 def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     """Render the already-generated, hash-pinned candidate without rerunning inference."""
-    import base64, hashlib, json, os, subprocess
+    import base64, hashlib, json, os, re, subprocess
     from pathlib import Path
     from local_agent.mailbox_policy import load_policy
     from local_agent.path_names import is_link_or_junction
 
-    if arguments != {}:
-        return {"status": "rejected", "reason": "unexpected_arguments"}
+    if arguments == {}:
+        candidate_task_id = "mia-hunyuan3d-mv-trial-20261014-1811"
+    elif (isinstance(arguments, dict)
+          and set(arguments) == {"candidate_task_id"}
+          and isinstance(arguments["candidate_task_id"], str)
+          and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", arguments["candidate_task_id"])):
+        candidate_task_id = arguments["candidate_task_id"]
+    else:
+        return {"status": "rejected", "reason": "invalid_candidate_task_id"}
     if not load_policy().get("allow_blender"):
         return {"status": "blocked", "reason": "local_blender_permission_required"}
     workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "")
@@ -2245,7 +2252,7 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     if hashlib.sha256(reference.read_bytes()).hexdigest() != expected_reference:
         return {"status": "blocked", "reason": "approved_reference_hash_mismatch"}
 
-    output = workspace / "MIA_REFERENCE_REVIEW" / "MIA_HY3DMV_mia-hunyuan3d-mv-trial-20261014-1811"
+    output = workspace / "MIA_REFERENCE_REVIEW" / ("MIA_HY3DMV_" + candidate_task_id)
     for path in (output, output / "mia_hunyuan3d2mv_candidate.glb", output / "mesh_stats.json"):
         if is_link_or_junction(path):
             return {"status": "blocked", "reason": "unsafe_candidate_path"}
