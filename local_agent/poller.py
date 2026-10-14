@@ -18,7 +18,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import webbrowser
 from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
@@ -958,19 +957,9 @@ def _remote_restart_enabled() -> bool:
     return opted_in or override=="1"
 
 def _request_restart_and_open_studio() -> dict[str, Any]:
-    """Queue a controlled service restart and open only the fixed loopback Studio URL."""
+    """Queue a controlled restart; automatic Studio browser launch is disabled."""
     result=request_runtime_restart({})
-    try:
-        port=int(os.environ.get("LOCAL_AGENT_STUDIO_PORT","55313"))
-    except (TypeError,ValueError):
-        port=55313
-    if not 1024<=port<=65535: port=55313
-    url=f"http://127.0.0.1:{port}/"
-    try:
-        opened=bool(webbrowser.open(url,new=2,autoraise=True))
-    except (webbrowser.Error,OSError,RuntimeError):
-        opened=False
-    return {**result,"studio_url":url,"browser_open_requested":opened}
+    return {**result,"browser_open_requested":False,"browser_autolaunch_disabled":True}
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -4469,7 +4458,6 @@ def supervise_windows() -> int:
         return main()
     import msvcrt
     import winreg
-    import webbrowser
     import urllib.request
     import threading
 
@@ -4678,8 +4666,7 @@ def supervise_windows() -> int:
     try:
         for name in command:
             launch(name)
-        # Stable port lets the existing browser tab reconnect after a restart.
-        webbrowser.open(browser_url)
+        # Browser auto-launch is disabled by user request; Studio remains headless.
         log("Studio and mailbox supervisor active; worker heartbeat every 2s")
         while True:
             time.sleep(2)
