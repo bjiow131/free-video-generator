@@ -1075,7 +1075,7 @@ def geometry_hash(o):
  h=hashlib.sha256()
  for v in o.data.vertices:h.update(struct.pack('<3f',*v.co))
  return h.hexdigest()
-objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zipper')))]
+objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zip','backpack','strap')))]
 before={o.name:geometry_hash(o) for o in objects}
 changes=[]
 for edit in cfg['edits']:
@@ -1252,7 +1252,7 @@ if cfg.get('hair_rebuild'):
   points=[(-.035+.10*math.cos(phase+t*.8),.155+.055*math.sin(phase+t*.8),1.125+.05*math.cos(t*math.pi)) for t in (0,.25,.5,.75,1)]
   lock('Mia_Codex_Bun_Lock_'+str(i),points,.0018,i)
  changes.append({'object':'Mia_Codex_Fitted_Scalp','reason':'Head-derived fitted scalp shell and 120 surface-following fringe locks; remove donor visor and close rear gap','new_lock_meshes':164,'donor_head_surface_reused':True,'rain_front_volume_preserved':False})
- objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zipper')))]
+ objects=[o for o in scene.objects if o.type=='MESH' and not o.hide_render and len(o.data.vertices) and ('mia' in o.name.lower() or any(t in o.name.lower() for t in ('boot','cargo','hood','pocket','sole','cuff','zip','backpack','strap')))]
 bpy.context.view_layer.update()
 inventory=[]
 for o in objects:
