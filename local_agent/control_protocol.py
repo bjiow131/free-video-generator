@@ -12,7 +12,7 @@ import json
 import re
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight", "blender_reference_to_model_preflight", "blender_reference_to_model_fit"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight", "blender_reference_to_model_preflight", "blender_reference_to_model_fit", "install_local_agent_requirements"})
 # These typed operations may be remotely authorized only when the local owner
 # explicitly enables remote approval in the Windows environment. Code changes
 # and generic test execution remain local-approval-only.
@@ -20,6 +20,7 @@ REMOTE_APPROVABLE_OPERATIONS = frozenset({
     "status", "doctor", "preflight", "logs", "blender_forest_preview",
     "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search",
     "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_camera_control", "blender_mouth_motion",
+    "install_local_agent_requirements",
 })
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 BLENDER_PROJECT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$")
@@ -82,7 +83,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("This operation cannot use remote approval; local approval is mandatory.")
     if not isinstance(value["arguments"], dict):
         raise ProtocolError("arguments must be a JSON object.")
-    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup"} and value["arguments"]:
+    if value["operation"] in {"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "install_local_agent_requirements"} and value["arguments"]:
         raise ProtocolError("This operation does not accept arguments.")
     if len(json.dumps(value["arguments"], ensure_ascii=False).encode("utf-8")) > 49_152:
         raise ProtocolError("Task arguments exceed the size limit.")
