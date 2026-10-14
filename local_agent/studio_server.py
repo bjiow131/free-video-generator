@@ -756,6 +756,7 @@ def export_review(job_dir: Path, job_info: dict[str, Any], ffmpeg: str) -> dict[
 _TELEGRAM_TOKEN_TARGET = "LocalAgent/Telegram/bot-token"
 _TELEGRAM_CHAT_TARGET = "LocalAgent/Telegram/private-chat-id"
 _TELEGRAM_TOKEN_RE = re.compile(r"[0-9]{5,15}:[A-Za-z0-9_-]{20,128}\Z")
+TELEGRAM_OUTBOUND_ENABLED = False  # Disabled by owner for this project.
 _TELEGRAM_LOCK = threading.RLock()
 _TELEGRAM_OUTBOX = ROOT / ".local_agent" / "telegram_outbox"
 
@@ -860,6 +861,8 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
     """Fixed HTTPS origin, fixed allowlisted Telegram Bot API methods."""
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
+    if method == "sendMessage" and not TELEGRAM_OUTBOUND_ENABLED:
+        raise TelegramAlertError("Исходящие сообщения Telegram отключены владельцем")
     if method not in ("getMe", "getUpdates", "sendMessage"):
         raise TelegramAlertError("Недопустимая операция Telegram")
     if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
@@ -971,7 +974,9 @@ def _telegram_outbox_dir() -> Path:
 
 
 def telegram_queue_event(event_id: str, message: str) -> bool:
-    """Queue a bounded, idempotent local event, even while Telegram is offline."""
+    """Queue a bounded local event only when Telegram outbound is enabled."""
+    if not TELEGRAM_OUTBOUND_ENABLED:
+        return False
     import hashlib
     if not isinstance(event_id, str) or not re.fullmatch(r"[A-Za-z0-9:_-]{1,120}", event_id):
         return False
@@ -999,7 +1004,9 @@ def telegram_queue_event(event_id: str, message: str) -> bool:
 
 
 def telegram_flush_outbox(*, max_messages: int = 4) -> int:
-    """Read a few queued notices and deliver them to one locally paired chat."""
+    """Deliver queued notices only when Telegram outbound is enabled."""
+    if not TELEGRAM_OUTBOUND_ENABLED:
+        return 0
     try:
         token, chat = _telegram_credentials()
         if not token or not chat or not _TELEGRAM_OUTBOX.is_dir():
@@ -1190,6 +1197,8 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
     Direct Telegram multipart upload is used; the optional JSON-only Render
     relay cannot forward multipart images. All originals remain local.
     """
+    if not TELEGRAM_OUTBOUND_ENABLED:
+        return {"status": "disabled_by_owner", "sent": [], "failed": []}
     if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", task_id):
         return {"status": "blocked", "reason": "invalid_review_id"}
     try:
