@@ -58,6 +58,7 @@ ALLOWED_FILES = frozenset({
     "local_agent/studio_static/index.html",
     "tests/test_trusted_updates.py",
     "tests/test_poller.py",
+    "tests/test_telegram_notification_switch.py",
 })
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,59}\Z")
 _SHA1 = re.compile(r"[a-f0-9]{40}\Z")
