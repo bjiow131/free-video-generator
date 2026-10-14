@@ -2318,6 +2318,21 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
     thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
     if any(not path.is_file() for path in thumbnail_paths.values()):
+        try:
+            from PIL import Image
+            for name in ("front", "side", "back"):
+                destination = thumbnail_paths[name]
+                if destination.is_file():
+                    continue
+                with Image.open(output / (name + ".png")) as source_image:
+                    source_image.thumbnail((96, 144))
+                    source_image.convert("RGB").save(destination, format="JPEG", quality=28, optimize=True)
+        except (ImportError, OSError, ValueError, TypeError) as exc:
+            return {"status": "incomplete", "stage": "validate_review_thumbnails",
+                    "reason": "thumbnail_creation_failed", "error_type": type(exc).__name__,
+                    "thumbnail_candidates": [path.name for path in output.glob("thumb_*")],
+                    "output_folder": str(output)}
+    if any(not path.is_file() for path in thumbnail_paths.values()):
         return {"status": "incomplete", "stage": "validate_review_thumbnails",
                 "reason": "thumbnail_missing", "output_folder": str(output)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
