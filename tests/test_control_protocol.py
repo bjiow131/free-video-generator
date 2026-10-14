@@ -328,3 +328,33 @@ def test_rejects_unsafe_reference_fit_preflight_filename(source_blend):
         parse_task(_task("blender_mia_reference_fit_preflight", {
             "project_name": "mia_source", "source_blend": source_blend,
         }))
+
+
+
+def test_accepts_read_only_mia_asset_passport_with_relative_path():
+    task = parse_task(_task("blender_mia_asset_preflight", {
+        "source_blend": "MIA_REFERENCE_REVIEW/prototype/mia.blend",
+    }))
+    assert task.operation == "blender_mia_asset_preflight"
+    assert task.requires_local_approval is True
+
+
+@pytest.mark.parametrize("source_blend", [
+    "../mia.blend",
+    "MIA/../outside.blend",
+    "/private/mia.blend",
+    "C:/private/mia.blend",
+    "MIA\\\\mia.blend",
+    "MIA//mia.blend",
+    "MIA/mia.blend.json",
+])
+def test_rejects_unsafe_mia_asset_passport_paths(source_blend):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_mia_asset_preflight", {"source_blend": source_blend}))
+
+
+def test_mia_asset_passport_cannot_use_remote_approval():
+    value = json.loads(_task("blender_mia_asset_preflight", {"source_blend": "MIA/mia.blend"}))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError):
+        parse_task(json.dumps(value))
