@@ -2318,22 +2318,40 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
     if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
     thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
+    powershell_code = None
     if any(not path.is_file() for path in thumbnail_paths.values()):
+        safe_root = str(output).replace("'", "''")
+        powershell_code = (
+            "$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Drawing;"
+            "$root='" + safe_root + "';"
+            "foreach($n in @('front','side','back')){"
+            "$src=[System.Drawing.Image]::FromFile((Join-Path $root ($n+'.png')));"
+            "$bmp=New-Object System.Drawing.Bitmap 96,144;"
+            "$g=[System.Drawing.Graphics]::FromImage($bmp);"
+            "$g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic;"
+            "$g.DrawImage($src,0,0,96,144);"
+            "$bmp.Save((Join-Path $root ('thumb_'+$n+'.jpg')),[System.Drawing.Imaging.ImageFormat]::Jpeg);"
+            "$g.Dispose();$bmp.Dispose();$src.Dispose();}"
+        )
         try:
-            from PIL import Image
-            for name in ("front", "side", "back"):
-                destination = thumbnail_paths[name]
-                if destination.is_file():
-                    continue
-                with Image.open(output / (name + ".png")) as source_image:
-                    source_image.thumbnail((96, 144))
-                    source_image.convert("RGB").save(destination, format="JPEG", quality=28, optimize=True)
-        except (ImportError, OSError, ValueError, TypeError) as exc:
-            return {"status": "incomplete", "stage": "validate_review_thumbnails",
-                    "reason": "thumbnail_creation_failed", "error_type": type(exc).__name__,
-                    "thumbnail_candidates": [path.name for path in output.glob("thumb_*")],
-                    "output_folder": str(output)}
+            thumb_proc = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", powershell_code],
+                cwd=str(output), capture_output=True, text=True, timeout=60,
+                check=False, shell=False, stdin=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            thumb_proc = None
+            thumbnail_error = type(exc).__name__
+        else:
+            thumbnail_error = None
     if any(not path.is_file() for path in thumbnail_paths.values()):
+        return {"status": "incomplete", "stage": "validate_review_thumbnails",
+                "reason": "thumbnail_missing_after_windows_conversion",
+                "windows_conversion_return_code": thumb_proc.returncode if thumb_proc else None,
+                "thumbnail_error_type": thumbnail_error,
+                "thumbnail_candidates": [path.name for path in output.iterdir()
+                                         if path.name.lower().startswith("thumb_")],
+                "output_folder": str(output)}
         return {"status": "incomplete", "stage": "validate_review_thumbnails",
                 "reason": "thumbnail_missing", "output_folder": str(output)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
