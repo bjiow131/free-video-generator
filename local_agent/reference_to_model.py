@@ -13,7 +13,7 @@ from typing import Callable, Mapping, Sequence
 
 SCHEMA_VERSION = 1
 _HASH = re.compile(r"^[0-9a-f]{64}$")
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_. -]{0,99}$")
+_NAME = re.compile(r"^[^/\\\\:\x00-\x1f\x7f]{1,100}$")
 
 
 class ReferenceToModelError(ValueError):
