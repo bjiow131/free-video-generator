@@ -2188,7 +2188,7 @@ for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
 scene.render.resolution_x=96;scene.render.resolution_y=144
 scene.render.image_settings.file_format="JPEG";scene.render.image_settings.quality=28
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
- aim(loc);scene.render.filepath=os.path.join(out,"thumb_"+name+".jpg");bpy.ops.render.render(write_still=True)
+ aim(loc);scene.render.filepath=os.path.join(out,"thumb_"+name);bpy.ops.render.render(write_still=True)
 scene.render.resolution_x=600;scene.render.resolution_y=900
 scene.render.image_settings.file_format="PNG"
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
