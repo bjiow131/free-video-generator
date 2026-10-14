@@ -896,6 +896,44 @@ MIA_CODEX_HAIR_REBUILD = False
 MIA_CODEX_FACE_REFINE = True
 MIA_CODEX_PROPORTION_FIT = False
 
+_MIA_SOURCE_POLISH_PROFILES = {
+    'face': {'edits': [], 'hair_rebuild': False, 'face_refine': True, 'proportion_fit': False},
+    'head_jacket': {'edits': [
+        {'object': 'MiaSource_GEO-spring_head', 'kind': 'scale', 'factors': [1.06, 1.0, 1.06],
+         'reason': 'Ограниченная правка ширины и высоты головы по фронтальному референсу'},
+        {'object': 'MiaSource_GEO-spring_jacket', 'kind': 'scale', 'factors': [1.06, 1.0, 1.0],
+         'reason': 'Ограниченная правка ширины куртки в плечах и корпусе'},
+    ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
+    'face_and_fit': {'edits': [
+        {'object': 'MiaSource_GEO-spring_head', 'kind': 'scale', 'factors': [1.06, 1.0, 1.06],
+         'reason': 'Ограниченная правка ширины и высоты головы по фронтальному референсу'},
+        {'object': 'MiaSource_GEO-spring_jacket', 'kind': 'scale', 'factors': [1.06, 1.0, 1.0],
+         'reason': 'Ограниченная правка ширины куртки в плечах и корпусе'},
+    ], 'hair_rebuild': False, 'face_refine': True, 'proportion_fit': False},
+    'eyes': {'edits': [
+        {'object': 'MiaSource_GEO_spring_eye.l', 'kind': 'scale', 'factors': [1.06, 1.0, 1.06],
+         'reason': 'Симметрично усилить размер глаз по фронтальному референсу'},
+        {'object': 'MiaSource_GEO_spring_eye.r', 'kind': 'scale', 'factors': [1.06, 1.0, 1.06],
+         'reason': 'Симметрично усилить размер глаз по фронтальному референсу'},
+    ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
+    'proportions': {'edits': [], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': True},
+}
+
+
+def mia_source_polish_profile(name: str) -> dict[str, Any]:
+    """Return a fixed, reviewable correction set; task data selects only its name."""
+    import copy
+    if not isinstance(name, str) or name not in _MIA_SOURCE_POLISH_PROFILES:
+        raise ValueError('unknown_mia_polish_profile')
+    profile = copy.deepcopy(_MIA_SOURCE_POLISH_PROFILES[name])
+    if profile['edits']:
+        validate_mia_adaptive_plan(
+            {'verdict': 'NEEDS_REVISION', 'differences': ['Проверенная ограниченная правка по референсу'],
+             'edits': profile['edits']},
+            [{'name': edit['object']} for edit in profile['edits']],
+        )
+    return profile
+
 def acquire_mia_study_sources(ws):
     """Download fixed official study donors; never execute their embedded scripts."""
     import requests
@@ -1355,12 +1393,16 @@ def mia_adaptive_ask(reference, folder, inventory, context=''):
     (folder/'astra_correction_plan.json').write_text(json.dumps(reply,ensure_ascii=False,indent=2),encoding='utf-8')
     return reply
 
-def run_mia_adaptive_source(source_project, project_name):
+def run_mia_adaptive_source(source_project, project_name, profile_name='face'):
     from local_agent.blender_locator import find_blender_executable
     from local_agent.path_names import path_identifier_pattern, is_link_or_junction
     valid=path_identifier_pattern(48)
     if any(not isinstance(x,str) or not valid.fullmatch(x) for x in (source_project,project_name)) or source_project==project_name:
         return {'status':'rejected','reason':'invalid_project_identity'}
+    try:
+        profile=mia_source_polish_profile(profile_name)
+    except ValueError as exc:
+        return {'status':'rejected','reason':str(exc)}
     value=os.environ.get('LOCAL_AGENT_WORKSPACE','').strip();blender=find_blender_executable()
     if not value or blender is None:return {'status':'blocked','reason':'workspace_or_blender_missing'}
     ws=Path(value).expanduser().resolve();source=ws/'SOURCE_ADAPTATIONS'/source_project/'mia_spring_source_adapted.blend';root=ws/'SOURCE_ADAPTATIONS'/project_name
@@ -1369,7 +1411,7 @@ def run_mia_adaptive_source(source_project, project_name):
         if any(is_link_or_junction(k) for k in (p,*p.parents)):return {'status':'rejected','reason':'unsafe_path'}
     if not source.is_file() or root.exists():return {'status':'blocked','reason':'source_missing_or_output_exists'}
     if not reference.is_file() or mia_adaptive_digest(reference)!=MIA_ADAPTIVE_REFERENCE_SHA:return {'status':'blocked','reason':'approved_reference_digest_mismatch'}
-    original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=MIA_CODEX_CORRECTION_EDITS;history=[];reason='awaiting_codex_review';latest=None
+    original_hash=mia_adaptive_digest(source);root.mkdir(parents=True);current=source;edits=profile['edits'];history=[];reason='awaiting_codex_review';latest=None
     validate_mia_adaptive_plan({'verdict':'NEEDS_REVISION','differences':['Pinned Codex correction pass'], 'edits':edits},[{'name':e['object']} for e in edits])
     donors=acquire_mia_study_sources(ws)
     (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
@@ -1378,12 +1420,12 @@ def run_mia_adaptive_source(source_project, project_name):
     try:
         # If there are reviewed edits, first render the unchanged input with the
         # very same renderer and cameras, then apply edits to that checkpoint.
-        for i in range(2 if (MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD or MIA_CODEX_FACE_REFINE or MIA_CODEX_PROPORTION_FIT) else 1):
+        for i in range(2 if (edits or profile['hair_rebuild'] or profile['face_refine'] or profile['proportion_fit']) else 1):
             pass_edits=[] if i==0 else MIA_CODEX_CORRECTION_EDITS
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
                 script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
-                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits,'hair_rebuild':MIA_CODEX_HAIR_REBUILD and i==1,'face_refine':MIA_CODEX_FACE_REFINE and i==1,'proportion_fit':MIA_CODEX_PROPORTION_FIT and i==1}),encoding='utf-8')
+                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits,'hair_rebuild':profile['hair_rebuild'] and i==1,'face_refine':profile['face_refine'] and i==1,'proportion_fit':profile['proportion_fit'] and i==1}),encoding='utf-8')
                 proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(cfg)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=900,check=False,shell=False)
             (folder/'blender_stdout.log').write_text((proc.stdout or '')[-200000:],encoding='utf-8')
             if proc.returncode:raise ValueError('blender_exit_'+str(proc.returncode))
@@ -1400,7 +1442,7 @@ def run_mia_adaptive_source(source_project, project_name):
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
         important=[x for x in report['inventory'] if ('miasource' in x['name'].lower() or 'mia_rain' in x['name'].lower() or 'boot_upper' in x['name'].lower() or 'cargo_side' in x['name'].lower()) and not any(k in x['name'].lower() for k in ('teeth','gums','cornea'))]
         compact_inventory=[{'name':x['name'],'vertices':x['vertices'],'world_min':[round(v,5) for v in x['world_min']],'world_max':[round(v,5) for v in x['world_max']]} for x in important]
-        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
+        result={'status':'completed','stage':'codex_source_review','goal_status':reason,'revision_profile':profile_name,'identity_verified':False,'production_ready':False,'reference_sha256':MIA_ADAPTIVE_REFERENCE_SHA,'source_blend_sha256':original_hash,'source_unchanged':mia_adaptive_digest(source)==original_hash,'passes':len(history),'blend_path':str(root/'mia_spring_source_adapted.blend'),'review_dir':str(latest),'report_path':str(root/'adaptive_history.json'),'astra':{'status':'disabled_by_user','provider_request_performed':False},'reviewer':'Codex via GitHub mailbox','geometry_changes':report['changes'],'object_inventory':compact_inventory}
         import base64
         ffmpeg=shutil.which('ffmpeg');thumbs={}
         if ffmpeg:
@@ -1414,7 +1456,7 @@ def run_mia_adaptive_source(source_project, project_name):
         # Preserve donor attribution inherited from the input checkpoint.
         attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
         if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
-        if MIA_CODEX_CORRECTION_EDITS or MIA_CODEX_HAIR_REBUILD or MIA_CODEX_FACE_REFINE or MIA_CODEX_PROPORTION_FIT:
+        if edits or profile['hair_rebuild'] or profile['face_refine'] or profile['proportion_fit']:
             gate=mia_visual_change_gate(root/'pass_0',latest);result['visible_change_gate']=gate
             if not gate['passed']:
                 result.update(status='blocked',goal_status='insufficient_visible_change')
@@ -1561,6 +1603,6 @@ def deliver_mia_adaptive_bundle(root,latest):
     return receipt
 
 
-def polish_saved_source_model(source_project: str, project_name: str) -> dict[str, Any]:
+def polish_saved_source_model(source_project: str, project_name: str, profile_name: str = 'face') -> dict[str, Any]:
     """Render pinned source for Codex review; Astra workshop is not auto-started."""
-    return run_mia_adaptive_source(source_project, project_name)
+    return run_mia_adaptive_source(source_project, project_name, profile_name)
