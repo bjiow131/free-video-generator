@@ -325,7 +325,7 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(report,f,ensure_asci
 '''
 
 
-def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, approved_reference_sha256: str, task_id: str) -> dict:
+def run_reference_fit(project_name: str, source_blend: str, reference_map_file: str, passport_file: str, approved_reference_sha256: str, task_id: str) -> dict:
     """Optimize the original scene in memory and save only an accepted new candidate."""
     if not isinstance(project_name,str) or not _SAFE_PROJECT_RE.fullmatch(project_name):
         return {"status":"rejected","reason":"invalid_project_name"}
@@ -333,6 +333,8 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
         return {"status":"rejected","reason":"invalid_source_blend_filename"}
     if not isinstance(reference_map_file,str) or not _SAFE_FILE_RE.fullmatch(reference_map_file) or not reference_map_file.lower().endswith(".json"):
         return {"status":"rejected","reason":"invalid_reference_map_filename"}
+    if not isinstance(passport_file,str) or not _SAFE_FILE_RE.fullmatch(passport_file) or not passport_file.lower().endswith(".json"):
+        return {"status":"rejected","reason":"invalid_passport_filename"}
     if not isinstance(approved_reference_sha256,str) or not SHA256_RE.fullmatch(approved_reference_sha256):
         return {"status":"rejected","reason":"invalid_approved_reference_sha256"}
     if not isinstance(task_id,str) or not _SAFE_TASK_RE.fullmatch(task_id):
@@ -345,13 +347,14 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
     project=(workspace/project_name).resolve()
     if not project.is_relative_to(workspace) or project==workspace or project.is_symlink():
         return {"status":"rejected","reason":"project_outside_workspace_or_linked"}
-    source=project/source_blend; reference=project/reference_map_file
+    source=project/source_blend; reference=project/reference_map_file; passport=project/passport_file
     suffix=hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:12]
     output=project/f"mia_reference_fit_candidate_{suffix}.blend"; report=project/f"mia_reference_fit_result_{suffix}.json"
-    if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,reference,output,report)):
+    if any(p.is_symlink() or getattr(p,"is_junction",lambda:False)() for p in (source,reference,passport,output,report)):
         return {"status":"rejected","reason":"input_or_output_path_must_not_be_linked"}
     if not source.is_file() or source.stat().st_size==0: return {"status":"blocked","reason":"source_blend_not_found"}
     if not reference.is_file() or reference.stat().st_size==0: return {"status":"blocked","reason":"reference_map_not_found"}
+    if not passport.is_file() or passport.stat().st_size==0: return {"status":"blocked","reason":"geometry_passport_not_found"}
     if output.exists() or report.exists(): return {"status":"blocked","reason":"reference_fit_output_exists_no_overwrite"}
     try:
         reference_data=json.loads(reference.read_text(encoding="utf-8"))
@@ -359,6 +362,10 @@ def run_reference_fit(project_name: str, source_blend: str, reference_map_file: 
     except (OSError,ValueError,UnicodeError) as exc:
         return {"status":"rejected","reason":f"invalid_reference_map:{type(exc).__name__}"}
     source_sha=sha256_file(str(source))
+    try: passport_data=json.loads(passport.read_text(encoding="utf-8"))
+    except (OSError,ValueError,UnicodeError): return {"status":"rejected","reason":"geometry_passport_unreadable"}
+    if passport_data.get("status")!="completed" or passport_data.get("reference_fit_ready") is not True or passport_data.get("source_sha256")!=source_sha:
+        return {"status":"blocked","reason":"geometry_passport_not_ready_or_source_mismatch"}
     try:
         with tempfile.TemporaryDirectory(prefix=".mia-reference-fit-",dir=project) as temp:
             script=Path(temp)/"reference_fit.py"; script.write_text(_BLENDER_FIT_SCRIPT,encoding="utf-8")
@@ -444,5 +451,6 @@ def run_reference_fit_preflight(project_name: str, source_blend: str, task_id: s
     if sha256_file(str(source))!=source_sha or result.get("source_sha256")!=source_sha:
         return {"status":"failed","reason":"source_blend_changed_during_read_only_passport"}
     result["task_id"]=task_id
+    result["passport_file"]=report.name
     result["reference_fit_ready"] = bool(result.get("scipy_version") and len(result.get("cameras",[]))>=2 and any(mesh.get("shape_keys") for mesh in result.get("mesh_objects",[])))
     return result
