@@ -49,7 +49,7 @@ def test_projection_residuals_skip_occluded_points_and_weight_confidence():
     })
     assert len(residuals) == 4
     assert residuals[0] == pytest.approx(0.1 / 2**0.5)
-    assert residuals[2] == pytest.approx(0.2 / 4)
+    assert residuals[2] == pytest.approx(0.2 * (0.25 / 2) ** 0.5)
     assert rms_pixel_error(residuals, 1000, 1000) > 0
 
 
