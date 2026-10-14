@@ -54,12 +54,19 @@ def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     return "pending_delivery" if task_id in pending_task_ids else "processed"
 
 
+def _install_agent_requirements(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Install the repository-pinned local agent requirements; no caller paths or commands."""
+    from local_agent.dependency_installer import install_local_agent_requirements
+    return install_local_agent_requirements(ROOT, sys.executable)
+
+
 SUPPORTED_HANDLERS = {
     "doctor": doctor,
     "preflight": preflight,
     "status": status,
     "logs": tail_logs,
     "test": run_tests,
+    "install_local_agent_requirements": _install_agent_requirements,
 }
 
 
