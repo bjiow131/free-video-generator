@@ -2185,8 +2185,8 @@ def aim(loc):
  cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
-scene.render.resolution_x=160;scene.render.resolution_y=240
-scene.render.image_settings.file_format="JPEG";scene.render.image_settings.quality=45
+scene.render.resolution_x=96;scene.render.resolution_y=144
+scene.render.image_settings.file_format="JPEG";scene.render.image_settings.quality=28
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,"thumb_"+name+".jpg");bpy.ops.render.render(write_still=True)
 scene.render.resolution_x=600;scene.render.resolution_y=900
@@ -2317,7 +2317,7 @@ bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidat
     if hashlib.sha256(glb.read_bytes()).hexdigest() != glb_sha:
         return {"status": "error", "reason": "generated_mesh_changed_during_review"}
     thumbnail_paths = {name: output / ("thumb_" + name + ".jpg") for name in ("front", "side", "back")}
-    if any(not path.is_file() or path.stat().st_size > 12000 for path in thumbnail_paths.values()):
+    if any(not path.is_file() or path.stat().st_size > 9000 for path in thumbnail_paths.values()):
         return {"status": "incomplete", "stage": "validate_review_thumbnails",
                 "reason": "thumbnail_missing_or_too_large", "output_folder": str(output)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
