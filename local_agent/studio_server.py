@@ -1236,6 +1236,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                     "identity_verified": False, "sent": [], "failed": []}
         url = "https://api.telegram.org/bot" + token + "/sendPhoto"
         sent = []
+        sent_sha256 = {}
         failed = []
         for view in views:
             if view in previous_sent:
@@ -1254,7 +1255,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 try:
                     response = requests.post(
                         url,
-                        data={"chat_id": chat, "caption": "Мия: черновая 3D-модель • " + view
+                        data={"chat_id": chat, "caption": "Мия: черновая 3D-модель • " + view + " • " + task_id
                               + " • требуется проверка внешности; не анимация"},
                         files={"photo": (view + ".png", stream, "image/png")},
                         timeout=(8, 30), allow_redirects=False)
@@ -1265,6 +1266,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                     valid = False
             if valid:
                 sent.append(view)
+                sent_sha256[view] = hashlib.sha256(file.read_bytes()).hexdigest()
             else:
                 failed.append(view)
         delivered_views = list(dict.fromkeys(previous_sent + sent))
@@ -1285,6 +1287,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
         return {"status": "delivered" if len(delivered_views) == 4 else
                 "partial" if delivered_views else "failed", "sent": sent,
                 "previously_sent": previous_sent, "failed": failed,
+                "sent_file_sha256": sent_sha256,
                 "transport": "direct_telegram_multipart",
                 "note": "The configured text relay does not yet support photo attachments."
                         if telegram_transport_settings()["use_relay"] and failed else ""}
