@@ -203,12 +203,12 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
             raise ProtocolError("ReferenceFit preflight source_blend must be a safe .blend basename.")
     if value["operation"] == "blender_mia_reference_fit":
         args = value["arguments"]
-        required = {"project_name", "source_blend", "reference_map_file", "approved_reference_sha256"}
+        required = {"project_name", "source_blend", "reference_map_file", "passport_file", "approved_reference_sha256"}
         if set(args) != required:
-            raise ProtocolError("blender_mia_reference_fit requires project_name, source_blend, reference_map_file, and approved_reference_sha256.")
+            raise ProtocolError("blender_mia_reference_fit requires project_name, source_blend, reference_map_file, passport_file, and approved_reference_sha256.")
         if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
             raise ProtocolError("ReferenceFit project_name must use safe project-name characters.")
-        for key, suffix in (("source_blend", ".blend"), ("reference_map_file", ".json")):
+        for key, suffix in (("source_blend", ".blend"), ("reference_map_file", ".json"), ("passport_file", ".json")):
             name = args[key]
             if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}" + re.escape(suffix), name):
                 raise ProtocolError(f"ReferenceFit {key} must be a safe basename ending in {suffix}.")
