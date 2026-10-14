@@ -1446,7 +1446,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
     "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_hunyuan3d_mv_trial", "mia_hunyuan3d_mv_finalize", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
+    "restart_agent", "telegram_disable_outbound", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_hunyuan3d_mv_trial", "mia_hunyuan3d_mv_finalize", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
 
@@ -3060,6 +3060,10 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             if task.operation == "restart_agent":
                 details = _request_restart_and_open_studio()
                 details.update({"status":"completed","reason":"controlled_restart_requested"})
+            elif task.operation == "telegram_disable_outbound":
+                from local_agent.studio_server import telegram_set_notifications
+                details = telegram_set_notifications({"enabled": False})
+                details["status"] = "completed"
             elif task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"], task.task_id)
             elif task.operation == "blender_forest_preview":
