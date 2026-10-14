@@ -2274,7 +2274,7 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     if blender is None or not blender.is_file():
         return {"status": "blocked", "reason": "blender_missing"}
     glb_sha = hashlib.sha256(glb.read_bytes()).hexdigest()
-    review = output / ("fast_rig_prototype" if fast_rig else ("profilefit" if fit_profile else "color_review"))
+    review = output / ("fast_rig_prototype_wave2" if fast_rig else ("profilefit" if fit_profile else "color_review"))
     if is_link_or_junction(review):
         return {"status": "blocked", "reason": "unsafe_review_path"}
     review.mkdir(parents=True, exist_ok=True)
@@ -2411,8 +2411,8 @@ if fast_rig:
   pb=arm.pose.bones[name];pb.rotation_mode="XYZ";pb.rotation_euler=(0,0,0)
   pb.keyframe_insert(data_path="rotation_euler",frame=1)
  scene.frame_set(12)
- arm.pose.bones["upper_arm.L"].rotation_euler[0]=0.85
- arm.pose.bones["forearm.L"].rotation_euler[0]=0.35
+ arm.pose.bones["upper_arm.L"].rotation_euler[2]=1.15
+ arm.pose.bones["forearm.L"].rotation_euler[2]=0.45
  arm.pose.bones["head"].rotation_euler[2]=0.10
  for name in ("upper_arm.L","forearm.L","head"):
   arm.pose.bones[name].keyframe_insert(data_path="rotation_euler",frame=12)
@@ -2543,7 +2543,7 @@ if fit_profile or fast_rig:
             "fast_rig_prototype": fast_rig,
             "fast_rig_report_path": str(review / "fast_rig_report.json") if fast_rig else None,
             "animation_exported": bool(fast_rig),
-            "validation_note": ("Quick armature prototype with automatic weights and a wave action; no production rig claimed."
+            "validation_note": ("Wave v2 pose uses shoulder and elbow swing; prototype only, no production rig claimed."
                                 if fast_rig else ("Bounded multiview cross-section fit; source GLB preserved."
                                 if fit_profile else "Existing generated GLB reused; no model inference was repeated."))}
 
