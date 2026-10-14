@@ -23,7 +23,7 @@ from local_agent.control_protocol import REMOTE_APPROVABLE_OPERATIONS
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
-from local_agent.result_outbox import ResultOutbox
+from local_agent.result_outbox import ResultOutbox, ResultOutboxError
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -836,6 +836,12 @@ def main() -> int:
                 return 0
             except QueueTransportError as exc:
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
+                time.sleep(backoff)
+                backoff = min(max(interval, backoff * 2), 300)
+            except ResultOutboxError as exc:
+                # Invalid or conflicting local results are retained for diagnosis.
+                # Keep the singleton alive so transient filesystem issues can recover.
+                print(f"Local result outbox error: {type(exc).__name__}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError) as exc:
