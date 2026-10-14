@@ -199,7 +199,7 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         if not isinstance(args["project_name"], str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
             raise ProtocolError("ReferenceFit preflight project_name must use safe project-name characters.")
         name = args["source_blend"]
-        if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}\\.blend", name):
+        if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}[.]blend", name):
             raise ProtocolError("ReferenceFit preflight source_blend must be a safe .blend basename.")
     if value["operation"] == "blender_mia_reference_fit":
         args = value["arguments"]
