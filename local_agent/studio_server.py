@@ -914,22 +914,64 @@ def _telegram_call(token: str, method: str, data: dict, *, timeout: int = 10) ->
     """Fixed HTTPS origin, fixed allowlisted Telegram Bot API methods."""
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
-    if method not in ("getMe", "getUpdates", "sendMessage"):
+    import base64
+    import binascii
+    if method not in ("getMe", "getUpdates", "sendMessage", "sendPhoto"):
         raise TelegramAlertError("Недопустимая операция Telegram")
     if not isinstance(token, str) or not _TELEGRAM_TOKEN_RE.fullmatch(token):
         raise TelegramAlertError("Неверный формат токена Telegram-бота")
-    payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    content_type = "application/json"
+    if method == "sendPhoto":
+        if (not isinstance(data, dict)
+                or set(data) != {"chat_id", "caption", "filename", "photo_base64"}
+                or not re.fullmatch(r"-?\d{1,20}", str(data.get("chat_id", "")))
+                or not isinstance(data.get("caption"), str) or len(data["caption"]) > 800
+                or data.get("filename") not in {"front.jpg", "front.png"}
+                or not isinstance(data.get("photo_base64"), str)
+                or len(data["photo_base64"]) > 11_185_000):
+            raise TelegramAlertError("Некорректные параметры изображения Telegram")
+        try:
+            photo = base64.b64decode(data["photo_base64"], validate=True)
+        except (ValueError, binascii.Error):
+            raise TelegramAlertError("Некорректное изображение Telegram") from None
+        if not 64 <= len(photo) <= 8_000_000:
+            raise TelegramAlertError("Размер изображения Telegram вне допустимого диапазона")
+        png = photo.startswith(b"\x89PNG\r\n\x1a\n")
+        jpeg = photo.startswith(b"\xff\xd8\xff")
+        if (data["filename"] == "front.png" and not png) or (data["filename"] == "front.jpg" and not jpeg):
+            raise TelegramAlertError("Формат изображения Telegram не совпадает с именем файла")
+        if not telegram_transport_settings()["use_relay"]:
+            boundary = "----OctavaTelegram" + uuid.uuid4().hex
+            fields = [("chat_id", str(data["chat_id"])), ("caption", data["caption"])]
+            pieces = []
+            for name, value in fields:
+                pieces.extend([f"--{boundary}\r\n".encode(),
+                               f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                               value.encode("utf-8"), b"\r\n"])
+            mime = "image/png" if png else "image/jpeg"
+            pieces.extend([f"--{boundary}\r\n".encode(),
+                           f'Content-Disposition: form-data; name="photo"; filename="{data["filename"]}"\r\n'.encode(),
+                           f"Content-Type: {mime}\r\n\r\n".encode(), photo, b"\r\n",
+                           f"--{boundary}--\r\n".encode()])
+            payload = b"".join(pieces)
+            content_type = "multipart/form-data; boundary=" + boundary
+        else:
+            payload = json.dumps({"token": token, "method": method, "params": data},
+                                 ensure_ascii=False).encode("utf-8")
+    else:
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
     if telegram_transport_settings()["use_relay"]:
         # Separate owner's HTTPS service is an explicit local opt-in. Unlike the
         # direct Telegram route, Render receives the bot token and message body.
         url = _TELEGRAM_RELAY_URL
         timeout = max(timeout, 45)  # Free Render services can cold-start slowly.
-        payload = json.dumps({"token": token, "method": method, "params": data},
-                             ensure_ascii=False).encode("utf-8")
+        if method != "sendPhoto":
+            payload = json.dumps({"token": token, "method": method, "params": data},
+                                 ensure_ascii=False).encode("utf-8")
     else:
         url = "https://api.telegram.org/bot" + token + "/" + method
     request = Request(url, method="POST", data=payload,
-                      headers={"Content-Type": "application/json"})
+                      headers={"Content-Type": content_type})
     try:
         with urlopen(request, timeout=timeout) as response:
             raw = response.read(262145)
@@ -1237,12 +1279,12 @@ def find_recent_duplicate(project: Path, review: Path) -> dict[str, object] | No
 
 
 def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict:
-    """Best-effort delivery of fixed, previously rendered PNG stills.
+    """Deliver only the fixed frontal PNG from a completed visual review.
 
     The filenames, target bot/chat and root path are fixed. A remote mailbox
     request never supplies paths, URLs, recipients or media bytes.
-    Direct Telegram multipart upload is used; the optional JSON-only Render
-    relay cannot forward multipart images. All originals remain local.
+    Photos use the direct Bot API or the explicit Render relay, depending on
+    local transport settings. All originals remain local.
     """
     if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", task_id):
         return {"status": "blocked", "reason": "invalid_review_id"}
@@ -1261,11 +1303,11 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 return {"status": "blocked", "reason": "unsafe_review_directory"}
         if not review.is_dir() or not review.resolve().is_relative_to(base):
             return {"status": "blocked", "reason": "review_directory_missing"}
-        # A repeated task ID or nearly unchanged rendered image must not spam Telegram.
+        # A repeated task ID must not resend; every new completed task gets its own image.
         marker = review / ".telegram_delivery.json"
         if marker.is_symlink() or getattr(marker, "is_junction", lambda: False)():
             return {"status": "blocked", "reason": "unsafe_telegram_marker"}
-        views = ("front", "three_quarter", "side", "back")
+        views = ("front",)
         previous_sent = []
         if marker.exists():
             if not marker.is_file() or marker.stat().st_size > 4096:
@@ -1281,14 +1323,6 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 return {"status": "blocked", "reason": "invalid_delivery_receipt"}
             if len(previous_sent) == len(views):
                 return {"status": "already_delivered", "sent": [], "failed": []}
-        duplicate = None if previous_sent else find_recent_duplicate(project, review)
-        if duplicate:
-            return {"status": "suppressed_duplicate",
-                    "reason": "unchanged_mia_front_render",
-                    "duplicate_of": duplicate["matched_review"],
-                    "render_delta": duplicate["average_abs_byte_delta"],
-                    "identity_verified": False, "sent": [], "failed": []}
-        url = "https://api.telegram.org/bot" + token + "/sendPhoto"
         sent = []
         failed = []
         for view in views:
@@ -1300,23 +1334,20 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 failed.append(view)
                 continue
             # Validate PNG signature and avoid accidental unrelated files.
-            with file.open("rb") as stream:
-                if stream.read(8) != b"\x89PNG\r\n\x1a\n":
-                    failed.append(view)
-                    continue
-                stream.seek(0)
-                try:
-                    response = requests.post(
-                        url,
-                        data={"chat_id": chat, "caption": "Мия: черновая 3D-модель • " + view
-                              + " • требуется проверка внешности; не анимация"},
-                        files={"photo": (view + ".png", stream, "image/png")},
-                        timeout=(8, 30), allow_redirects=False)
-                    valid = (response.status_code == 200
-                             and response.headers.get("Content-Type", "").startswith("application/json")
-                             and response.json().get("ok") is True)
-                except (requests.RequestException, ValueError, TypeError):
-                    valid = False
+            photo = file.read_bytes()
+            if not photo.startswith(b"\x89PNG\r\n\x1a\n"):
+                failed.append(view)
+                continue
+            try:
+                _telegram_call(token, "sendPhoto", {
+                    "chat_id": chat,
+                    "caption": "Мия: фронтальный вид черновой 3D-модели • требуется проверка внешности",
+                    "filename": "front.png",
+                    "photo_base64": base64.b64encode(photo).decode("ascii"),
+                }, timeout=35)
+                valid = True
+            except TelegramAlertError:
+                valid = False
             if valid:
                 sent.append(view)
             else:
@@ -1336,12 +1367,59 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
             except OSError:
                 return {"status": "partial", "sent": sent, "failed": failed,
                         "reason": "delivery_marker_write_failed"}
-        return {"status": "delivered" if len(delivered_views) == 4 else
+        return {"status": "delivered" if len(delivered_views) == 1 else
                 "partial" if delivered_views else "failed", "sent": sent,
                 "previously_sent": previous_sent, "failed": failed,
-                "transport": "direct_telegram_multipart",
-                "note": "The configured text relay does not yet support photo attachments."
-                        if telegram_transport_settings()["use_relay"] and failed else ""}
+                "views_requested": ["front"],
+                "transport": "render_relay" if telegram_transport_settings()["use_relay"] else "direct_telegram_multipart"}
+    except (OSError, RuntimeError, ValueError, TelegramAlertError):
+        return {"status": "failed", "reason": "telegram_photo_delivery_unavailable"}
+
+
+def telegram_send_mia_front_thumbnail(task_id: str, jpeg_base64: str) -> dict:
+    """Send a bounded front JPEG embedded in a completed Mia workflow result."""
+    import base64
+    import binascii
+    if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", task_id):
+        return {"status": "blocked", "reason": "invalid_review_id"}
+    if not isinstance(jpeg_base64, str) or len(jpeg_base64) > 2_800_000:
+        return {"status": "blocked", "reason": "front_thumbnail_missing_or_oversized"}
+    try:
+        photo = base64.b64decode(jpeg_base64, validate=True)
+    except (ValueError, binascii.Error):
+        return {"status": "blocked", "reason": "front_thumbnail_invalid_encoding"}
+    if not 64 <= len(photo) <= 2_000_000 or not photo.startswith(b"\xff\xd8\xff"):
+        return {"status": "blocked", "reason": "front_thumbnail_invalid_jpeg"}
+    try:
+        token, chat = _telegram_credentials()
+        if not token or not chat:
+            return {"status": "not_configured"}
+        if not telegram_notifications_enabled():
+            return {"status": "disabled_in_local_studio"}
+        receipt_root = _TELEGRAM_OUTBOX.parent / "telegram_photo_receipts"
+        if receipt_root.is_symlink() or getattr(receipt_root, "is_junction", lambda: False)():
+            return {"status": "blocked", "reason": "unsafe_receipt_directory"}
+        receipt_root.mkdir(parents=True, exist_ok=True)
+        receipt = receipt_root / (hashlib.sha256(task_id.encode("utf-8")).hexdigest() + ".json")
+        if receipt.exists():
+            if receipt.is_symlink() or receipt.stat().st_size > 2048:
+                return {"status": "blocked", "reason": "invalid_delivery_receipt"}
+            stored = json.loads(receipt.read_text("utf-8"))
+            if stored == {"task_id": task_id, "view": "front", "status": "delivered"}:
+                return {"status": "already_delivered", "sent": []}
+            return {"status": "blocked", "reason": "delivery_receipt_conflict"}
+        _telegram_call(token, "sendPhoto", {
+            "chat_id": chat,
+            "caption": "Мия: фронтальный вид после прогона " + task_id[:48],
+            "filename": "front.jpg",
+            "photo_base64": jpeg_base64,
+        }, timeout=35)
+        temp = receipt.with_suffix(".tmp")
+        temp.write_text(json.dumps({"task_id": task_id, "view": "front", "status": "delivered"}),
+                        encoding="utf-8")
+        temp.replace(receipt)
+        return {"status": "delivered", "sent": ["front"],
+                "transport": "render_relay" if telegram_transport_settings()["use_relay"] else "direct_telegram_multipart"}
     except (OSError, RuntimeError, ValueError, TelegramAlertError):
         return {"status": "failed", "reason": "telegram_photo_delivery_unavailable"}
 

@@ -63,7 +63,7 @@ def test_find_duplicate_for_separate_review_jobs(tmp_path):
     assert match["duplicate"] is True
 
 
-def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path):
+def test_telegram_sends_front_for_each_new_review_but_deduplicates_task_id(monkeypatch, tmp_path):
     original = make_review(tmp_path, "model_first", (90, 80, 70), b"initial")
 
     monkeypatch.setattr(studio, "_telegram_credentials",
@@ -72,21 +72,17 @@ def test_telegram_sends_first_review_and_suppresses_repeat(monkeypatch, tmp_path
     monkeypatch.setattr(studio, "telegram_transport_settings",
                         lambda: {"use_relay": False})
     posted = []
-    def post(*args, **kwargs):
-        posted.append(kwargs["files"]["photo"][0])
-        return SimpleNamespace(status_code=200,
-                               headers={"Content-Type": "application/json"},
-                               json=lambda: {"ok": True})
-    import requests
-    monkeypatch.setattr(requests, "post", post)
+    def send(token, method, data, *, timeout=10):
+        posted.append(data["filename"])
+        return {"ok": True}
+    monkeypatch.setattr(studio, "_telegram_call", send)
     result = studio.telegram_send_mia_review_photos(tmp_path, "model_first")
     assert result["status"] == "delivered"
-    assert len(posted) == 4
+    assert posted == ["front.png"]
     repeat = make_review(tmp_path, "model_again", (90, 80, 70), b"rerender")
     result2 = studio.telegram_send_mia_review_photos(tmp_path, "model_again")
-    assert result2["status"] == "suppressed_duplicate"
-    assert result2["duplicate_of"] == "model_first"
-    assert len(posted) == 4
+    assert result2["status"] == "delivered"
+    assert posted == ["front.png", "front.png"]
     assert studio.telegram_send_mia_review_photos(tmp_path, "model_first")["status"] == "already_delivered"
     assert (original / "front.png").is_file()
     assert (repeat / "front.png").is_file()
@@ -112,22 +108,21 @@ def test_newer_unreviewed_render_does_not_suppress_first(tmp_path):
     assert find_recent_duplicate(first.parent, later)["matched_review"] == "first"
 
 
-def test_partial_delivery_retries_only_failed_views(monkeypatch, tmp_path):
-    import requests
+def test_partial_front_delivery_retries_and_records_only_front(monkeypatch, tmp_path):
     import json
     folder = make_review(tmp_path, "partial", (80, 90, 70))
     monkeypatch.setattr(studio, "_telegram_credentials", lambda: ("123:" + "A"*32, "123"))
     monkeypatch.setattr(studio, "telegram_notifications_enabled", lambda: True)
     monkeypatch.setattr(studio, "telegram_transport_settings", lambda: {"use_relay":False})
     calls = []
-    def post(*args, **kwargs):
-        view = kwargs["files"]["photo"][0]
-        calls.append(view)
-        ok = view != "side.png" or len(calls) > 4
-        return SimpleNamespace(status_code=200, headers={"Content-Type":"application/json"}, json=lambda:{"ok":ok})
-    monkeypatch.setattr(requests, "post", post)
-    assert studio.telegram_send_mia_review_photos(tmp_path,"partial")["status"] == "partial"
+    def send(token, method, data, *, timeout=10):
+        calls.append(data["filename"])
+        if len(calls) == 1:
+            raise studio.TelegramAlertError("simulated delivery failure")
+        return {"ok": True}
+    monkeypatch.setattr(studio, "_telegram_call", send)
+    assert studio.telegram_send_mia_review_photos(tmp_path,"partial")["status"] == "failed"
     assert studio.telegram_send_mia_review_photos(tmp_path,"partial")["status"] == "delivered"
-    assert calls == ["front.png", "three_quarter.png", "side.png", "back.png", "side.png"]
+    assert calls == ["front.png", "front.png"]
     receipt=json.loads((folder/".telegram_delivery.json").read_text())
-    assert set(receipt["views_sent"])=={"front","side","back","three_quarter"}
+    assert set(receipt["views_sent"])=={"front"}

@@ -1040,6 +1040,34 @@ def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
     return "pending_delivery" if task_id in pending_task_ids else "processed"
 
+
+_MIA_VISUAL_OPERATIONS = frozenset({
+    "blender_mia_source_neutral", "blender_mia_source_details",
+    "blender_mia_source_polish", "blender_mia_source_recover",
+    "blender_mia_source_adapt", "blender_source_review",
+    "blender_mia_spring_rig_transfer", "mia_3d_reconstruction_preflight",
+    "mia_model_review", "mia_astra_review", "mia_astra_pass_one",
+    "mia_identity_pass_two", "mia_hair_identity_pass_three",
+    "mia_astra_single_maxfix", "mia_astra_autoloop_100",
+    "mia_astra_autoloop_100_v2", "mia_2p5d_prototype",
+})
+
+
+def _attach_mia_front_photo_delivery(operation: str, task_id: str, details: dict[str, Any]) -> None:
+    """Attach an honest delivery status for the completed Mia front render."""
+    if (operation not in _MIA_VISUAL_OPERATIONS
+            or details.get("status") != "completed"
+            or "telegram_photo_delivery" in details):
+        return
+    thumbnails = details.get("thumbnail_jpeg_base64")
+    front = thumbnails.get("front") if isinstance(thumbnails, dict) else None
+    from local_agent.studio_server import telegram_send_mia_front_thumbnail
+    details["telegram_photo_delivery"] = (
+        telegram_send_mia_front_thumbnail(task_id, front)
+        if isinstance(front, str) else
+        {"status": "not_available", "reason": "completed_run_has_no_front_thumbnail"}
+    )
+
 def _manifest_collision_result_id(task_id: str, manifest_sha: str) -> str:
     """Deterministic, isolated result key for a rejected immutable-ID collision.
 
@@ -2874,6 +2902,11 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 details = _run_luna_mia_draft_recovery()
             else:
                 details = handler()
+            # Every completed Mia visual run should put its frontal render in
+            # the paired Telegram chat. The task result remains the source of
+            # truth; delivery failures are recorded and never reported as sent.
+            if isinstance(details, dict):
+                _attach_mia_front_photo_delivery(task.operation, task.task_id, details)
             result_status = details.get("status", "completed")
             result = {"task_id": task.task_id, "status": result_status, "details": details}
         except Exception as exc:  # Keep error details bounded and avoid leaking tracebacks.
