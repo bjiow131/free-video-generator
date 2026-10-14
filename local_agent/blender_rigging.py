@@ -23,6 +23,21 @@ _REAL_SUBPROCESS_RUN = subprocess.run
 
 PROJECT_RE = path_identifier_pattern(48)
 
+
+def _make_review_thumbnail(ffmpeg: str, source: Path, target: Path, *, detailed: bool = False, quality: int = 5) -> bool:
+    """Create a readable front review image while keeping secondary views small."""
+    scale = "scale=720:-2:flags=lanczos" if detailed else "scale=200:-2:flags=lanczos"
+    q = 2 if detailed else quality
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(source),
+             "-vf", scale, "-frames:v", "1", "-q:v", str(q), str(target)],
+            capture_output=True, timeout=30, check=False, shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0 and target.is_file() and 64 <= target.stat().st_size <= 1_800_000
+
 _RIG_SCRIPT = r'''
 import bpy, json, os, sys
 args = sys.argv[sys.argv.index("--") + 1:]
@@ -710,8 +725,7 @@ def neutralize_saved_source_model(source_project: str, project_name: str) -> dic
     if ffmpeg:
         for name in ('front','face','side'):
             p=out/(name+'_thumb.jpg')
-            proc=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(out/(name+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','5',str(p)],capture_output=True,timeout=30,check=False,shell=False)
-            if not proc.returncode and p.is_file():thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
+            if _make_review_thumbnail(ffmpeg,out/(name+'.png'),p,detailed=name=='front',quality=5):thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
     astra=_critique_saved_source_variant(reference,out)
     return {'status':'completed','stage':data['stage'],'source_geometry_reused':True,'source_blend_sha256':digest,'source_unchanged':True,'blend_path':data['blend_path'],'report_path':str(report),'facial_state_before':data['facial_state_before'],'saved_neutral_values':data['saved_neutral_values'],'facial_shape_deltas':data['facial_shape_deltas'],'thumbnail_jpeg_base64':thumbs,'astra':astra,'identity_verified':False,'production_ready':False,'telegram_photo_sent':False}
 
@@ -785,8 +799,8 @@ def refine_saved_source_details(source_project: str, project_name: str) -> dict[
     ffmpeg=shutil.which('ffmpeg');thumbs={}
     if ffmpeg:
         for name in ('front','face','side','back'):
-            p=out/(name+'_thumb.jpg');proc=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(out/(name+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','5',str(p)],capture_output=True,timeout=30,check=False,shell=False)
-            if not proc.returncode and p.is_file():thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
+            p=out/(name+'_thumb.jpg')
+            if _make_review_thumbnail(ffmpeg,out/(name+'.png'),p,detailed=name=='front',quality=5):thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
     astra=_critique_saved_source_variant(reference,out)
     comparison=out/'comparison.png';delivery={'status':'not_sent'}
     if ffmpeg:
@@ -836,8 +850,8 @@ def _legacy_fixed_polish_saved_source_model(source_project: str, project_name: s
     ffmpeg=shutil.which('ffmpeg');thumbs={}
     if ffmpeg:
         for name in ('front','face','side'):
-            p=out/(name+'_thumb.jpg');result=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(out/(name+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','5',str(p)],capture_output=True,timeout=30,check=False,shell=False)
-            if not result.returncode and p.is_file():thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
+            p=out/(name+'_thumb.jpg')
+            if _make_review_thumbnail(ffmpeg,out/(name+'.png'),p,detailed=name=='front',quality=5):thumbs[name]=base64.b64encode(p.read_bytes()).decode('ascii')
     astra=_critique_saved_source_variant(reference,out)
     attribution=out/'ATTRIBUTION_AND_STATUS.txt'
     attribution.write_text('UNAPPROVED MIA SOURCE DRAFT — not a production release.\nIdentity requires user visual acceptance. Pilot weights and advanced facial rig are not production approved.\n\nSpring Rig (CC-BY) Blender Foundation | studio.blender.org\nhttps://studio.blender.org/characters/spring/v1/\nRain Rig (CC) Blender Foundation | studio.blender.org\nhttps://studio.blender.org/characters/rain/v3/\nDonor licenses: CC-BY; https://creativecommons.org/licenses/by/4.0/\nMia original approved reference remains private; no rights in that reference are granted by donor attribution.\n',encoding='utf-8')
@@ -1392,8 +1406,7 @@ def run_mia_adaptive_source(source_project, project_name):
         if ffmpeg:
             for view in ('front','face','side','back'):
                 thumb=latest/(view+'_codex.jpg')
-                p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(latest/(view+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','6',str(thumb)],capture_output=True,timeout=30,check=False,shell=False)
-                if p.returncode==0 and thumb.is_file():thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
+                if _make_review_thumbnail(ffmpeg,latest/(view+'.png'),thumb,detailed=view=='front',quality=6):thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
         result['thumbnail_jpeg_base64']=thumbs
         if not result['source_unchanged']:raise ValueError('original_source_changed')
         result['study_sources']=donors
@@ -1519,8 +1532,8 @@ def run_workshop(source_project, project_name):
     thumbs={};ffmpeg=shutil.which('ffmpeg')
     if latest and ffmpeg:
         for view in ('front','face','side','back'):
-            thumb=latest/(view+'_codex.jpg');p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(latest/(view+'.png')),'-vf','scale=200:-1','-frames:v','1','-q:v','6',str(thumb)],capture_output=True,timeout=30,check=False,shell=False)
-            if p.returncode==0 and thumb.is_file():thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
+            thumb=latest/(view+'_codex.jpg')
+            if _make_review_thumbnail(ffmpeg,latest/(view+'.png'),thumb,detailed=view=='front',quality=6):thumbs[view]=base64.b64encode(thumb.read_bytes()).decode('ascii')
     result['thumbnail_jpeg_base64']=thumbs
     (root/'adaptive_result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     return result

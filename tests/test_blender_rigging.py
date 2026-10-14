@@ -1,8 +1,49 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from local_agent import blender_rigging as rigging
+
+
+def test_review_front_thumbnail_keeps_render_resolution_and_quality(monkeypatch, tmp_path):
+    calls = []
+
+    class Result:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"\xff\xd8\xff" + b"x" * 100)
+        return Result()
+
+    monkeypatch.setattr(rigging.subprocess, "run", fake_run)
+    source = tmp_path / "front.png"
+    source.write_bytes(b"png")
+    target = tmp_path / "front.jpg"
+
+    assert rigging._make_review_thumbnail("ffmpeg", source, target, detailed=True)
+    assert calls[0][calls[0].index("-vf") + 1] == "scale=720:-2:flags=lanczos"
+    assert calls[0][calls[0].index("-q:v") + 1] == "2"
+
+
+def test_review_secondary_thumbnail_stays_compact(monkeypatch, tmp_path):
+    calls = []
+
+    class Result:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"\xff\xd8\xff" + b"x" * 100)
+        return Result()
+
+    monkeypatch.setattr(rigging.subprocess, "run", fake_run)
+    source = tmp_path / "side.png"
+    source.write_bytes(b"png")
+    assert rigging._make_review_thumbnail("ffmpeg", source, tmp_path / "side.jpg", quality=6)
+    assert calls[0][calls[0].index("-vf") + 1] == "scale=200:-2:flags=lanczos"
+    assert calls[0][calls[0].index("-q:v") + 1] == "6"
 
 
 def test_skeleton_requires_local_configuration(monkeypatch):
