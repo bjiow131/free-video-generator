@@ -2034,7 +2034,7 @@ def _run_mia_hunyuan3d_mv_trial(arguments: dict[str, Any], task_id: str) -> dict
           "--format=csv,noheader,nounits"],capture_output=True,text=True,
           timeout=15,check=False,shell=False,stdin=subprocess.DEVNULL)
         fields=[v.strip() for v in gpu.stdout.splitlines()[0].split(",")]
-        if gpu.returncode or len(fields)<3 or int(fields[1])<7000:
+        if gpu.returncode or len(fields)<3 or int(fields[1])<7000 or int(fields[2])<6000:
             return {"status":"blocked","reason":"gpu_vram_below_trial_gate"}
         hardware={"name":fields[0][:100],"vram_mib":int(fields[1]),
                   "free_vram_mib":int(fields[2])}
