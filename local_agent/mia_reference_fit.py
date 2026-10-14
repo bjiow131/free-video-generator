@@ -527,6 +527,10 @@ def run_reference_to_model_fit(project_name: str, source_blend: str, reference_m
     unsupported=[c.name for c in spec.controls if c.kind!="shape_key"]
     if unsupported:
         return {"status":"blocked","reason":"blender_runner_initially_supports_shape_key_controls_only","unsupported_controls":unsupported}
+    if len(spec.views) < 2:
+        return {"status":"blocked","reason":"at_least_two_consistent_views_required_for_projection_fit"}
+    if not spec.controls:
+        return {"status":"blocked","reason":"no_bounded_controls_in_reference_spec"}
     if any(view.contour for view in spec.views):
         return {"status":"blocked","reason":"blender_runner_does_not_yet_evaluate_silhouette_samples"}
     legacy={"schema_version":1,"coordinate_convention":"camera_frame_bottom_left_normalized",
