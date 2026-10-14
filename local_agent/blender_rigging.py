@@ -943,6 +943,28 @@ def mia_adaptive_numbers(value, count, low, high):
         raise ValueError('out_of_bounds_vector')
     return value
 
+def mia_visual_change_gate(before,after):
+    """Compare aligned real renders; this is change evidence, not likeness proof."""
+    import shutil
+    ffmpeg=shutil.which('ffmpeg')
+    if not ffmpeg:return {'passed':False,'reason':'comparison_ffmpeg_missing'}
+    metrics={}
+    for view in ('front','face'):
+        arrays=[]
+        for folder in (before,after):
+            p=subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-i',str(folder/(view+'.png')),'-vf','scale=240:320','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],capture_output=True,timeout=30,check=False,shell=False)
+            if p.returncode or len(p.stdout)!=240*320*3:return {'passed':False,'reason':'comparison_decode_failed'}
+            arrays.append(p.stdout)
+        a,b=arrays;changed=0;total=0;absolute=0
+        # Central region reduces sensitivity to constant studio background.
+        for y in range(16,304):
+            for x in range(36,204):
+                j=(y*240+x)*3;delta=sum(abs(a[j+c]-b[j+c]) for c in range(3))/3
+                absolute+=delta;total+=1;changed+=delta>=18
+        metrics[view]={'changed_pixel_fraction':changed/total,'mean_absolute_rgb_difference':absolute/total}
+    passed=all(m['changed_pixel_fraction']>=.025 and m['mean_absolute_rgb_difference']>=1.5 for m in metrics.values())
+    return {'passed':passed,'metrics':metrics,'thresholds':{'changed_fraction':.025,'rgb_difference':18,'mean_rgb_difference':1.5},'likeness_verified':False,'human_review_required':True}
+
 def validate_mia_adaptive_plan(reply, inventory):
     """Reject unknown objects, code, nonfinite numbers and excessive edits."""
     if not isinstance(reply, dict) or set(reply) != {'verdict', 'differences', 'edits'}:
@@ -1079,11 +1101,14 @@ def run_mia_adaptive_source(source_project, project_name):
     donors=acquire_mia_study_sources(ws)
     (root/'study_source_acquisition.json').write_text(json.dumps(donors,indent=2),encoding='utf-8')
     try:
-        for i in range(1):
+        # If there are reviewed edits, first render the unchanged input with the
+        # very same renderer and cameras, then apply edits to that checkpoint.
+        for i in range(2 if MIA_CODEX_CORRECTION_EDITS else 1):
+            pass_edits=[] if i==0 else MIA_CODEX_CORRECTION_EDITS
             folder=root/('pass_'+str(i));folder.mkdir()
             with tempfile.TemporaryDirectory(prefix='.adaptive-',dir=root) as td:
                 script=Path(td)/'run.py';cfg=Path(td)/'cfg.json'
-                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':edits}),encoding='utf-8')
+                script.write_text(MIA_ADAPTIVE_BLENDER_SCRIPT,encoding='utf-8');cfg.write_text(json.dumps({'source':str(current),'out':str(folder),'edits':pass_edits}),encoding='utf-8')
                 proc=subprocess.run([str(blender),'--background','--factory-startup','--disable-autoexec','--offline-mode','--python-exit-code','1','--python',str(script),'--',str(cfg)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=900,check=False,shell=False)
             (folder/'blender_stdout.log').write_text((proc.stdout or '')[-200000:],encoding='utf-8')
             if proc.returncode:raise ValueError('blender_exit_'+str(proc.returncode))
@@ -1094,9 +1119,7 @@ def run_mia_adaptive_source(source_project, project_name):
             reply={'verdict':'NEEDS_REVISION','differences':['Проверку выполняет Codex через mailbox; вызов Астры отключён.'], 'edits':[]}
             history.append({'pass':i,'blend_sha256':mia_adaptive_digest(current),'render_sha256':hashes,'plan':reply,'changes':report['changes']})
             (root/'adaptive_history.json').write_text(json.dumps(history,ensure_ascii=False,indent=2),encoding='utf-8')
-            if reply['verdict']!='NEEDS_REVISION' or not reply['edits']:
-                reason='awaiting_codex_review';break
-            edits=reply['edits']
+            reason='awaiting_codex_review'
         # Stable next-source path is a COPY, never overwrite the input checkpoint.
         import shutil
         shutil.copy2(current,root/'mia_spring_source_adapted.blend')
@@ -1114,7 +1137,15 @@ def run_mia_adaptive_source(source_project, project_name):
         # Preserve donor attribution inherited from the input checkpoint.
         attribution=source.parent/'ATTRIBUTION_AND_STATUS.txt'
         if attribution.is_file() and not is_link_or_junction(attribution):shutil.copy2(attribution,root/attribution.name)
-        result['telegram_documents']=deliver_mia_adaptive_bundle(root,latest)
+        if MIA_CODEX_CORRECTION_EDITS:
+            gate=mia_visual_change_gate(root/'pass_0',latest);result['visible_change_gate']=gate
+            if not gate['passed']:
+                result.update(status='blocked',goal_status='insufficient_visible_change')
+                result['telegram_documents']={'status':'suppressed_insufficient_visible_change'}
+            else:
+                result['telegram_documents']=deliver_mia_adaptive_bundle(root,latest)
+        else:
+            result['telegram_documents']={'status':'not_sent_baseline_for_codex_only'}
         (root/'adaptive_result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
         return result
     except Exception as exc:
