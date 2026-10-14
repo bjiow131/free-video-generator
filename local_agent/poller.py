@@ -2185,12 +2185,13 @@ def aim(loc):
  cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
-scene.render.resolution_x=96;scene.render.resolution_y=144
-scene.render.image_settings.file_format="JPEG";scene.render.image_settings.quality=28
-for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
- aim(loc);scene.render.filepath=os.path.join(out,"thumb_"+name);bpy.ops.render.render(write_still=True)
-scene.render.resolution_x=600;scene.render.resolution_y=900
-scene.render.image_settings.file_format="PNG"
+for name in ("front","side","back"):
+ image=bpy.data.images.load(os.path.join(out,name+".png"),check_existing=False)
+ image.scale(96,144)
+ image.file_format="JPEG"
+ image.filepath_raw=os.path.join(out,"thumb_"+name+".jpg")
+ image.save()
+ bpy.data.images.remove(image)
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,"mia_hunyuan3d2mv_candidate.blend"))
 ''',encoding="utf-8")
         proc=run([blender,"--background","--factory-startup","--disable-autoexec",
