@@ -930,6 +930,19 @@ _MIA_SOURCE_POLISH_PROFILES = {
         {'object': 'Boot_upper_-1', 'kind': 'scale', 'factors': [0.96, 1.0, 1.0],
          'reason': 'Match left boot width to the approved front silhouette'},
     ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
+    # Stronger bounded silhouette correction after the previous pass missed the face gate.
+    'reference_fit_bold': {'edits': [
+        {'object': 'MiaSource_GEO-spring_head', 'kind': 'scale', 'factors': [0.94, 1.0, 1.0],
+         'reason': 'Correct the broad head silhouette visible against the approved front reference'},
+        {'object': 'MiaSource_GEO-spring_jacket', 'kind': 'scale', 'factors': [0.94, 1.0, 1.0],
+         'reason': 'Reduce the visibly over-wide jacket silhouette'},
+        {'object': 'MiaSource_GEO_spring_pants', 'kind': 'scale', 'factors': [0.94, 1.0, 1.0],
+         'reason': 'Bring the baggy trouser silhouette closer to the approved reference'},
+        {'object': 'Boot_upper_1', 'kind': 'scale', 'factors': [0.94, 1.0, 1.0],
+         'reason': 'Narrow the right boot to the approved front silhouette'},
+        {'object': 'Boot_upper_-1', 'kind': 'scale', 'factors': [0.94, 1.0, 1.0],
+         'reason': 'Narrow the left boot to the approved front silhouette'},
+    ], 'hair_rebuild': False, 'face_refine': False, 'proportion_fit': False},
 }
 
 
