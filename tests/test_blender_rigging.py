@@ -24,7 +24,7 @@ def test_review_front_thumbnail_keeps_render_resolution_and_quality(monkeypatch,
 
     assert rigging._make_review_thumbnail("ffmpeg", source, target, detailed=True)
     assert calls[0][calls[0].index("-vf") + 1] == "scale=720:-2:flags=lanczos"
-    assert calls[0][calls[0].index("-q:v") + 1] == "2"
+    assert calls[0][calls[0].index("-q:v") + 1] == "4"
 
 
 def test_review_secondary_thumbnail_stays_compact(monkeypatch, tmp_path):
