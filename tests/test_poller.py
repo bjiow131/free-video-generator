@@ -634,3 +634,46 @@ def test_agent_state_directory_rejects_symlink_escape(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="must not be a symlink"):
         poller._ensure_agent_dir()
+
+
+def test_main_retries_result_outbox_errors_without_exiting(monkeypatch, capsys):
+    from local_agent import poller
+    from local_agent.result_outbox import ResultOutboxError
+
+    class Lock:
+        def close(self):
+            pass
+
+    class Outbox:
+        attempts = 0
+
+        def pending_task_ids(self):
+            return set()
+
+        def flush(self, client):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise ResultOutboxError("invalid local entry")
+            return {"published": 0, "deferred": 0, "invalid": 0}
+
+    outbox = Outbox()
+    sleeps = []
+
+    monkeypatch.setattr(poller.QueueConfig, "from_environment", lambda: object())
+    monkeypatch.setattr(poller, "GitHubQueueClient", lambda config: SimpleNamespace(fetch_desired_task=lambda: None))
+    monkeypatch.setattr(poller, "_acquire_instance_lock", lambda path: Lock())
+    monkeypatch.setattr(poller, "_load_state", lambda: {})
+    monkeypatch.setattr(poller, "_result_outbox", lambda: outbox)
+    monkeypatch.setenv("LOCAL_AGENT_POLL_SECONDS", "5")
+
+    def stop_after_retry(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr(poller.time, "sleep", stop_after_retry)
+
+    assert poller.main() == 0
+    assert outbox.attempts == 2
+    assert sleeps == [5, 5]
+    assert "Local result outbox error: ResultOutboxError" in capsys.readouterr().out
