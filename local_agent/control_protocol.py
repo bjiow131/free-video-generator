@@ -227,8 +227,11 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         raise ProtocolError("mia_identity_pass_two accepts no arbitrary paths, scripts or arguments.")
     if value["operation"] == "mia_astra_pass_one" and value["arguments"] != {}:
         raise ProtocolError("mia_astra_pass_one accepts no parameters, code, paths or media.")
-    if value["operation"] == "mia_astra_review" and value["arguments"] != {}:
-        raise ProtocolError("mia_astra_review accepts no scripts, paths, URLs, or arguments.")
+    if value["operation"] == "mia_astra_review":
+        args = value["arguments"]
+        if (set(args) != {"project_name"} or not isinstance(args.get("project_name"), str)
+                or not BLENDER_PROJECT_RE.fullmatch(args["project_name"])):
+            raise ProtocolError("mia_astra_review requires only a safe project_name.")
     if value["operation"] == "mia_model_review" and value["arguments"] != {}:
         raise ProtocolError("mia_model_review accepts no parameters, code, paths or media.")
     if value["operation"] == "octava_advice":
