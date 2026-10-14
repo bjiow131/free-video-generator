@@ -2231,14 +2231,18 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     from local_agent.path_names import is_link_or_junction
 
     if arguments == {}:
-        candidate_task_id, fit_profile = "mia-hunyuan3d-mv-trial-20261014-1811", False
+        candidate_task_id, fit_profile, fast_rig = "mia-hunyuan3d-mv-trial-20261014-1811", False, False
     elif (isinstance(arguments, dict)
-          and set(arguments) in ({"candidate_task_id"}, {"candidate_task_id", "fit_profile"})
+          and set(arguments) in ({"candidate_task_id"}, {"candidate_task_id", "fit_profile"},
+                                  {"candidate_task_id", "fast_rig"},
+                                  {"candidate_task_id", "fit_profile", "fast_rig"})
           and isinstance(arguments.get("candidate_task_id"), str)
           and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", arguments["candidate_task_id"])
-          and type(arguments.get("fit_profile", False)) is bool):
+          and type(arguments.get("fit_profile", False)) is bool
+          and type(arguments.get("fast_rig", False)) is bool):
         candidate_task_id = arguments["candidate_task_id"]
         fit_profile = arguments.get("fit_profile", False)
+        fast_rig = arguments.get("fast_rig", False)
     else:
         return {"status": "rejected", "reason": "invalid_candidate_or_fit_options"}
     if not load_policy().get("allow_blender"):
@@ -2270,15 +2274,16 @@ def _run_mia_hunyuan3d_mv_finalize(arguments: dict[str, Any]) -> dict[str, Any]:
     if blender is None or not blender.is_file():
         return {"status": "blocked", "reason": "blender_missing"}
     glb_sha = hashlib.sha256(glb.read_bytes()).hexdigest()
-    review = output / ("profilefit" if fit_profile else "color_review")
+    review = output / ("fast_rig_prototype" if fast_rig else ("profilefit" if fit_profile else "color_review"))
     if is_link_or_junction(review):
         return {"status": "blocked", "reason": "unsafe_review_path"}
     review.mkdir(parents=True, exist_ok=True)
     render = review / "render_candidate.py"
     render.write_text(r'''import bpy,sys,os,json,math
 from mathutils import Vector
-glb,out,fit_flag=sys.argv[sys.argv.index("--")+1:]
+glb,out,fit_flag,rig_flag=sys.argv[sys.argv.index("--")+1:]
 fit_profile=(fit_flag=="1")
+fast_rig=(rig_flag=="1")
 PROFILE_TARGETS=json.loads('{"front":[0.30488,0.39512,0.25854,0.2439,0.22927,0.22927,0.22439,0.20244,0.20732,0.22195,0.23902,0.23659,0.23659,0.22195,0.21463,0.21707,0.23659,0.23415,0.22927,0.23415,0.23415,0.22439,0.21951,0.4878,0.49024,0.4878,0.48049,0.46829,0.44878,0.45122,0.43415,0.43415,0.41951,0.39024,0.36829,0.35122,0.31951,0.3,0.28049,0.26341,0.2439,0.22195,0.19268,0.18293,0.20976,0.26829,0.28537,0.30244,0.32439,0.32683,0.33171,0.31707,0.31707,0.2878,0.28537,0.28293,0.29024,0.27317,0.2439,0.23171,0.21463,0.18293,0.11463,0.06098],"side":[0.24088,0.37956,0.19708,0.18735,0.13869,0.12652,0.11679,0.08516,0.09489,0.09732,0.10949,0.11192,0.11192,0.11679,0.11922,0.12409,0.12165,0.11679,0.12165,0.12165,0.12652,0.12409,0.13382,0.14355,0.15085,0.15815,0.18005,0.23844,0.26277,0.27981,0.27737,0.27981,0.27981,0.27737,0.26764,0.25061,0.24818,0.25061,0.24331,0.23114,0.21411,0.18735,0.17518,0.15328,0.20195,0.21655,0.29197,0.30657,0.32117,0.32847,0.32603,0.30657,0.29927,0.27494,0.27981,0.28954,0.2871,0.27981,0.27981,0.26521,0.24088,0.22384,0.17762,0.0146],"back":[0.3017,0.35766,0.25304,0.24574,0.22384,0.21898,0.21168,0.18735,0.21168,0.21655,0.23844,0.23358,0.23358,0.21411,0.21411,0.21898,0.23358,0.23358,0.22871,0.23358,0.23114,0.22141,0.34307,0.49392,0.49635,0.48905,0.48175,0.46472,0.45012,0.45255,0.44039,0.44282,0.42092,0.39173,0.36983,0.35036,0.32603,0.30414,0.28467,0.26277,0.24574,0.21898,0.19951,0.18735,0.22384,0.24818,0.3017,0.29684,0.31144,0.31873,0.32847,0.30657,0.29927,0.2871,0.27981,0.28954,0.28954,0.26764,0.25791,0.23358,0.21168,0.18491,0.12409,0.05839]}')
 bpy.ops.object.select_all(action="SELECT");bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=glb)
@@ -2338,9 +2343,10 @@ if fit_profile:
              "profile_depth_scale_range":[round(min(sy),4),round(max(sy),4)],
              "method":"smoothed bounded cross-section fit to approved front/profile/back masks"}
 # Reference palette for review.
-palette=[("Hair",(0.38,0.22,0.12,1)),("Skin",(0.82,0.55,0.42,1)),
- ("Jacket",(0.025,0.24,0.30,1)),("Trousers",(0.28,0.16,0.095,1)),
- ("Backpack",(0.82,0.49,0.075,1)),("Boots",(0.20,0.105,0.055,1))]
+# Linear-light swatches measured from clean approved-reference patches (sRGB samples converted to linear).
+palette=[("Hair",(0.266,0.098,0.033,1)),("Skin",(0.855,0.319,0.184,1)),
+ ("Jacket",(0.032,0.150,0.195,1)),("Trousers",(0.296,0.098,0.028,1)),
+ ("Backpack",(0.716,0.292,0.016,1)),("Boots",(0.305,0.122,0.047,1))]
 materials=[]
 for name,color in palette:
  m=bpy.data.materials.new("Mia | "+name);m.diffuse_color=color;m.use_nodes=True
@@ -2362,6 +2368,64 @@ for obj in meshes:
   elif abs(x) > 0.42 and 0.08 < z < 0.60: slot=1
   else: slot=2
   poly.material_index=slot
+if fast_rig:
+ # Compact 17-bone prototype only: root/pelvis/spine/chest/neck/head, arms and legs.
+ arm_data=bpy.data.armatures.new("Mia | quick animation prototype")
+ arm=bpy.data.objects.new("Mia | quick animation prototype",arm_data)
+ bpy.context.scene.collection.objects.link(arm)
+ bpy.ops.object.select_all(action="DESELECT");bpy.context.view_layer.objects.active=arm;arm.select_set(True)
+ bpy.ops.object.mode_set(mode="EDIT")
+ bone_defs=[
+  ("root",(0,0,-1.82),(0,0,-1.50),None),
+  ("pelvis",(0,0,-0.55),(0,0,-0.12),"root"),
+  ("spine",(0,0,-0.12),(0,0,0.34),"pelvis"),
+  ("chest",(0,0,0.34),(0,0,0.60),"spine"),
+  ("neck",(0,0,0.60),(0,0,0.82),"chest"),
+  ("head",(0,0,0.82),(0,0,1.82),"neck"),
+  ("thigh.L",(0.17,0,-0.48),(0.18,0,-1.03),"pelvis"),
+  ("shin.L",(0.18,0,-1.03),(0.18,0,-1.63),"thigh.L"),
+  ("foot.L",(0.18,0,-1.63),(0.18,-0.28,-1.78),"shin.L"),
+  ("thigh.R",(-0.17,0,-0.48),(-0.18,0,-1.03),"pelvis"),
+  ("shin.R",(-0.18,0,-1.03),(-0.18,0,-1.63),"thigh.R"),
+  ("foot.R",(-0.18,0,-1.63),(-0.18,-0.28,-1.78),"shin.R"),
+  ("upper_arm.L",(0.39,0,0.54),(0.59,0,0.10),"chest"),
+  ("forearm.L",(0.59,0,0.10),(0.68,0,-0.25),"upper_arm.L"),
+  ("upper_arm.R",(-0.39,0,0.54),(-0.59,0,0.10),"chest"),
+  ("forearm.R",(-0.59,0,0.10),(-0.68,0,-0.25),"upper_arm.R")]
+ made={}
+ for name,head,tail,parent in bone_defs:
+  b=arm_data.edit_bones.new(name);b.head=head;b.tail=tail;made[name]=b
+ for name,head,tail,parent in bone_defs:
+  if parent:made[name].parent=made[parent]
+ bpy.ops.object.mode_set(mode="OBJECT")
+ # Bind on the duplicated review scene only; the source GLB remains untouched.
+ bpy.ops.object.select_all(action="DESELECT")
+ for obj in meshes:obj.select_set(True)
+ arm.select_set(True);bpy.context.view_layer.objects.active=arm
+ bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+ arm.show_in_front=True;arm_data.display_type="OCTAHEDRAL"
+ scene=bpy.context.scene;scene.frame_end=24;scene.render.fps=12
+ arm.animation_data_create()
+ scene.frame_set(1)
+ for name in ("upper_arm.L","forearm.L","head"):
+  pb=arm.pose.bones[name];pb.rotation_mode="XYZ";pb.rotation_euler=(0,0,0)
+  pb.keyframe_insert(data_path="rotation_euler",frame=1)
+ scene.frame_set(12)
+ arm.pose.bones["upper_arm.L"].rotation_euler[0]=0.85
+ arm.pose.bones["forearm.L"].rotation_euler[0]=0.35
+ arm.pose.bones["head"].rotation_euler[2]=0.10
+ for name in ("upper_arm.L","forearm.L","head"):
+  arm.pose.bones[name].keyframe_insert(data_path="rotation_euler",frame=12)
+ scene.frame_set(24)
+ for name in ("upper_arm.L","forearm.L","head"):
+  arm.pose.bones[name].rotation_euler=(0,0,0)
+  arm.pose.bones[name].keyframe_insert(data_path="rotation_euler",frame=24)
+ scene.frame_set(12)
+ arm.animation_data.action.name="Mia | short wave test"
+ with open(os.path.join(out,"fast_rig_report.json"),"w",encoding="utf-8") as f:
+  json.dump({"rig":"compact 16-bone prototype","automatic_weights":True,
+             "action":"Mia | short wave test","frames":[1,12,24],
+             "production_ready":False},f,indent=2)
 scene=bpy.context.scene
 scene.render.engine="BLENDER_EEVEE"
 scene.render.resolution_x=600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
@@ -2378,22 +2442,28 @@ def aim(loc):
  cam.location=loc;cam.rotation_euler=(Vector((0,0,0))-cam.location).to_track_quat("-Z","Y").to_euler()
 for name,loc in (("front",(0,-8,0)),("side",(8,0,0)),("back",(0,8,0))):
  aim(loc);scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
-blend_name="mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend"
+blend_name=("mia_hunyuan3d2mv_fast_rig.blend" if fast_rig else
+             ("mia_hunyuan3d2mv_profilefit.blend" if fit_profile else "mia_hunyuan3d2mv_candidate.blend"))
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,blend_name))
-if fit_profile:
+if fit_profile or fast_rig:
  for o in bpy.context.selected_objects:o.select_set(False)
  for o in meshes:o.select_set(True)
- bpy.context.view_layer.objects.active=meshes[0]
- bpy.ops.export_scene.gltf(filepath=os.path.join(out,"mia_hunyuan3d2mv_profilefit.glb"),
-                           export_format="GLB",use_selection=True)
+ if fast_rig:
+  arm.select_set(True);bpy.context.view_layer.objects.active=arm
+ else:
+  bpy.context.view_layer.objects.active=meshes[0]
+ fitted_name="mia_hunyuan3d2mv_fast_rig.glb" if fast_rig else "mia_hunyuan3d2mv_profilefit.glb"
+ bpy.ops.export_scene.gltf(filepath=os.path.join(out,fitted_name),
+                           export_format="GLB",use_selection=True,export_animations=fast_rig,export_skins=fast_rig)
  with open(os.path.join(out,"profile_fit_report.json"),"w",encoding="utf-8") as f:
   json.dump(fit_report,f,indent=2)
 ''', encoding="utf-8")
     try:
         proc = subprocess.run(
-            [str(blender), "--background", "--factory-startup", "--disable-autoexec",
-             "--offline-mode", "--python-exit-code", "1", "--python", str(render),
-             "--", str(glb), str(review), "1" if fit_profile else "0"],
+            [
+                str(blender), "--background", "--factory-startup", "--disable-autoexec",
+                "--offline-mode", "--python-exit-code", "1", "--python", str(render),
+                "--", str(glb), str(review), "1" if fit_profile else "0", "1" if fast_rig else "0"],
             cwd=str(review), capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=900, check=False, shell=False,
             stdin=subprocess.DEVNULL,
@@ -2456,9 +2526,9 @@ if fit_profile:
                 "reason": "thumbnail_missing", "output_folder": str(review)}
     thumbnails = {name: base64.b64encode(path.read_bytes()).decode("ascii")
                   for name, path in thumbnail_paths.items()}
-    fitted_glb = review / "mia_hunyuan3d2mv_profilefit.glb"
-    result_glb = fitted_glb if fit_profile else glb
-    if fit_profile and not fitted_glb.is_file():
+    fitted_glb = review / ("mia_hunyuan3d2mv_fast_rig.glb" if fast_rig else "mia_hunyuan3d2mv_profilefit.glb")
+    result_glb = fitted_glb if (fit_profile or fast_rig) else glb
+    if (fit_profile or fast_rig) and not fitted_glb.is_file():
         return {"status": "incomplete", "stage": "validate_fitted_mesh",
                 "reason": "profilefit_mesh_missing", "output_folder": str(review)}
     result_sha = hashlib.sha256(result_glb.read_bytes()).hexdigest()
@@ -2470,8 +2540,9 @@ if fit_profile:
             "source_model_preserved": True, "shape_only": True,
             "geometry_is_new": fit_profile, "profile_fit_applied": fit_profile,
             "identity_verified": False, "license_review_required_before_production": True,
-            "validation_note": ("Bounded multiview cross-section geometry fit; source GLB preserved."
-                                if fit_profile else "Existing generated GLB reused; no model inference was repeated.")}
+            "validation_note": ("Quick armature prototype with automatic weights and a wave action; no production rig claimed."
+                                if fast_rig else ("Bounded multiview cross-section fit; source GLB preserved."
+                                if fit_profile else "Existing generated GLB reused; no model inference was repeated."))}
 
 
 
