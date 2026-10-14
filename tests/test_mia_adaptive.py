@@ -37,6 +37,18 @@ class AdaptivePlanTests(unittest.TestCase):
         self.assertFalse(rigging.MIA_CODEX_HAIR_REBUILD)
         self.assertTrue(rigging.MIA_CODEX_FACE_REFINE)
         self.assertFalse(rigging.MIA_CODEX_PROPORTION_FIT)
+
+    def test_fixed_profiles_are_validated_and_copied(self):
+        for name in ('face','head_jacket','face_and_fit','eyes','proportions'):
+            profile=rigging.mia_source_polish_profile(name)
+            self.assertEqual(set(profile),{'edits','hair_rebuild','face_refine','proportion_fit'})
+            if profile['edits']:
+                validate_plan({'verdict':'NEEDS_REVISION','differences':['Правка профиля'],
+                               'edits':profile['edits']},[{'name':e['object']} for e in profile['edits']])
+        first=rigging.mia_source_polish_profile('head_jacket')
+        first['edits'][0]['factors'][0]=1.0
+        self.assertEqual(rigging.mia_source_polish_profile('head_jacket')['edits'][0]['factors'][0],1.06)
+        with self.assertRaises(ValueError):rigging.mia_source_polish_profile('arbitrary_code')
     def test_fixed_script_compiles(self):
         compile(BLENDER_SCRIPT,'adaptive_blender.py','exec')
     def test_identical_renders_cannot_pass_visible_change(self):
