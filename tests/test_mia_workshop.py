@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import tempfile
 import types
@@ -6,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 m=types.ModuleType('embedded_workshop')
+m.Any=object
 source=Path('local_agent/blender_rigging.py').read_text()
 source=source[source.index('"""Bounded visual corrections of a saved Mia mesh; provider output is data only."""'):]
 exec(compile(source,'embedded_workshop','exec'),m.__dict__)
@@ -15,7 +17,7 @@ class WorkshopTests(unittest.TestCase):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup)
         ws=Path(tmp.name)
         source=ws/'SOURCE_ADAPTATIONS/input/mia_spring_source_adapted.blend';source.parent.mkdir(parents=True);source.write_bytes(b'original-source')
-        ref=ws/'episode1/assets/references/mia_turnaround_approved_20261012.jpeg';ref.parent.mkdir(parents=True);ref.write_bytes(Path('mia_reference.jpeg').read_bytes())
+        ref=ws/'episode1/assets/references/mia_turnaround_approved_20261012.jpeg';ref.parent.mkdir(parents=True);ref.write_bytes(b'test-reference')
         locator=types.ModuleType('local_agent.blender_locator');locator.find_blender_executable=lambda:'blender'
         names=types.ModuleType('local_agent.path_names');names.path_identifier_pattern=lambda limit:__import__('re').compile(r'[a-z]+');names.is_link_or_junction=lambda p:False
         policy=types.ModuleType('local_agent.mailbox_policy');policy.load_policy=lambda:{'enabled':True,'allow_blender':True,'allow_octava':True}
@@ -26,7 +28,7 @@ class WorkshopTests(unittest.TestCase):
             for view in m.MIA_ADAPTIVE_VIEWS:(folder/(view+'.png')).write_bytes(folder.name.encode())
             (folder/'geometry_report.json').write_text(json.dumps({'inventory':[{'name':'Head'}],'changes':cfg['edits']}))
             return types.SimpleNamespace(returncode=0,stdout='actual fake runner')
-        with patch.dict(os.environ,{'LOCAL_AGENT_WORKSPACE':str(ws)}),patch.dict('sys.modules',{'local_agent.blender_locator':locator,'local_agent.path_names':names,'local_agent.mailbox_policy':policy}),patch.object(m,'workshop_study',return_value=[]),patch.object(m,'acquire_mia_study_sources',return_value=[]),patch.object(m,'inspect_study_sources',return_value=[]),patch.object(m,'mia_adaptive_ask',side_effect=reviews),patch.object(m,'mia_visual_change_gate',return_value={'passed':True}),patch('subprocess.run',side_effect=execute),patch('shutil.which',return_value=None):
+        with patch.object(m,'MIA_ADAPTIVE_REFERENCE_SHA',hashlib.sha256(b'test-reference').hexdigest()),patch.dict(os.environ,{'LOCAL_AGENT_WORKSPACE':str(ws)}),patch.dict('sys.modules',{'local_agent.blender_locator':locator,'local_agent.path_names':names,'local_agent.mailbox_policy':policy}),patch.object(m,'workshop_study',return_value=[]),patch.object(m,'acquire_mia_study_sources',return_value=[]),patch.object(m,'inspect_study_sources',return_value=[]),patch.object(m,'mia_adaptive_ask',side_effect=reviews),patch.object(m,'mia_visual_change_gate',return_value={'passed':True}),patch('subprocess.run',side_effect=execute),patch('shutil.which',return_value=None):
             result=m.run_workshop('input','output')
         self.assertEqual(source.read_bytes(),b'original-source')
         self.assertFalse(result['identity_verified'])
