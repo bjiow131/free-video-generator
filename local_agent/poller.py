@@ -2277,6 +2277,31 @@ for o in meshes:
  o.location=(o.location-center)*scale
  o.scale*=scale
 bpy.context.view_layer.update()
+# Reference palette for review; no vertex coordinates or source GLB are changed.
+palette=[("Hair",(0.38,0.22,0.12,1)),("Skin",(0.82,0.55,0.42,1)),
+ ("Jacket",(0.025,0.24,0.30,1)),("Trousers",(0.28,0.16,0.095,1)),
+ ("Backpack",(0.82,0.49,0.075,1)),("Boots",(0.20,0.105,0.055,1))]
+materials=[]
+for name,color in palette:
+ m=bpy.data.materials.new("Mia | "+name);m.diffuse_color=color;m.use_nodes=True
+ bsdf=m.node_tree.nodes.get("Principled BSDF")
+ if bsdf: bsdf.inputs["Base Color"].default_value=color;bsdf.inputs["Roughness"].default_value=0.78
+ materials.append(m)
+for obj in meshes:
+ obj.data.materials.clear()
+ for m in materials: obj.data.materials.append(m)
+ for poly in obj.data.polygons:
+  p=obj.matrix_world @ poly.center
+  x,y,z=p.x,p.y,p.z
+  if z < -1.48: slot=5
+  elif z < -0.12: slot=3
+  elif y > 0.33 and -0.15 < z < 1.28: slot=4
+  elif z > 1.72: slot=0
+  elif z > 1.05 and y < -0.10: slot=1
+  elif z > 1.00: slot=0
+  elif abs(x) > 0.42 and 0.08 < z < 0.60: slot=1
+  else: slot=2
+  poly.material_index=slot
 scene=bpy.context.scene
 scene.render.engine="BLENDER_EEVEE"
 scene.render.resolution_x=600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
