@@ -46,13 +46,15 @@ def _octava_key_probe_transport(request, timeout=18):
     import ssl
     from urllib.error import HTTPError, URLError
     from urllib.request import urlopen
-    try:
-        # No automatic retry: a timed-out POST may already have been billed.
-        return urlopen(request, timeout=60)
-    except HTTPError:
-        # The credential module already maps numeric HTTP status safely.
-        raise
-    except (URLError, TimeoutError, OSError) as exc:
+    def checked(call):
+        try:
+            return call()
+        except HTTPError:
+            raise
+        except (URLError, TimeoutError, OSError) as exc:
+            fail(exc)
+
+    def fail(exc):
         cause = exc.reason if isinstance(exc, URLError) else exc
         if isinstance(cause, ssl.SSLCertVerificationError):
             message = "OctavAPI: не прошла проверка TLS-сертификата. Проверьте дату/время Windows и HTTPS-перехват антивируса или прокси."
@@ -69,6 +71,21 @@ def _octava_key_probe_transport(request, timeout=18):
         else:
             message = "OctavAPI: сбой сетевого транспорта (" + type(cause).__name__ + ")."
         raise OctavaKeyError(message + " Новый ключ не сохранён; прежний ключ не изменён.") from None
+
+    class ProbeResponse:
+        def __init__(self, reply):
+            self.reply = reply
+        def __enter__(self):
+            self.reply = checked(self.reply.__enter__)
+            return self
+        def __exit__(self, *args):
+            return checked(lambda: self.reply.__exit__(*args))
+        def read(self, size=-1):
+            # Providers can send headers promptly but delay the model body.
+            return checked(lambda: self.reply.read(size))
+
+    # No automatic retry: a timed-out POST may already have been billed.
+    return ProbeResponse(checked(lambda: urlopen(request, timeout=60)))
 
 
 def replace_key(value):
