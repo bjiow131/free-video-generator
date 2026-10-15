@@ -11,10 +11,24 @@ import pytest
 from local_agent import blender_cli, blender_locator, cli
 
 
+def _fake_windows_blender_header() -> bytes:
+    """Minimal PE64 header for mocked Blender paths (never executed).
+
+    Windows Blender discovery validates the executable header before launching
+    it. Tests mock subprocess calls, so a structurally valid header is enough.
+    """
+    header = bytearray(0x86)
+    header[0:2] = b"MZ"
+    header[0x3C:0x40] = (0x80).to_bytes(4, "little")
+    header[0x80:0x84] = b"PE\\x00\\x00"
+    header[0x84:0x86] = (0x8664).to_bytes(2, "little")
+    return bytes(header)
+
+
 def _installation(root: Path, release: str) -> Path:
     executable = root / "Blender Foundation" / f"Blender {release}" / "blender.exe"
     executable.parent.mkdir(parents=True, exist_ok=True)
-    executable.write_bytes(b"fake executable")
+    executable.write_bytes(_fake_windows_blender_header())
     return executable
 
 
@@ -50,7 +64,7 @@ def test_explicit_executable_overrides_automatic_discovery(tmp_path):
     auto = _installation(root, "5.2")
     configured = tmp_path / "custom" / "blender.exe"
     configured.parent.mkdir()
-    configured.write_bytes(b"fake")
+    configured.write_bytes(_fake_windows_blender_header())
     selected = blender_locator.find_blender_executable(
         environ={"BLENDER_EXECUTABLE": str(configured), "PROGRAMFILES": str(root)},
         windows=True, which=lambda _: str(auto),
@@ -71,7 +85,7 @@ def test_invalid_explicit_override_never_silently_falls_back(tmp_path):
 def test_blender_from_path_if_not_in_standard_install_dir(tmp_path):
     executable = tmp_path / "portable" / "blender.exe"
     executable.parent.mkdir()
-    executable.write_bytes(b"fake")
+    executable.write_bytes(_fake_windows_blender_header())
     selected = blender_locator.find_blender_executable(
         environ={},
         windows=True,
@@ -84,7 +98,7 @@ def test_unrecognised_installer_folder_is_ignored(tmp_path):
     root = tmp_path / "Program Files"
     folder = root / "Blender Foundation" / "Blender malicious"
     folder.mkdir(parents=True)
-    (folder / "blender.exe").write_bytes(b"fake")
+    (folder / "blender.exe").write_bytes(_fake_windows_blender_header())
     assert blender_locator.find_blender_executable(
         environ={"PROGRAMFILES": str(root)}, windows=True, which=lambda _: None,
     ) is None
@@ -92,7 +106,7 @@ def test_unrecognised_installer_folder_is_ignored(tmp_path):
 
 def test_locator_check_verifies_version_without_launching_gui(monkeypatch, tmp_path, capsys):
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"placeholder")
+    executable.write_bytes(_fake_windows_blender_header())
     monkeypatch.setattr(blender_locator, "find_blender_executable", lambda: executable)
     calls = []
 
@@ -111,7 +125,7 @@ def test_preflight_uses_located_blender_and_remains_offline(tmp_path, monkeypatc
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"fixture")
+    executable.write_bytes(_fake_windows_blender_header())
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.setattr(cli, "find_blender_executable", lambda: executable)
@@ -128,7 +142,7 @@ def test_preflight_uses_located_blender_and_remains_offline(tmp_path, monkeypatc
 
 def test_blender_cli_reads_project_from_environment_without_cmd_interpolation(monkeypatch, tmp_path):
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"fake")
+    executable.write_bytes(_fake_windows_blender_header())
     workspace = tmp_path / "workspace"
     monkeypatch.setenv("LOCAL_AGENT_PROJECT_NAME", "mia_scene_1")
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(workspace))
@@ -156,7 +170,7 @@ def test_blender_cli_reads_project_from_environment_without_cmd_interpolation(mo
 @pytest.mark.parametrize("unsafe", ['mia" & echo UNEXPECTED', "../escape", "bad project"])
 def test_blender_cli_rejects_unsafe_environment_project_name(monkeypatch, tmp_path, unsafe):
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"placeholder")
+    executable.write_bytes(_fake_windows_blender_header())
     monkeypatch.setenv("BLENDER_EXECUTABLE", str(executable))
     monkeypatch.setenv("LOCAL_AGENT_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.setenv("LOCAL_AGENT_PROJECT_NAME", unsafe)
@@ -183,7 +197,7 @@ def test_mia_discovery_uses_same_installed_blender_as_preflight(tmp_path, monkey
     from local_agent import blender_workflow as workflow
 
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"fixture")
+    executable.write_bytes(_fake_windows_blender_header())
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
     monkeypatch.setattr(workflow, "find_blender_executable", lambda: executable)
     monkeypatch.setattr(workflow.subprocess, "run", lambda *a, **k: SimpleNamespace(
@@ -199,7 +213,7 @@ def test_mia_gui_can_open_with_autodetected_blender(tmp_path, monkeypatch):
     from local_agent import blender_workflow as workflow
 
     executable = tmp_path / "blender.exe"
-    executable.write_bytes(b"fixture")
+    executable.write_bytes(_fake_windows_blender_header())
     workspace = tmp_path / "workspace"
     project = workspace / "mia_scene"
     project.mkdir(parents=True)
@@ -222,7 +236,7 @@ def test_mia_rigging_detects_blender_before_complaining_about_missing_blockout(t
     from local_agent import blender_rigging as rigging
 
     exe = tmp_path / "blender.exe"
-    exe.write_bytes(b"fixture")
+    exe.write_bytes(_fake_windows_blender_header())
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
@@ -236,7 +250,7 @@ def test_mailbox_preview_uses_locally_discovered_executable_not_remote_path(tmp_
     from local_agent import poller, blender_bridge
 
     exe = tmp_path / "blender.exe"
-    exe.write_bytes(b"fixture")
+    exe.write_bytes(_fake_windows_blender_header())
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.delenv("BLENDER_EXECUTABLE", raising=False)
