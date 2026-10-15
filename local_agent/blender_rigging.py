@@ -1161,3 +1161,292 @@ def preview_mia_spring_rig_video(project_name: str) -> dict[str, Any]:
     data["source_blend"] = str(source)
     report.write_text(json.dumps(data,indent=2),encoding="utf-8")
     return data
+
+ 
+def run_afk_rig_mia_test() -> dict[str, Any]:
+    """Run AFK Rig on an isolated Mia export; the source .blend is read-only."""
+    import shutil
+    import time
+
+    project_name = "mia-source-polished-v4-20261014"
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    blender = find_blender_executable()
+    if not workspace_value or blender is None or not blender.is_file():
+        return {"status": "blocked", "reason": "local_blender_or_workspace_not_configured"}
+    if os.name == "nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender):
+        return {"status": "blocked", "reason": "blender_executable_not_supported_64_bit_windows"}
+    npx = shutil.which("npx") or shutil.which("npx.cmd")
+    if not npx:
+        return {"status": "blocked", "reason": "node_npx_not_installed"}
+    workspace = Path(workspace_value).expanduser().resolve()
+    project = workspace / "SOURCE_ADAPTATIONS" / project_name
+    if any(is_link_or_junction(p) for p in (project, project.parent, project.parent.parent)):
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    project = project.resolve()
+    if not project.is_relative_to(workspace) or project == workspace:
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    source = project / "mia_spring_source_adapted.blend"
+    if is_link_or_junction(source) or not source.is_file() or source.stat().st_size == 0:
+        return {"status": "blocked", "reason": "pinned_mia_source_missing_or_unsafe"}
+    source_sha = _spring_sha256(source)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out_dir = project / ("afk_rig_mia_test_" + stamp)
+    if out_dir.exists() or is_link_or_junction(out_dir):
+        return {"status": "blocked", "reason": "test_output_already_exists"}
+    out_dir.mkdir(parents=False, exist_ok=False)
+    if not out_dir.resolve().is_relative_to(project):
+        return {"status": "rejected", "reason": "test_output_outside_project"}
+    input_glb = out_dir / "mia_source_test_input.glb"
+    rigged_glb = out_dir / "mia_afk_rig_test.glb"
+    afk_project = out_dir / "mia_source_test_input.afk-rig.json"
+    preview = out_dir / "mia_afk_walk_front_left.png"
+    result_blend = out_dir / "mia_afk_rig_test.blend"
+    report_path = out_dir / "afk_rig_test_report.json"
+    export_script = out_dir / "export_mia_copy.py"
+    export_script.write_text(r'''
+import bpy, os, sys
+source, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+bpy.ops.wm.open_mainfile(filepath=source, load_ui=False)
+bpy.ops.object.select_all(action="DESELECT")
+meshes = [o for o in bpy.context.scene.objects if o.type == "MESH" and not o.hide_render]
+if not meshes: raise RuntimeError("no_visible_mesh_objects")
+for obj in meshes: obj.select_set(True)
+bpy.context.view_layer.objects.active = meshes[0]
+bpy.ops.export_scene.gltf(filepath=output, export_format="GLB", use_selection=True)
+if not os.path.isfile(output) or os.path.getsize(output) == 0: raise RuntimeError("glb_export_empty")
+''', encoding="utf-8")
+    try:
+        export = subprocess.run(
+            [str(blender), "--background", "--factory-startup", "--python", str(export_script),
+             "--", str(source), str(input_glb)], capture_output=True, text=True,
+            timeout=600, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "reason": "blender_glb_export_timeout"}
+    (out_dir / "blender_export.log").write_text(
+        ((export.stdout or "") + "\n" + (export.stderr or ""))[-30000:], encoding="utf-8"
+    )
+    if export.returncode != 0 or not input_glb.is_file():
+        return {"status": "error", "reason": "blender_glb_export_failed",
+                "exit_code": export.returncode}
+
+    def run_afk(args: list[str], log_name: str, timeout: int = 1200) -> dict[str, Any]:
+        argv = [npx, "--yes", "afk-rig@0.1.2", *args]
+        if os.name == "nt" and str(npx).lower().endswith((".cmd", ".bat")):
+            command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
+                       subprocess.list2cmdline(argv)]
+        else:
+            command = argv
+        try:
+            completed = subprocess.run(command, cwd=str(out_dir), capture_output=True,
+                                       text=True, timeout=timeout, check=False)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "reason": "afk_cli_timeout"}
+        combined = (completed.stdout or "") + "\n" + (completed.stderr or "")
+        (out_dir / log_name).write_text(combined[-30000:], encoding="utf-8")
+        return {"ok": completed.returncode == 0, "exit_code": completed.returncode,
+                "tail": combined[-2500:]}
+
+    step = run_afk(["start", str(input_glb), "--skeleton", "human"], "afk_start.log")
+    if not step["ok"] or not afk_project.is_file():
+        return {"status": "error", "reason": "afk_start_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["render", str(afk_project), "--views", "front,left", "--size", "640",
+                    "--animation", "Walk", "--time", "0.5", "--out", str(preview)],
+                   "afk_render.log")
+    if not step["ok"] or not preview.is_file():
+        return {"status": "error", "reason": "afk_preview_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["bind", str(afk_project)], "afk_bind.log")
+    if not step["ok"]:
+        return {"status": "error", "reason": "afk_bind_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["export", str(afk_project), "--out", str(rigged_glb),
+                    "--animations", "Walk,Idle_A"], "afk_export.log")
+    if not step["ok"] or not rigged_glb.is_file():
+        return {"status": "error", "reason": "afk_export_failed", "diagnostic": step.get("tail", "")}
+
+    import_script = out_dir / "import_afk_copy.py"
+    import_script.write_text(r'''
+import bpy, json, math, os, sys
+source_glb, rigged_glb, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+
+def import_mesh_stats(path):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=path)
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    return {"mesh_count": len(meshes), "vertex_count": sum(len(o.data.vertices) for o in meshes)}
+
+source_stats = import_mesh_stats(source_glb)
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.import_scene.gltf(filepath=rigged_glb)
+scene = bpy.context.scene
+meshes = [o for o in scene.objects if o.type == "MESH"]
+armature_objects = [o for o in scene.objects if o.type == "ARMATURE"]
+actions = list(bpy.data.actions)
+if not armature_objects: raise RuntimeError("imported_glb_has_no_armature")
+if not meshes: raise RuntimeError("imported_glb_has_no_meshes")
+bone_names = {b.name for arm in armature_objects for b in arm.data.bones}
+all_vertices = 0
+weighted_vertices = 0
+unweighted_vertices = 0
+normalized_vertices = 0
+weight_sums = []
+max_influences = 0
+bound_meshes = 0
+mesh_stats = []
+for obj in meshes:
+    all_vertices += len(obj.data.vertices)
+    bound = any(m.type == "ARMATURE" and m.object in armature_objects for m in obj.modifiers)
+    bound_meshes += int(bound)
+    bone_group_ids = {g.index for g in obj.vertex_groups if g.name in bone_names}
+    local_weighted = 0
+    local_unweighted = 0
+    for vertex in obj.data.vertices:
+        influences = [item.weight for item in vertex.groups
+                      if item.group in bone_group_ids and item.weight > 1e-8]
+        if influences:
+            local_weighted += 1
+            weight_sum = float(sum(influences))
+            weight_sums.append(weight_sum)
+            max_influences = max(max_influences, len(influences))
+            if abs(weight_sum - 1.0) <= 0.03:
+                normalized_vertices += 1
+        else:
+            local_unweighted += 1
+    weighted_vertices += local_weighted
+    unweighted_vertices += local_unweighted
+    mesh_stats.append({"name": obj.name, "vertices": len(obj.data.vertices),
+                       "has_armature_modifier": bound, "weighted_vertices": local_weighted,
+                       "unweighted_vertices": local_unweighted})
+
+def evaluated_positions():
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    result = {}
+    for obj in meshes:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        result[obj.name] = [evaluated.matrix_world @ v.co for v in mesh.vertices]
+        evaluated.to_mesh_clear()
+    return result
+
+for arm in armature_objects:
+    if arm.animation_data:
+        arm.animation_data.action = None
+scene.frame_set(0)
+bpy.context.view_layer.update()
+rest_positions = evaluated_positions()
+all_rest = [p for positions in rest_positions.values() for p in positions]
+height = (max((p.z for p in all_rest), default=0.0) -
+          min((p.z for p in all_rest), default=0.0))
+if height <= 1e-8:
+    height = max((max((p.x for p in all_rest), default=0.0) - min((p.x for p in all_rest), default=0.0),
+                  max((p.y for p in all_rest), default=0.0) - min((p.y for p in all_rest), default=0.0)), default=1.0)
+pose_tests = []
+for action in actions:
+    if not any(tag in action.name.lower() for tag in ("walk", "idle")):
+        continue
+    arm = armature_objects[0]
+    arm.animation_data_create()
+    arm.animation_data.action = action
+    start, end = action.frame_range
+    frames = sorted(set([int(round(start)), int(round((start + end) / 2)), int(round(end))]))
+    deltas = []
+    deformed_vertices = 0
+    compared_vertices = 0
+    finite = True
+    for frame in frames:
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        posed = evaluated_positions()
+        for name, rest in rest_positions.items():
+            current = posed.get(name, [])
+            if len(current) != len(rest):
+                finite = False
+                continue
+            for before, after in zip(rest, current):
+                delta = (after - before).length
+                finite = finite and all(math.isfinite(v) for v in (after.x, after.y, after.z, delta))
+                deltas.append(delta / height)
+                compared_vertices += 1
+                deformed_vertices += int(delta > height * 1e-5)
+    ordered = sorted(deltas)
+    pose_tests.append({"action": action.name, "sampled_frames": frames,
+                       "compared_vertex_samples": compared_vertices,
+                       "deformed_vertex_sample_ratio": deformed_vertices / max(1, compared_vertices),
+                       "max_displacement_over_height": max(ordered, default=0.0),
+                       "p95_displacement_over_height": ordered[min(len(ordered)-1, int(.95 * len(ordered)))] if ordered else 0.0,
+                       "all_positions_finite": finite})
+for arm in armature_objects:
+    if arm.animation_data:
+        arm.animation_data.action = None
+scene.frame_set(0)
+bpy.context.view_layer.update()
+rigged_stats = {"mesh_count": len(meshes), "vertex_count": all_vertices}
+qa = {
+    "source_geometry": source_stats,
+    "rigged_geometry": rigged_stats,
+    "mesh_stats": mesh_stats,
+    "armature_names": [o.name for o in armature_objects],
+    "bone_count": sum(len(o.data.bones) for o in armature_objects),
+    "bound_mesh_count": bound_meshes,
+    "weighted_vertex_ratio": weighted_vertices / max(1, all_vertices),
+    "unweighted_vertex_ratio": unweighted_vertices / max(1, all_vertices),
+    "weight_sum_normalized_ratio": normalized_vertices / max(1, weighted_vertices),
+    "weight_sum_min": min(weight_sums, default=0.0),
+    "weight_sum_max": max(weight_sums, default=0.0),
+    "max_bone_influences_per_vertex": max_influences,
+    "pose_tests": pose_tests,
+    "quality_gate": "needs_visual_review",
+    "quality_gate_passed": False,
+}
+bpy.ops.wm.save_as_mainfile(filepath=output)
+print("AFK_IMPORT_CHECK=" + json.dumps({"qa": qa, "actions": [a.name for a in actions]}))
+''', encoding="utf-8")
+    try:
+        imported = subprocess.run(
+            [str(blender), "--background", "--factory-startup", "--python", str(import_script),
+             "--", str(rigged_glb), str(result_blend)], capture_output=True, text=True,
+            timeout=600, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "reason": "blender_rigged_glb_import_timeout"}
+    (out_dir / "blender_import.log").write_text(
+        ((imported.stdout or "") + "\n" + (imported.stderr or ""))[-30000:], encoding="utf-8"
+    )
+    if imported.returncode != 0 or not result_blend.is_file():
+        return {"status": "error", "reason": "blender_rigged_glb_import_failed",
+                "exit_code": imported.returncode}
+    source_unchanged = _spring_sha256(source) == source_sha
+    result = {
+        "status": "completed" if source_unchanged else "error",
+        "reason": None if source_unchanged else "source_changed_during_test",
+        "source_blend": str(source), "source_blend_sha256": source_sha,
+        "source_unchanged": source_unchanged, "input_glb": str(input_glb),
+        "rigged_glb": str(rigged_glb), "blend_path": str(result_blend),
+        "preview_path": str(preview), "report_path": str(report_path),
+        "package": "afk-rig@0.1.2", "skeleton": "human",
+        "animations": ["Walk", "Idle_A"], "input_bytes": input_glb.stat().st_size,
+        "rigged_bytes": rigged_glb.stat().st_size,
+    }
+    marker = "AFK_IMPORT_CHECK="
+    check_line = next((line[len(marker):] for line in (imported.stdout or "").splitlines()
+                       if line.startswith(marker)), None)
+    if check_line is None:
+        return {**result, "status": "error", "reason": "rig_qa_result_missing"}
+    try:
+        result["qa"] = json.loads(check_line)["qa"]
+    except (ValueError, KeyError, TypeError):
+        return {**result, "status": "error", "reason": "rig_qa_result_invalid"}
+    result["technical_checks_passed"] = bool(
+        result["qa"].get("armature_names") and result["qa"].get("bone_count", 0) > 0
+        and result["qa"].get("weighted_vertex_ratio", 0) > 0.95
+        and result["qa"].get("bound_mesh_count", 0) > 0
+        and bool(result["qa"].get("pose_tests"))
+        and all(p.get("all_positions_finite") for p in result["qa"].get("pose_tests", []))
+    )
+    result["quality_gate_passed"] = False
+    result["quality_gate"] = "needs_visual_review"
+    if not result["technical_checks_passed"]:
+        result["status"] = "error"
+        result["reason"] = "rig_technical_checks_failed"
+    report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result
+

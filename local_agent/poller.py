@@ -52,7 +52,7 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"}:
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery", "afk_rig_mia_test"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -1456,7 +1456,7 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "compile_story_plan", "scan_project_assets", "sync_approved_assets",
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
-    "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_mia_spring_rig_preview", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
+    "blender_mia_skeleton", "afk_rig_mia_test", "blender_mia_spring_rig_transfer", "blender_mia_spring_rig_preview", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
     "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
@@ -2372,6 +2372,33 @@ def _run_blender_mia_spring_rig_transfer(arguments: dict[str, Any]) -> dict[str,
     return transfer_spring_rig_to_mia(arguments["project_name"])
 
 
+def _publish_mia_afk_preview_png(client: GitHubQueueClient, parent_task_id: str, path_value: str) -> dict[str, Any]:
+    """Publish one bounded AFK diagnostic PNG for visual review."""
+    import base64
+    import hashlib
+    path = Path(path_value)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
+        return {"status": "blocked", "reason": "afk_preview_missing_or_over_size"}
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    chunk_size = 30_000
+    total = (len(raw) + chunk_size - 1) // chunk_size
+    prefix = hashlib.sha256(parent_task_id.encode("utf-8")).hexdigest()[:16]
+    ids = []
+    for index in range(total):
+        chunk = raw[index * chunk_size:(index + 1) * chunk_size]
+        result_id = f"afk-preview-{prefix}-part-{index + 1:03d}"
+        _publish_result_durable(client, result_id, {
+            "status": "image_part", "parent_task_id": parent_task_id,
+            "part_index": index + 1, "part_count": total, "image_sha256": digest,
+            "image_size_bytes": len(raw), "mime_type": "image/png",
+            "data_base64": base64.b64encode(chunk).decode("ascii"),
+        })
+        ids.append(result_id)
+    return {"status": "published", "image_sha256": digest,
+            "image_size_bytes": len(raw), "part_count": total, "part_result_ids": ids}
+
+
 def _publish_mia_rig_preview_video_parts(client: GitHubQueueClient, parent_task_id: str, details: dict[str, Any]) -> dict[str, Any]:
     """Deliver a bounded MP4 as independently verifiable mailbox result chunks."""
     import base64
@@ -2775,6 +2802,13 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     finish_agent_task(task.task_id)
             elif task.operation == "blender_mia_spring_rig_transfer":
                 details = _run_blender_mia_spring_rig_transfer(task.arguments)
+            elif task.operation == "afk_rig_mia_test":
+                from local_agent.blender_rigging import run_afk_rig_mia_test
+                details = run_afk_rig_mia_test()
+                if details.get("status") == "completed":
+                    details["preview_delivery"] = _publish_mia_afk_preview_png(
+                        client, task.task_id, details.get("preview_path", "")
+                    )
             elif task.operation == "blender_mia_spring_rig_preview":
                 from local_agent.blender_rigging import preview_mia_spring_rig_video
                 details = preview_mia_spring_rig_video(task.arguments["project_name"])
