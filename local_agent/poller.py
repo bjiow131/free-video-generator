@@ -2673,7 +2673,7 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
         if proc.returncode:return fail("install_shape_dependencies",proc,{"hardware":hardware})
         # Convert the reference's three approved columns into transparent inputs.
         prep=output/"prepare_views.py"
-        prep.write_text(r'''from PIL import Image,ImageFilter
+        prep.write_text(r'''from PIL import Image,ImageFilter,ImageDraw
 import numpy as np,sys,os,json
 src,dst=sys.argv[1],sys.argv[2]
 im=Image.open(src).convert("RGB")
@@ -2686,7 +2686,12 @@ for name,(x0,x1) in views.items():
     a=np.asarray(tile).astype(np.int16)
     hi=a.max(axis=2); lo=a.min(axis=2); chroma=hi-lo
     mask=(chroma>9)&(hi>45)&(chroma/np.maximum(hi,1)>.20)
-    alpha=Image.fromarray((mask*255).astype("uint8")).filter(ImageFilter.MedianFilter(3))
+    foreground=(mask*255).astype("uint8")
+    padded=Image.new("L",(foreground.shape[1]+2,foreground.shape[0]+2),0)
+    padded.paste(Image.fromarray(foreground),(1,1))
+    ImageDraw.floodfill(padded,(0,0),128)
+    filled=np.where(np.asarray(padded)[1:-1,1:-1]==128,0,255).astype("uint8")
+    alpha=Image.fromarray(filled).filter(ImageFilter.MedianFilter(3))
     bbox=alpha.getbbox()
     if not bbox: raise RuntimeError("empty reference foreground: "+name)
     tile=tile.crop(bbox).convert("RGBA")
@@ -2727,10 +2732,12 @@ path=os.path.join(out_dir,slug+"_hunyuan3d2mv_candidate.glb")
 mesh.export(path)
 with open(os.path.join(out_dir,"mesh_stats.json"),"w",encoding="utf-8") as f:
  json.dump({"vertices":int(len(mesh.vertices)),"faces":int(len(mesh.faces)),
-  "bounds":mesh.bounds.tolist(),"source":"three_views_from_character_turnaround",\n  "character_name":character_name,
+  "bounds":mesh.bounds.tolist(),"source":"three_views_from_character_turnaround",
+  "character_name":character_name,
   "geometry_is_new":True,"seed":20261014},f,indent=2)
 ''',encoding="utf-8")
         env=os.environ.copy()
+        env["PYTHONPATH"]=str(repo)
         env["HF_HOME"]=str(tooling/"hf_cache")
         env["HUGGINGFACE_HUB_CACHE"]=str(tooling/"hf_cache")
         proc=run([python,inference,prep_dir,output,tooling/"hf_cache",slug,character_name],
@@ -2761,10 +2768,15 @@ for o in meshes:
  o.scale*=scale
 bpy.context.view_layer.update()
 scene=bpy.context.scene
-scene.render.engine="BLENDER_EEVEE_NEXT"
+engines=bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items.keys()
+scene.render.engine=next(e for e in ("BLENDER_EEVEE","BLENDER_EEVEE_NEXT","CYCLES") if e in engines)
 scene.render.resolution_x=600;scene.render.resolution_y=900;scene.render.resolution_percentage=100
 scene.render.image_settings.file_format="PNG";scene.render.film_transparent=False
 scene.world.color=(.42,.42,.42)
+for loc,power,size in (((4,-5,6),900,5),((-4,-2,3),650,4),((1,4,5),1000,4)):
+ bpy.ops.object.light_add(type="AREA",location=loc)
+ light=bpy.context.object;light.data.energy=power;light.data.shape="DISK";light.data.size=size
+ light.rotation_euler=(Vector((0,0,0))-light.location).to_track_quat("-Z","Y").to_euler()
 bpy.ops.object.camera_add()
 cam=bpy.context.object;cam.data.type="ORTHO";cam.data.ortho_scale=4.25
 scene.camera=cam
