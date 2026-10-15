@@ -112,6 +112,8 @@ def test_spring_transfer_script_uses_explicit_polished_source_and_replaces_pilot
  assert 'donor_path,source_mia_path,out_path,report_path' in r.SPRING_TRANSFER_SCRIPT
  assert 'filepath=source_mia_path' in r.SPRING_TRANSFER_SCRIPT
  assert 'Mia_Source_Pilot_Rig' in r.SPRING_TRANSFER_SCRIPT
+ assert 'if mod.type=="ARMATURE": obj.modifiers.remove(mod)' in r.SPRING_TRANSFER_SCRIPT
+ assert 'next((o for o in spring if o.type=="ARMATURE"' in r.SPRING_TRANSFER_SCRIPT
  assert 'mia_reference_model.blend' not in r.SPRING_TRANSFER_SCRIPT
 
 
