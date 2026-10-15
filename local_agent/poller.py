@@ -2564,6 +2564,98 @@ def _not_expired(task: Any) -> bool:
         return False
 
 
+def _review_hunyuan_character(character_name: str, reference_sha256: str,
+                              generation_task_id: str, review_task_id: str) -> dict[str, Any]:
+    """Reopen only a generated character candidate and export its bounded review image."""
+    import base64
+    import hashlib
+    if not isinstance(generation_task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", generation_task_id):
+        return {"status": "rejected", "reason": "invalid_generation_task_id"}
+    from local_agent.path_names import is_link_or_junction
+    workspace = Path(os.environ.get("LOCAL_AGENT_WORKSPACE", "")).expanduser().resolve()
+    root = workspace / "CHARACTER_REFERENCE_REVIEW"
+    slug = character_name.lower()
+    source = root / (slug + "_HY3DMV_" + generation_task_id)
+    destination = root / (slug + "_REVIEW_" + review_task_id)
+    blend = source / (slug + "_hunyuan3d2mv_candidate.blend")
+    glb = source / (slug + "_hunyuan3d2mv_candidate.glb")
+    reference = source / "reference_turnaround.jpg"
+    python = workspace / "_Hunyuan3D2mv_tooling" / "venv" / "Scripts" / "python.exe"
+    previews = tuple(source / (name + ".png") for name in ("front", "side", "back"))
+    paths = (root, source, destination, blend, glb, reference, python.parent.parent.parent,
+             python.parent.parent, python.parent, python, *previews)
+    if any(is_link_or_junction(p) for p in paths):
+        return {"status": "blocked", "reason": "unsafe_review_path"}
+    if not all(p.is_file() for p in (blend, glb, reference, python, *previews)):
+        return {"status": "blocked", "reason": "candidate_artifacts_missing"}
+    if reference.stat().st_size > 35000 or hashlib.sha256(reference.read_bytes()).hexdigest() != reference_sha256:
+        return {"status": "blocked", "reason": "candidate_reference_hash_mismatch"}
+    if destination.exists():
+        return {"status": "blocked", "reason": "unique_review_output_already_exists"}
+    blender = find_blender_executable()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_missing"}
+    destination.mkdir(parents=False, exist_ok=False)
+    audit_script = destination / "audit_candidate.py"
+    audit_script.write_text(r'''import bpy,json,math,os,sys
+out=sys.argv[sys.argv.index("--")+1]
+meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
+report={"blender_version":bpy.app.version_string,"reopened_file":bpy.data.filepath,
+ "object_count":len(bpy.context.scene.objects),"meshes":[],
+ "armatures":[{"name":o.name,"bones":len(o.data.bones)} for o in bpy.context.scene.objects if o.type=="ARMATURE"]}
+for o in meshes:
+ o.data.calc_loop_triangles()
+ report["meshes"].append({"name":o.name,"vertices":len(o.data.vertices),"triangles":len(o.data.loop_triangles),
+  "dimensions":list(o.dimensions),"materials":[m.name if m else None for m in o.data.materials],
+  "shape_keys":list(o.data.shape_keys.key_blocks.keys()) if o.data.shape_keys else [],
+  "nonfinite_vertices":sum(not all(math.isfinite(c) for c in v.co) for v in o.data.vertices)})
+report["status"]="passed" if meshes and all(m["vertices"]>0 and m["nonfinite_vertices"]==0 for m in report["meshes"]) else "failed"
+with open(out,"w",encoding="utf-8") as f:json.dump(report,f,indent=2)
+if report["status"]!="passed":raise RuntimeError("candidate mesh validation failed")
+''', encoding="utf-8")
+    audit = destination / "blend_reopen_audit.json"
+    proc = subprocess.run([str(blender), "--background", "--factory-startup", "--disable-autoexec",
+                           "--offline-mode", str(blend), "--python-exit-code", "1", "--python", str(audit_script),
+                           "--", str(audit)], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=300, stdin=subprocess.DEVNULL, shell=False)
+    if proc.returncode or not audit.is_file():
+        return {"status": "incomplete", "stage": "reopen_blend", "return_code": proc.returncode,
+                "error_tail": (proc.stderr or proc.stdout or "")[-2000:]}
+    report = json.loads(audit.read_text(encoding="utf-8"))
+    collage_script = destination / "prepare_review.py"
+    collage_script.write_text(r'''from PIL import Image,ImageOps,ImageDraw
+import os,sys
+source,out=sys.argv[1:3]
+canvas=Image.new("RGB",(900,480),(235,235,235));draw=ImageDraw.Draw(canvas)
+for i,name in enumerate(("front","side","back")):
+ with Image.open(os.path.join(source,name+".png")) as im:
+  im.load();tile=ImageOps.contain(im.convert("RGB"),(300,450))
+  canvas.paste(tile,(i*300+(300-tile.width)//2,25+(450-tile.height)//2))
+ draw.text((i*300+10,7),name,fill=(20,20,20))
+canvas.save(out,"JPEG",quality=82,optimize=True)
+''', encoding="utf-8")
+    image_path = destination / "review.jpg"
+    prepared = subprocess.run([str(python), str(collage_script), str(source), str(image_path)],
+                              capture_output=True, text=True, timeout=60,
+                              stdin=subprocess.DEVNULL, shell=False)
+    if prepared.returncode or not image_path.is_file():
+        return {"status": "incomplete", "stage": "prepare_review_image", "audit": report,
+                "error_tail": (prepared.stderr or "")[-1500:]}
+    image_data = image_path.read_bytes()
+    if len(image_data) > 250000 or not image_data.startswith(b"\xff\xd8\xff"):
+        return {"status": "blocked", "reason": "review_image_not_bounded_jpeg", "audit": report}
+    mailbox_path = "queue/artifacts/" + review_task_id + "/review.jpg"
+    client = GitHubQueueClient(QueueConfig.from_environment())
+    client._request("PUT", "contents/" + mailbox_path, json={
+        "message": "Store generated character review image", "branch": client.config.ref,
+        "content": base64.b64encode(image_data).decode("ascii")})
+    return {"status": "completed", "stage": "candidate_reopened_and_review_exported", "audit": report,
+            "blend_path": str(blend), "mesh_path": str(glb), "review_folder": str(destination),
+            "review_mailbox_path": mailbox_path, "review_sha256": hashlib.sha256(image_data).hexdigest(),
+            "reference_sha256": reference_sha256, "shape_only": True, "identity_verified": False}
+
+
+
 def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict[str, Any]:
     """Generate a shape-only candidate from a validated three-view character turnaround."""
     import base64, hashlib, json, os, re, shutil, subprocess, sys, time
@@ -2571,7 +2663,7 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
     from local_agent.mailbox_policy import load_policy
     from local_agent.path_names import is_link_or_junction
     required={"character_name","reference_base64","reference_sha256"}
-    if set(arguments) != required:
+    if set(arguments) not in (required, required | {"review_generation_task_id"}):
         return {"status":"rejected","reason":"expected_character_name_reference_base64_and_sha256"}
     character_name=arguments.get("character_name")
     encoded=arguments.get("reference_base64")
@@ -2595,6 +2687,8 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
     if not workspace_value:
         return {"status":"blocked","reason":"workspace_missing"}
     workspace=Path(workspace_value).expanduser().resolve()
+    if "review_generation_task_id" in arguments:
+        return _review_hunyuan_character(character_name, ref_sha, arguments["review_generation_task_id"], task_id)
     slug=character_name.lower()
     root=workspace/"CHARACTER_REFERENCE_REVIEW"
     output=root/(slug+"_HY3DMV_"+task_id)
