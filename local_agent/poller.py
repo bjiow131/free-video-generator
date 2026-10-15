@@ -2668,7 +2668,7 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
         packages=["ninja","pybind11","diffusers==0.32.2","einops","opencv-python",
           "numpy==1.26.4","transformers==4.46.3","omegaconf","tqdm","trimesh",
           "pymeshlab","pygltflib","xatlas","accelerate","huggingface_hub","safetensors",
-          "Pillow"]
+          "Pillow","scikit-image==0.24.0"]
         proc=run(pip+["install"]+packages,timeout=2400)
         if proc.returncode:return fail("install_shape_dependencies",proc,{"hardware":hardware})
         # Convert the reference's three approved columns into transparent inputs.
@@ -2740,6 +2740,9 @@ with open(os.path.join(out_dir,"mesh_stats.json"),"w",encoding="utf-8") as f:
         env["PYTHONPATH"]=str(repo)
         env["HF_HOME"]=str(tooling/"hf_cache")
         env["HUGGINGFACE_HUB_CACHE"]=str(tooling/"hf_cache")
+        proc=run([python,"-c","from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline"],
+                 cwd=repo,timeout=180,env=env)
+        if proc.returncode:return fail("verify_shape_dependencies",proc,{"hardware":hardware})
         proc=run([python,inference,prep_dir,output,tooling/"hf_cache",slug,character_name],
                  cwd=repo,timeout=5400,env=env)
         if proc.returncode:return fail("hunyuan_multiview_shape_generation",proc,
