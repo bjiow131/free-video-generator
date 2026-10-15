@@ -1161,3 +1161,145 @@ def preview_mia_spring_rig_video(project_name: str) -> dict[str, Any]:
     data["source_blend"] = str(source)
     report.write_text(json.dumps(data,indent=2),encoding="utf-8")
     return data
+
+ 
+def run_afk_rig_mia_test() -> dict[str, Any]:
+    """Run AFK Rig on an isolated Mia export; the source .blend is read-only."""
+    import shutil
+    import time
+
+    project_name = "mia-source-polished-v4-20261014"
+    workspace_value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    blender = find_blender_executable()
+    if not workspace_value or blender is None or not blender.is_file():
+        return {"status": "blocked", "reason": "local_blender_or_workspace_not_configured"}
+    if os.name == "nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender):
+        return {"status": "blocked", "reason": "blender_executable_not_supported_64_bit_windows"}
+    npx = shutil.which("npx") or shutil.which("npx.cmd")
+    if not npx:
+        return {"status": "blocked", "reason": "node_npx_not_installed"}
+    workspace = Path(workspace_value).expanduser().resolve()
+    project = workspace / "SOURCE_ADAPTATIONS" / project_name
+    if any(is_link_or_junction(p) for p in (project, project.parent, project.parent.parent)):
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    project = project.resolve()
+    if not project.is_relative_to(workspace) or project == workspace:
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    source = project / "mia_spring_source_adapted.blend"
+    if is_link_or_junction(source) or not source.is_file() or source.stat().st_size == 0:
+        return {"status": "blocked", "reason": "pinned_mia_source_missing_or_unsafe"}
+    source_sha = _spring_sha256(source)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out_dir = project / ("afk_rig_mia_test_" + stamp)
+    if out_dir.exists() or is_link_or_junction(out_dir):
+        return {"status": "blocked", "reason": "test_output_already_exists"}
+    out_dir.mkdir(parents=False, exist_ok=False)
+    if not out_dir.resolve().is_relative_to(project):
+        return {"status": "rejected", "reason": "test_output_outside_project"}
+    input_glb = out_dir / "mia_source_test_input.glb"
+    rigged_glb = out_dir / "mia_afk_rig_test.glb"
+    afk_project = out_dir / "mia_source_test_input.afk-rig.json"
+    preview = out_dir / "mia_afk_walk_front_left.png"
+    result_blend = out_dir / "mia_afk_rig_test.blend"
+    report_path = out_dir / "afk_rig_test_report.json"
+    export_script = out_dir / "export_mia_copy.py"
+    export_script.write_text(r'''
+import bpy, os, sys
+source, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+bpy.ops.wm.open_mainfile(filepath=source, load_ui=False)
+bpy.ops.object.select_all(action="DESELECT")
+meshes = [o for o in bpy.context.scene.objects if o.type == "MESH" and not o.hide_render]
+if not meshes: raise RuntimeError("no_visible_mesh_objects")
+for obj in meshes: obj.select_set(True)
+bpy.context.view_layer.objects.active = meshes[0]
+bpy.ops.export_scene.gltf(filepath=output, export_format="GLB", use_selection=True)
+if not os.path.isfile(output) or os.path.getsize(output) == 0: raise RuntimeError("glb_export_empty")
+''', encoding="utf-8")
+    try:
+        export = subprocess.run(
+            [str(blender), "--background", "--factory-startup", "--python", str(export_script),
+             "--", str(source), str(input_glb)], capture_output=True, text=True,
+            timeout=600, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "reason": "blender_glb_export_timeout"}
+    (out_dir / "blender_export.log").write_text(
+        ((export.stdout or "") + "\n" + (export.stderr or ""))[-30000:], encoding="utf-8"
+    )
+    if export.returncode != 0 or not input_glb.is_file():
+        return {"status": "error", "reason": "blender_glb_export_failed",
+                "exit_code": export.returncode}
+
+    def run_afk(args: list[str], log_name: str, timeout: int = 1200) -> dict[str, Any]:
+        argv = [npx, "--yes", "afk-rig@0.1.2", *args]
+        if os.name == "nt" and str(npx).lower().endswith((".cmd", ".bat")):
+            command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
+                       subprocess.list2cmdline(argv)]
+        else:
+            command = argv
+        try:
+            completed = subprocess.run(command, cwd=str(out_dir), capture_output=True,
+                                       text=True, timeout=timeout, check=False)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "reason": "afk_cli_timeout"}
+        combined = (completed.stdout or "") + "\n" + (completed.stderr or "")
+        (out_dir / log_name).write_text(combined[-30000:], encoding="utf-8")
+        return {"ok": completed.returncode == 0, "exit_code": completed.returncode,
+                "tail": combined[-2500:]}
+
+    step = run_afk(["start", str(input_glb), "--skeleton", "human"], "afk_start.log")
+    if not step["ok"] or not afk_project.is_file():
+        return {"status": "error", "reason": "afk_start_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["render", str(afk_project), "--views", "front,left", "--size", "640",
+                    "--animation", "Walk", "--time", "0.5", "--out", str(preview)],
+                   "afk_render.log")
+    if not step["ok"] or not preview.is_file():
+        return {"status": "error", "reason": "afk_preview_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["bind", str(afk_project)], "afk_bind.log")
+    if not step["ok"]:
+        return {"status": "error", "reason": "afk_bind_failed", "diagnostic": step.get("tail", "")}
+    step = run_afk(["export", str(afk_project), "--out", str(rigged_glb),
+                    "--animations", "Walk,Idle_A"], "afk_export.log")
+    if not step["ok"] or not rigged_glb.is_file():
+        return {"status": "error", "reason": "afk_export_failed", "diagnostic": step.get("tail", "")}
+
+    import_script = out_dir / "import_afk_copy.py"
+    import_script.write_text(r'''
+import bpy, json, os, sys
+glb, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.import_scene.gltf(filepath=glb)
+armatures = [o.name for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+actions = [a.name for a in bpy.data.actions]
+if not armatures: raise RuntimeError("imported_glb_has_no_armature")
+bpy.ops.wm.save_as_mainfile(filepath=output)
+print("AFK_IMPORT_CHECK=" + json.dumps({"armatures": armatures, "actions": actions}))
+''', encoding="utf-8")
+    try:
+        imported = subprocess.run(
+            [str(blender), "--background", "--factory-startup", "--python", str(import_script),
+             "--", str(rigged_glb), str(result_blend)], capture_output=True, text=True,
+            timeout=600, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "reason": "blender_rigged_glb_import_timeout"}
+    (out_dir / "blender_import.log").write_text(
+        ((imported.stdout or "") + "\n" + (imported.stderr or ""))[-30000:], encoding="utf-8"
+    )
+    if imported.returncode != 0 or not result_blend.is_file():
+        return {"status": "error", "reason": "blender_rigged_glb_import_failed",
+                "exit_code": imported.returncode}
+    source_unchanged = _spring_sha256(source) == source_sha
+    result = {
+        "status": "completed" if source_unchanged else "error",
+        "reason": None if source_unchanged else "source_changed_during_test",
+        "source_blend": str(source), "source_blend_sha256": source_sha,
+        "source_unchanged": source_unchanged, "input_glb": str(input_glb),
+        "rigged_glb": str(rigged_glb), "blend_path": str(result_blend),
+        "preview_path": str(preview), "report_path": str(report_path),
+        "package": "afk-rig@0.1.2", "skeleton": "human",
+        "animations": ["Walk", "Idle_A"], "input_bytes": input_glb.stat().st_size,
+        "rigged_bytes": rigged_glb.stat().st_size,
+    }
+    report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result
