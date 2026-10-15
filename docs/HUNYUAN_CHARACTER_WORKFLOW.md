@@ -60,3 +60,9 @@ Give the review its own unique envelope task ID. It reads only the matching gene
 - Dependency update `tavi-hunyuan-dependencies-20261015-03` completed on Windows, source `9e0d8143a1f440c7b7a04baeaa2451019fca6959`.
 - Retry `tavi-hunyuan3d2mv-20261015-02` is the current desired task; no result was available at this checkpoint. Do not duplicate it or claim the mesh exists.
 - Review extension `ff5bb4eb08cc43d063b840d51d8b1a1a92edba61` is committed, syntax checked, and queued as update `tavi-hunyuan-review-20261015-04`. Installation/reopen/render checks remain pending.
+
+## Live monitoring checkpoint
+
+Periodic report `progress-916a17b98100-000002` at 2026-10-15T08:55:31Z confirms desired generation task 02 as `executing_task`, started 08:46:10Z, `paused: false`. Per-stage inference progress is not available. Read recent result commits (GET commits with `path=queue/results`) to find progress report IDs; directory listings can truncate at 1000 entries.
+
+The independent watchdog currently falsely reports `agent_process_down`: `_mailbox_process_diagnostics` only matches `local_agent.(poller|studio_server)`, while the task-control supervisor routes the mailbox to `local_agent.mailbox_policy --mailbox-worker`. It therefore misses the new worker despite current periodic reports and a fresh loop heartbeat. This diagnostic mismatch does not justify terminating generation. The process matcher needs a separate fix and the long-lived watchdog must reload before a live correction can be claimed.
