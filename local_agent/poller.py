@@ -1384,6 +1384,58 @@ def _acquire_instance_lock(path: Path):
         raise
 
 
+
+# Task inactivity is not the same thing as a GitHub outage. A valid, previously
+# handled manifest must NOT reset this timer during routine polling.
+_MAILBOX_IDLE_SECONDS = 10 * 60
+
+
+def _mailbox_idle_initialize(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
+    """Initialize once, preserving the task clock across worker restarts."""
+    clock = time.time() if now is None else now
+    last = state.get("mailbox_last_new_task_at")
+    sent = state.get("mailbox_idle_notice_sent")
+    if (type(last) not in (int, float) or not 0 < last <= clock + 60
+            or type(sent) is not bool):
+        return {**state, "mailbox_last_new_task_at": clock,
+                "mailbox_idle_notice_sent": False}
+    return state
+
+
+def _mailbox_idle_new_task(state: dict[str, Any], *, now: float | None = None) -> dict[str, Any]:
+    """New unique GitHub task starts a new 10-minute idle period."""
+    return {**state, "mailbox_last_new_task_at": time.time() if now is None else now,
+            "mailbox_idle_notice_sent": False}
+
+
+def _mailbox_idle_tick(state: dict[str, Any], *, github_reachable: bool,
+                       now: float | None = None) -> dict[str, Any]:
+    """Queue ONE notice for an idle period; never report an idle queue as an outage."""
+    clock = time.time() if now is None else now
+    state = _mailbox_idle_initialize(state, now=clock)
+    if (state["mailbox_idle_notice_sent"]
+            or clock - state["mailbox_last_new_task_at"] < _MAILBOX_IDLE_SECONDS):
+        return state
+    try:
+        from local_agent.studio_server import telegram_queue_event, telegram_flush_outbox
+        connection = ("Проверка GitHub работает." if github_reachable else
+                      "Последняя проверка GitHub завершилась ошибкой подключения.")
+        message = ("Blender AI Agent: уже 10 минут не поступало новых заданий из GitHub. "
+                   + connection + " Агент продолжает проверять очередь.")
+        event_id = "mailbox-idle:" + str(int(state["mailbox_last_new_task_at"]))
+        if not telegram_queue_event(event_id, message):
+            # Telegram disabled or not paired: don't mark as sent.
+            return state
+        # Persist before delivery: if the process restarts, don't alert repeatedly.
+        updated = {**state, "mailbox_idle_notice_sent": True}
+        _save_state(updated)
+        telegram_flush_outbox(max_messages=2)
+        return updated
+    except (ImportError, OSError, RuntimeError, ValueError):
+        # Never stop GitHub task processing because Telegram is unavailable.
+        return state
+
+
 def main() -> int:
     # Remote task intake is deliberately opt-in; the normal local Blender launcher
     # never starts a GitHub polling loop by accident.
@@ -1426,6 +1478,10 @@ def main() -> int:
     next_update_check = time.monotonic()
     last_seen = state.get("last_task_id")
     last_sha = state.get("manifest_sha")
+    idle_state = _mailbox_idle_initialize(state)
+    if idle_state is not state:
+        state = idle_state
+        _save_state(state)
     print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
     print("Local Studio policy controls unattended tasks; unreviewed code patches are NEVER auto-approved.")
     print("Run Blender integration tests on the Windows computer before production use.")
@@ -1443,6 +1499,7 @@ def main() -> int:
                     task, manifest_sha = fetched
                     decision = classify_manifest(state, task.task_id, manifest_sha)
                     if decision == "new":
+                        state = _mailbox_idle_new_task(state)
                         # Persist a claim before doing any local work. If the process
                         # dies or result publication fails, never blindly replay it.
                         state = _remember_manifest(
@@ -1519,6 +1576,7 @@ def main() -> int:
                         _save_state(state)
                         last_sha = manifest_sha
                 state = _poll_repair_once(client, state)
+                state = _mailbox_idle_tick(state, github_reachable=True)
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -1545,10 +1603,12 @@ def main() -> int:
                 print("\nPoller stopped.")
                 return 0
             except QueueTransportError as exc:
+                state = _mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError) as exc:
+                state = _mailbox_idle_tick(state, github_reachable=False)
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
                 time.sleep(backoff)
                 backoff = min(max(interval, backoff * 2), 300)
