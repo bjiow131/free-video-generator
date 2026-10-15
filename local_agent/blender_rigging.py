@@ -941,3 +941,165 @@ def polish_saved_source_model(source_project: str, project_name: str) -> dict[st
     else:delivery['status']='blocked_archive_exceeds_telegram_limit'
     (out/'document_delivery_receipt.json').write_text(json.dumps(delivery,indent=2),encoding='utf-8')
     return {'status':'completed','stage':data['stage'],'continues_last_saved_geometry':True,'source_blend_sha256':source_hash,'source_unchanged':True,'output_blend_sha256':_spring_sha256(blend),'blend_path':str(blend),'bundle_path':str(bundle),'report_path':str(report),'neutral_values':data['neutral_values'],'facial_shape_deltas':data['facial_shape_deltas'],'changes':data['changes'],'thumbnail_jpeg_base64':thumbs,'astra':astra,'telegram_documents':delivery,'identity_verified':False,'production_ready':False,'goal_status':'awaiting_user_visual_acceptance','limitations':['Mapped pilot weights and advanced facial controls still require production QA','No episode rendering was started']}
+
+
+SPRING_RIG_VIDEO_SCRIPT = r"""
+import bpy, sys, json, math, hashlib
+from pathlib import Path
+from mathutils import Vector
+source, video, report = map(Path, sys.argv[sys.argv.index("--") + 1:])
+bpy.context.preferences.filepaths.use_scripts_auto_execute = False
+bpy.ops.wm.open_mainfile(filepath=str(source), load_ui=False)
+scene = bpy.context.scene
+armatures = [o for o in bpy.data.objects if o.type == "ARMATURE" and len(o.data.bones) >= 100]
+if not armatures:
+    raise RuntimeError("No substantial armature found in the saved Mia file")
+armature = max(armatures, key=lambda o: len(o.data.bones))
+bone = armature.pose.bones.get("master_torso")
+if bone is None:
+    raise RuntimeError("Expected tested Spring control master_torso is missing")
+mesh_objects = [o for o in scene.objects if o.type == "MESH" and not o.hide_render and len(o.data.vertices)]
+if not mesh_objects:
+    raise RuntimeError("No visible Mia meshes found")
+camera = scene.camera
+if camera is None:
+    raise RuntimeError("Rigged Mia scene has no saved review camera")
+bone.rotation_mode = "XYZ"
+neutral = bone.rotation_euler.copy()
+if armature.animation_data:
+    armature.animation_data.action = None
+else:
+    armature.animation_data_create()
+armature.animation_data.action = bpy.data.actions.new("Mia_Spring_Rig_Motion_Preview")
+for frame, delta in ((1,0.0),(18,0.14),(36,0.0),(54,-0.14),(72,0.0)):
+    bone.rotation_euler = neutral
+    bone.rotation_euler.y += delta
+    bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone.name)
+for curve in armature.animation_data.action.fcurves:
+    for point in curve.keyframe_points:
+        point.interpolation = "BEZIER"
+scene.frame_start, scene.frame_end, scene.render.fps = 1, 72, 24
+scene.render.resolution_x = 480
+scene.render.resolution_y = 480
+scene.render.resolution_percentage = 100
+scene.render.image_settings.file_format = "FFMPEG"
+scene.render.ffmpeg.format = "MPEG4"
+scene.render.ffmpeg.codec = "H264"
+scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
+scene.render.ffmpeg.video_bitrate = 480
+scene.render.ffmpeg.maxrate = 800
+scene.render.ffmpeg.gopsize = 24
+scene.render.filepath = str(video)
+scene.render.use_file_extension = True
+if scene.render.engine == "CYCLES":
+    scene.cycles.samples = 8
+scene.render.image_settings.color_mode = "RGB"
+scene.render.film_transparent = False
+depsgraph = bpy.context.evaluated_depsgraph_get()
+samples = []
+for obj in mesh_objects:
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    if mesh and len(mesh.vertices):
+        stride = max(1, len(mesh.vertices)//300)
+        samples.append((obj, [v.co.copy() for v in mesh.vertices[::stride]]))
+    evaluated.to_mesh_clear()
+scene.frame_set(1)
+bpy.context.view_layer.update()
+baseline = []
+for obj, coords in samples:
+    ev = obj.evaluated_get(depsgraph)
+    me = ev.to_mesh()
+    stride = max(1, len(me.vertices)//300)
+    baseline.append((obj, [v.co.copy() for v in me.vertices[::stride]], stride, len(me.vertices)))
+    ev.to_mesh_clear()
+scene.frame_set(18)
+bpy.context.view_layer.update()
+max_displacement = 0.0
+for obj, before, stride, total in baseline:
+    ev = obj.evaluated_get(depsgraph)
+    me = ev.to_mesh()
+    now = list(me.vertices[::stride])
+    for old, new in zip(before, now):
+        max_displacement = max(max_displacement, (old-new.co).length)
+    ev.to_mesh_clear()
+if max_displacement < 1e-5:
+    raise RuntimeError("The test control produced no measurable mesh deformation")
+scene.frame_set(1)
+bpy.ops.render.render(animation=True)
+if not video.is_file() or video.stat().st_size < 4096:
+    raise RuntimeError("Blender did not create a usable MP4")
+data = {
+    "status": "completed",
+    "source_blend": str(source),
+    "video_path": str(video),
+    "armature": armature.name,
+    "bone_count": len(armature.data.bones),
+    "deform_bone_count": sum(1 for b in armature.data.bones if b.use_deform),
+    "visible_mesh_count": len(mesh_objects),
+    "animation_control": bone.name,
+    "control_rotation_y_radians": 0.14,
+    "sampled_mesh_max_displacement": max_displacement,
+    "frame_count": scene.frame_end-scene.frame_start+1,
+    "fps": scene.render.fps,
+    "duration_seconds": (scene.frame_end-scene.frame_start+1)/scene.render.fps,
+    "resolution": [scene.render.resolution_x,scene.render.resolution_y],
+    "render_engine": scene.render.engine,
+    "returned_to_neutral_pose": True
+}
+report.write_text(json.dumps(data, indent=2), encoding="utf-8")
+"""
+
+def preview_mia_spring_rig_video(project_name: str) -> dict[str, Any]:
+    """Render a short motion test from the existing rigged Mia file without saving it."""
+    if not isinstance(project_name, str) or not SPRING_TRANSFER_PROJECT_RE.fullmatch(project_name):
+        return {"status":"rejected","reason":"invalid_project_name"}
+    root=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
+    blender=find_blender_executable()
+    if not root or blender is None or not blender.is_file():
+        return {"status":"blocked","reason":"local_blender_or_workspace_not_configured"}
+    workspace=Path(root).expanduser().resolve()
+    project=workspace/"SOURCE_ADAPTATIONS"/project_name
+    if any(is_link_or_junction(p) for p in (project,project.parent,project.parent.parent)):
+        return {"status":"rejected","reason":"unsafe_project_path"}
+    project=project.resolve()
+    if not project.is_relative_to(workspace) or project==workspace:
+        return {"status":"rejected","reason":"unsafe_project_path"}
+    source=project/"mia_spring_source_adapted_spring_rig.blend"
+    out=project/"mia_rig_video_preview_20261015"
+    if any(is_link_or_junction(p) for p in (source,out)):
+        return {"status":"rejected","reason":"unsafe_project_file"}
+    if not source.is_file() or source.stat().st_size==0:
+        return {"status":"blocked","reason":"rigged_mia_blend_missing"}
+    if out.exists():
+        return {"status":"blocked","reason":"preview_output_exists_no_overwrite"}
+    source_hash=_spring_sha256(source)
+    out.mkdir(parents=True)
+    video=out/"mia_spring_rig_motion_preview.mp4"
+    report=out/"preview_report.json"
+    with tempfile.TemporaryDirectory(prefix=".rig-video-",dir=out) as td:
+        script=Path(td)/"preview.py"
+        script.write_text(SPRING_RIG_VIDEO_SCRIPT,encoding="utf-8")
+        try:
+            proc=subprocess.run(
+                [str(blender),"--background","--factory-startup","--disable-autoexec","--offline-mode",
+                 "--python-exit-code","1","--python",str(script),"--",str(source),str(video),str(report)],
+                capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=900,check=False,shell=False
+            )
+        except (OSError,subprocess.TimeoutExpired) as exc:
+            return {"status":"failed","reason":"rig_video_process_failed","error_type":type(exc).__name__}
+    (out/"blender_log.txt").write_text((proc.stdout or "")[-30000:]+"\\n--- STDERR ---\\n"+(proc.stderr or "")[-10000:],encoding="utf-8")
+    if proc.returncode or not report.is_file() or not video.is_file():
+        return {"status":"failed","reason":"rig_video_render_failed","return_code":proc.returncode,
+                "stderr_tail":(proc.stderr or "")[-1400:]}
+    data=json.loads(report.read_text("utf-8"))
+    if _spring_sha256(source)!=source_hash or data.get("status")!="completed":
+        return {"status":"failed","reason":"source_changed_or_render_report_invalid"}
+    data["source_blend_sha256"]=source_hash
+    data["source_unchanged"]=True
+    data["video_sha256"]=_spring_sha256(video)
+    data["video_size_bytes"]=video.stat().st_size
+    data["report_path"]=str(report)
+    data["source_blend"] = str(source)
+    report.write_text(json.dumps(data,indent=2),encoding="utf-8")
+    return data
