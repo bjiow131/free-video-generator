@@ -2938,7 +2938,12 @@ for name,(x0,x1) in views.items():
     tile=im.crop((x0,0,x1,1536))
     a=np.asarray(tile).astype(np.int16)
     hi=a.max(axis=2); lo=a.min(axis=2); chroma=hi-lo
-    mask=(chroma>9)&(hi>45)&(chroma/np.maximum(hi,1)>.20)
+    # Keep neutral and dark foreground (leather, tires) by comparing to the edge background.
+    # Chroma is an additional cue for colored fur and the jacket patch.
+    border=np.concatenate((a[0,:,:],a[-1,:,:],a[:,0,:],a[:,-1,:]),axis=0)
+    bg=np.median(border,axis=0)
+    delta=np.max(np.abs(a.astype("int16")-bg.astype("int16")),axis=2)
+    mask=(delta>18)|((chroma>9)&(hi>45)&(chroma/np.maximum(hi,1)>.20))
     foreground=(mask*255).astype("uint8")
     padded=Image.new("L",(foreground.shape[1]+2,foreground.shape[0]+2),0)
     padded.paste(Image.fromarray(foreground),(1,1))
