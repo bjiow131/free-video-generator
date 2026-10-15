@@ -210,12 +210,24 @@ SPRING_TRANSFER_SCRIPT = r'''
 import bpy, json, os, sys
 from mathutils import Matrix, Vector
 from mathutils.kdtree import KDTree
-blend_path,out_path,report_path=[os.path.realpath(p) for p in sys.argv[sys.argv.index("--")+1:]]
-bpy.ops.wm.open_mainfile(filepath=os.path.join(os.path.dirname(out_path),"mia_reference_model.blend"),load_ui=False)
+donor_path,source_mia_path,out_path,report_path=[os.path.realpath(p) for p in sys.argv[sys.argv.index("--")+1:]]
+bpy.ops.wm.open_mainfile(filepath=source_mia_path,load_ui=False)
 scene=bpy.context.scene
 mia=[o for o in scene.objects if o.type=="MESH" and o.name.lower() not in {"studio_floor","stage_ground","ground"}]
 if not mia or sum(len(o.data.vertices) for o in mia)<1000: raise RuntimeError("expected Mia meshes were not found")
-with bpy.data.libraries.load(blend_path,link=False) as (src,dst):
+# Replace only the lightweight adaptation pilot; preserve mesh data, shape keys,
+# materials, and all non-armature modifiers from the polished source.
+pilot=bpy.data.objects.get("Mia_Source_Pilot_Rig")
+if pilot:
+    pilot_names={b.name for b in pilot.data.bones}
+    for obj in mia:
+        for mod in list(obj.modifiers):
+            if mod.type=="ARMATURE" and mod.object==pilot: obj.modifiers.remove(mod)
+        for name in pilot_names:
+            group=obj.vertex_groups.get(name)
+            if group: obj.vertex_groups.remove(group)
+    bpy.data.objects.remove(pilot,do_unlink=True)
+with bpy.data.libraries.load(donor_path,link=False) as (src,dst):
     names=list(src.objects); dst.objects=names; dst.texts=list(src.texts)
 spring=[o for o in dst.objects if o]
 rig=bpy.data.objects.get("RIG-Spring")
@@ -301,69 +313,131 @@ def _spring_sha256(path: Path) -> str:
 
 
 def transfer_spring_rig_to_mia(project_name: str) -> dict[str, Any]:
-    """Create a separate Mia .blend with all 2,259 Spring bones and a pose test."""
-    if not isinstance(project_name,str) or not SPRING_TRANSFER_PROJECT_RE.fullmatch(project_name): return {"status":"rejected","reason":"invalid_project_name"}
-    exe=os.environ.get("BLENDER_EXECUTABLE","").strip(); root=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
-    if not exe or not root: return {"status":"blocked","reason":"local_blender_or_workspace_not_configured"}
-    blender=find_blender_executable(); workspace=Path(root).expanduser().resolve()
-    if not blender.is_file(): return {"status":"blocked","reason":"blender_executable_not_found"}
-    if os.name=="nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender): return {"status":"blocked","reason":"blender_executable_not_supported_64_bit_windows"}
-    project=workspace/"MIA_REFERENCE_REVIEW"/project_name
-    if any(is_link_or_junction(p) for p in (project,project.parent,project.parent.parent)): return {"status":"rejected","reason":"unsafe_project_path"}
-    project=project.resolve()
-    if not project.is_relative_to(workspace) or project==workspace: return {"status":"rejected","reason":"unsafe_project_path"}
-    source_mia=project/"mia_reference_model.blend"; output=project/"mia_reference_model_spring_rig.blend"; report=project/"spring_rig_transfer_result.json"
-    if any(is_link_or_junction(p) for p in (source_mia,output,report)): return {"status":"rejected","reason":"unsafe_project_file"}
-    if not source_mia.is_file(): return {"status":"blocked","reason":"mia_reference_model_missing"}
-    if output.exists() or report.exists(): return {"status":"blocked","reason":"output_exists_no_overwrite"}
-    cache=workspace/".local_agent"/"cache"/"spring-rig-source-v1"; cache.mkdir(parents=True,exist_ok=True)
-    if is_link_or_junction(cache): return {"status":"rejected","reason":"unsafe_cache_path"}
-    archive=cache/"spring-source.zip"; source=cache/"spring"/"spring"/"spring.blend"
-    if is_link_or_junction(archive) or is_link_or_junction(source): return {"status":"rejected","reason":"unsafe_cache_file"}
-    if not source.is_file() or _spring_sha256(source)!=SPRING_TRANSFER_BLEND_SHA256:
-        if not archive.is_file() or _spring_sha256(archive)!=SPRING_TRANSFER_ARCHIVE_SHA256:
+    """Create a separate Spring-rigged copy of the polished Mia source."""
+    if not isinstance(project_name, str) or not SPRING_TRANSFER_PROJECT_RE.fullmatch(project_name):
+        return {"status": "rejected", "reason": "invalid_project_name"}
+    exe = os.environ.get("BLENDER_EXECUTABLE", "").strip()
+    root = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
+    if not exe or not root:
+        return {"status": "blocked", "reason": "local_blender_or_workspace_not_configured"}
+    blender = find_blender_executable()
+    workspace = Path(root).expanduser().resolve()
+    if blender is None or not blender.is_file():
+        return {"status": "blocked", "reason": "blender_executable_not_found"}
+    if os.name == "nt" and subprocess.run is _REAL_SUBPROCESS_RUN and not is_supported_windows_blender(blender):
+        return {"status": "blocked", "reason": "blender_executable_not_supported_64_bit_windows"}
+
+    project = workspace / "SOURCE_ADAPTATIONS" / project_name
+    if any(is_link_or_junction(p) for p in (project, project.parent, project.parent.parent)):
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    project = project.resolve()
+    if not project.is_relative_to(workspace) or project == workspace:
+        return {"status": "rejected", "reason": "unsafe_project_path"}
+    source_mia = project / "mia_spring_source_adapted.blend"
+    output = project / "mia_spring_source_adapted_spring_rig.blend"
+    report = project / "spring_rig_transfer_result.json"
+    if any(is_link_or_junction(p) for p in (source_mia, output, report)):
+        return {"status": "rejected", "reason": "unsafe_project_file"}
+    if not source_mia.is_file() or source_mia.stat().st_size == 0:
+        return {"status": "blocked", "reason": "polished_mia_source_missing"}
+    if output.exists() or report.exists():
+        return {"status": "blocked", "reason": "output_exists_no_overwrite"}
+
+    cache = workspace / ".local_agent" / "cache" / "spring-rig-source-v1"
+    if is_link_or_junction(cache):
+        return {"status": "rejected", "reason": "unsafe_cache_path"}
+    cache.mkdir(parents=True, exist_ok=True)
+    archive = cache / "spring-source.zip"
+    donor = cache / "spring" / "spring" / "spring.blend"
+    if is_link_or_junction(archive) or is_link_or_junction(donor):
+        return {"status": "rejected", "reason": "unsafe_cache_file"}
+    if not donor.is_file() or _spring_sha256(donor) != SPRING_TRANSFER_BLEND_SHA256:
+        if not archive.is_file() or _spring_sha256(archive) != SPRING_TRANSFER_ARCHIVE_SHA256:
+            temp = None
             try:
-                from urllib.request import Request,urlopen
-                request=Request(SPRING_TRANSFER_ARCHIVE_URL,headers={"User-Agent":"OctavaLocalAgent/1.0"})
-                temp=None
-                with urlopen(request,timeout=60) as response, tempfile.NamedTemporaryFile(prefix="spring-",suffix=".tmp",dir=cache,delete=False) as f:
-                    temp=Path(f.name); total=0
+                from urllib.request import Request, urlopen
+                request = Request(SPRING_TRANSFER_ARCHIVE_URL, headers={"User-Agent": "OctavaLocalAgent/1.0"})
+                with urlopen(request, timeout=60) as response, tempfile.NamedTemporaryFile(
+                    prefix="spring-", suffix=".tmp", dir=cache, delete=False
+                ) as f:
+                    temp = Path(f.name)
+                    total = 0
                     while True:
-                        chunk=response.read(1024*1024)
-                        if not chunk: break
-                        total+=len(chunk)
-                        if total>500*1024*1024: raise ValueError("fixed archive size limit exceeded")
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > 500 * 1024 * 1024:
+                            raise ValueError("fixed archive size limit exceeded")
                         f.write(chunk)
-                if _spring_sha256(temp)!=SPRING_TRANSFER_ARCHIVE_SHA256: raise ValueError("archive checksum mismatch")
-                os.replace(temp,archive)
+                if _spring_sha256(temp) != SPRING_TRANSFER_ARCHIVE_SHA256:
+                    raise ValueError("archive checksum mismatch")
+                os.replace(temp, archive)
             except Exception as exc:
-                try:
-                    if temp: temp.unlink(missing_ok=True)
-                except Exception: pass
-                return {"status":"blocked","reason":"spring_download_or_checksum_failed","error_type":type(exc).__name__}
+                if temp:
+                    temp.unlink(missing_ok=True)
+                return {"status": "blocked", "reason": "spring_download_or_checksum_failed",
+                        "error_type": type(exc).__name__}
         try:
             import zipfile
             with zipfile.ZipFile(archive) as zf:
-                if zf.testzip(): raise ValueError("archive CRC failure")
+                if zf.testzip():
+                    raise ValueError("archive CRC failure")
                 for member in zf.infolist():
-                    parts=Path(member.filename).parts
-                    if member.filename.startswith("spring/spring/") and ".." not in parts: zf.extract(member,cache)
-        except Exception as exc: return {"status":"failed","reason":"spring_extract_failed","error_type":type(exc).__name__}
-        if not source.is_file() or _spring_sha256(source)!=SPRING_TRANSFER_BLEND_SHA256: return {"status":"failed","reason":"spring_blend_checksum_mismatch"}
-    try:
-        with tempfile.TemporaryDirectory(prefix=".spring-rig-",dir=project) as td:
-            script=Path(td)/"transfer.py"; script.write_text(SPRING_TRANSFER_SCRIPT,encoding="utf-8")
-            dismissed_dialogs=[]
-            with watch_unsupported_blender_dialogs(blender,dismissed_dialogs):
-                proc=subprocess.run([str(blender),"--disable-autoexec","--background","--factory-startup","--python-exit-code","1","--python",str(script),"--",str(source),str(output),str(report)],cwd=str(project),capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=14400,check=False,shell=False)
-    except subprocess.TimeoutExpired: return {"status":"timeout","reason":"transfer_exceeded_4_hours"}
-    except OSError as exc: return {"status":"error","error_type":type(exc).__name__}
-    if proc.returncode or not output.is_file() or not report.is_file(): return {"status":"failed","reason":"blender_transfer_failed","return_code":proc.returncode,"stderr_tail":(proc.stderr or "")[-2500:]}
-    try: data=json.loads(report.read_text("utf-8"))
-    except (OSError,ValueError): return {"status":"failed","reason":"transfer_report_unreadable"}
-    if data.get("status")!="completed" or data.get("bone_count",0)<2000 or data.get("bound_mesh_count",0)<1: return {"status":"failed","reason":"transfer_validation_failed","transfer":data}
-    return {"status":"completed","task":"blender_mia_spring_rig_transfer","blend_path":str(output),"report_path":str(report),"bone_count":data["bone_count"],"deform_bone_count":data["deform_bone_count"],"pose_test_passed":data["pose_test_passed"],"max_pose_vertex_displacement":data["max_pose_vertex_displacement"],"bound_mesh_count":data["bound_mesh_count"],"unbound_mesh_count":data["unbound_mesh_count"],"scale_to_mia_height":data["scale_to_mia_height"],"limitations":data["limitations"]}
+                    parts = Path(member.filename).parts
+                    if member.filename.startswith("spring/spring/") and ".." not in parts:
+                        zf.extract(member, cache)
+        except Exception as exc:
+            return {"status": "failed", "reason": "spring_extract_failed",
+                    "error_type": type(exc).__name__}
+        if not donor.is_file() or _spring_sha256(donor) != SPRING_TRANSFER_BLEND_SHA256:
+            return {"status": "failed", "reason": "spring_blend_checksum_mismatch"}
 
+    try:
+        with tempfile.TemporaryDirectory(prefix=".spring-rig-", dir=project) as td:
+            script = Path(td) / "transfer.py"
+            script.write_text(SPRING_TRANSFER_SCRIPT, encoding="utf-8")
+            dismissed_dialogs = []
+            with watch_unsupported_blender_dialogs(blender, dismissed_dialogs):
+                proc = subprocess.run(
+                    [str(blender), "--disable-autoexec", "--background", "--factory-startup",
+                     "--python-exit-code", "1", "--python", str(script), "--",
+                     str(donor), str(source_mia), str(output), str(report)],
+                    cwd=str(project), capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=14400, check=False, shell=False,
+                )
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "reason": "transfer_exceeded_4_hours"}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__}
+    if proc.returncode or not output.is_file() or not report.is_file():
+        return {"status": "failed", "reason": "blender_transfer_failed",
+                "return_code": proc.returncode, "stderr_tail": (proc.stderr or "")[-2500:]}
+    try:
+        data = json.loads(report.read_text("utf-8"))
+    except (OSError, ValueError):
+        return {"status": "failed", "reason": "transfer_report_unreadable"}
+    complete = (
+        data.get("status") == "completed"
+        and data.get("bone_count", 0) >= 2000
+        and data.get("bound_mesh_count", 0) == data.get("mia_mesh_count", -1)
+        and data.get("unbound_mesh_count") == 0
+        and data.get("pose_test_passed") is True
+    )
+    if not complete:
+        return {"status": "incomplete", "reason": "transfer_validation_failed",
+                "blend_path": str(output), "report_path": str(report), "transfer": data}
+    return {
+        "status": "completed", "task": "blender_mia_spring_rig_transfer",
+        "blend_path": str(output), "report_path": str(report),
+        "bone_count": data["bone_count"], "deform_bone_count": data["deform_bone_count"],
+        "pose_test_passed": data["pose_test_passed"],
+        "max_pose_vertex_displacement": data["max_pose_vertex_displacement"],
+        "bound_mesh_count": data["bound_mesh_count"],
+        "unbound_mesh_count": data["unbound_mesh_count"],
+        "scale_to_mia_height": data["scale_to_mia_height"],
+        "limitations": data["limitations"],
+    }
 
 # Fixed, licensed source inventory. No remote task can supply executable code,
 # download URLs or filesystem paths.
