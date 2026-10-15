@@ -2564,6 +2564,163 @@ def _not_expired(task: Any) -> bool:
         return False
 
 
+def _polish_hunyuan_character(character_name: str, reference_sha256: str,
+                              generation_task_id: str, task_id: str) -> dict[str, Any]:
+    """Clean and color a copied candidate using only its approved turnaround views."""
+    import hashlib
+    import shutil
+    if not isinstance(generation_task_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", generation_task_id):
+        return {"status": "rejected", "reason": "invalid_generation_task_id"}
+    from local_agent.path_names import is_link_or_junction
+    workspace = Path(os.environ["LOCAL_AGENT_WORKSPACE"]).expanduser().resolve()
+    root = workspace / "CHARACTER_REFERENCE_REVIEW"
+    slug = character_name.lower()
+    source = root / (slug + "_HY3DMV_" + generation_task_id)
+    output = root / (slug + "_HY3DMV_" + task_id)
+    blend = source / (slug + "_hunyuan3d2mv_candidate.blend")
+    reference = source / "reference_turnaround.jpg"
+    views = tuple(source / "views" / (name + ".png") for name in ("front", "left", "back"))
+    if any(is_link_or_junction(p) for p in (root, source, output, blend, reference, source / "views", *views)):
+        return {"status": "blocked", "reason": "unsafe_polish_path"}
+    if not all(p.is_file() for p in (blend, reference, *views)):
+        return {"status": "blocked", "reason": "source_candidate_missing"}
+    if reference.stat().st_size > 35000 or hashlib.sha256(reference.read_bytes()).hexdigest() != reference_sha256:
+        return {"status": "blocked", "reason": "source_reference_hash_mismatch"}
+    if output.exists():
+        return {"status": "blocked", "reason": "unique_polish_output_exists"}
+    blender = find_blender_executable()
+    if blender is None:
+        return {"status": "blocked", "reason": "blender_missing"}
+    def digest(path):
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+    original_sha256 = digest(blend)
+    output.mkdir(exist_ok=False)
+    (output / "views").mkdir()
+    shutil.copyfile(reference, output / "reference_turnaround.jpg")
+    for view in views:
+        shutil.copyfile(view, output / "views" / view.name)
+    script = output / "polish_candidate.py"
+    script.write_text(r'''import bpy,bmesh,numpy as np,json,os,sys,math
+from mathutils import Vector
+out,slug=sys.argv[sys.argv.index("--")+1:]
+meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
+if len(meshes)!=1:raise RuntimeError("expected one generated mesh; refusing ambiguous edit")
+obj=meshes[0];bpy.context.view_layer.objects.active=obj
+bpy.ops.object.select_all(action="DESELECT");obj.select_set(True)
+bpy.ops.object.transform_apply(location=False,rotation=True,scale=True)
+mesh=obj.data;n=len(mesh.vertices)
+co=np.empty(n*3,dtype=np.float32);mesh.vertices.foreach_get("co",co);co=co.reshape(-1,3)
+parent=list(range(n));rank=[0]*n
+def find(a):
+ while parent[a]!=a:parent[a]=parent[parent[a]];a=parent[a]
+ return a
+for edge in mesh.edges:
+ a,b=map(find,edge.vertices)
+ if a!=b:
+  if rank[a]<rank[b]:a,b=b,a
+  parent[b]=a
+  if rank[a]==rank[b]:rank[a]+=1
+roots=np.array([find(i) for i in range(n)],dtype=np.int32)
+ids,counts=np.unique(roots,return_counts=True);main=ids[np.argmax(counts)]
+main_co=co[roots==main];main_diag=float(np.linalg.norm(np.ptp(main_co,axis=0)))
+components=[];remove=[]
+for ident,count in zip(ids,counts):
+ pts=co[roots==ident];diag=float(np.linalg.norm(np.ptp(pts,axis=0)))
+ small=int(ident)!=int(main) and int(count)<=max(64,int(n*.005)) and diag<=main_diag*.12
+ components.append({"vertices":int(count),"diagonal":diag,"small_fragment_candidate":small})
+ if small:remove.extend(np.flatnonzero(roots==ident).tolist())
+cleanup_limited=len(remove)>n*.02
+if cleanup_limited:remove=[]
+if remove:
+ bm=bmesh.new();bm.from_mesh(mesh);bm.verts.ensure_lookup_table()
+ bmesh.ops.delete(bm,geom=[bm.verts[i] for i in remove],context="VERTS")
+ bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces));bm.to_mesh(mesh);bm.free();mesh.update()
+before=np.empty(len(mesh.vertices)*3,dtype=np.float32);mesh.vertices.foreach_get("co",before)
+before=before.reshape(-1,3).copy();height=float(np.ptp(before[:,2]))
+smooth=obj.modifiers.new("MildSurfaceCleanup","SMOOTH");smooth.factor=.18;smooth.iterations=2
+bpy.ops.object.modifier_apply(modifier=smooth.name)
+after=np.empty(len(mesh.vertices)*3,dtype=np.float32);mesh.vertices.foreach_get("co",after);after=after.reshape(-1,3)
+max_move=float(np.linalg.norm(after-before,axis=1).max())
+smooth_reverted=max_move>height*.003
+if smooth_reverted:mesh.vertices.foreach_set("co",before.ravel());mesh.update();max_move=0.0
+mesh.polygons.foreach_set("use_smooth",[True]*len(mesh.polygons));mesh.update()
+co=np.empty(len(mesh.vertices)*3,dtype=np.float32);mesh.vertices.foreach_get("co",co);co=co.reshape(-1,3)
+norm=np.empty(len(mesh.vertices)*3,dtype=np.float32);mesh.vertices.foreach_get("normal",norm);norm=norm.reshape(-1,3)
+matrix=np.array(obj.matrix_world,dtype=np.float64)
+world=co@matrix[:3,:3].T+matrix[:3,3]
+normal=norm@np.linalg.inv(matrix[:3,:3]);normal/=np.maximum(np.linalg.norm(normal,axis=1,keepdims=True),1e-9)
+lo=world.min(axis=0);hi=world.max(axis=0);extent=np.maximum(hi-lo,1e-6)
+z=np.clip((world[:,2]-lo[2])/extent[2],0,1)
+views=[("front",(world[:,0]-lo[0])/extent[0],np.maximum(-normal[:,1],0)),
+ ("left",1-(world[:,1]-lo[1])/extent[1],np.abs(normal[:,0])*.85),
+ ("back",1-(world[:,0]-lo[0])/extent[0],np.maximum(normal[:,1],0))]
+acc=np.zeros((len(co),3),dtype=np.float64);total=np.zeros(len(co),dtype=np.float64)
+for name,u,facing in views:
+ image=bpy.data.images.load(os.path.join(out,"views",name+".png"),check_existing=False)
+ image.colorspace_settings.name="Non-Color"
+ pixels=np.array(image.pixels[:],dtype=np.float32).reshape(image.size[1],image.size[0],4)
+ yy,xx=np.nonzero(pixels[:,:,3]>.5)
+ if len(xx)==0:raise RuntimeError("reference view has no foreground")
+ x=np.clip(np.rint(xx.min()+np.clip(u,0,1)*(xx.max()-xx.min())).astype(int),0,image.size[0]-1)
+ y=np.clip(np.rint(yy.min()+z*(yy.max()-yy.min())).astype(int),0,image.size[1]-1)
+ sample=pixels[y,x];rgb=np.clip(sample[:,:3],0,1)
+ linear=np.where(rgb<=.04045,rgb/12.92,((rgb+.055)/1.055)**2.4)
+ weight=(np.maximum(facing,0)**4+.002)*np.clip(sample[:,3],0,1)
+ acc+=linear*weight[:,None];total+=weight
+rgb=acc/np.maximum(total[:,None],1e-9)
+fallback=np.array([1.0,.32,.20]);fallback=np.where(fallback<=.04045,fallback/12.92,((fallback+.055)/1.055)**2.4)
+rgb[total<1e-6]=fallback
+rgba=np.concatenate((np.clip(rgb,0,1),np.ones((len(rgb),1))),axis=1).astype(np.float32)
+attr=mesh.color_attributes.new(name="TaviReferenceColor",type="FLOAT_COLOR",domain="POINT")
+attr.data.foreach_set("color",rgba.ravel())
+material=bpy.data.materials.new(slug+"_ReferenceProjection");material.use_nodes=True
+nodes=material.node_tree.nodes;shader=nodes.get("Principled BSDF");shader.inputs["Roughness"].default_value=.72
+color=nodes.new("ShaderNodeVertexColor");color.layer_name=attr.name
+material.node_tree.links.new(color.outputs["Color"],shader.inputs["Base Color"])
+mesh.materials.clear();mesh.materials.append(material)
+scene=bpy.context.scene;scene.render.resolution_x=800;scene.render.resolution_y=1000;scene.render.resolution_percentage=100
+scene.render.image_settings.file_format="PNG"
+camera=scene.camera
+if camera is None:raise RuntimeError("candidate camera missing")
+camera.data.type="ORTHO";center=(lo+hi)*.5;aspect=scene.render.resolution_x/scene.render.resolution_y
+for name,direction,width in (("front",(0,-1,0),extent[0]),("side",(-1,0,0),extent[1]),("back",(0,1,0),extent[0])):
+ camera.location=Vector(center)+Vector(direction)*max(8,float(extent.max())*3)
+ camera.rotation_euler=(Vector(center)-camera.location).to_track_quat("-Z","Y").to_euler()
+ camera.data.ortho_scale=max(float(extent[2]),float(width)/aspect)*1.14
+ scene.render.filepath=os.path.join(out,name+".png");bpy.ops.render.render(write_still=True)
+mesh.calc_loop_triangles()
+report={"status":"completed","source_vertices":n,"vertices":len(mesh.vertices),"triangles":len(mesh.loop_triangles),
+ "removed_vertices":len(remove),"component_count_before":len(components),"components_before":sorted(components,key=lambda x:-x["vertices"])[:30],
+ "cleanup_limited":cleanup_limited,"smooth_reverted":smooth_reverted,"maximum_smoothing_displacement":max_move,
+ "color_method":"approximate_three_view_vertex_projection","color_fallback_vertices":int((total<1e-6).sum()),
+ "known_limitations":["projection occlusion and seams require visual review","single generated mesh is not retopologized or rigged"]}
+with open(os.path.join(out,"polish_report.json"),"w",encoding="utf-8") as f:json.dump(report,f,indent=2)
+with open(os.path.join(out,"mesh_stats.json"),"w",encoding="utf-8") as f:json.dump({"vertices":len(mesh.vertices),"faces":len(mesh.polygons)},f)
+bpy.ops.object.select_all(action="DESELECT");obj.select_set(True);bpy.context.view_layer.objects.active=obj
+bpy.ops.export_scene.gltf(filepath=os.path.join(out,slug+"_hunyuan3d2mv_candidate.glb"),export_format="GLB",use_selection=True,export_cameras=False,export_lights=False)
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out,slug+"_hunyuan3d2mv_candidate.blend"))
+''', encoding="utf-8")
+    proc = subprocess.run([str(blender), "--background", "--factory-startup", "--disable-autoexec",
+                           "--offline-mode", str(blend), "--python-exit-code", "1", "--python", str(script),
+                           "--", str(output), slug], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=1800, stdin=subprocess.DEVNULL, shell=False)
+    if digest(blend) != original_sha256:
+        return {"status": "error", "reason": "original_candidate_changed", "output_folder": str(output)}
+    if proc.returncode or not (output / "polish_report.json").is_file():
+        return {"status": "incomplete", "stage": "clean_and_color_candidate", "return_code": proc.returncode,
+                "error_tail": (proc.stderr or proc.stdout or "")[-2500:], "output_folder": str(output)}
+    report = json.loads((output / "polish_report.json").read_text(encoding="utf-8"))
+    review = _review_hunyuan_character(character_name, reference_sha256, task_id, task_id + "-review")
+    review["polish"] = report
+    review["source_blend_sha256"] = original_sha256
+    review["source_preserved"] = True
+    review["shape_only"] = False
+    review["rigged"] = False
+    return review
+
+
+
 def _review_hunyuan_character(character_name: str, reference_sha256: str,
                               generation_task_id: str, review_task_id: str) -> dict[str, Any]:
     """Reopen only a generated character candidate and export its bounded review image."""
@@ -2663,7 +2820,7 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
     from local_agent.mailbox_policy import load_policy
     from local_agent.path_names import is_link_or_junction
     required={"character_name","reference_base64","reference_sha256"}
-    if set(arguments) not in (required, required | {"review_generation_task_id"}):
+    if set(arguments) not in (required, required | {"review_generation_task_id"}, required | {"polish_generation_task_id"}):
         return {"status":"rejected","reason":"expected_character_name_reference_base64_and_sha256"}
     character_name=arguments.get("character_name")
     encoded=arguments.get("reference_base64")
@@ -2689,6 +2846,8 @@ def _run_hunyuan3d_mv_character(arguments: dict[str, Any], task_id: str) -> dict
     workspace=Path(workspace_value).expanduser().resolve()
     if "review_generation_task_id" in arguments:
         return _review_hunyuan_character(character_name, ref_sha, arguments["review_generation_task_id"], task_id)
+    if "polish_generation_task_id" in arguments:
+        return _polish_hunyuan_character(character_name, ref_sha, arguments["polish_generation_task_id"], task_id)
     slug=character_name.lower()
     root=workspace/"CHARACTER_REFERENCE_REVIEW"
     output=root/(slug+"_HY3DMV_"+task_id)
