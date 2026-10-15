@@ -975,9 +975,8 @@ for frame, delta in ((1,0.0),(18,0.14),(36,0.0),(54,-0.14),(72,0.0)):
     bone.rotation_euler = neutral
     bone.rotation_euler.y += delta
     bone.keyframe_insert(data_path="rotation_euler", frame=frame, group=bone.name)
-for curve in armature.animation_data.action.fcurves:
-    for point in curve.keyframe_points:
-        point.interpolation = "BEZIER"
+# Blender inserts Bézier keyframes by default. Do not access Action.fcurves:
+# Blender 5.x stores curves in layered-action channelbags.
 scene.frame_start, scene.frame_end, scene.render.fps = 1, 72, 24
 scene.render.resolution_x = 480
 scene.render.resolution_y = 480
