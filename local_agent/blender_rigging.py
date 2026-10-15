@@ -1000,7 +1000,7 @@ for obj in mesh_objects:
     mesh = evaluated.to_mesh()
     if mesh and len(mesh.vertices):
         stride = max(1, len(mesh.vertices)//300)
-        samples.append((obj, [v.co.copy() for v in mesh.vertices[::stride]]))
+        samples.append((obj, [mesh.vertices[i].co.copy() for i in range(0, len(mesh.vertices), stride)]))
     evaluated.to_mesh_clear()
 scene.frame_set(1)
 bpy.context.view_layer.update()
@@ -1009,7 +1009,7 @@ for obj, coords in samples:
     ev = obj.evaluated_get(depsgraph)
     me = ev.to_mesh()
     stride = max(1, len(me.vertices)//300)
-    baseline.append((obj, [v.co.copy() for v in me.vertices[::stride]], stride, len(me.vertices)))
+    baseline.append((obj, [me.vertices[i].co.copy() for i in range(0, len(me.vertices), stride)], stride, len(me.vertices)))
     ev.to_mesh_clear()
 scene.frame_set(18)
 bpy.context.view_layer.update()
@@ -1017,7 +1017,7 @@ max_displacement = 0.0
 for obj, before, stride, total in baseline:
     ev = obj.evaluated_get(depsgraph)
     me = ev.to_mesh()
-    now = list(me.vertices[::stride])
+    now = [me.vertices[i] for i in range(0, len(me.vertices), stride)]
     for old, new in zip(before, now):
         max_displacement = max(max_displacement, (old-new.co).length)
     ev.to_mesh_clear()
