@@ -1113,6 +1113,43 @@ with open(report_path,"w",encoding="utf-8") as f: json.dump(data,f,ensure_ascii=
             "note": "Structural inspection only; it does not judge visual quality."}
 
 
+def _legacy_source_reset_guard() -> dict[str, Any] | None:
+    """Prefer an existing source-derived target over rebuilding a fixed proxy."""
+    value=os.environ.get("LOCAL_AGENT_WORKSPACE","").strip()
+    if not value:
+        return None
+    workspace=Path(value).expanduser().resolve()
+    root=workspace/"SOURCE_ADAPTATIONS"
+    if any(is_link_or_junction(p) for p in [root,*root.parents]):
+        return {"status":"blocked","reason":"unsafe_source_model_index"}
+    if not root.is_dir():
+        return None
+    import itertools
+    import re
+    try:
+        folders=[p for p in itertools.islice(root.iterdir(),1024)
+                 if p.is_dir() and not is_link_or_junction(p)
+                 and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,47}",p.name)]
+        folders.sort(key=lambda p:p.stat().st_mtime,reverse=True)
+        for folder in folders:
+            model=folder/"mia_spring_source_adapted.blend"
+            if is_link_or_junction(model) or not model.is_file() or model.stat().st_size==0:
+                continue
+            for name in ("polish_report.json","detail_refinement_report.json","neutral_state_report.json","adaptation_report.json"):
+                report=folder/name
+                if is_link_or_junction(report) or not report.is_file() or report.stat().st_size>200000:
+                    continue
+                data=json.loads(report.read_text("utf-8"))
+                if isinstance(data,dict) and data.get("status")=="completed":
+                    return {"status":"blocked","reason":"legacy_fixed_mia_reset_disabled_for_existing_source_target",
+                            "source_project":folder.name,"blend_path":str(model),
+                            "generation_performed":False,"provider_request_performed":False,
+                            "next_operation":"blender_mia_source_neutral_or_details_or_polish"}
+    except (OSError,ValueError):
+        return {"status":"blocked","reason":"source_model_index_unreadable"}
+    return None
+
+
 def create_reference_mia_model(*, task_id: str | None = None) -> dict[str, Any]:
     """Build a separate real-mesh character review, preserving all scene versions."""
     import base64
@@ -1122,6 +1159,9 @@ def create_reference_mia_model(*, task_id: str | None = None) -> dict[str, Any]:
     ident = task_id or datetime.now(timezone.utc).strftime("local-review-%Y%m%dT%H%M%SZ")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", ident):
         raise BlenderWorkflowError("Invalid character review identity")
+    source_guard = _legacy_source_reset_guard()
+    if source_guard is not None:
+        return source_guard
     value = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     blender = find_blender_executable()
     if not value or blender is None or not blender.is_file():
@@ -2055,6 +2095,8 @@ def run_mia_astra_autoloop_100(*, task_id: str) -> dict[str, Any]:
 
     if type(task_id) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}",task_id):
         return {"status":"blocked","reason":"invalid_task_identifier"}
+    source_guard=_legacy_source_reset_guard()
+    if source_guard is not None:return source_guard
     policy=load_policy()
     if not all(policy.get(f,False) for f in ("enabled","allow_octava","allow_blender")):
         return {"status":"blocked","reason":"local_blender_and_octava_policy_required"}
@@ -2535,6 +2577,8 @@ def run_mia_astra_autoloop_100_v2(*, task_id: str, single_pass: bool = False) ->
     from local_agent.studio_server import _telegram_credentials
     if not isinstance(task_id,str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}",task_id):
         return {"status":"blocked","reason":"unsafe_task_id"}
+    source_guard=_legacy_source_reset_guard()
+    if source_guard is not None:return source_guard
     p=load_policy()
     if not (p.get("enabled") and p.get("allow_octava") and p.get("allow_blender")):
         return {"status":"blocked","reason":"local_permissions_absent"}

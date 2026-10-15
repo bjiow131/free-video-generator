@@ -1211,9 +1211,23 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
         marker = review / ".telegram_delivery.json"
         if marker.is_symlink() or getattr(marker, "is_junction", lambda: False)():
             return {"status": "blocked", "reason": "unsafe_telegram_marker"}
+        views = ("front", "three_quarter", "side", "back")
+        previous_sent = []
         if marker.exists():
-            return {"status": "already_delivered", "sent": [], "failed": []}
-        duplicate = find_recent_duplicate(project, review)
+            if not marker.is_file() or marker.stat().st_size > 4096:
+                return {"status": "blocked", "reason": "invalid_delivery_receipt"}
+            try:
+                receipt = json.loads(marker.read_text("utf-8"))
+                if (not isinstance(receipt, dict) or receipt.get("task_id") != task_id
+                        or not isinstance(receipt.get("views_sent"), list)
+                        or any(v not in views for v in receipt["views_sent"])):
+                    return {"status": "blocked", "reason": "invalid_delivery_receipt"}
+                previous_sent = list(dict.fromkeys(receipt["views_sent"]))
+            except (OSError, ValueError, TypeError):
+                return {"status": "blocked", "reason": "invalid_delivery_receipt"}
+            if len(previous_sent) == len(views):
+                return {"status": "already_delivered", "sent": [], "failed": []}
+        duplicate = None if previous_sent else find_recent_duplicate(project, review)
         if duplicate:
             return {"status": "suppressed_duplicate",
                     "reason": "unchanged_mia_front_render",
@@ -1223,7 +1237,9 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
         url = "https://api.telegram.org/bot" + token + "/sendPhoto"
         sent = []
         failed = []
-        for view in ("front", "three_quarter", "side", "back"):
+        for view in views:
+            if view in previous_sent:
+                continue
             file = review / (view + ".png")
             if (file.is_symlink() or getattr(file, "is_junction", lambda: False)()
                     or not file.is_file() or not 64 <= file.stat().st_size <= 8_000_000):
@@ -1251,6 +1267,7 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                 sent.append(view)
             else:
                 failed.append(view)
+        delivered_views = list(dict.fromkeys(previous_sent + sent))
         if sent:
             # Store only a local delivery receipt, never credentials or media.
             try:
@@ -1259,14 +1276,15 @@ def telegram_send_mia_review_photos(workspace: str | Path, task_id: str) -> dict
                     return {"status": "partial", "sent": sent, "failed": failed,
                             "reason": "unsafe_delivery_marker"}
                 tmp.write_text(json.dumps({"task_id": task_id,
-                    "views_sent": sent, "identity_verified": False}, sort_keys=True),
+                    "views_sent": delivered_views, "identity_verified": False}, sort_keys=True),
                     encoding="utf-8")
                 tmp.replace(marker)
             except OSError:
                 return {"status": "partial", "sent": sent, "failed": failed,
                         "reason": "delivery_marker_write_failed"}
-        return {"status": "delivered" if len(sent) == 4 else
-                "partial" if sent else "failed", "sent": sent, "failed": failed,
+        return {"status": "delivered" if len(delivered_views) == 4 else
+                "partial" if delivered_views else "failed", "sent": sent,
+                "previously_sent": previous_sent, "failed": failed,
                 "transport": "direct_telegram_multipart",
                 "note": "The configured text relay does not yet support photo attachments."
                         if telegram_transport_settings()["use_relay"] and failed else ""}

@@ -15,7 +15,7 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "trusted_update_diagnostics", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_mia_spring_rig_preview", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "sync_approved_assets", "export_mia_scene_review", "octava_advice", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
 
@@ -139,10 +139,39 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         if set(args) != {"project_name"} or args.get("project_name") != "S01E01_SC01_DRAFT":
             raise ProtocolError("export_mia_scene_review accepts only the fixed Episode 1 draft project.")
 
+    if value["operation"] in {"blender_mia_source_neutral","blender_mia_source_details","blender_mia_source_polish"}:
+        args=value["arguments"]
+        if (set(args)!={"source_project","project_name"} or any(not isinstance(args.get(k),str)
+                or not BLENDER_PROJECT_RE.fullmatch(args[k]) for k in ("source_project","project_name"))
+                or args["source_project"]==args["project_name"]):
+            raise ProtocolError("Neutral copy accepts two distinct safe project names.")
+    if value["operation"] == "blender_mia_source_recover":
+        args=value["arguments"]
+        if (set(args)!={"project_name","source_task_id"} or not isinstance(args.get("project_name"),str)
+                or not BLENDER_PROJECT_RE.fullmatch(args["project_name"])
+                or not isinstance(args.get("source_task_id"),str) or not TASK_ID_RE.fullmatch(args["source_task_id"])):
+            raise ProtocolError("Source recovery accepts a safe project and original immutable task ID.")
+    if value["operation"] == "blender_mia_source_adapt":
+        args = value["arguments"]
+        if (set(args) != {"project_name"} or not isinstance(args.get("project_name"), str)
+                or not BLENDER_PROJECT_RE.fullmatch(args["project_name"])):
+            raise ProtocolError("Source adaptation accepts only a safe project_name.")
+    if value["operation"] == "blender_source_review":
+        args = value["arguments"]
+        if (set(args) != {"asset", "project_name"}
+                or not isinstance(args.get("asset"), str)
+                or args.get("asset") not in {"spring", "tiby_female"}
+                or not isinstance(args.get("project_name"), str)
+                or not BLENDER_PROJECT_RE.fullmatch(args["project_name"])):
+            raise ProtocolError("Source review accepts a fixed asset and safe project_name only.")
     if value["operation"] == "blender_mia_spring_rig_transfer":
         args = value["arguments"]
         if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
             raise ProtocolError("blender_mia_spring_rig_transfer requires only a safe project_name.")
+    if value["operation"] == "blender_mia_spring_rig_preview":
+        args = value["arguments"]
+        if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("blender_mia_spring_rig_preview requires only a safe project_name.")
     if value["operation"] == "blender_mia_skeleton":
         args = value["arguments"]
         if set(args) != {"project_name"} or not isinstance(args.get("project_name"), str) or not BLENDER_PROJECT_RE.fullmatch(args["project_name"]):

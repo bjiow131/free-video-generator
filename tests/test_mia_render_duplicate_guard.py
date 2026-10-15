@@ -110,3 +110,24 @@ def test_newer_unreviewed_render_does_not_suppress_first(tmp_path):
     assert find_recent_duplicate(first.parent, first) is None
     assert studio.find_recent_duplicate(first.parent, first) is None
     assert find_recent_duplicate(first.parent, later)["matched_review"] == "first"
+
+
+def test_partial_delivery_retries_only_failed_views(monkeypatch, tmp_path):
+    import requests
+    import json
+    folder = make_review(tmp_path, "partial", (80, 90, 70))
+    monkeypatch.setattr(studio, "_telegram_credentials", lambda: ("123:" + "A"*32, "123"))
+    monkeypatch.setattr(studio, "telegram_notifications_enabled", lambda: True)
+    monkeypatch.setattr(studio, "telegram_transport_settings", lambda: {"use_relay":False})
+    calls = []
+    def post(*args, **kwargs):
+        view = kwargs["files"]["photo"][0]
+        calls.append(view)
+        ok = view != "side.png" or len(calls) > 4
+        return SimpleNamespace(status_code=200, headers={"Content-Type":"application/json"}, json=lambda:{"ok":ok})
+    monkeypatch.setattr(requests, "post", post)
+    assert studio.telegram_send_mia_review_photos(tmp_path,"partial")["status"] == "partial"
+    assert studio.telegram_send_mia_review_photos(tmp_path,"partial")["status"] == "delivered"
+    assert calls == ["front.png", "three_quarter.png", "side.png", "back.png", "side.png"]
+    receipt=json.loads((folder/".telegram_delivery.json").read_text())
+    assert set(receipt["views_sent"])=={"front","side","back","three_quarter"}
