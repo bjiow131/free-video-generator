@@ -1580,6 +1580,7 @@ def test_task_journal_preserves_exact_input_and_rejects_id_reuse(tmp_path, monke
                 "created_at": now.isoformat(), "expires_at": (now + timedelta(hours=1)).isoformat(),
                 "requires_local_approval": True, "arguments": {}}
     journal = mailbox_policy.TaskJournal(envelope["task_id"])
+    assert journal.directory == tmp_path / ".local_agent" / "task_runs" / envelope["task_id"]
     journal.save_input(envelope)
     journal.add_attempt({"number": 1, "status": "running", "started_at": mailbox_policy._task_now()})
     journal.finish_attempt(1, "interrupted", reason="operator_stop")

@@ -596,6 +596,7 @@ class OctavaProjectMemory:
         return "\n".join(pieces)[:11000]
 
 
+
 # === Durable, preemptible mailbox task workers ===
 # Kept in this allowlisted module because the signed-in Windows updater is
 # deliberately restricted to a fixed set of files.
@@ -630,7 +631,7 @@ def _task_safe_root() -> _TaskPath:
         path.mkdir(parents=True, exist_ok=True)
     if not TASK_RUNS_DIR.resolve().is_relative_to(_ROOT.resolve()):
         raise TaskJournalError("Task journal escapes application root")
-    return base
+    return TASK_RUNS_DIR
 
 
 def _task_id(value: Any) -> str:
@@ -640,7 +641,8 @@ def _task_id(value: Any) -> str:
 
 
 def _task_atomic_json(path: _TaskPath, value: dict) -> None:
-    root = _task_safe_root()
+    task_root = _task_safe_root()
+    root = task_root.parent
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
         raise TaskJournalError("Unsafe task journal file")
     if not path.resolve().is_relative_to(root.resolve()):
