@@ -7,8 +7,8 @@ The poller can read the primary mailbox and one optional backup mailbox in the s
 Set this in the launch environment:
 
 ```text
-LOCAL_AGENT_GITHUB_REPO=bjiow131/local-agent-mailbox
-LOCAL_AGENT_GITHUB_BACKUP_REPO=bjiow131/octava-agent-backup-mailbox
+LOCAL_AGENT_GITHUB_REPO=<OWNER>/<PRIMARY_PRIVATE_MAILBOX>
+LOCAL_AGENT_GITHUB_BACKUP_REPO=<OWNER>/<BACKUP_PRIVATE_MAILBOX>
 LOCAL_AGENT_GITHUB_BACKUP_REF=main
 LOCAL_AGENT_GITHUB_BACKUP_MANIFEST=queue/desired_task.json
 ```
