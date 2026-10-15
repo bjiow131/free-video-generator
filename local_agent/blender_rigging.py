@@ -1442,6 +1442,64 @@ print("AFK_IMPORT_CHECK=" + json.dumps({"qa": qa, "actions": [a.name for a in ac
         and bool(result["qa"].get("pose_tests"))
         and all(p.get("all_positions_finite") for p in result["qa"].get("pose_tests", []))
     )
+    if result["technical_checks_passed"]:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            result["status"] = "error"
+            result["reason"] = "ffmpeg_missing_for_rig_video"
+            return result
+        frames_dir = out_dir / "video_frames"
+        frames_dir.mkdir(exist_ok=False)
+        frame_count = 12
+        for index in range(frame_count):
+            frame_path = frames_dir / f"mia_walk_{index:03d}.png"
+            sample_time = 0.25 + index / 12.0
+            frame_step = run_afk(
+                ["render", str(afk_project), "--views", "front,left", "--size", "480",
+                 "--animation", "Walk", "--time", f"{sample_time:.3f}", "--out", str(frame_path)],
+                f"afk_video_frame_{index:03d}.log",
+            )
+            if not frame_step["ok"] or not frame_path.is_file() or frame_path.stat().st_size < 1000:
+                result["status"] = "error"
+                result["reason"] = "afk_video_frame_failed"
+                result["failed_video_frame"] = index
+                result["diagnostic"] = frame_step.get("tail", "")
+                return result
+        video = out_dir / "mia_afk_walk_rig_test.mp4"
+        base_command = [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-framerate", "12",
+            "-start_number", "0", "-i", str(frames_dir / "mia_walk_%03d.png"),
+            "-frames:v", str(frame_count),
+        ]
+        encode_attempts = [
+            ["-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p"],
+            ["-c:v", "mpeg4", "-q:v", "5", "-pix_fmt", "yuv420p"],
+        ]
+        encode_error = ""
+        for codec_options in encode_attempts:
+            try:
+                encoded = subprocess.run(
+                    base_command + codec_options + [str(video)], capture_output=True,
+                    text=True, timeout=240, check=False, shell=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                encode_error = type(exc).__name__
+                continue
+            if encoded.returncode == 0:
+                encode_error = ""
+                break
+            encode_error = (encoded.stderr or "")[-1200:]
+        if encode_error or not video.is_file() or video.stat().st_size < 4096:
+            result["status"] = "error"
+            result["reason"] = "afk_video_encode_failed"
+            result["diagnostic"] = encode_error
+            return result
+        result["video_path"] = str(video)
+        result["video_sha256"] = _spring_sha256(video)
+        result["video_size_bytes"] = video.stat().st_size
+        result["video_frame_count"] = frame_count
+        result["video_fps"] = 12
+        result["video_duration_seconds"] = frame_count / 12
     result["quality_gate_passed"] = False
     result["quality_gate"] = "needs_visual_review"
     if not result["technical_checks_passed"]:
