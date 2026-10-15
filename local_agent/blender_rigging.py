@@ -218,20 +218,22 @@ if not mia or sum(len(o.data.vertices) for o in mia)<1000: raise RuntimeError("e
 # Replace only the lightweight adaptation pilot; preserve mesh data, shape keys,
 # materials, and all non-armature modifiers from the polished source.
 pilot=bpy.data.objects.get("Mia_Source_Pilot_Rig")
-if pilot:
-    pilot_names={b.name for b in pilot.data.bones}
-    for obj in mia:
-        for mod in list(obj.modifiers):
-            if mod.type=="ARMATURE" and mod.object==pilot: obj.modifiers.remove(mod)
-        for name in pilot_names:
-            group=obj.vertex_groups.get(name)
-            if group: obj.vertex_groups.remove(group)
-    bpy.data.objects.remove(pilot,do_unlink=True)
+pilot_names={b.name for b in pilot.data.bones} if pilot else set()
+for obj in mia:
+    # The imported Spring rig is the sole deformation stack in the output.
+    for mod in list(obj.modifiers):
+        if mod.type=="ARMATURE": obj.modifiers.remove(mod)
+    for name in pilot_names:
+        group=obj.vertex_groups.get(name)
+        if group: obj.vertex_groups.remove(group)
+if pilot: bpy.data.objects.remove(pilot,do_unlink=True)
 with bpy.data.libraries.load(donor_path,link=False) as (src,dst):
     names=list(src.objects); dst.objects=names; dst.texts=list(src.texts)
 spring=[o for o in dst.objects if o]
-rig=bpy.data.objects.get("RIG-Spring")
-if len(spring)<100 or rig is None or rig.type!="ARMATURE" or len(rig.data.bones)<2000: raise RuntimeError("full Spring rig did not append")
+rig=next((o for o in spring if o.type=="ARMATURE" and len(o.data.bones)>=2000),None)
+if len(spring)<100 or rig is None: raise RuntimeError("full Spring rig did not append")
+# A source may already contain its original Spring armature under the same name.
+# Keep it out of view; the appended, checksum-pinned donor above drives Mia.
 col=bpy.data.collections.new("Spring rig transfer dependencies"); scene.collection.children.link(col)
 spring_set=set(spring)
 for o in spring:
@@ -250,6 +252,9 @@ for o,m in old_world.items():
     o.parent=root; o.matrix_parent_inverse=Matrix.Identity(4); o.matrix_basis=m
 for o in spring:
     if o.type=="MESH": o.hide_render=True; o.hide_set(True)
+for existing in scene.objects:
+    if existing.type=="ARMATURE" and existing is not rig:
+        existing.hide_render=True; existing.hide_set(True)
 rig.hide_render=True; rig.show_in_front=True
 bpy.context.view_layer.update()
 def segdist(p,a,b):
