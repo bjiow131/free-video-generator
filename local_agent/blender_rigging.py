@@ -1011,6 +1011,8 @@ for obj, coords in samples:
     stride = max(1, len(me.vertices)//300)
     baseline.append((obj, [me.vertices[i].co.copy() for i in range(0, len(me.vertices), stride)], stride, len(me.vertices)))
     ev.to_mesh_clear()
+bone_names = {b.name for b in armature.data.bones}
+mesh_diagnostics = []
 scene.frame_set(18)
 bpy.context.view_layer.update()
 max_displacement = 0.0
@@ -1018,9 +1020,40 @@ for obj, before, stride, total in baseline:
     ev = obj.evaluated_get(depsgraph)
     me = ev.to_mesh()
     now = [me.vertices[i] for i in range(0, len(me.vertices), stride)]
-    for old, new in zip(before, now):
-        max_displacement = max(max_displacement, (old-new.co).length)
+    mesh_delta = max(((old-new.co).length for old, new in zip(before, now)), default=0.0)
+    max_displacement = max(max_displacement, mesh_delta)
     ev.to_mesh_clear()
+    group_names = {g.index: g.name for g in obj.vertex_groups}
+    weighted_vertices = 0
+    influence_sum = 0
+    max_influences = 0
+    orphan_weight_vertices = 0
+    for vertex in obj.data.vertices:
+        memberships = [g for g in vertex.groups if g.weight > 1e-6]
+        if memberships:
+            weighted_vertices += 1
+            influence_sum += len(memberships)
+            max_influences = max(max_influences, len(memberships))
+            if any(group_names.get(g.group) not in bone_names for g in memberships):
+                orphan_weight_vertices += 1
+    armature_modifiers = [
+        {"name": mod.name, "target": mod.object.name if mod.object else None,
+         "use_vertex_groups": bool(mod.use_vertex_groups),
+         "show_viewport": bool(mod.show_viewport), "show_render": bool(mod.show_render)}
+        for mod in obj.modifiers if mod.type == "ARMATURE"
+    ]
+    mesh_diagnostics.append({
+        "object": obj.name,
+        "vertices": len(obj.data.vertices),
+        "vertex_groups": len(obj.vertex_groups),
+        "armature_modifiers": armature_modifiers,
+        "weighted_vertices": weighted_vertices,
+        "weighted_vertex_ratio": weighted_vertices / max(1, len(obj.data.vertices)),
+        "average_influences_per_weighted_vertex": influence_sum / max(1, weighted_vertices),
+        "max_influences_on_one_vertex": max_influences,
+        "vertices_with_weights_to_non_bone_groups": orphan_weight_vertices,
+        "max_sampled_displacement_frame18": mesh_delta,
+    })
 if max_displacement < 1e-5:
     raise RuntimeError("The test control produced no measurable mesh deformation")
 scene.frame_set(1)
@@ -1057,6 +1090,7 @@ data = {
     "animation_control": bone.name,
     "control_rotation_y_radians": 0.14,
     "sampled_mesh_max_displacement": max_displacement,
+    "mesh_diagnostics": mesh_diagnostics,
     "frame_count": scene.frame_end-scene.frame_start+1,
     "fps": scene.render.fps,
     "duration_seconds": (scene.frame_end-scene.frame_start+1)/scene.render.fps,
