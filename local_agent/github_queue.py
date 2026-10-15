@@ -32,6 +32,10 @@ class QueueTransportError(RuntimeError):
     """Raised for GitHub API/network failures without leaking response bodies."""
 
 
+class QueueItemNotFound(QueueTransportError):
+    """A private mailbox is reachable, but its task file is not present yet."""
+
+
 @dataclass(frozen=True)
 class QueueConfig:
     repository: str
@@ -39,6 +43,7 @@ class QueueConfig:
     ref: str = "main"
     manifest_path: str = "queue/desired_task.json"
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    missing_manifest_ok: bool = False
 
     @classmethod
     def from_environment(cls) -> "QueueConfig":
@@ -67,6 +72,41 @@ class QueueConfig:
             raise QueueConfigurationError("Invalid manifest path.")
         return cls(repository=repository, token=token, ref=ref, manifest_path=path)
 
+    @classmethod
+    def from_environment_all(cls) -> list["QueueConfig"]:
+        """Load primary and optional backup mailboxes using one scoped token.
+
+        The token must have Contents read/write access to every configured
+        private mailbox. A backup repository is opt-in and never inferred.
+        """
+        primary = cls.from_environment()
+        backup_repository = os.environ.get("LOCAL_AGENT_GITHUB_BACKUP_REPO", "").strip()
+        if not backup_repository:
+            return [primary]
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", backup_repository):
+            raise QueueConfigurationError(
+                "Set LOCAL_AGENT_GITHUB_BACKUP_REPO to owner/private-repo using only GitHub name characters."
+            )
+        if backup_repository.casefold() == primary.repository.casefold():
+            raise QueueConfigurationError("Primary and backup mailbox repositories must be different.")
+        backup_ref = os.environ.get("LOCAL_AGENT_GITHUB_BACKUP_REF", "main").strip() or "main"
+        backup_path = os.environ.get(
+            "LOCAL_AGENT_GITHUB_BACKUP_MANIFEST", "queue/desired_task.json"
+        ).strip()
+        if not backup_path or backup_path.startswith("/") or ".." in backup_path.split("/"):
+            raise QueueConfigurationError("Invalid backup manifest path.")
+        return [
+            primary,
+            cls(
+                repository=backup_repository,
+                token=primary.token,
+                ref=backup_ref,
+                manifest_path=backup_path,
+                timeout_seconds=primary.timeout_seconds,
+                missing_manifest_ok=True,
+            ),
+        ]
+
 
 class GitHubQueueClient:
     """Small REST client. Use only with a dedicated private mailbox repository."""
@@ -89,7 +129,7 @@ class GitHubQueueClient:
         except requests.RequestException as exc:
             raise QueueTransportError(f"GitHub request failed: {type(exc).__name__}") from exc
         if response.status_code == 404:
-            raise QueueTransportError("Mailbox item not found; check repository, ref, and path.")
+            raise QueueItemNotFound("Mailbox item not found; check repository, ref, and path.")
         if response.status_code in (401, 403):
             if response.headers.get("X-RateLimit-Remaining") == "0":
                 raise QueueTransportError("GitHub API rate limit reached; back off before retrying.")
@@ -117,7 +157,12 @@ class GitHubQueueClient:
         """Fetch and validate the single latest desired task; return its file SHA."""
         self._require_private_repo()
         path = quote(self.config.manifest_path, safe="/")
-        response = self._request("GET", f"contents/{path}", params={"ref": self.config.ref})
+        try:
+            response = self._request("GET", f"contents/{path}", params={"ref": self.config.ref})
+        except QueueItemNotFound:
+            if self.config.missing_manifest_ok:
+                return None
+            raise
         try:
             item = response.json()
             if item.get("type") != "file" or item.get("encoding") != "base64":
