@@ -103,3 +103,39 @@ def test_source_polish_never_rebuilds_or_overwrites_last_model():
  assert r.polish_saved_source_model('same','same')['status']=='rejected'
  import ast
  ast.parse(r.SOURCE_POLISH_SCRIPT)
+
+
+
+def test_spring_transfer_script_uses_explicit_polished_source_and_replaces_pilot():
+ import ast
+ ast.parse(r.SPRING_TRANSFER_SCRIPT)
+ assert 'donor_path,source_mia_path,out_path,report_path' in r.SPRING_TRANSFER_SCRIPT
+ assert 'filepath=source_mia_path' in r.SPRING_TRANSFER_SCRIPT
+ assert 'Mia_Source_Pilot_Rig' in r.SPRING_TRANSFER_SCRIPT
+ assert 'mia_reference_model.blend' not in r.SPRING_TRANSFER_SCRIPT
+
+
+def test_spring_transfer_targets_polished_source_without_overwrite(monkeypatch,tmp_path):
+ exe=tmp_path/'blender';exe.write_bytes(b'not executable')
+ monkeypatch.setenv('BLENDER_EXECUTABLE',str(exe))
+ monkeypatch.setenv('LOCAL_AGENT_WORKSPACE',str(tmp_path))
+ monkeypatch.setattr(r,'find_blender_executable',lambda:exe)
+ project=tmp_path/'SOURCE_ADAPTATIONS'/'mia-source-polished-v4-20261014'
+ project.mkdir(parents=True)
+ source=project/'mia_spring_source_adapted.blend'
+ source.write_bytes(b'approved polished source')
+ output=project/'mia_spring_source_adapted_spring_rig.blend'
+ output.write_bytes(b'previous output')
+ monkeypatch.setattr(r.subprocess,'run',lambda *a,**k:pytest.fail('must not launch when output exists'))
+ result=r.transfer_spring_rig_to_mia('mia-source-polished-v4-20261014')
+ assert result['status']=='blocked' and result['reason']=='output_exists_no_overwrite'
+ assert source.read_bytes()==b'approved polished source'
+ assert output.read_bytes()==b'previous output'
+
+
+def test_spring_transfer_blocks_when_polished_source_missing(monkeypatch,tmp_path):
+ exe=tmp_path/'blender';exe.write_bytes(b'not executable')
+ monkeypatch.setenv('BLENDER_EXECUTABLE',str(exe))
+ monkeypatch.setenv('LOCAL_AGENT_WORKSPACE',str(tmp_path))
+ monkeypatch.setattr(r,'find_blender_executable',lambda:exe)
+ assert r.transfer_spring_rig_to_mia('mia-source-polished-v4-20261014')['reason']=='polished_mia_source_missing'
