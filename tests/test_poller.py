@@ -1590,12 +1590,13 @@ def test_task_journal_preserves_exact_input_and_rejects_id_reuse(tmp_path, monke
 
 
 def test_task_stop_flag_is_bound_to_live_task(tmp_path, monkeypatch):
+    import os
     from local_agent import mailbox_policy
     monkeypatch.setattr(mailbox_policy, "_ROOT", tmp_path)
     monkeypatch.setattr(mailbox_policy, "TASK_RUNS_DIR", tmp_path / ".local_agent" / "task_runs")
     monkeypatch.setattr(mailbox_policy, "TASK_ACTIVE_FILE", tmp_path / ".local_agent" / "task_active.json")
     monkeypatch.setattr(mailbox_policy, "TASK_STOP_REQUEST", tmp_path / ".local_agent" / "task_stop_request.json")
-    mailbox_policy._task_publish_active("active-task-01", 1234)
+    mailbox_policy._task_publish_active("active-task-01", os.getpid())
     assert mailbox_policy._task_request_stop()
     assert mailbox_policy._task_consume_stop("active-task-01")
     assert not mailbox_policy._task_consume_stop("active-task-01")

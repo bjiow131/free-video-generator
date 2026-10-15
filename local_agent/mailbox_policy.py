@@ -595,6 +595,7 @@ class OctavaProjectMemory:
             pieces.append("Previous answer: " + str(item["answer"])[:1800])
         return "\n".join(pieces)[:11000]
 
+
 # === Durable, preemptible mailbox task workers ===
 # Kept in this allowlisted module because the signed-in Windows updater is
 # deliberately restricted to a fixed set of files.
@@ -824,10 +825,16 @@ def _task_read_active() -> dict | None:
         data = json.loads(TASK_ACTIVE_FILE.read_text(encoding="utf-8"))
         if (not isinstance(data, dict) or set(data) != {"task_id", "pid", "updated_at"}
                 or not isinstance(data["task_id"], str) or not _TASK_ID_RE.fullmatch(data["task_id"])
-                or type(data["pid"]) is not int):
+                or type(data["pid"]) is not int or data["pid"] <= 0):
             return None
         stamp = _TaskDateTime.fromisoformat(data["updated_at"])
-        if abs((_TaskDateTime.now(_TaskTZ.utc) - stamp).total_seconds()) > 10:
+        if abs((_TaskDateTime.now(_TaskTZ.utc) - stamp).total_seconds()) > 86400:
+            return None
+        try:
+            os.kill(data["pid"], 0)
+        except PermissionError:
+            pass
+        except OSError:
             return None
         return data
     except (OSError, ValueError, KeyError, TypeError, UnicodeError):
@@ -930,6 +937,39 @@ def _task_terminate_tree(proc: Any) -> None:
         pass
 
 
+
+def _task_read_worker_result(journal: TaskJournal, attempt: int) -> dict | None:
+    path = journal.directory / ("attempt-%03d-result.json" % attempt)
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(data, dict) or set(data) - {"status", "error_type"}
+                or not isinstance(data.get("status"), str) or len(data["status"]) > 32):
+            return None
+        return data
+    except (OSError, ValueError, TypeError, UnicodeError):
+        return None
+
+
+def _task_stop_worker(client: Any, task: Any, journal: TaskJournal,
+                      attempt: int, proc: Any, reason: str,
+                      *, superseded_by: str | None = None) -> dict:
+    _task_terminate_tree(proc)
+    completed = _task_read_worker_result(journal, attempt)
+    if completed is not None:
+        status = completed["status"]
+        journal.finish_attempt(attempt, status, reason="result_published_before_stop",
+                               result_status=status, error_type=completed.get("error_type"))
+        return {"status": status, "result_was_published": True}
+    journal.finish_attempt(attempt, "interrupted", reason=reason)
+    result = {"task_id": task.task_id, "status": "interrupted", "reason": reason,
+              "resume_available": True}
+    if superseded_by:
+        result["superseded_by"] = superseded_by
+    _task_publish_result(client, task.task_id, result)
+    return {"status": "interrupted", "reason": reason}
+
 def _task_worker_command(payload_path: _TaskPath) -> list[str]:
     return [sys.executable, "-m", "local_agent.mailbox_policy", "--task-worker", str(payload_path)]
 
@@ -949,6 +989,9 @@ def _task_launch_worker(client: Any, task: Any, expected_sha: str,
     state = journal.state()
     attempt = len(state.get("attempts", [])) + 1
     attempt_log = journal.directory / ("attempt-%03d.log" % attempt)
+    if (attempt_log.is_symlink() or getattr(attempt_log, "is_junction", lambda: False)()
+            or not attempt_log.resolve().is_relative_to(journal.directory.resolve())):
+        raise TaskJournalError("Unsafe task attempt log")
     payload = {"envelope": journal.load_input()["envelope"],
                "expected_manifest_sha": expected_sha,
                "replay": replay, "source_task_id": source_task_id,
@@ -978,24 +1021,25 @@ def _task_launch_worker(client: Any, task: Any, expected_sha: str,
             return_code = proc.poll()
             if return_code is not None:
                 current = journal.state()
-                status = current.get("status")
-                if status == "running":
-                    failure_reason = "worker_completed_without_result" if return_code == 0 else "worker_exit_without_result"
-                    journal.finish_attempt(attempt, "failed", exit_code=int(return_code), reason=failure_reason)
-                    _task_publish_result(client, task.task_id, {
-                        "task_id": task.task_id, "status": "error",
-                        "reason": failure_reason, "worker_exit_code": int(return_code),
-                        "resume_available": True,
-                    })
+                if current.get("status") == "running":
+                    worker_result = _task_read_worker_result(journal, attempt)
+                    if worker_result is not None:
+                        journal.finish_attempt(attempt, worker_result["status"],
+                                               exit_code=int(return_code),
+                                               result_status=worker_result["status"],
+                                               error_type=worker_result.get("error_type"))
+                    else:
+                        failure_reason = "worker_completed_without_result" if return_code == 0 else "worker_exit_without_result"
+                        journal.finish_attempt(attempt, "failed", exit_code=int(return_code), reason=failure_reason)
+                        _task_publish_result(client, task.task_id, {
+                            "task_id": task.task_id, "status": "error",
+                            "reason": failure_reason, "worker_exit_code": int(return_code),
+                            "resume_available": True,
+                        })
                 return {"status": journal.state().get("status", "failed"), "exit_code": int(return_code)}
             _task_publish_active(task.task_id, int(proc.pid))
             if _task_consume_stop(task.task_id):
-                _task_terminate_tree(proc)
-                journal.finish_attempt(attempt, "interrupted", reason="operator_stop")
-                _task_publish_result(client, task.task_id, {"task_id": task.task_id,
-                    "status": "interrupted", "reason": "operator_stop",
-                    "resume_available": True, "resume_mode": "replay_saved_inputs"})
-                return {"status": "interrupted", "reason": "operator_stop"}
+                return _task_stop_worker(client, task, journal, attempt, proc, "operator_stop")
             try:
                 from local_agent.poller import _touch_mailbox_heartbeat
                 _touch_mailbox_heartbeat()
@@ -1017,14 +1061,14 @@ def _task_launch_worker(client: Any, task: Any, expected_sha: str,
                             rejected_control_sha = new_sha
                         _task_time.sleep(5)
                         continue
-                    _task_terminate_tree(proc)
-                    journal.finish_attempt(attempt, "interrupted", reason="superseded_by_new_desired_task")
-                    _task_publish_result(client, task.task_id, {"task_id": task.task_id,
-                        "status": "interrupted", "reason": "superseded_by_new_desired_task",
-                        "superseded_by": new_task.task_id, "resume_available": True})
+                    stopped = _task_stop_worker(client, task, journal, attempt, proc,
+                                                "superseded_by_new_desired_task",
+                                                superseded_by=new_task.task_id)
+                    if stopped.get("result_was_published"):
+                        return stopped
                     if new_task.operation in _CONTROL_OPERATIONS:
                         return _task_handle_control(client, new_task, new_sha, locally_authorized=True)
-                    return {"status": "interrupted", "reason": "superseded_by_new_desired_task"}
+                    return stopped
             _task_time.sleep(5)
     finally:
         _task_clear_active(task.task_id)
@@ -1152,19 +1196,20 @@ def _task_worker(payload_path: str) -> int:
                 return 3
         original_publish = poller._publish_result_durable
         def tracked_publish(queue_client: Any, task_id: str, result: dict):
+            published = original_publish(queue_client, task_id, result)
             if task_id == task.task_id:
                 try:
                     journal = TaskJournal(task.task_id)
-                    state = journal.state()
-                    attempts = state.get("attempts", [])
                     number = int(payload["attempt"])
-                    if 1 <= number <= len(attempts) and attempts[number - 1].get("status") == "running":
-                        journal.finish_attempt(number, str(result.get("status", "unknown")),
-                                               result_status=str(result.get("status", "unknown")),
-                                               error_type=result.get("error_type"))
+                    status = str(result.get("status", "unknown"))[:32]
+                    error_type = result.get("error_type")
+                    item = {"status": status}
+                    if isinstance(error_type, str):
+                        item["error_type"] = error_type[:64]
+                    _task_atomic_json(journal.directory / ("attempt-%03d-result.json" % number), item)
                 except Exception:
                     pass
-            return original_publish(queue_client, task_id, result)
+            return published
         poller._publish_result_durable = tracked_publish
         _poller_run_one_original(client, task, expected_manifest_sha=expected_sha)
         return 0
