@@ -1566,7 +1566,7 @@ def test_task_control_operations_are_typed_and_validated():
     for operation, args in (("stop_task", {"task_id": "x"}), ("resume_task", {}),
                             ("cancel_task", {"task_id": "../outside"})):
         with pytest.raises(ProtocolError):
-            parse_task(json.dumps({**base, "task_id": "invalid-" + operation,
+            github_queue.parse_task(json.dumps({**base, "task_id": "invalid-" + operation,
                                    "operation": operation, "arguments": args}))
 
 
