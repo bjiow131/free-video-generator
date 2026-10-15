@@ -137,6 +137,9 @@ def test_primary_missing_manifest_still_reports_configuration_error():
 
 
 def test_from_environment_all_adds_distinct_backup_using_same_credential(monkeypatch):
+    # Keep this test independent of a developer's real Windows Credential Manager.
+    from local_agent import windows_credentials
+    monkeypatch.setattr(windows_credentials, "read_credential", lambda: None)
     monkeypatch.setenv("LOCAL_AGENT_GITHUB_REPO", "owner/primary-mailbox")
     monkeypatch.setenv("LOCAL_AGENT_GITHUB_BACKUP_REPO", "owner/backup-mailbox")
     monkeypatch.setenv("LOCAL_AGENT_ALLOW_ENV_TOKEN", "1")
