@@ -21,7 +21,7 @@ echo Starting supervised Blender Studio and GitHub agent.
 echo Background Blender rendering; Studio URL http://127.0.0.1:55313/
 echo Recovery checks every 2 seconds. Windows login autostart enabled.
 echo Remote restart accepts only an empty, fixed request and waits for active renders.
-"%AGENT_VENV%\Scripts\python.exe" -m local_agent.poller --supervise
+"%AGENT_VENV%\Scripts\python.exe" -m local_agent.mailbox_policy --supervise
 set "RESULT=%ERRORLEVEL%"
 if not "%RESULT%"=="0" echo [WARNING] Supervisor ended with code %RESULT%.
 endlocal & exit /b %RESULT%

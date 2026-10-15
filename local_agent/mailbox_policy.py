@@ -594,3 +594,626 @@ class OctavaProjectMemory:
             pieces.append("Previous question: " + str(item["prompt"])[:1200])
             pieces.append("Previous answer: " + str(item["answer"])[:1800])
         return "\n".join(pieces)[:11000]
+
+# === Durable, preemptible mailbox task workers ===
+# Kept in this allowlisted module because the signed-in Windows updater is
+# deliberately restricted to a fixed set of files.
+import hashlib as _task_hashlib
+import signal as _task_signal
+import subprocess as _task_subprocess
+import sys
+import sys as _task_sys
+import time as _task_time
+from dataclasses import replace as dataclass_replace
+from datetime import datetime as _TaskDateTime, timedelta as _TaskDelta, timezone as _TaskTZ
+from pathlib import Path as _TaskPath
+
+TASK_RUNS_DIR = _ROOT / ".local_agent" / "task_runs"
+TASK_STOP_REQUEST = _ROOT / ".local_agent" / "task_stop_request.json"
+TASK_ACTIVE_FILE = _ROOT / ".local_agent" / "task_active.json"
+_TASK_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\Z")
+_TASK_LOCK = threading.RLock()
+_CONTROL_OPERATIONS = {"stop_task", "resume_task", "cancel_task"}
+_TASK_ACTIVE: dict[str, Any] = {}
+
+
+class TaskJournalError(ValueError):
+    pass
+
+
+def _task_safe_root() -> _TaskPath:
+    base = _ROOT / ".local_agent"
+    for path in (base, TASK_RUNS_DIR):
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            raise TaskJournalError("Unsafe task journal path")
+        path.mkdir(parents=True, exist_ok=True)
+    if not TASK_RUNS_DIR.resolve().is_relative_to(_ROOT.resolve()):
+        raise TaskJournalError("Task journal escapes application root")
+    return base
+
+
+def _task_id(value: Any) -> str:
+    if not isinstance(value, str) or not _TASK_ID_RE.fullmatch(value):
+        raise TaskJournalError("Invalid task identifier")
+    return value
+
+
+def _task_atomic_json(path: _TaskPath, value: dict) -> None:
+    root = _task_safe_root()
+    if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        raise TaskJournalError("Unsafe task journal file")
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise TaskJournalError("Task journal file escapes root")
+    data = (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(data) > 128_000:
+        raise TaskJournalError("Task journal record exceeds size limit")
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=root, prefix=".task-", suffix=".tmp", delete=False) as stream:
+            tmp = _TaskPath(stream.name)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    except OSError as exc:
+        raise TaskJournalError("Could not persist task journal") from exc
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+class TaskJournal:
+    """Durable original inputs, append-only attempts, and compact status."""
+    def __init__(self, task_id: str):
+        self.task_id = _task_id(task_id)
+        self.directory = _task_safe_root() / self.task_id
+        if self.directory.is_symlink() or getattr(self.directory, "is_junction", lambda: False)():
+            raise TaskJournalError("Unsafe task journal directory")
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.input_path = self.directory / "input.json"
+        self.state_path = self.directory / "state.json"
+
+    def save_input(self, envelope: dict, *, source_task_id: str | None = None) -> None:
+        if not isinstance(envelope, dict) or set(envelope) != {
+            "protocol_version", "task_id", "operation", "created_at", "expires_at",
+            "requires_local_approval", "arguments",
+        }:
+            raise TaskJournalError("Invalid task envelope")
+        if envelope["task_id"] != self.task_id or envelope["requires_local_approval"] is not True:
+            raise TaskJournalError("Task identity or local approval changed")
+        if self.input_path.exists():
+            prior = self.load_input()["envelope"]
+            if prior != envelope:
+                raise TaskJournalError("Task ID was reused with different input")
+            return
+        _task_atomic_json(self.input_path, {"envelope": envelope,
+                                             "source_task_id": source_task_id or self.task_id,
+                                             "saved_at": _task_now()})
+
+    def load_input(self) -> dict:
+        _task_safe_root()
+        if self.input_path.is_symlink() or getattr(self.input_path, "is_junction", lambda: False)():
+            raise TaskJournalError("Unsafe task input")
+        try:
+            raw = self.input_path.read_bytes()
+            if len(raw) > 128_000:
+                raise ValueError("large")
+            data = json.loads(raw.decode("utf-8"))
+            envelope = data["envelope"]
+            if (not isinstance(data, dict) or set(data) != {"envelope", "source_task_id", "saved_at"}
+                    or not isinstance(envelope, dict) or envelope.get("task_id") != self.task_id
+                    or envelope.get("requires_local_approval") is not True):
+                raise ValueError("invalid")
+            return data
+        except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+            raise TaskJournalError("Saved task input is missing or invalid") from None
+
+    def state(self) -> dict:
+        _task_safe_root()
+        if self.state_path.is_symlink() or getattr(self.state_path, "is_junction", lambda: False)():
+            raise TaskJournalError("Unsafe task state")
+        try:
+            raw = self.state_path.read_bytes()
+            if len(raw) > 64_000:
+                raise ValueError("large")
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict) or data.get("task_id") != self.task_id:
+                raise ValueError("invalid")
+            return data
+        except FileNotFoundError:
+            return {"task_id": self.task_id, "status": "queued", "attempts": [], "updated_at": _task_now()}
+        except (OSError, ValueError, TypeError, UnicodeError):
+            raise TaskJournalError("Saved task state is invalid") from None
+
+    def update(self, status: str, **extra: Any) -> dict:
+        with _TASK_LOCK:
+            state = self.state()
+            state["status"] = status
+            state["updated_at"] = _task_now()
+            for key in ("reason", "attempt", "worker_pid", "result_status", "error_type", "source_task_id"):
+                if key in extra and isinstance(extra[key], (str, int, type(None))):
+                    state[key] = extra[key]
+            _task_atomic_json(self.state_path, state)
+            return state
+
+    def add_attempt(self, record: dict) -> None:
+        with _TASK_LOCK:
+            state = self.state()
+            attempts = state.get("attempts", [])
+            if not isinstance(attempts, list) or len(attempts) >= 100:
+                raise TaskJournalError("Task attempt history is invalid or full")
+            attempts.append(record)
+            state.update({"status": "running", "attempts": attempts, "updated_at": _task_now()})
+            _task_atomic_json(self.state_path, state)
+
+    def finish_attempt(self, attempt: int, status: str, **extra: Any) -> None:
+        with _TASK_LOCK:
+            state = self.state()
+            attempts = state.get("attempts", [])
+            if not isinstance(attempts, list) or not 1 <= attempt <= len(attempts):
+                raise TaskJournalError("Task attempt is missing")
+            record = dict(attempts[attempt - 1])
+            record.update({"status": status, "finished_at": _task_now()})
+            for key in ("reason", "exit_code", "result_status", "error_type"):
+                if key in extra and isinstance(extra[key], (str, int, type(None))):
+                    record[key] = extra[key]
+            attempts[attempt - 1] = record
+            state.update({"status": status, "attempts": attempts, "updated_at": _task_now()})
+            _task_atomic_json(self.state_path, state)
+
+
+def _task_now() -> str:
+    return _TaskDateTime.now(_TaskTZ.utc).isoformat(timespec="seconds")
+
+
+def _task_envelope(task: Any) -> dict:
+    return {"protocol_version": task.protocol_version, "task_id": task.task_id,
+            "operation": task.operation, "created_at": task.created_at,
+            "expires_at": task.expires_at,
+            "requires_local_approval": task.requires_local_approval,
+            "arguments": task.arguments}
+
+
+_queue_parse_task_original = None
+_poller_run_one_original = None
+_poller_telegram_original = None
+
+
+def install_task_control_parser() -> None:
+    """Accept only three typed control envelopes; normalize before strict parse."""
+    global _queue_parse_task_original
+    from local_agent import github_queue
+    if _queue_parse_task_original is not None:
+        return
+    _queue_parse_task_original = github_queue.parse_task
+
+    def parse(raw: str):
+        from local_agent.control_protocol import ProtocolError
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError):
+            return _queue_parse_task_original(raw)
+        if not isinstance(value, dict) or value.get("operation") not in _CONTROL_OPERATIONS:
+            return _queue_parse_task_original(raw)
+        operation = value["operation"]
+        args = value.get("arguments")
+        if value.get("requires_local_approval") is not True:
+            raise ProtocolError("Task must require local approval.")
+        if operation == "stop_task":
+            if args != {}:
+                raise ProtocolError("stop_task accepts no arguments.")
+        elif (not isinstance(args, dict) or set(args) != {"task_id"}
+              or not isinstance(args.get("task_id"), str) or not _TASK_ID_RE.fullmatch(args["task_id"])):
+            raise ProtocolError(operation + " requires one valid task_id.")
+        normalized = dict(value)
+        normalized["operation"] = "status"
+        normalized["arguments"] = {}
+        task = _queue_parse_task_original(json.dumps(normalized, ensure_ascii=False, separators=(",", ":")))
+        return dataclass_replace(task, operation=operation, arguments=args)
+
+    github_queue.parse_task = parse
+
+
+def _task_read_active() -> dict | None:
+    if TASK_ACTIVE_FILE.is_symlink() or getattr(TASK_ACTIVE_FILE, "is_junction", lambda: False)():
+        return None
+    try:
+        data = json.loads(TASK_ACTIVE_FILE.read_text(encoding="utf-8"))
+        if (not isinstance(data, dict) or set(data) != {"task_id", "pid", "updated_at"}
+                or not isinstance(data["task_id"], str) or not _TASK_ID_RE.fullmatch(data["task_id"])
+                or type(data["pid"]) is not int):
+            return None
+        stamp = _TaskDateTime.fromisoformat(data["updated_at"])
+        if abs((_TaskDateTime.now(_TaskTZ.utc) - stamp).total_seconds()) > 10:
+            return None
+        return data
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+        return None
+
+
+def _task_request_stop() -> bool:
+    active = _task_read_active()
+    if active is None:
+        return False
+    _task_atomic_json(TASK_STOP_REQUEST, {"task_id": active["task_id"], "requested_at": _task_now()})
+    return True
+
+
+def _task_publish_active(task_id: str, pid: int) -> None:
+    _task_atomic_json(TASK_ACTIVE_FILE, {"task_id": task_id, "pid": int(pid), "updated_at": _task_now()})
+
+
+def _task_clear_active(task_id: str) -> None:
+    active = _task_read_active()
+    if active is not None and active["task_id"] == task_id:
+        try:
+            TASK_ACTIVE_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _task_consume_stop(task_id: str) -> bool:
+    if TASK_STOP_REQUEST.is_symlink() or getattr(TASK_STOP_REQUEST, "is_junction", lambda: False)():
+        return False
+    try:
+        raw = TASK_STOP_REQUEST.read_bytes()
+        TASK_STOP_REQUEST.unlink(missing_ok=True)
+        data = json.loads(raw.decode("utf-8"))
+        stamp = _TaskDateTime.fromisoformat(data["requested_at"])
+        return (data.get("task_id") == task_id and
+                abs((_TaskDateTime.now(_TaskTZ.utc) - stamp).total_seconds()) <= 120)
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+        return False
+
+
+def _task_telegram_response(update: Any, paired_chat: str, *,
+                            status_line: str, tasks_line: str, logs_line: str,
+                            now: int | None = None) -> str | None:
+    global _poller_telegram_original
+    from local_agent import poller
+    original = _poller_telegram_original or poller._telegram_command_response
+    if not isinstance(update, dict):
+        return original(update, paired_chat, status_line=status_line,
+                        tasks_line=tasks_line, logs_line=logs_line, now=now)
+    msg = update.get("message")
+    raw = msg.get("text") if isinstance(msg, dict) else None
+    if isinstance(raw, str) and raw.strip().split("@", 1)[0].lower() == "/stop-task":
+        # Delegate all chat, sender, date and length checks to the existing gate.
+        checked = json.loads(json.dumps(update))
+        checked["message"]["text"] = "/status"
+        authorized = original(checked, paired_chat, status_line=status_line,
+                              tasks_line=tasks_line, logs_line=logs_line, now=now)
+        if authorized is None:
+            return None
+        if not _task_request_stop():
+            return "Сейчас нет активной задачи для остановки."
+        return "Остановка текущей задачи запрошена. Входные данные останутся в журнале; повтор запускается командой resume_task с ID задачи."
+    response = original(update, paired_chat, status_line=status_line,
+                        tasks_line=tasks_line, logs_line=logs_line, now=now)
+    if response and isinstance(raw, str) and raw.strip().split("@", 1)[0].lower() == "/help":
+        return response + "\n/stop-task — остановить текущую задачу и сохранить её входные данные"
+    return response
+
+
+def _task_terminate_tree(proc: Any) -> None:
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            _task_subprocess.run(["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"],
+                                 stdin=_task_subprocess.DEVNULL,
+                                 stdout=_task_subprocess.DEVNULL,
+                                 stderr=_task_subprocess.DEVNULL, timeout=15, check=False)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    else:
+        try:
+            os.killpg(proc.pid, _task_signal.SIGTERM)
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                os.killpg(proc.pid, _task_signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        pass
+
+
+def _task_worker_command(payload_path: _TaskPath) -> list[str]:
+    return [sys.executable, "-m", "local_agent.mailbox_policy", "--task-worker", str(payload_path)]
+
+
+def _task_launch_worker(client: Any, task: Any, expected_sha: str,
+                        *, replay: bool = False, source_task_id: str | None = None) -> dict:
+    journal = TaskJournal(task.task_id)
+    if not replay:
+        journal.save_input(_task_envelope(task), source_task_id=source_task_id)
+    else:
+        # Replays keep the original operation and arguments but get a fresh
+        # mailbox identity so prior results remain immutable.
+        old = TaskJournal(source_task_id or "").load_input()["envelope"]
+        old.update({"task_id": task.task_id, "created_at": task.created_at,
+                    "expires_at": task.expires_at})
+        journal.save_input(old, source_task_id=source_task_id)
+    state = journal.state()
+    attempt = len(state.get("attempts", [])) + 1
+    attempt_log = journal.directory / ("attempt-%03d.log" % attempt)
+    payload = {"envelope": journal.load_input()["envelope"],
+               "expected_manifest_sha": expected_sha,
+               "replay": replay, "source_task_id": source_task_id,
+               "attempt": attempt}
+    payload_path = journal.directory / ("attempt-%03d.json" % attempt)
+    _task_atomic_json(payload_path, payload)
+    with attempt_log.open("ab") as log_stream:
+        kwargs: dict[str, Any] = {"cwd": str(_ROOT), "stdin": _task_subprocess.DEVNULL,
+                                  "stdout": log_stream, "stderr": _task_subprocess.STDOUT}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(_task_subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        else:
+            kwargs["start_new_session"] = True
+        proc = _task_subprocess.Popen(_task_worker_command(payload_path), **kwargs)
+    journal.add_attempt({"number": attempt, "started_at": _task_now(),
+                         "status": "running", "pid": int(proc.pid),
+                         "log": attempt_log.name,
+                         "input_sha256": _task_hashlib.sha256(payload_path.read_bytes()).hexdigest()})
+    _TASK_ACTIVE.clear()
+    _TASK_ACTIVE.update({"proc": proc, "journal": journal, "task": task,
+                         "attempt": attempt, "source_task_id": source_task_id,
+                         "client": client})
+    _task_publish_active(task.task_id, int(proc.pid))
+    rejected_control_sha = None
+    try:
+        while True:
+            return_code = proc.poll()
+            if return_code is not None:
+                current = journal.state()
+                status = current.get("status")
+                if status == "running":
+                    failure_reason = "worker_completed_without_result" if return_code == 0 else "worker_exit_without_result"
+                    journal.finish_attempt(attempt, "failed", exit_code=int(return_code), reason=failure_reason)
+                    _task_publish_result(client, task.task_id, {
+                        "task_id": task.task_id, "status": "error",
+                        "reason": failure_reason, "worker_exit_code": int(return_code),
+                        "resume_available": True,
+                    })
+                return {"status": journal.state().get("status", "failed"), "exit_code": int(return_code)}
+            _task_publish_active(task.task_id, int(proc.pid))
+            if _task_consume_stop(task.task_id):
+                _task_terminate_tree(proc)
+                journal.finish_attempt(attempt, "interrupted", reason="operator_stop")
+                _task_publish_result(client, task.task_id, {"task_id": task.task_id,
+                    "status": "interrupted", "reason": "operator_stop",
+                    "resume_available": True, "resume_mode": "replay_saved_inputs"})
+                return {"status": "interrupted", "reason": "operator_stop"}
+            try:
+                from local_agent.poller import _touch_mailbox_heartbeat
+                _touch_mailbox_heartbeat()
+            except Exception:
+                pass
+            try:
+                latest = client.fetch_desired_task()
+            except Exception:
+                _task_time.sleep(5)
+                continue
+            if latest is not None:
+                new_task, new_sha = latest
+                if new_task.task_id != task.task_id or new_sha != expected_sha:
+                    if new_task.operation in _CONTROL_OPERATIONS and not _task_control_authorized(new_task):
+                        if rejected_control_sha != new_sha:
+                            _task_publish_result(client, new_task.task_id, {
+                                "task_id": new_task.task_id, "status": "blocked",
+                                "reason": "local_approval_required_for_task_control"})
+                            rejected_control_sha = new_sha
+                        _task_time.sleep(5)
+                        continue
+                    _task_terminate_tree(proc)
+                    journal.finish_attempt(attempt, "interrupted", reason="superseded_by_new_desired_task")
+                    _task_publish_result(client, task.task_id, {"task_id": task.task_id,
+                        "status": "interrupted", "reason": "superseded_by_new_desired_task",
+                        "superseded_by": new_task.task_id, "resume_available": True})
+                    if new_task.operation in _CONTROL_OPERATIONS:
+                        return _task_handle_control(client, new_task, new_sha, locally_authorized=True)
+                    return {"status": "interrupted", "reason": "superseded_by_new_desired_task"}
+            _task_time.sleep(5)
+    finally:
+        _task_clear_active(task.task_id)
+        _TASK_ACTIVE.clear()
+
+
+def _task_handle_control(client: Any, task: Any, manifest_sha: str, *, locally_authorized: bool = False) -> dict:
+    operation = task.operation
+    args = task.arguments
+    from local_agent import poller
+    if not poller._not_expired(task):
+        result = {"task_id": task.task_id, "status": "rejected", "reason": "expired_or_invalid_expiry"}
+        _task_publish_result(client, task.task_id, result)
+        return result
+    if not locally_authorized and not _task_control_authorized(task):
+        result = {"task_id": task.task_id, "status": "blocked",
+                  "reason": "local_approval_required_for_task_control"}
+        _task_publish_result(client, task.task_id, result)
+        return result
+    if operation == "stop_task":
+        active = dict(_TASK_ACTIVE)
+        result = {"task_id": task.task_id, "status": "completed",
+                  "details": {"stopped_task_id": active.get("task").task_id if active.get("task") else None}}
+        _task_publish_result(client, task.task_id, result)
+        return result
+    target = args["task_id"]
+    journal = TaskJournal(target)
+    if operation == "cancel_task":
+        active = dict(_TASK_ACTIVE)
+        if active and (active.get("task").task_id == target or active.get("source_task_id") == target):
+            _task_terminate_tree(active["proc"])
+            active["journal"].finish_attempt(active["attempt"], "cancelled", reason="operator_cancel")
+            _task_publish_result(client, active["task"].task_id, {
+                "task_id": active["task"].task_id, "status": "cancelled", "reason": "operator_cancel"})
+        else:
+            try:
+                journal.load_input()
+            except TaskJournalError:
+                result = {"task_id": task.task_id, "status": "rejected", "reason": "task_input_not_found"}
+                _task_publish_result(client, task.task_id, result)
+                return result
+            state = journal.state()
+            if state.get("status") not in {"interrupted", "failed", "running", "queued"}:
+                result = {"task_id": task.task_id, "status": "rejected", "reason": "task_not_cancellable"}
+                _task_publish_result(client, task.task_id, result)
+                return result
+            journal.update("cancelled", reason="operator_cancel")
+        result = {"task_id": task.task_id, "status": "completed",
+                  "details": {"cancelled_task_id": target}}
+        _task_publish_result(client, task.task_id, result)
+        return result
+    if operation == "resume_task":
+        state = journal.state()
+        if state.get("status") not in {"interrupted", "failed", "running"}:
+            result = {"task_id": task.task_id, "status": "rejected", "reason": "task_not_resumable"}
+            _task_publish_result(client, task.task_id, result)
+            return result
+        saved = journal.load_input()["envelope"]
+        replay_env = dict(saved)
+        replay_env.update({"task_id": task.task_id, "created_at": task.created_at,
+                           "expires_at": task.expires_at})
+        _task_atomic_json(TASK_RUNS_DIR / task.task_id / "resume-envelope.json", replay_env)
+        from local_agent import github_queue
+        replay_task = github_queue.parse_task(json.dumps(replay_env, ensure_ascii=False))
+        return _task_launch_worker(client, replay_task, manifest_sha, replay=True, source_task_id=target)
+    return {"status": "rejected", "reason": "unknown_control"}
+
+
+def _task_control_authorized(task: Any) -> bool:
+    """Require local unattended opt-in or an interactive local YES."""
+    try:
+        policy = load_policy()
+    except MailboxPolicyError:
+        return False
+    if policy["enabled"]:
+        return True
+    if not sys.stdin.isatty():
+        return False
+    try:
+        return input("Approve this task control locally? Type YES to run: ").strip() == "YES"
+    except (EOFError, OSError):
+        return False
+
+
+def _task_run_one(client: Any, task: Any, expected_manifest_sha: str | None = None) -> None:
+    if task.operation in _CONTROL_OPERATIONS:
+        _task_handle_control(client, task, expected_manifest_sha or "")
+        return
+    _task_launch_worker(client, task, expected_manifest_sha or "")
+
+
+def _task_install_poller_hooks() -> Any:
+    global _poller_run_one_original, _poller_telegram_original
+    from local_agent import poller
+    install_task_control_parser()
+    if _poller_run_one_original is None:
+        _poller_run_one_original = poller._run_one
+        _poller_telegram_original = poller._telegram_command_response
+        poller._telegram_command_response = _task_telegram_response
+        poller._run_one = _task_run_one
+    return poller
+
+
+def _task_worker(payload_path: str) -> int:
+    poller = _task_install_poller_hooks()
+    path = _TaskPath(payload_path).resolve()
+    if not path.is_relative_to(TASK_RUNS_DIR.resolve()) or path.is_symlink():
+        return 2
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(payload, dict) or set(payload) != {
+                "envelope", "expected_manifest_sha", "replay", "source_task_id", "attempt"}):
+            return 2
+        task = poller._github_queue.parse_task(json.dumps(payload["envelope"], ensure_ascii=False))
+        client = poller.GitHubQueueClient(poller.QueueConfig.from_environment())
+        expected_sha = payload["expected_manifest_sha"]
+        if payload["replay"]:
+            current = client.fetch_desired_task()
+            if current is None or current[0].task_id != task.task_id or current[1] != expected_sha:
+                return 3
+            client.fetch_desired_task = lambda: (task, expected_sha)
+        else:
+            current = client.fetch_desired_task()
+            if current is None or current[0] != task or current[1] != expected_sha:
+                return 3
+        original_publish = poller._publish_result_durable
+        def tracked_publish(queue_client: Any, task_id: str, result: dict):
+            if task_id == task.task_id:
+                try:
+                    journal = TaskJournal(task.task_id)
+                    state = journal.state()
+                    attempts = state.get("attempts", [])
+                    number = int(payload["attempt"])
+                    if 1 <= number <= len(attempts) and attempts[number - 1].get("status") == "running":
+                        journal.finish_attempt(number, str(result.get("status", "unknown")),
+                                               result_status=str(result.get("status", "unknown")),
+                                               error_type=result.get("error_type"))
+                except Exception:
+                    pass
+            return original_publish(queue_client, task_id, result)
+        poller._publish_result_durable = tracked_publish
+        _poller_run_one_original(client, task, expected_manifest_sha=expected_sha)
+        return 0
+    except Exception as exc:
+        print("Task worker failed:", type(exc).__name__)
+        return 1
+
+
+
+def _task_publish_result(client: Any, task_id: str, result: dict) -> Any:
+    from local_agent import poller
+    return poller._publish_result_durable(client, task_id, result)
+
+def _task_supervisor() -> int:
+    poller = _task_install_poller_hooks()
+    original_popen = _task_subprocess.Popen
+    python = str(sys.executable).casefold()
+    def routed_popen(args, *pargs, **kwargs):
+        try:
+            seq = list(args) if not isinstance(args, str) else []
+            if (len(seq) == 3 and str(seq[0]).casefold() == python
+                    and seq[1:3] == ["-m", "local_agent.poller"]):
+                seq = [seq[0], "-m", "local_agent.mailbox_policy", "--mailbox-worker"]
+                args = seq
+        except Exception:
+            pass
+        return original_popen(args, *pargs, **kwargs)
+    _task_subprocess.Popen = routed_popen
+    try:
+        return poller.supervise_windows()
+    finally:
+        _task_subprocess.Popen = original_popen
+
+
+def _task_mailbox_worker() -> int:
+    poller = _task_install_poller_hooks()
+    return poller.main()
+
+
+def _task_cli(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args == ["--supervise"]:
+        return _task_supervisor()
+    if args == ["--mailbox-worker"]:
+        return _task_mailbox_worker()
+    if len(args) == 2 and args[0] == "--task-worker":
+        return _task_worker(args[1])
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_task_cli())

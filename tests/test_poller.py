@@ -1550,70 +1550,70 @@ def test_legacy_mia_paths_cannot_reset_a_saved_source_target(monkeypatch,tmp_pat
 def test_task_control_operations_are_typed_and_validated():
     import json
     from datetime import datetime, timedelta, timezone
+    from local_agent import mailbox_policy
     from local_agent.github_queue import parse_task
     from local_agent.control_protocol import ProtocolError
-    now=datetime.now(timezone.utc)
-    base={"protocol_version":1,"created_at":now.isoformat(),
-          "expires_at":(now+timedelta(hours=1)).isoformat(),
-          "requires_local_approval":True}
-    for operation,args in (
-        ("stop_task",{}),
-        ("resume_task",{"task_id":"original-task-01"}),
-        ("cancel_task",{"task_id":"original-task-01"}),
-    ):
-        task=parse_task(json.dumps({**base,"task_id":"control-"+operation,
-                                    "operation":operation,"arguments":args}))
-        assert task.operation==operation and task.arguments==args
-    for operation,args in (
-        ("stop_task",{"task_id":"x"}),
-        ("resume_task",{}),
-        ("cancel_task",{"task_id":"../outside"}),
-    ):
+    mailbox_policy.install_task_control_parser()
+    now = datetime.now(timezone.utc)
+    base = {"protocol_version": 1, "created_at": now.isoformat(),
+            "expires_at": (now + timedelta(hours=1)).isoformat(),
+            "requires_local_approval": True}
+    for operation, args in (("stop_task", {}), ("resume_task", {"task_id": "original-task-01"}),
+                            ("cancel_task", {"task_id": "original-task-01"})):
+        task = parse_task(json.dumps({**base, "task_id": "control-" + operation,
+                                      "operation": operation, "arguments": args}))
+        assert task.operation == operation and task.arguments == args
+    for operation, args in (("stop_task", {"task_id": "x"}), ("resume_task", {}),
+                            ("cancel_task", {"task_id": "../outside"})):
         with pytest.raises(ProtocolError):
-            parse_task(json.dumps({**base,"task_id":"invalid-"+operation,
-                                   "operation":operation,"arguments":args}))
+            parse_task(json.dumps({**base, "task_id": "invalid-" + operation,
+                                   "operation": operation, "arguments": args}))
 
 
-def test_task_journal_preserves_exact_input_and_rejects_id_reuse(tmp_path,monkeypatch):
-    from dataclasses import replace
+def test_task_journal_preserves_exact_input_and_rejects_id_reuse(tmp_path, monkeypatch):
     from datetime import datetime, timedelta, timezone
-    from local_agent import poller
-    from local_agent.control_protocol import TaskEnvelope
-    monkeypatch.setattr(poller,"_TASK_RUNS",tmp_path/"task_runs")
-    monkeypatch.setattr(poller,"_ensure_agent_dir",lambda:tmp_path)
-    now=datetime.now(timezone.utc)
-    task=TaskEnvelope(1,"journal-task-01","status",now.isoformat(),
-        (now+timedelta(hours=1)).isoformat(),True,{})
-    poller._task_journal_record(task,"a"*40,"queued")
-    poller._task_journal_record(task,"a"*40,"running")
-    poller._task_journal_set_state(task.task_id,"interrupted")
-    saved,state=poller._task_journal_read(task.task_id)
-    assert saved["task_id"]==task.task_id and saved["arguments"]=={}
-    assert state["state"]=="interrupted" and state["attempt"]==1
-    with pytest.raises(RuntimeError,match="different input"):
-        poller._task_journal_record(replace(task,arguments={"changed":True}),"a"*40,"queued")
+    from local_agent import mailbox_policy
+    monkeypatch.setattr(mailbox_policy, "_ROOT", tmp_path)
+    monkeypatch.setattr(mailbox_policy, "TASK_RUNS_DIR", tmp_path / ".local_agent" / "task_runs")
+    now = datetime.now(timezone.utc)
+    envelope = {"protocol_version": 1, "task_id": "journal-task-01", "operation": "doctor",
+                "created_at": now.isoformat(), "expires_at": (now + timedelta(hours=1)).isoformat(),
+                "requires_local_approval": True, "arguments": {}}
+    journal = mailbox_policy.TaskJournal(envelope["task_id"])
+    journal.save_input(envelope)
+    journal.add_attempt({"number": 1, "status": "running", "started_at": mailbox_policy._task_now()})
+    journal.finish_attempt(1, "interrupted", reason="operator_stop")
+    assert journal.load_input()["envelope"] == envelope
+    assert journal.state()["status"] == "interrupted"
+    with pytest.raises(mailbox_policy.TaskJournalError, match="different input"):
+        journal.save_input(dict(envelope, operation="status"))
 
 
-def test_task_stop_flag_matches_only_the_requested_task(tmp_path,monkeypatch):
-    import json
-    from local_agent import poller
-    monkeypatch.setattr(poller,"_TASK_STOP",tmp_path/"task_stop.json")
-    poller._task_json_write(poller._TASK_STOP,{"task_id":"active-01","requested_at":"now"})
-    assert poller._task_stop_requested("active-01")
-    assert not poller._task_stop_requested("other-02")
+def test_task_stop_flag_is_bound_to_live_task(tmp_path, monkeypatch):
+    from local_agent import mailbox_policy
+    monkeypatch.setattr(mailbox_policy, "_ROOT", tmp_path)
+    monkeypatch.setattr(mailbox_policy, "TASK_RUNS_DIR", tmp_path / ".local_agent" / "task_runs")
+    monkeypatch.setattr(mailbox_policy, "TASK_ACTIVE_FILE", tmp_path / ".local_agent" / "task_active.json")
+    monkeypatch.setattr(mailbox_policy, "TASK_STOP_REQUEST", tmp_path / ".local_agent" / "task_stop_request.json")
+    mailbox_policy._task_publish_active("active-task-01", 1234)
+    assert mailbox_policy._task_request_stop()
+    assert mailbox_policy._task_consume_stop("active-task-01")
+    assert not mailbox_policy._task_consume_stop("active-task-01")
+    mailbox_policy._task_clear_active("active-task-01")
+    assert not mailbox_policy._task_request_stop()
 
 
 def test_terminate_task_tree_stops_worker_process():
     import os
     import subprocess
     import sys
-    from local_agent import poller
-    kwargs={"stdin":subprocess.DEVNULL,"stdout":subprocess.DEVNULL,
-            "stderr":subprocess.DEVNULL,"shell":False}
-    if os.name=="nt":
-        kwargs["creationflags"]=subprocess.CREATE_NEW_PROCESS_GROUP
+    from local_agent import mailbox_policy
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+              "stderr": subprocess.DEVNULL, "shell": False}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     else:
-        kwargs["start_new_session"]=True
-    process=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"],**kwargs)
-    poller._terminate_task_tree(process)
+        kwargs["start_new_session"] = True
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
+    mailbox_policy._task_terminate_tree(process)
     assert process.poll() is not None
