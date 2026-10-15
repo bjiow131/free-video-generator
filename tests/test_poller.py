@@ -1551,7 +1551,7 @@ def test_task_control_operations_are_typed_and_validated():
     import json
     from datetime import datetime, timedelta, timezone
     from local_agent import mailbox_policy
-    from local_agent.github_queue import parse_task
+    from local_agent import github_queue
     from local_agent.control_protocol import ProtocolError
     mailbox_policy.install_task_control_parser()
     now = datetime.now(timezone.utc)
@@ -1560,7 +1560,7 @@ def test_task_control_operations_are_typed_and_validated():
             "requires_local_approval": True}
     for operation, args in (("stop_task", {}), ("resume_task", {"task_id": "original-task-01"}),
                             ("cancel_task", {"task_id": "original-task-01"})):
-        task = parse_task(json.dumps({**base, "task_id": "control-" + operation,
+        task = github_queue.parse_task(json.dumps({**base, "task_id": "control-" + operation,
                                       "operation": operation, "arguments": args}))
         assert task.operation == operation and task.arguments == args
     for operation, args in (("stop_task", {"task_id": "x"}), ("resume_task", {}),
