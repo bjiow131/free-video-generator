@@ -597,6 +597,7 @@ class OctavaProjectMemory:
 
 
 
+
 # === Durable, preemptible mailbox task workers ===
 # Kept in this allowlisted module because the signed-in Windows updater is
 # deliberately restricted to a fixed set of files.
@@ -1132,7 +1133,6 @@ def _task_handle_control(client: Any, task: Any, manifest_sha: str, *, locally_a
         replay_env = dict(saved)
         replay_env.update({"task_id": task.task_id, "created_at": task.created_at,
                            "expires_at": task.expires_at})
-        _task_atomic_json(TASK_RUNS_DIR / task.task_id / "resume-envelope.json", replay_env)
         from local_agent import github_queue
         replay_task = github_queue.parse_task(json.dumps(replay_env, ensure_ascii=False))
         return _task_launch_worker(client, replay_task, manifest_sha, replay=True, source_task_id=target)
