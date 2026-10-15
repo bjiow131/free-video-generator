@@ -1,8 +1,23 @@
 """Tests for poller expiry and task supersession helpers."""
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
+import sys
+
+import pytest
 
 from local_agent.poller import _not_expired
+
+
+@pytest.fixture(autouse=True)
+def _interactive_console_for_approval_tests(monkeypatch):
+    """Model an interactive test console unless a test explicitly disables it."""
+    from local_agent import poller
+
+    monkeypatch.setattr(
+        poller,
+        "sys",
+        SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: True), executable=sys.executable),
+    )
 
 
 def test_not_expired_accepts_future_utc_timestamp():
