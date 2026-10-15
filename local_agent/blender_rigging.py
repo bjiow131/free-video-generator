@@ -1065,13 +1065,20 @@ def preview_mia_spring_rig_video(project_name: str) -> dict[str, Any]:
     if not project.is_relative_to(workspace) or project==workspace:
         return {"status":"rejected","reason":"unsafe_project_path"}
     source=project/"mia_spring_source_adapted_spring_rig.blend"
-    out=project/"mia_rig_video_preview_20261015"
+    output_name="mia_rig_video_preview_20261015"
+    out=project/output_name
+    if out.exists():
+        for attempt in range(2,100):
+            candidate=project/f"{output_name}_retry_{attempt:02d}"
+            if not candidate.exists():
+                out=candidate
+                break
+        else:
+            return {"status":"blocked","reason":"preview_output_slots_exhausted"}
     if any(is_link_or_junction(p) for p in (source,out)):
         return {"status":"rejected","reason":"unsafe_project_file"}
     if not source.is_file() or source.stat().st_size==0:
         return {"status":"blocked","reason":"rigged_mia_blend_missing"}
-    if out.exists():
-        return {"status":"blocked","reason":"preview_output_exists_no_overwrite"}
     source_hash=_spring_sha256(source)
     out.mkdir(parents=True)
     video=out/"mia_spring_rig_motion_preview.mp4"
