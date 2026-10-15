@@ -24,6 +24,7 @@ READ_ONLY_OPERATIONS = frozenset({
     'scan_project_assets', 'compile_story_plan',
 })
 BLENDER_OPERATIONS = frozenset({
+    'hunyuan3d_mv_character',
     'save_story_plan', 'blender_forest_preview',
     'blender_mia_blockout', 'blender_mia_skeleton',
     'blender_mia_spring_rig_transfer', 'blender_source_review', 'blender_mia_source_adapt', 'blender_mia_source_recover', 'blender_mia_source_neutral', 'blender_mia_source_details', 'blender_mia_source_polish', 'export_mia_scene_review',
