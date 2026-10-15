@@ -115,3 +115,45 @@ def test_fetch_rejects_manifest_with_malformed_base64():
     with pytest.raises(QueueTransportError, match="Task manifest rejected"):
         client.fetch_desired_task()
 
+
+def test_fetch_treats_missing_backup_manifest_as_an_empty_queue():
+    client = GitHubQueueClient(
+        QueueConfig(repository="owner/backup-mailbox", token="test-token", missing_manifest_ok=True),
+        session=FakeSession([
+            FakeResponse(data={"private": True}),
+            FakeResponse(status_code=404),
+        ]),
+    )
+    assert client.fetch_desired_task() is None
+
+
+def test_primary_missing_manifest_still_reports_configuration_error():
+    client = GitHubQueueClient(cfg(), session=FakeSession([
+        FakeResponse(data={"private": True}),
+        FakeResponse(status_code=404),
+    ]))
+    with pytest.raises(QueueTransportError, match="not found"):
+        client.fetch_desired_task()
+
+
+def test_from_environment_all_adds_distinct_backup_using_same_credential(monkeypatch):
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_REPO", "owner/primary-mailbox")
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_BACKUP_REPO", "owner/backup-mailbox")
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_ENV_TOKEN", "1")
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_TOKEN", "test-token")
+    configs = QueueConfig.from_environment_all()
+    assert [item.repository for item in configs] == [
+        "owner/primary-mailbox", "owner/backup-mailbox"
+    ]
+    assert configs[0].token == configs[1].token == "test-token"
+    assert configs[1].missing_manifest_ok is True
+
+
+def test_from_environment_all_rejects_same_primary_and_backup(monkeypatch):
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_REPO", "owner/primary-mailbox")
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_BACKUP_REPO", "OWNER/PRIMARY-MAILBOX")
+    monkeypatch.setenv("LOCAL_AGENT_ALLOW_ENV_TOKEN", "1")
+    monkeypatch.setenv("LOCAL_AGENT_GITHUB_TOKEN", "test-token")
+    with pytest.raises(QueueConfigurationError, match="must be different"):
+        QueueConfig.from_environment_all()
+

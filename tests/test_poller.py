@@ -285,6 +285,99 @@ def test_remote_approval_fails_closed_without_local_opt_in(monkeypatch):
     assert client.published[1]["reason"] == "remote_approval_not_enabled_or_operation_not_allowlisted"
 
 
+def test_backup_mailbox_paths_are_isolated(tmp_path, monkeypatch):
+    from pathlib import Path
+    from local_agent import poller
+
+    root = tmp_path / "agent"
+    monkeypatch.setattr(poller, "ROOT", root)
+    monkeypatch.setattr(poller, "STATE_PATH", root / ".local_agent" / "poller_state.json")
+    primary_state, primary_outbox = poller._mailbox_paths("owner/primary", primary=True)
+    backup_state, backup_outbox = poller._mailbox_paths("owner/backup-mailbox", primary=False)
+    assert primary_state == poller.STATE_PATH
+    assert backup_state != primary_state
+    assert backup_outbox != primary_outbox
+    assert backup_state.is_relative_to(Path(root / ".local_agent"))
+
+
+def test_backup_rejects_task_id_already_claimed_by_primary(tmp_path, monkeypatch):
+    from local_agent import poller
+    from types import SimpleNamespace
+
+    task = SimpleNamespace(task_id="shared-task-1")
+
+    class FakeOutbox:
+        def pending_task_ids(self):
+            return set()
+
+        def flush(self, _client):
+            return {"published": 0, "deferred": 0, "invalid": 0}
+
+    class FakeClient:
+        config = SimpleNamespace(repository="owner/backup-mailbox")
+
+        def fetch_desired_task(self):
+            return task, "backup-sha"
+
+    primary_state = poller._remember_manifest({}, "shared-task-1", "primary-sha", status="processed")
+    backup_state = {}
+    primary = {"repository": "owner/primary-mailbox", "state": primary_state}
+    backup = {
+        "repository": "owner/backup-mailbox",
+        "client": FakeClient(),
+        "state": backup_state,
+        "state_path": tmp_path / "backup" / "poller_state.json",
+        "outbox": FakeOutbox(),
+    }
+    published = []
+    ran = []
+    monkeypatch.setattr(poller, "_publish_result_durable", lambda client, task_id, result: published.append(result) or "sha")
+    monkeypatch.setattr(poller, "_run_one", lambda *args, **kwargs: ran.append(args))
+
+    poller._poll_mailbox_once(backup, [primary, backup])
+
+    assert ran == []
+    assert published[0]["reason"] == "task_id_already_claimed_in_another_mailbox"
+    assert backup["state"]["processed_tasks"]["shared-task-1"]["status"] == "rejected"
+
+
+def test_primary_transport_failure_does_not_skip_backup_mailbox(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from local_agent import poller
+
+    root = tmp_path / "agent"
+    monkeypatch.setattr(poller, "ROOT", root)
+    monkeypatch.setattr(poller, "STATE_PATH", root / ".local_agent" / "poller_state.json")
+    configs = [
+        SimpleNamespace(repository="owner/primary-mailbox"),
+        SimpleNamespace(repository="owner/backup-mailbox"),
+    ]
+    monkeypatch.setattr(
+        poller.QueueConfig, "from_environment_all", classmethod(lambda cls: configs)
+    )
+    monkeypatch.setattr(
+        poller, "_acquire_instance_lock", lambda _path: SimpleNamespace(close=lambda: None)
+    )
+    monkeypatch.setattr(poller, "_load_state", lambda _path=None: {})
+    monkeypatch.setattr(poller, "_result_outbox", lambda _root=None: object())
+    monkeypatch.setattr(poller, "GitHubQueueClient", lambda config: SimpleNamespace(config=config))
+    checked = []
+
+    def poll_one(slot, _slots):
+        if slot["repository"] == "owner/primary-mailbox":
+            raise poller.QueueTransportError("primary unavailable")
+        checked.append(slot["repository"])
+
+    monkeypatch.setattr(poller, "_poll_mailbox_once", poll_one)
+
+    def stop_after_first_cycle(_seconds):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(poller.time, "sleep", stop_after_first_cycle)
+    assert poller.main() == 0
+    assert checked == ["owner/backup-mailbox"]
+
+
 def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch):
     from local_agent import poller
     future = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat()

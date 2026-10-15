@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -41,12 +42,17 @@ def _ensure_agent_dir() -> Path:
     return resolved
 
 
-def _result_outbox() -> ResultOutbox:
-    return ResultOutbox(_ensure_agent_dir() / "pending_results")
+def _result_outbox(root: Path | None = None) -> ResultOutbox:
+    return ResultOutbox(root or (_ensure_agent_dir() / "pending_results"))
 
 
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
     """Persist each result before publishing it; retain it if the network fails."""
+    repository = getattr(getattr(client, "config", None), "repository", "")
+    primary_repository = os.environ.get("LOCAL_AGENT_GITHUB_REPO", "").strip()
+    if repository and primary_repository and repository.casefold() != primary_repository.casefold():
+        outbox_root = _mailbox_paths(repository, primary=False)[1]
+        return _result_outbox(outbox_root).publish(client, task_id, result)
     return _result_outbox().publish(client, task_id, result)
 
 def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
@@ -365,14 +371,15 @@ def _run_blender_mia_reference_fit_preflight(arguments: dict[str, Any], task_id:
     return run_reference_fit_preflight(arguments["project_name"], arguments["source_blend"], task_id)
 
 
-def _load_state() -> dict[str, Any]:
+def _load_state(path: Path | None = None) -> dict[str, Any]:
     """Load replay-protection state; fail closed if an existing file is unreadable."""
-    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+    state_path = path or STATE_PATH
+    if state_path.is_symlink() or getattr(state_path, "is_junction", lambda: False)():
         raise RuntimeError("poller state must not be a symlink or junction; refusing to run tasks")
-    if STATE_PATH.parent == ROOT / ".local_agent":
+    if state_path.parent == ROOT / ".local_agent":
         _ensure_agent_dir()
     try:
-        raw = STATE_PATH.read_text(encoding="utf-8")
+        raw = state_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
     except OSError as exc:
@@ -394,13 +401,14 @@ def _load_state() -> dict[str, Any]:
     return data
 
 
-def _save_state(data: dict[str, Any]) -> None:
-    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+def _save_state(data: dict[str, Any], path: Path | None = None) -> None:
+    state_path = path or STATE_PATH
+    if state_path.is_symlink() or getattr(state_path, "is_junction", lambda: False)():
         raise RuntimeError("poller state must not be a symlink or junction")
-    if STATE_PATH.parent == ROOT / ".local_agent":
+    if state_path.parent == ROOT / ".local_agent":
         parent = _ensure_agent_dir()
     else:
-        parent = STATE_PATH.parent
+        parent = state_path.parent
         parent.mkdir(parents=True, exist_ok=True)
         if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
             raise RuntimeError("poller state directory must not be a symlink or junction")
@@ -417,7 +425,7 @@ def _save_state(data: dict[str, Any]) -> None:
             pass
         if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
             raise RuntimeError("poller state became a symlink during save")
-        os.replace(temp, STATE_PATH)
+        os.replace(temp, state_path)
     except BaseException:
         try:
             temp.unlink(missing_ok=True)
@@ -695,10 +703,131 @@ def _acquire_instance_lock(path: Path):
         raise
 
 
+def _mailbox_paths(repository: str, *, primary: bool) -> tuple[Path, Path]:
+    """Return isolated replay/outbox paths; preserve the primary mailbox paths."""
+    if primary:
+        return STATE_PATH, _ensure_agent_dir() / "pending_results"
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", repository)
+    base = _ensure_agent_dir() / "mailboxes" / safe_name
+    if base.is_symlink() or getattr(base, "is_junction", lambda: False)():
+        raise RuntimeError("backup mailbox state directory must not be a symlink or junction")
+    if not base.resolve().is_relative_to(_ensure_agent_dir().resolve()):
+        raise RuntimeError("backup mailbox state directory resolves outside agent state")
+    return base / "poller_state.json", base / "pending_results"
+
+
+def _state_contains_task(state: dict[str, Any], task_id: str) -> bool:
+    processed = state.get("processed_tasks", {})
+    return task_id == state.get("last_task_id") or (
+        isinstance(processed, dict) and task_id in processed
+    )
+
+
+def _poll_mailbox_once(slot: dict[str, Any], slots: list[dict[str, Any]]) -> None:
+    """Flush and process at most the current manifest for one mailbox."""
+    client = slot["client"]
+    state = slot["state"]
+    result_outbox = slot["outbox"]
+    pending_before_flush = result_outbox.pending_task_ids()
+    pending_results = result_outbox.flush(client)
+    if pending_results["published"] or pending_results["invalid"]:
+        print(
+            f"{slot['repository']}: pending results: "
+            f"published={pending_results['published']}, "
+            f"deferred={pending_results['deferred']}, invalid={pending_results['invalid']}"
+        )
+    fetched = client.fetch_desired_task()
+    if fetched is None:
+        return
+    task, manifest_sha = fetched
+    decision = classify_manifest(state, task.task_id, manifest_sha)
+    if decision == "new":
+        duplicate_owner = next(
+            (
+                other["repository"]
+                for other in slots
+                if other is not slot and _state_contains_task(other["state"], task.task_id)
+            ),
+            None,
+        )
+        if duplicate_owner:
+            _publish_result_durable(client, task.task_id, {
+                "task_id": task.task_id,
+                "status": "rejected",
+                "reason": "task_id_already_claimed_in_another_mailbox",
+                "claiming_mailbox": duplicate_owner,
+            })
+            slot["state"] = _remember_manifest(
+                state, task.task_id, manifest_sha, rejected=True, status="rejected"
+            )
+            _save_state(slot["state"], slot["state_path"])
+            print(f"{slot['repository']}: rejected duplicate task ID {task.task_id}.")
+            return
+
+        # Persist a claim before doing any local work. If the process dies or
+        # result publication fails, never blindly replay this task.
+        slot["state"] = _remember_manifest(
+            state, task.task_id, manifest_sha, status="in_progress"
+        )
+        _save_state(slot["state"], slot["state_path"])
+        _run_one(client, task, manifest_sha)
+        delivery_status = _task_delivery_status(
+            task.task_id, result_outbox.pending_task_ids()
+        )
+        slot["state"] = _remember_manifest(
+            slot["state"], task.task_id, manifest_sha, status=delivery_status
+        )
+        _save_state(slot["state"], slot["state_path"])
+        if delivery_status == "pending_delivery":
+            print(
+                f"{slot['repository']}: task {task.task_id} finished, but result delivery is pending; "
+                "the task will not be rerun while its result is retried."
+            )
+    elif decision == "same":
+        record = state.get("processed_tasks", {}).get(task.task_id, {})
+        if isinstance(record, dict) and record.get("status") == "pending_delivery":
+            if task.task_id in result_outbox.pending_task_ids():
+                print(f"{slot['repository']}: task {task.task_id} result delivery is pending; preserving it.")
+            else:
+                slot["state"] = _remember_manifest(
+                    state, task.task_id, manifest_sha, status="processed"
+                )
+                _save_state(slot["state"], slot["state_path"])
+                print(f"{slot['repository']}: task {task.task_id} result delivery confirmed.")
+        elif isinstance(record, dict) and record.get("status") == "in_progress":
+            if task.task_id in pending_before_flush:
+                if task.task_id in result_outbox.pending_task_ids():
+                    print(f"{slot['repository']}: task {task.task_id} has a durable result pending repair.")
+                else:
+                    slot["state"] = _remember_manifest(
+                        state, task.task_id, manifest_sha, status="processed"
+                    )
+                    _save_state(slot["state"], slot["state_path"])
+            else:
+                _publish_result_durable(client, task.task_id, {
+                    "task_id": task.task_id,
+                    "status": "interrupted",
+                    "reason": "outcome_uncertain_requires_local_inspection_before_retry",
+                })
+                slot["state"] = _remember_manifest(
+                    state, task.task_id, manifest_sha, status="interrupted"
+                )
+                _save_state(slot["state"], slot["state_path"])
+    elif decision == "reused_id":
+        _publish_result_durable(client, task.task_id, {
+            "task_id": task.task_id,
+            "status": "rejected",
+            "reason": "task_id_reused_with_different_manifest",
+        })
+        slot["state"] = _remember_manifest(
+            state, task.task_id, manifest_sha, rejected=True, status="rejected"
+        )
+        _save_state(slot["state"], slot["state_path"])
+
+
 def main() -> int:
     try:
-        config = QueueConfig.from_environment()
-        client = GitHubQueueClient(config)
+        configs = QueueConfig.from_environment_all()
     except Exception as exc:
         print(f"Cannot start mailbox poller: {type(exc).__name__}: {exc}")
         return 2
@@ -709,116 +838,76 @@ def main() -> int:
         print(f"Cannot start poller: {exc}")
         return 2
 
+    slots: list[dict[str, Any]] = []
     try:
-        state = _load_state()
-    except RuntimeError as exc:
-        lock_handle.close()
-        print(f"Cannot load poller replay state: {exc}")
-        return 2
-
-    interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
-    backoff = interval
-    last_seen = state.get("last_task_id")
-    last_sha = state.get("manifest_sha")
-    print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
-    print("This poller supports diagnostics, reviewed patches, story-plan storage/compilation, local asset indexing, and locally approved Blender forest previews; runtime tests remain outstanding.")
-
-    try:
-        while True:
+        for index, config in enumerate(configs):
             try:
-                result_outbox = _result_outbox()
-                pending_before_flush = result_outbox.pending_task_ids()
-                pending_results = result_outbox.flush(client)
-                if pending_results["published"] or pending_results["invalid"]:
-                    print(f"Pending results: published={pending_results['published']}, deferred={pending_results['deferred']}, invalid={pending_results['invalid']}")
-                fetched = client.fetch_desired_task()
-                if fetched is not None:
-                    task, manifest_sha = fetched
-                    decision = classify_manifest(state, task.task_id, manifest_sha)
-                    if decision == "new":
-                        # Persist a claim before doing any local work. If the process
-                        # dies or result publication fails, never blindly replay it.
-                        state = _remember_manifest(
-                            state, task.task_id, manifest_sha, status="in_progress"
+                state_path, outbox_path = _mailbox_paths(config.repository, primary=index == 0)
+                slot = {
+                    "repository": config.repository,
+                    "client": GitHubQueueClient(config),
+                    "state_path": state_path,
+                    "state": _load_state(state_path),
+                    "outbox": _result_outbox(outbox_path),
+                    "backoff": max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30)),
+                    "next_poll": 0.0,
+                }
+                slots.append(slot)
+            except Exception as exc:
+                if index == 0:
+                    print(f"Cannot initialize primary mailbox: {type(exc).__name__}: {exc}")
+                    return 2
+                print(f"Backup mailbox disabled for this run: {type(exc).__name__}: {exc}")
+
+        if not slots:
+            print("Cannot start mailbox poller: no usable mailbox is configured.")
+            return 2
+
+        interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
+        primary = slots[0]["repository"]
+        if len(slots) == 1:
+            print(f"Polling primary private mailbox {primary} every {interval}s. Press Ctrl+C to stop.")
+        else:
+            print(
+                f"Polling primary mailbox {primary} and backup mailbox {slots[1]['repository']} "
+                f"every {interval}s. Press Ctrl+C to stop."
+            )
+        print("Task results are returned to the mailbox that supplied each task.")
+        print("Local approval policy remains active; the backup mailbox does not bypass task validation.")
+
+        try:
+            while True:
+                for slot in slots:
+                    now = time.monotonic()
+                    if now < slot["next_poll"]:
+                        continue
+                    try:
+                        _poll_mailbox_once(slot, slots)
+                    except QueueTransportError as exc:
+                        print(
+                            f"Mailbox {slot['repository']} check failed: {exc}. "
+                            f"Retry in {slot['backoff']}s."
                         )
-                        _save_state(state)
-                        _run_one(client, task, manifest_sha)
-                        last_seen, last_sha = task.task_id, manifest_sha
-                        delivery_status = _task_delivery_status(
-                            task.task_id, result_outbox.pending_task_ids()
+                        slot["backoff"] = min(max(interval, slot["backoff"] * 2), 300)
+                        slot["next_poll"] = time.monotonic() + slot["backoff"]
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        print(
+                            f"Mailbox {slot['repository']} local error: {type(exc).__name__}. "
+                            f"Retry in {slot['backoff']}s."
                         )
-                        state = _remember_manifest(
-                            state, last_seen, last_sha, status=delivery_status
-                        )
-                        _save_state(state)
-                        if delivery_status == "pending_delivery":
-                            print(
-                                f"Task {task.task_id} finished, but result delivery is pending; "
-                                "the task will not be rerun while its result is retried."
-                            )
-                    elif decision == "same":
-                        record = state.get("processed_tasks", {}).get(task.task_id, {})
-                        if isinstance(record, dict) and record.get("status") == "pending_delivery":
-                            if task.task_id in result_outbox.pending_task_ids():
-                                print(
-                                    f"Task {task.task_id} result is still awaiting delivery; "
-                                    "preserving the result and not rerunning the task."
-                                )
-                            else:
-                                state = _remember_manifest(
-                                    state, task.task_id, manifest_sha, status="processed"
-                                )
-                                _save_state(state)
-                                print(f"Task {task.task_id} result delivery confirmed; marked processed.")
-                        elif isinstance(record, dict) and record.get("status") == "in_progress":
-                            # A durable result may have been written just before a crash.
-                            # Never overwrite it with a synthetic interrupted result.
-                            if task.task_id in pending_before_flush:
-                                if task.task_id in result_outbox.pending_task_ids():
-                                    print(f"Task {task.task_id} has a pending result that needs delivery or repair; preserving it.")
-                                else:
-                                    state = _remember_manifest(
-                                        state, task.task_id, manifest_sha, status="processed"
-                                    )
-                                    _save_state(state)
-                            else:
-                                # No durable result exists: execution outcome is uncertain.
-                                _publish_result_durable(client, task.task_id, {
-                                    "task_id": task.task_id,
-                                    "status": "interrupted",
-                                    "reason": "outcome_uncertain_requires_local_inspection_before_retry",
-                                })
-                                state = _remember_manifest(
-                                    state, task.task_id, manifest_sha, status="interrupted"
-                                )
-                                _save_state(state)
-                    elif decision == "reused_id":
-                        # Task IDs are immutable. A changed manifest with the same ID
-                        # is rejected, never silently re-executed.
-                        _publish_result_durable(client, task.task_id, {
-                            "task_id": task.task_id,
-                            "status": "rejected",
-                            "reason": "task_id_reused_with_different_manifest",
-                        })
-                        last_sha = manifest_sha
-                        state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
-                        _save_state(state)
-                backoff = interval
-                time.sleep(interval)
-            except KeyboardInterrupt:
-                print("\nPoller stopped.")
-                return 0
-            except QueueTransportError as exc:
-                print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
-                time.sleep(backoff)
-                backoff = min(max(interval, backoff * 2), 300)
-            except (OSError, ValueError) as exc:
-                print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
-                time.sleep(backoff)
-                backoff = min(max(interval, backoff * 2), 300)
-    
+                        slot["backoff"] = min(max(interval, slot["backoff"] * 2), 300)
+                        slot["next_poll"] = time.monotonic() + slot["backoff"]
+                    else:
+                        slot["backoff"] = interval
+                        slot["next_poll"] = time.monotonic() + interval
+                due = min(slot["next_poll"] for slot in slots)
+                time.sleep(max(0.1, min(1.0, due - time.monotonic())))
+        except KeyboardInterrupt:
+            print("\nPoller stopped.")
+            return 0
     finally:
         lock_handle.close()
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
