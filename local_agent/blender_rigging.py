@@ -944,13 +944,18 @@ def polish_saved_source_model(source_project: str, project_name: str) -> dict[st
 
 
 SPRING_RIG_VIDEO_SCRIPT = r"""
-import bpy, sys, json, math, hashlib
+import bpy, sys, json, math, hashlib, shutil, subprocess
 from pathlib import Path
 from mathutils import Vector
 source, video, report = map(Path, sys.argv[sys.argv.index("--") + 1:])
 bpy.context.preferences.filepaths.use_scripts_auto_execute = False
 bpy.ops.wm.open_mainfile(filepath=str(source), load_ui=False)
 scene = bpy.context.scene
+ffmpeg = shutil.which("ffmpeg")
+if ffmpeg is None:
+    raise RuntimeError("FFmpeg executable was not found on PATH")
+frames_dir = video.parent / "frames"
+frames_dir.mkdir(parents=True, exist_ok=True)
 armatures = [o for o in bpy.data.objects if o.type == "ARMATURE" and len(o.data.bones) >= 100]
 if not armatures:
     raise RuntimeError("No substantial armature found in the saved Mia file")
@@ -981,14 +986,8 @@ scene.frame_start, scene.frame_end, scene.render.fps = 1, 72, 24
 scene.render.resolution_x = 480
 scene.render.resolution_y = 480
 scene.render.resolution_percentage = 100
-scene.render.image_settings.file_format = "FFMPEG"
-scene.render.ffmpeg.format = "MPEG4"
-scene.render.ffmpeg.codec = "H264"
-scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
-scene.render.ffmpeg.video_bitrate = 480
-scene.render.ffmpeg.maxrate = 800
-scene.render.ffmpeg.gopsize = 24
-scene.render.filepath = str(video)
+scene.render.image_settings.file_format = "PNG"
+scene.render.filepath = str(frames_dir / "mia_frame_")
 scene.render.use_file_extension = True
 if scene.render.engine == "CYCLES":
     scene.cycles.samples = 8
@@ -1026,8 +1025,27 @@ if max_displacement < 1e-5:
     raise RuntimeError("The test control produced no measurable mesh deformation")
 scene.frame_set(1)
 bpy.ops.render.render(animation=True)
+frame_pattern = str(frames_dir / "mia_frame_%04d.png")
+base_command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-framerate", str(scene.render.fps), "-start_number", str(scene.frame_start), "-i", frame_pattern, "-frames:v", str(scene.frame_end-scene.frame_start+1), str(video)]
+encode_attempts = [
+    ["-c:v", "libx264", "-preset", "medium", "-crf", "22", "-pix_fmt", "yuv420p"],
+    ["-c:v", "mpeg4", "-q:v", "5", "-pix_fmt", "yuv420p"],
+]
+ffmpeg_error = ""
+for codec_options in encode_attempts:
+    try:
+        encoded = subprocess.run(base_command[:-1] + codec_options + base_command[-1:], capture_output=True, text=True, timeout=300, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        ffmpeg_error = type(exc).__name__
+        continue
+    if encoded.returncode == 0:
+        ffmpeg_error = ""
+        break
+    ffmpeg_error = (encoded.stderr or "")[-1000:]
+if ffmpeg_error:
+    raise RuntimeError("FFmpeg could not encode the MP4: " + ffmpeg_error)
 if not video.is_file() or video.stat().st_size < 4096:
-    raise RuntimeError("Blender did not create a usable MP4")
+    raise RuntimeError("FFmpeg did not create a usable MP4")
 data = {
     "status": "completed",
     "source_blend": str(source),
