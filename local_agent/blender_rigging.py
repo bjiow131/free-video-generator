@@ -1265,15 +1265,140 @@ if not os.path.isfile(output) or os.path.getsize(output) == 0: raise RuntimeErro
 
     import_script = out_dir / "import_afk_copy.py"
     import_script.write_text(r'''
-import bpy, json, os, sys
-glb, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+import bpy, json, math, os, sys
+source_glb, rigged_glb, output = [os.path.realpath(x) for x in sys.argv[sys.argv.index("--") + 1:]]
+
+def import_mesh_stats(path):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=path)
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    return {"mesh_count": len(meshes), "vertex_count": sum(len(o.data.vertices) for o in meshes)}
+
+source_stats = import_mesh_stats(source_glb)
 bpy.ops.wm.read_factory_settings(use_empty=True)
-bpy.ops.import_scene.gltf(filepath=glb)
-armatures = [o.name for o in bpy.context.scene.objects if o.type == "ARMATURE"]
-actions = [a.name for a in bpy.data.actions]
-if not armatures: raise RuntimeError("imported_glb_has_no_armature")
+bpy.ops.import_scene.gltf(filepath=rigged_glb)
+scene = bpy.context.scene
+meshes = [o for o in scene.objects if o.type == "MESH"]
+armature_objects = [o for o in scene.objects if o.type == "ARMATURE"]
+actions = list(bpy.data.actions)
+if not armature_objects: raise RuntimeError("imported_glb_has_no_armature")
+if not meshes: raise RuntimeError("imported_glb_has_no_meshes")
+bone_names = {b.name for arm in armature_objects for b in arm.data.bones}
+all_vertices = 0
+weighted_vertices = 0
+unweighted_vertices = 0
+normalized_vertices = 0
+weight_sums = []
+max_influences = 0
+bound_meshes = 0
+mesh_stats = []
+for obj in meshes:
+    all_vertices += len(obj.data.vertices)
+    bound = any(m.type == "ARMATURE" and m.object in armature_objects for m in obj.modifiers)
+    bound_meshes += int(bound)
+    bone_group_ids = {g.index for g in obj.vertex_groups if g.name in bone_names}
+    local_weighted = 0
+    local_unweighted = 0
+    for vertex in obj.data.vertices:
+        influences = [item.weight for item in vertex.groups
+                      if item.group in bone_group_ids and item.weight > 1e-8]
+        if influences:
+            local_weighted += 1
+            weight_sum = float(sum(influences))
+            weight_sums.append(weight_sum)
+            max_influences = max(max_influences, len(influences))
+            if abs(weight_sum - 1.0) <= 0.03:
+                normalized_vertices += 1
+        else:
+            local_unweighted += 1
+    weighted_vertices += local_weighted
+    unweighted_vertices += local_unweighted
+    mesh_stats.append({"name": obj.name, "vertices": len(obj.data.vertices),
+                       "has_armature_modifier": bound, "weighted_vertices": local_weighted,
+                       "unweighted_vertices": local_unweighted})
+
+def evaluated_positions():
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    result = {}
+    for obj in meshes:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        result[obj.name] = [evaluated.matrix_world @ v.co for v in mesh.vertices]
+        evaluated.to_mesh_clear()
+    return result
+
+for arm in armature_objects:
+    if arm.animation_data:
+        arm.animation_data.action = None
+scene.frame_set(0)
+bpy.context.view_layer.update()
+rest_positions = evaluated_positions()
+all_rest = [p for positions in rest_positions.values() for p in positions]
+height = (max((p.z for p in all_rest), default=0.0) -
+          min((p.z for p in all_rest), default=0.0))
+if height <= 1e-8:
+    height = max((max((p.x for p in all_rest), default=0.0) - min((p.x for p in all_rest), default=0.0),
+                  max((p.y for p in all_rest), default=0.0) - min((p.y for p in all_rest), default=0.0)), default=1.0)
+pose_tests = []
+for action in actions:
+    if not any(tag in action.name.lower() for tag in ("walk", "idle")):
+        continue
+    arm = armature_objects[0]
+    arm.animation_data_create()
+    arm.animation_data.action = action
+    start, end = action.frame_range
+    frames = sorted(set([int(round(start)), int(round((start + end) / 2)), int(round(end))]))
+    deltas = []
+    deformed_vertices = 0
+    compared_vertices = 0
+    finite = True
+    for frame in frames:
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        posed = evaluated_positions()
+        for name, rest in rest_positions.items():
+            current = posed.get(name, [])
+            if len(current) != len(rest):
+                finite = False
+                continue
+            for before, after in zip(rest, current):
+                delta = (after - before).length
+                finite = finite and all(math.isfinite(v) for v in (after.x, after.y, after.z, delta))
+                deltas.append(delta / height)
+                compared_vertices += 1
+                deformed_vertices += int(delta > height * 1e-5)
+    ordered = sorted(deltas)
+    pose_tests.append({"action": action.name, "sampled_frames": frames,
+                       "compared_vertex_samples": compared_vertices,
+                       "deformed_vertex_sample_ratio": deformed_vertices / max(1, compared_vertices),
+                       "max_displacement_over_height": max(ordered, default=0.0),
+                       "p95_displacement_over_height": ordered[min(len(ordered)-1, int(.95 * len(ordered)))] if ordered else 0.0,
+                       "all_positions_finite": finite})
+for arm in armature_objects:
+    if arm.animation_data:
+        arm.animation_data.action = None
+scene.frame_set(0)
+bpy.context.view_layer.update()
+rigged_stats = {"mesh_count": len(meshes), "vertex_count": all_vertices}
+qa = {
+    "source_geometry": source_stats,
+    "rigged_geometry": rigged_stats,
+    "mesh_stats": mesh_stats,
+    "armature_names": [o.name for o in armature_objects],
+    "bone_count": sum(len(o.data.bones) for o in armature_objects),
+    "bound_mesh_count": bound_meshes,
+    "weighted_vertex_ratio": weighted_vertices / max(1, all_vertices),
+    "unweighted_vertex_ratio": unweighted_vertices / max(1, all_vertices),
+    "weight_sum_normalized_ratio": normalized_vertices / max(1, weighted_vertices),
+    "weight_sum_min": min(weight_sums, default=0.0),
+    "weight_sum_max": max(weight_sums, default=0.0),
+    "max_bone_influences_per_vertex": max_influences,
+    "pose_tests": pose_tests,
+    "quality_gate": "needs_visual_review",
+    "quality_gate_passed": False,
+}
 bpy.ops.wm.save_as_mainfile(filepath=output)
-print("AFK_IMPORT_CHECK=" + json.dumps({"armatures": armatures, "actions": actions}))
+print("AFK_IMPORT_CHECK=" + json.dumps({"qa": qa, "actions": [a.name for a in actions]}))
 ''', encoding="utf-8")
     try:
         imported = subprocess.run(
@@ -1301,5 +1426,27 @@ print("AFK_IMPORT_CHECK=" + json.dumps({"armatures": armatures, "actions": actio
         "animations": ["Walk", "Idle_A"], "input_bytes": input_glb.stat().st_size,
         "rigged_bytes": rigged_glb.stat().st_size,
     }
+    marker = "AFK_IMPORT_CHECK="
+    check_line = next((line[len(marker):] for line in (imported.stdout or "").splitlines()
+                       if line.startswith(marker)), None)
+    if check_line is None:
+        return {**result, "status": "error", "reason": "rig_qa_result_missing"}
+    try:
+        result["qa"] = json.loads(check_line)["qa"]
+    except (ValueError, KeyError, TypeError):
+        return {**result, "status": "error", "reason": "rig_qa_result_invalid"}
+    result["technical_checks_passed"] = bool(
+        result["qa"].get("armature_names") and result["qa"].get("bone_count", 0) > 0
+        and result["qa"].get("weighted_vertex_ratio", 0) > 0.95
+        and result["qa"].get("bound_mesh_count", 0) > 0
+        and bool(result["qa"].get("pose_tests"))
+        and all(p.get("all_positions_finite") for p in result["qa"].get("pose_tests", []))
+    )
+    result["quality_gate_passed"] = False
+    result["quality_gate"] = "needs_visual_review"
+    if not result["technical_checks_passed"]:
+        result["status"] = "error"
+        result["reason"] = "rig_technical_checks_failed"
     report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
+
