@@ -2,7 +2,7 @@
 
 The prototype supports fixed diagnostics, reviewed patches, structured story-plan
 storage/compilation, local asset indexing, and one deterministic Blender preview.
-It does not execute arbitrary remote commands or claim full animation support.
+Owner-enabled computer control executes programs as the current Windows user.
 Service start/stop/backup operations are not implemented.
 """
 from __future__ import annotations
@@ -45,6 +45,162 @@ from local_agent.mailbox_policy import (
 # Add one data-only operation here by routing it through the existing strict
 # envelope validator as the no-argument `status` operation, then restoring its
 # fixed operation name in the immutable parsed task.
+def _computer_control_enabled() -> bool:
+    """Owner-authorized local launcher opt-in; an explicit zero always revokes it."""
+    override = os.environ.get('LOCAL_AGENT_ALLOW_COMPUTER_CONTROL')
+    if override is not None:
+        return override == '1'
+    try:
+        return 'set "LOCAL_AGENT_ALLOW_COMPUTER_CONTROL=1"' in (ROOT / 'run_github_mailbox_agent.bat').read_text('utf-8-sig')
+    except (OSError, UnicodeError):
+        return False
+
+
+def _validate_computer_arguments(args):
+    if not isinstance(args, dict) or set(args) - {'program', 'arguments', 'working_directory', 'timeout_seconds'}:
+        raise ProtocolError('Unknown computer control arguments')
+    program = args.get('program')
+    argv = args.get('arguments', [])
+    cwd = args.get('working_directory')
+    timeout = args.get('timeout_seconds', 120)
+    if not isinstance(program, str) or not program.strip() or len(program) > 1024 or '\x00' in program:
+        raise ProtocolError('Expected an executable program')
+    if not isinstance(argv, list) or len(argv) > 128 or any(not isinstance(a, str) or '\x00' in a or len(a) > 32000 for a in argv):
+        raise ProtocolError('Expected a bounded argument vector')
+    if cwd is not None and (not isinstance(cwd, str) or not cwd or len(cwd) > 1024 or '\x00' in cwd):
+        raise ProtocolError('Invalid working directory')
+    if type(timeout) is not int or not 1 <= timeout <= 1800:
+        raise ProtocolError('Timeout must be 1 to 1800 seconds')
+    return {'program': program, 'arguments': argv, 'working_directory': cwd, 'timeout_seconds': timeout}
+
+
+def _run_computer_control(args):
+    """Execute as the signed-in Windows owner, with bounded redacted output."""
+    if not _computer_control_enabled():
+        return {'status': 'blocked', 'reason': 'local_computer_control_not_enabled'}
+    args = _validate_computer_arguments(args)
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        p = subprocess.Popen([args['program'], *args['arguments']],
+            cwd=args['working_directory'] or ROOT, stdin=subprocess.DEVNULL,
+            stdout=output, stderr=errors, shell=False,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        timed_out = False
+        try:
+            p.wait(timeout=args['timeout_seconds'])
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _stop_owned_worker(p)
+        def read_bounded(stream):
+            size = stream.tell()
+            stream.seek(0)
+            return stream.read(4000).decode('utf-8', errors='replace'), size > 4000
+        stdout, out_cut = read_bounded(output)
+        stderr, err_cut = read_bounded(errors)
+    return _redact_value({'status': 'timeout' if timed_out else 'completed' if p.returncode == 0 else 'failed',
+        'exit_code': p.returncode, 'stdout': stdout, 'stderr': stderr,
+        'output_truncated': out_cut or err_cut, 'scope': 'current_windows_user'})
+
+
+def _process_creation_stamp(pid):
+    """Kernel creation timestamp prevents killing a recycled Windows PID."""
+    if os.name != 'nt':
+        return None
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, int(pid))
+    if not handle:
+        return None
+    try:
+        stamps = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel.GetProcessTimes(handle, *(ctypes.byref(x) for x in stamps)):
+            return None
+        return str((stamps[0].dwHighDateTime << 32) | stamps[0].dwLowDateTime)
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def _write_owned_services(processes):
+    root = _ensure_agent_dir()
+    target = root / 'services_owned.json'
+    if target.is_symlink():
+        raise RuntimeError('Unsafe service registry')
+    entries = []
+    for role, process in processes.items():
+        if process.poll() is None:
+            stamp = _process_creation_stamp(process.pid)
+            if stamp:
+                entries.append({'role': role, 'pid': process.pid, 'created': stamp})
+    with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=root, delete=False) as f:
+        temp = Path(f.name)
+        json.dump({'schema_version': 1, 'services': entries}, f)
+        f.flush(); os.fsync(f.fileno())
+    os.replace(temp, target)
+
+
+def _cleanup_owned_orphans():
+    path = _ensure_agent_dir() / 'services_owned.json'
+    if not path.exists():
+        return
+    if path.is_symlink() or path.stat().st_size > 8192:
+        raise RuntimeError('Unsafe service registry')
+    data = json.loads(path.read_text('utf-8'))
+    if data.get('schema_version') != 1 or not isinstance(data.get('services'), list):
+        raise RuntimeError('Invalid service registry')
+    for item in data['services']:
+        if (isinstance(item, dict) and item.get('role') in {'mailbox', 'studio', 'watchdog'}
+                and type(item.get('pid')) is int and item['pid'] > 0
+                and isinstance(item.get('created'), str)
+                and _process_creation_stamp(item['pid']) == item['created']):
+            subprocess.run(['taskkill.exe', '/PID', str(item['pid']), '/T', '/F'],
+                timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    path.unlink(missing_ok=True)
+
+
+def _studio_has_active_job():
+    import urllib.request
+    try:
+        port = int(os.environ.get('LOCAL_AGENT_STUDIO_PORT', '55313'))
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/studio-latest', timeout=3) as response:
+            job = json.load(response).get('job')
+        return isinstance(job, dict) and job.get('state') in {'queued', 'running'}
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def recover_windows_services():
+    """Independent one-minute recovery, also after the owner closes the launcher."""
+    if os.name != 'nt':
+        return 2
+    try:
+        recovery = _acquire_instance_lock(_ensure_agent_dir() / 'service_recovery.lock')
+    except PollerAlreadyRunning:
+        return 0
+    try:
+        try:
+            supervisor = _acquire_instance_lock(_ensure_agent_dir() / 'octava_supervisor.lock')
+        except PollerAlreadyRunning:
+            return 0
+        try:
+            if _studio_has_active_job():
+                return 0  # Finish an orphaned active render before cleanup.
+            _cleanup_owned_orphans()
+        finally:
+            supervisor.close()
+        launcher = ROOT / 'run_github_mailbox_agent.bat'
+        with (_ensure_agent_dir() / 'recovery_launcher.log').open('ab') as stream:
+            subprocess.Popen(['cmd.exe', '/d', '/c', str(launcher)], cwd=ROOT,
+                stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0))
+        return 0
+    finally:
+        recovery.close()
+
+
 _parse_task_strict = _github_queue.parse_task
 
 def _parse_task_with_restart(raw: str):
@@ -52,7 +208,14 @@ def _parse_task_with_restart(raw: str):
         value=json.loads(raw)
     except (ValueError,TypeError):
         return _parse_task_strict(raw)
-    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery", "afk_rig_mia_test"}:
+    if isinstance(value, dict) and value.get('operation') == 'computer_control':
+        if len(raw.encode('utf-8')) > 65536:
+            raise ProtocolError('Computer control task exceeds size limit')
+        args = _validate_computer_arguments(value.get('arguments'))
+        normalized = dict(value); normalized['operation'] = 'status'; normalized['arguments'] = {}
+        task = _parse_task_strict(json.dumps(normalized, ensure_ascii=False))
+        return dataclass_replace(task, operation='computer_control', arguments=args)
+    if not isinstance(value,dict) or value.get("operation") not in {"restart_agent", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery"}:
         return _parse_task_strict(raw)
     operation=value["operation"]
     if value.get("arguments")!={} or value.get("requires_local_approval") is not True:
@@ -958,19 +1121,8 @@ def _remote_restart_enabled() -> bool:
     return opted_in or override=="1"
 
 def _request_restart_and_open_studio() -> dict[str, Any]:
-    """Queue a controlled service restart and open only the fixed loopback Studio URL."""
-    result=request_runtime_restart({})
-    try:
-        port=int(os.environ.get("LOCAL_AGENT_STUDIO_PORT","55313"))
-    except (TypeError,ValueError):
-        port=55313
-    if not 1024<=port<=65535: port=55313
-    url=f"http://127.0.0.1:{port}/"
-    try:
-        opened=bool(webbrowser.open(url,new=2,autoraise=True))
-    except (webbrowser.Error,OSError,RuntimeError):
-        opened=False
-    return {**result,"studio_url":url,"browser_open_requested":opened}
+    """Request a background restart without opening a browser."""
+    return {**request_runtime_restart({}), 'browser_open_requested': False}
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -988,8 +1140,40 @@ def _ensure_agent_dir() -> Path:
     return resolved
 
 
-def _result_outbox() -> ResultOutbox:
-    return ResultOutbox(_ensure_agent_dir() / "pending_results")
+def _result_outbox(root: Path | None = None) -> ResultOutbox:
+    base = _ensure_agent_dir()
+    target = root or (base / "pending_results")
+    target = Path(target)
+    if target.is_symlink() or getattr(target, "is_junction", lambda: False)():
+        raise RuntimeError("mailbox outbox directory must not be a symlink or junction")
+    resolved = target.resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise RuntimeError("mailbox outbox directory resolves outside agent state")
+    return ResultOutbox(resolved)
+
+
+def _mailbox_paths(repository: str, *, primary: bool) -> tuple[Path, Path]:
+    """Keep primary state stable and isolate each backup mailbox's replay/outbox data."""
+    if primary:
+        return STATE_PATH, _ensure_agent_dir() / "pending_results"
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise RuntimeError("invalid repository name for mailbox state")
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", repository)
+    base = _ensure_agent_dir() / "mailboxes" / safe_name
+    if base.is_symlink() or getattr(base, "is_junction", lambda: False)():
+        raise RuntimeError("backup mailbox state directory must not be a symlink or junction")
+    if not base.resolve().is_relative_to(_ensure_agent_dir().resolve()):
+        raise RuntimeError("backup mailbox state directory resolves outside agent state")
+    return base / "poller_state.json", base / "pending_results"
+
+
+def _result_outbox_for_client(client: GitHubQueueClient) -> ResultOutbox:
+    repository = getattr(getattr(client, "config", None), "repository", "")
+    primary_repository = os.environ.get("LOCAL_AGENT_GITHUB_REPO", "").strip()
+    if repository and primary_repository and repository.casefold() != primary_repository.casefold():
+        _, outbox_path = _mailbox_paths(repository, primary=False)
+        return _result_outbox(outbox_path)
+    return _result_outbox()
 
 
 def _bounded_result_summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -1034,7 +1218,7 @@ def _bounded_result_summary(result: dict[str, Any]) -> dict[str, Any]:
 
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
     """Persist each bounded result before publishing; retain it on network loss."""
-    return _result_outbox().publish(client, task_id, _bounded_result_summary(result))
+    return _result_outbox_for_client(client).publish(client, task_id, _bounded_result_summary(result))
 
 def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
@@ -1456,8 +1640,8 @@ _SPECIALIZED_OPERATIONS = frozenset({
     "compile_story_plan", "scan_project_assets", "sync_approved_assets",
     "blender_knowledge_search", "blender_preflight", "blender_mia_blockout",
     "blender_open_mia_project", "blender_inspect_mia_project",
-    "blender_mia_skeleton", "afk_rig_mia_test", "blender_mia_spring_rig_transfer", "blender_mia_spring_rig_preview", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
-    "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
+    "blender_mia_skeleton", "blender_mia_spring_rig_transfer", "blender_mia_spring_rig_preview", "blender_source_review", "blender_mia_source_adapt", "blender_mia_source_recover", "blender_mia_source_neutral", "blender_mia_source_details", "blender_mia_source_polish", "export_mia_scene_review", "octava_advice",
+    "computer_control", "restart_agent", "mia_model_review", "mia_astra_review", "mia_astra_pass_one", "mia_identity_pass_two", "mia_hair_identity_pass_three", "mia_3d_reconstruction_preflight", "mia_astra_autoloop_100", "mia_astra_autoloop_100_v2", "mia_astra_single_maxfix", "mia_2p5d_prototype", "astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight",
     "luna_s01e01_reference_image_test", "luna_mia_draft_diagnostics", "luna_mia_draft_recovery",
 })
 
@@ -2372,33 +2556,6 @@ def _run_blender_mia_spring_rig_transfer(arguments: dict[str, Any]) -> dict[str,
     return transfer_spring_rig_to_mia(arguments["project_name"])
 
 
-def _publish_mia_afk_preview_png(client: GitHubQueueClient, parent_task_id: str, path_value: str) -> dict[str, Any]:
-    """Publish one bounded AFK diagnostic PNG for visual review."""
-    import base64
-    import hashlib
-    path = Path(path_value)
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
-        return {"status": "blocked", "reason": "afk_preview_missing_or_over_size"}
-    raw = path.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
-    chunk_size = 30_000
-    total = (len(raw) + chunk_size - 1) // chunk_size
-    prefix = hashlib.sha256(parent_task_id.encode("utf-8")).hexdigest()[:16]
-    ids = []
-    for index in range(total):
-        chunk = raw[index * chunk_size:(index + 1) * chunk_size]
-        result_id = f"afk-preview-{prefix}-part-{index + 1:03d}"
-        _publish_result_durable(client, result_id, {
-            "status": "image_part", "parent_task_id": parent_task_id,
-            "part_index": index + 1, "part_count": total, "image_sha256": digest,
-            "image_size_bytes": len(raw), "mime_type": "image/png",
-            "data_base64": base64.b64encode(chunk).decode("ascii"),
-        })
-        ids.append(result_id)
-    return {"status": "published", "image_sha256": digest,
-            "image_size_bytes": len(raw), "part_count": total, "part_result_ids": ids}
-
-
 def _publish_mia_rig_preview_video_parts(client: GitHubQueueClient, parent_task_id: str, details: dict[str, Any]) -> dict[str, Any]:
     """Deliver a bounded MP4 as independently verifiable mailbox result chunks."""
     import base64
@@ -2477,14 +2634,21 @@ def _run_blender_knowledge_search(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_state() -> dict[str, Any]:
-    """Load replay-protection state; fail closed if an existing file is unreadable."""
-    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+def _load_state(path: Path | None = None) -> dict[str, Any]:
+    """Load replay state for one mailbox; fail closed on unsafe or unreadable state."""
+    state_path = Path(path) if path is not None else STATE_PATH
+    state_root = _ensure_agent_dir().resolve()
+    if state_path.is_symlink() or getattr(state_path, "is_junction", lambda: False)():
         raise RuntimeError("poller state must not be a symlink or junction; refusing to run tasks")
-    if STATE_PATH.parent == ROOT / ".local_agent":
-        _ensure_agent_dir()
+    if not state_path.resolve().is_relative_to(state_root):
+        raise RuntimeError("poller state resolves outside agent state; refusing to run tasks")
+    cursor = state_path.parent
+    while cursor != state_root and cursor != cursor.parent:
+        if cursor.is_symlink() or getattr(cursor, "is_junction", lambda: False)():
+            raise RuntimeError("poller state directory must not be a symlink or junction")
+        cursor = cursor.parent
     try:
-        raw = STATE_PATH.read_text(encoding="utf-8")
+        raw = state_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
     except OSError as exc:
@@ -2515,16 +2679,22 @@ def _load_state() -> dict[str, Any]:
     return data
 
 
-def _save_state(data: dict[str, Any]) -> None:
-    if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+def _save_state(data: dict[str, Any], path: Path | None = None) -> None:
+    state_path = Path(path) if path is not None else STATE_PATH
+    state_root = _ensure_agent_dir().resolve()
+    if state_path.is_symlink() or getattr(state_path, "is_junction", lambda: False)():
         raise RuntimeError("poller state must not be a symlink or junction")
-    if STATE_PATH.parent == ROOT / ".local_agent":
-        parent = _ensure_agent_dir()
-    else:
-        parent = STATE_PATH.parent
-        parent.mkdir(parents=True, exist_ok=True)
-        if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+    parent = state_path.parent
+    if not parent.resolve().is_relative_to(state_root):
+        raise RuntimeError("poller state directory resolves outside agent state")
+    cursor = parent
+    while cursor != state_root and cursor != cursor.parent:
+        if cursor.is_symlink() or getattr(cursor, "is_junction", lambda: False)():
             raise RuntimeError("poller state directory must not be a symlink or junction")
+        cursor = cursor.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    if not state_path.resolve().is_relative_to(state_root):
+        raise RuntimeError("poller state resolves outside agent state")
     descriptor, temp_name = tempfile.mkstemp(prefix="poller_state.", suffix=".tmp", dir=str(parent))
     temp = Path(temp_name)
     try:
@@ -2536,9 +2706,11 @@ def _save_state(data: dict[str, Any]) -> None:
             os.chmod(temp, 0o600)
         except OSError:
             pass
-        if STATE_PATH.is_symlink() or getattr(STATE_PATH, "is_junction", lambda: False)():
+        if state_path.is_symlink() or getattr(state_path, "is_junction", lambda: False)():
             raise RuntimeError("poller state became a symlink during save")
-        os.replace(temp, STATE_PATH)
+        if not state_path.resolve().is_relative_to(state_root):
+            raise RuntimeError("poller state resolves outside agent state during save")
+        os.replace(temp, state_path)
     except BaseException:
         try:
             temp.unlink(missing_ok=True)
@@ -2597,6 +2769,124 @@ def _remember_manifest(
         "processed_tasks": processed,
     }
 
+def _state_contains_task(state: dict[str, Any], task_id: str) -> bool:
+    processed = state.get("processed_tasks", {})
+    return task_id == state.get("last_task_id") or (
+        isinstance(processed, dict) and task_id in processed
+    )
+
+
+def _poll_secondary_mailbox(slot: dict[str, Any], slots: list[dict[str, Any]], *, allow_tasks: bool) -> None:
+    """Poll one backup repository with isolated state and durable result delivery."""
+    now = time.monotonic()
+    if now < slot.get("next_poll", 0.0):
+        return
+    client = slot["client"]
+    outbox = slot["outbox"]
+    pending_before_flush = outbox.pending_task_ids()
+    try:
+        pending = outbox.flush(client)
+        if pending["published"] or pending["invalid"]:
+            print(f"Backup {slot['repository']}: pending results published={pending['published']}, deferred={pending['deferred']}, invalid={pending['invalid']}")
+        fetched = client.fetch_desired_task()
+        if fetched is None:
+            slot["backoff"] = slot["interval"]
+            slot["next_poll"] = time.monotonic() + slot["interval"]
+            return
+        task, manifest_sha = fetched
+        state = slot["state"]
+        decision = classify_manifest(state, task.task_id, manifest_sha)
+        if decision == "new" and allow_tasks:
+            duplicate_owner = next((
+                other["repository"] for other in slots
+                if other is not slot and _state_contains_task(other["state"], task.task_id)
+            ), None)
+            if duplicate_owner:
+                _publish_result_durable(client, task.task_id, {
+                    "task_id": task.task_id,
+                    "status": "rejected",
+                    "reason": "task_id_already_claimed_in_another_mailbox",
+                    "claiming_mailbox": duplicate_owner,
+                })
+                slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, rejected=True, status="rejected")
+                _save_state(slot["state"], slot["state_path"])
+            else:
+                # Claim first; a crash or publication failure must not rerun work blindly.
+                slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, status="in_progress")
+                _save_state(slot["state"], slot["state_path"])
+                _run_one(client, task, manifest_sha)
+                delivery = _task_delivery_status(task.task_id, outbox.pending_task_ids())
+                slot["state"] = _remember_manifest(slot["state"], task.task_id, manifest_sha, status=delivery)
+                _save_state(slot["state"], slot["state_path"])
+                if delivery == "pending_delivery":
+                    print(f"Backup {slot['repository']}: task {task.task_id} completed; result delivery is pending and task will not rerun.")
+        elif decision == "same":
+            record = state.get("processed_tasks", {}).get(task.task_id, {})
+            if isinstance(record, dict) and record.get("status") in {"pending_delivery", "in_progress"}:
+                if task.task_id in pending_before_flush:
+                    if task.task_id in outbox.pending_task_ids():
+                        print(f"Backup {slot['repository']}: preserving pending result for {task.task_id}.")
+                    else:
+                        slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, status="processed")
+                        _save_state(slot["state"], slot["state_path"])
+                elif record.get("status") == "pending_delivery":
+                    slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, status="processed")
+                    _save_state(slot["state"], slot["state_path"])
+                else:
+                    _publish_result_durable(client, task.task_id, {
+                        "task_id": task.task_id,
+                        "status": "interrupted",
+                        "reason": "outcome_uncertain_requires_local_inspection_before_retry",
+                    })
+                    slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, status="interrupted")
+                    _save_state(slot["state"], slot["state_path"])
+        elif decision == "reused_id":
+            incident_id = _manifest_collision_result_id(task.task_id, manifest_sha)
+            try:
+                _publish_result_durable(client, incident_id, {
+                    "task_id": task.task_id,
+                    "incident_id": incident_id,
+                    "status": "rejected",
+                    "reason": "task_id_reused_with_different_manifest",
+                })
+            except QueueTransportError:
+                print(f"Backup {slot['repository']}: rejected reused task ID {task.task_id}; incident is queued locally.")
+            slot["state"] = _remember_manifest(state, task.task_id, manifest_sha, rejected=True)
+            _save_state(slot["state"], slot["state_path"])
+        slot["backoff"] = slot["interval"]
+        slot["next_poll"] = time.monotonic() + slot["interval"]
+    except QueueTransportError as exc:
+        delay = min(max(slot["interval"], slot["backoff"] * 2), 300)
+        slot["backoff"] = delay
+        slot["next_poll"] = time.monotonic() + delay
+        print(f"Backup mailbox {slot['repository']} check failed: {exc}. Retry in {delay}s.")
+    except (OSError, ValueError, RuntimeError, MailboxPolicyError) as exc:
+        delay = min(max(slot["interval"], slot["backoff"] * 2), 300)
+        slot["backoff"] = delay
+        slot["next_poll"] = time.monotonic() + delay
+        print(f"Backup mailbox {slot['repository']} local error: {type(exc).__name__}. Retry in {delay}s.")
+
+
+def _poll_secondary_mailboxes(slots: list[dict[str, Any]], *, allow_tasks: bool) -> None:
+    for slot in slots[1:]:
+        _poll_secondary_mailbox(slot, slots, allow_tasks=allow_tasks)
+
+
+def _wait_with_secondary_mailboxes(seconds: int, slots: list[dict[str, Any]]) -> None:
+    """Honor primary backoff while giving independent backup mailboxes their own cadence."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        _touch_mailbox_heartbeat()
+        try:
+            allow_tasks = not load_runtime_control()["paused"]
+        except MailboxPolicyError:
+            allow_tasks = False
+        _poll_secondary_mailboxes(slots, allow_tasks=allow_tasks)
+        remaining = deadline - time.monotonic()
+        due = min((slot.get("next_poll", time.monotonic() + 1) for slot in slots[1:]), default=deadline)
+        time.sleep(max(0.05, min(1.0, remaining, max(0.05, due - time.monotonic()))))
+
+
 def _not_expired(task: Any) -> bool:
     try:
         now = datetime.now(timezone.utc)
@@ -2630,6 +2920,9 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
             "reason": "remote_restart_not_opted_in_in_local_launcher",
         })
         return
+    if task.operation == 'computer_control' and not _computer_control_enabled():
+        _publish_result_durable(client, task.task_id, {'task_id': task.task_id, 'status': 'blocked', 'reason': 'local_computer_control_not_enabled'})
+        return
     handler = SUPPORTED_HANDLERS.get(task.operation)
     if handler is None and task.operation not in _SPECIALIZED_OPERATIONS:
         _publish_result_durable(client, task.task_id, {
@@ -2640,7 +2933,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     print(f"\nNew task: {task.task_id} | operation={task.operation}")
-    print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
+    if task.operation != 'computer_control':
+        print("Arguments:", json.dumps(_redact_value(task.arguments), ensure_ascii=False))
     # Remote tasks cannot grant themselves permission: the protocol always
     # requires local approval, satisfied either interactively or by an explicit
     # standing authorization stored only in the local Studio UI.
@@ -2658,7 +2952,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     unattended = policy["enabled"]
     authorization_operation = ("status" if task.operation in ("luna_mia_draft_diagnostics", "luna_mia_draft_recovery") else
                                "octava_advice" if task.operation in ("astra_season_response", "astra_project_audit", "luna_project_audit", "luna_s01e01_reference_test", "luna_image_model_preflight", "luna_s01e01_reference_image_test") else task.operation)
-    if unattended and not is_auto_authorized(authorization_operation, policy) and not remote_restart:
+    if unattended and not is_auto_authorized(authorization_operation, policy) and not remote_restart and not (task.operation == "computer_control" and _computer_control_enabled()):
         result = {"task_id": task.task_id, "status": "blocked", "reason": "operation_not_authorized_for_unattended_mode"}
         _publish_result_durable(client, task.task_id, result)
         print("Automatic task blocked by local allowlist; no console approval requested.")
@@ -2666,7 +2960,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
     if remote_restart:
         print("Controlled restart authorized by the local launcher; active renders will finish first.")
         approved = True
-    elif unattended:
+    elif unattended or (task.operation == "computer_control" and _computer_control_enabled()):
         print("Authorized by persistent local Studio policy. No per-task YES needed.")
         approved = True
     else:
@@ -2715,7 +3009,9 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 commit_sha = _publish_result_durable(client, task.task_id, result)
                 print(f"Task expired before execution. Result commit: {commit_sha}")
                 return
-            if task.operation == "restart_agent":
+            if task.operation == 'computer_control':
+                details = _run_computer_control(task.arguments)
+            elif task.operation == "restart_agent":
                 details = _request_restart_and_open_studio()
                 details.update({"status":"completed","reason":"controlled_restart_requested"})
             elif task.operation == "apply_patch":
@@ -2802,13 +3098,6 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                     finish_agent_task(task.task_id)
             elif task.operation == "blender_mia_spring_rig_transfer":
                 details = _run_blender_mia_spring_rig_transfer(task.arguments)
-            elif task.operation == "afk_rig_mia_test":
-                from local_agent.blender_rigging import run_afk_rig_mia_test
-                details = run_afk_rig_mia_test()
-                if details.get("status") == "completed":
-                    details["preview_delivery"] = _publish_mia_afk_preview_png(
-                        client, task.task_id, details.get("preview_path", "")
-                    )
             elif task.operation == "blender_mia_spring_rig_preview":
                 from local_agent.blender_rigging import preview_mia_spring_rig_video
                 details = preview_mia_spring_rig_video(task.arguments["project_name"])
@@ -3517,6 +3806,13 @@ def main() -> int:
 
     try:
         config = QueueConfig.from_environment()
+        configs = [config]
+        if os.environ.get("LOCAL_AGENT_GITHUB_BACKUP_REPO", "").strip():
+            try:
+                configs = QueueConfig.from_environment_all()
+            except Exception as exc:
+                # A bad optional backup must not take the working primary mailbox offline.
+                print(f"Backup mailbox disabled for this run: {type(exc).__name__}: {exc}")
         client = GitHubQueueClient(config)
     except Exception as exc:
         print(f"Cannot start mailbox poller: {type(exc).__name__}: {exc}")
@@ -3537,6 +3833,35 @@ def main() -> int:
         print(f"Cannot load poller replay state: {exc}")
         return 2
 
+    mailbox_slots: list[dict[str, Any]] = [{
+        "repository": config.repository,
+        "client": client,
+        "state_path": STATE_PATH,
+        "outbox": _result_outbox(),
+        "state": state,
+        "primary": True,
+    }]
+    interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
+    for backup_config in configs[1:]:
+        try:
+            backup_client = GitHubQueueClient(backup_config)
+            backup_state_path, backup_outbox_path = _mailbox_paths(backup_config.repository, primary=False)
+            backup_state = _load_state(backup_state_path)
+            backup_outbox = _result_outbox(backup_outbox_path)
+            mailbox_slots.append({
+                "repository": backup_config.repository,
+                "client": backup_client,
+                "state_path": backup_state_path,
+                "outbox": backup_outbox,
+                "state": backup_state,
+                "primary": False,
+                "interval": interval,
+                "backoff": interval,
+                "next_poll": 0.0,
+            })
+        except (OSError, ValueError, RuntimeError, QueueTransportError) as exc:
+            print(f"Backup mailbox disabled for this run: {type(exc).__name__}: {exc}")
+
     # If a previous Windows process crashed while swapping an authorized
     # release, restore the full previous set before doing any work.
     try:
@@ -3553,7 +3878,6 @@ def main() -> int:
         _purge_idle_telegram_outbox()
     except (OSError, ValueError):
         pass
-    interval = max(5, min(int(os.environ.get("LOCAL_AGENT_POLL_SECONDS", "10")), 30))
     backoff = interval
     next_update_check = time.monotonic()
     last_seen = state.get("last_task_id")
@@ -3562,7 +3886,10 @@ def main() -> int:
     if idle_state is not state:
         state = idle_state
         _save_state(state)
-    print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
+    if len(mailbox_slots) > 1:
+        print(f"Polling primary mailbox {config.repository} and backup mailbox {mailbox_slots[1]['repository']} every {interval}s. Press Ctrl+C to stop.")
+    else:
+        print(f"Polling private GitHub mailbox every {interval}s. Press Ctrl+C to stop.")
     print("Local Studio policy controls unattended tasks; unreviewed code patches are NEVER auto-approved.")
     print("Run Blender integration tests on the Windows computer before production use.")
 
@@ -3588,6 +3915,8 @@ def main() -> int:
                 if _worker_restart_due():
                     print("Controlled operator restart requested; returning code 75.")
                     return 75
+                mailbox_slots[0]["state"] = state
+                _poll_secondary_mailboxes(mailbox_slots, allow_tasks=not load_runtime_control()["paused"])
                 if time.monotonic() >= next_update_check:
                     next_update_check = time.monotonic() + 90  # Avoid extra GitHub API rate-limit load.
                     try:
@@ -3608,7 +3937,7 @@ def main() -> int:
                                 return 75
                     except TrustedUpdateError as exc:
                         print(f"Trusted update safely refused: {exc}")
-                result_outbox = _result_outbox()
+                result_outbox = _result_outbox_for_client(client)
                 pending_before_flush = result_outbox.pending_task_ids()
                 pending_results = result_outbox.flush(client)
                 if pending_results["published"] or pending_results["invalid"]:
@@ -3617,7 +3946,21 @@ def main() -> int:
                 if fetched is not None:
                     task, manifest_sha = fetched
                     decision = classify_manifest(state, task.task_id, manifest_sha)
-                    if decision == "new" and not load_runtime_control()["paused"]:
+                    duplicate_owner = next((
+                        other["repository"] for other in mailbox_slots[1:]
+                        if _state_contains_task(other["state"], task.task_id)
+                    ), None) if decision == "new" else None
+                    if decision == "new" and duplicate_owner:
+                        _publish_result_durable(client, task.task_id, {
+                            "task_id": task.task_id,
+                            "status": "rejected",
+                            "reason": "task_id_already_claimed_in_another_mailbox",
+                            "claiming_mailbox": duplicate_owner,
+                        })
+                        state = _remember_manifest(state, task.task_id, manifest_sha, rejected=True, status="rejected")
+                        _save_state(state)
+                        print(f"{config.repository}: rejected duplicate task ID {task.task_id} already claimed by {duplicate_owner}.")
+                    elif decision == "new" and not load_runtime_control()["paused"]:
                         state = _mailbox_idle_new_task(state)
                         # Persist a claim before doing any local work. If the process
                         # dies or result publication fails, never blindly replay it.
@@ -3710,7 +4053,7 @@ def main() -> int:
                 if not load_runtime_control()["paused"]:
                     state = _maybe_mailbox_idle_tick(state, github_reachable=False)
                 print(f"Mailbox check failed: {exc}. Retry in {backoff}s.")
-                time.sleep(backoff)
+                _wait_with_secondary_mailboxes(backoff, mailbox_slots)
                 backoff = min(max(interval, backoff * 2), 300)
             except (OSError, ValueError, MailboxPolicyError) as exc:
                 try:
@@ -3719,7 +4062,7 @@ def main() -> int:
                 except MailboxPolicyError:
                     pass
                 print(f"Poller local error: {type(exc).__name__}. Retry in {backoff}s.")
-                time.sleep(backoff)
+                _wait_with_secondary_mailboxes(backoff, mailbox_slots)
                 backoff = min(max(interval, backoff * 2), 300)
     
     finally:
@@ -3889,7 +4232,7 @@ def _supervisor_recovery_command(program: Path, root: Path) -> str:
     launcher = root / "run_github_mailbox_agent.bat"
     if not launcher.is_file():
         raise RuntimeError("Mailbox supervisor launcher missing")
-    return subprocess.list2cmdline(["cmd.exe", "/d", "/c", str(launcher)])
+    return subprocess.list2cmdline(["cmd.exe", "/d", "/c", str(launcher), "--recover-services"])
 
 def _watchdog_classify(*, worker_alive: bool, studio_alive: bool,
                        heartbeat_age: float | None, task_claimed: bool,
@@ -4060,6 +4403,8 @@ def run_health_watchdog():
 
 
 def _launch_health_watchdog():
+    if os.environ.get("LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE") == "1":
+        return
     if os.name != 'nt':
         return
     try:
@@ -4128,6 +4473,7 @@ def supervise_windows() -> int:
         lock_stream.close()
         return 0
 
+    _cleanup_owned_orphans()
     root = ROOT.resolve()
     launcher = root / "run_github_mailbox_agent.bat"
     if not launcher.is_file():
@@ -4205,18 +4551,26 @@ def supervise_windows() -> int:
             cwd=root, timeout=15, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, check=False, shell=False,
         )
+        if completed.returncode == 0:
+            settings_script = "$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 2); Set-ScheduledTask -TaskName 'BlenderOctavaStudioSupervisor' -Settings $s | Out-Null"
+            settings = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', settings_script],
+                timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if settings.returncode != 0:
+                log('Scheduled recovery battery settings could not be verified')
         log("Scheduled supervisor recovery installed" if completed.returncode == 0
             else "Scheduled recovery unavailable; login autostart remains")
     except (OSError, subprocess.TimeoutExpired):
         log("Scheduled recovery unavailable; login autostart remains")
 
     env = dict(os.environ)
+    env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     worker_env = dict(env)
     worker_env["LOCAL_AGENT_MAILBOX_WORKER"] = "1"
     worker_env["LOCAL_AGENT_TELEGRAM_SUPERVISOR_ACTIVE"] = "1"
     command = {
+        "watchdog": [sys.executable, "-m", "local_agent.poller", "--health-watch"],
         "mailbox": [sys.executable, "-m", "local_agent.poller"],
         "studio": [sys.executable, "-m", "local_agent.studio_server",
                    "--workspace", env["LOCAL_AGENT_WORKSPACE"],
@@ -4225,8 +4579,8 @@ def supervise_windows() -> int:
     }
     processes: dict[str, subprocess.Popen] = {}
     started_at: dict[str, float] = {}
-    failures: dict[str, int] = {"mailbox": 0, "studio": 0}
-    next_start: dict[str, float] = {"mailbox": 0.0, "studio": 0.0}
+    failures: dict[str, int] = {name: 0 for name in command}
+    next_start: dict[str, float] = {name: 0.0 for name in command}
     pending_stalled_warning = False
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -4242,6 +4596,7 @@ def supervise_windows() -> int:
                                      stderr=subprocess.STDOUT, creationflags=flags,
                                      shell=False, close_fds=True)
             processes[name] = p
+            _write_owned_services(processes)
             started_at[name] = time.monotonic()
             log(f"Started {name} service pid={p.pid}")
         except OSError as exc:
@@ -4253,6 +4608,7 @@ def supervise_windows() -> int:
         p = processes.pop(name, None)
         try:
             _stop_owned_worker(p)
+            _write_owned_services(processes)
         except (OSError, subprocess.TimeoutExpired):
             log(f"Could not confirm complete shutdown of {name} worker tree")
 
@@ -4316,7 +4672,7 @@ def supervise_windows() -> int:
         for name in command:
             launch(name)
         # Stable port lets the existing browser tab reconnect after a restart.
-        webbrowser.open(browser_url)
+        # Browser opening is owner-controlled; background services need no tab.
         log("Studio and mailbox supervisor active; worker heartbeat every 2s")
         while True:
             time.sleep(2)
@@ -4332,8 +4688,8 @@ def supervise_windows() -> int:
                         log("Manual controlled restart requested by locally authorized operator")
                         stop("mailbox")
                         stop("studio")
-                        failures = {"mailbox": 0, "studio": 0}
-                        next_start = {"mailbox": 0.0, "studio": 0.0}
+                        failures = {name: 0 for name in command}
+                        next_start = {name: 0.0 for name in command}
                         pending_restored_notice = "ручного перезапуска"
                         pending_stalled_warning = False
             except MailboxPolicyError:
@@ -4379,8 +4735,8 @@ def supervise_windows() -> int:
                         while studio_render_active() and time.monotonic() < render_wait_deadline:
                             time.sleep(3)
                         stop("studio")
-                        failures = {"mailbox": 0, "studio": 0}
-                        next_start = {"mailbox": 0.0, "studio": 0.0}
+                        failures = {name: 0 for name in command}
+                        next_start = {name: 0.0 for name in command}
                         pending_restored_notice = "установки обновления"
                         continue
                     failures[name] = 0 if runtime >= 10 else failures[name] + 1
@@ -4406,6 +4762,7 @@ def supervise_windows() -> int:
         telegram_stop.set()
         stop("studio")
         stop("mailbox")
+        stop("watchdog")
         try:
             lock_stream.seek(0)
             msvcrt.locking(lock_stream.fileno(), msvcrt.LK_UNLCK, 1)
@@ -4414,6 +4771,8 @@ def supervise_windows() -> int:
         lock_stream.close()
 
 if __name__ == "__main__":
+    if "--recover-services" in sys.argv[1:]:
+        raise SystemExit(recover_windows_services())
     if "--health-watch" in sys.argv[1:]:
         raise SystemExit(run_health_watchdog())
     if "--supervise" in sys.argv[1:] or (os.name == "nt" and os.environ.get("LOCAL_AGENT_MAILBOX_WORKER") != "1"):
