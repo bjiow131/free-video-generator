@@ -101,6 +101,16 @@ def _run_computer_control(args):
         'output_truncated': out_cut or err_cut, 'scope': 'current_windows_user'})
 
 
+def _windows_is_admin():
+    if os.name != 'nt':
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
 def _process_creation_stamp(pid):
     """Kernel creation timestamp prevents killing a recycled Windows PID."""
     if os.name != 'nt':
@@ -1456,9 +1466,9 @@ def doctor_with_supervisor() -> dict[str, Any]:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                             r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
             value, _ = winreg.QueryValueEx(key, "BlenderOctavaStudioSupervisor")
-        autostart = (isinstance(value, str) and
-                     "run_github_mailbox_agent.bat" in value.casefold() and
-                     str(ROOT).casefold() in value.casefold())
+        autostart = (isinstance(value, str) and (
+            ("run_github_mailbox_agent.bat" in value.casefold() and str(ROOT).casefold() in value.casefold())
+            or ("schtasks.exe" in value.casefold() and "blenderoctavastudiosupervisor" in value.casefold())))
     except (OSError, ImportError, ValueError):
         pass
     try:
@@ -4473,6 +4483,9 @@ def supervise_windows() -> int:
         lock_stream.close()
         return 0
 
+    if (_ensure_agent_dir() / 'services_owned.json').exists() and _studio_has_active_job():
+        lock_stream.close()
+        return 0
     _cleanup_owned_orphans()
     root = ROOT.resolve()
     launcher = root / "run_github_mailbox_agent.bat"
@@ -4534,7 +4547,7 @@ def supervise_windows() -> int:
         run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
         with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_SET_VALUE) as key:
             winreg.SetValueEx(key, "BlenderOctavaStudioSupervisor", 0, winreg.REG_SZ,
-                              f'cmd.exe /d /c ""{launcher}""')
+                              'schtasks.exe /Run /TN "BlenderOctavaStudioSupervisor"')
         log("Per-user Windows login autostart registered")
     except OSError:
         log("Windows login autostart registration failed; running for this session")
@@ -4547,7 +4560,8 @@ def supervise_windows() -> int:
         trigger = _supervisor_recovery_command(program, root)
         completed = subprocess.run(
             ["schtasks.exe", "/Create", "/F", "/SC", "MINUTE", "/MO", "1",
-             "/TN", "BlenderOctavaStudioSupervisor", "/TR", trigger],
+             "/TN", "BlenderOctavaStudioSupervisor", "/TR", trigger,
+             "/RL", "HIGHEST" if _windows_is_admin() else "LIMITED"],
             cwd=root, timeout=15, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, check=False, shell=False,
         )
