@@ -1619,3 +1619,49 @@ def test_terminate_task_tree_stops_worker_process():
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
     mailbox_policy._task_terminate_tree(process)
     assert process.poll() is not None
+
+
+
+def test_active_task_is_stopped_when_new_control_manifest_arrives(tmp_path, monkeypatch):
+    """Exercise the parent worker's live manifest check and process-tree stop path."""
+    import sys
+    from datetime import datetime, timedelta, timezone
+    from local_agent import mailbox_policy
+    from local_agent.control_protocol import TaskEnvelope
+
+    monkeypatch.setattr(mailbox_policy, "_ROOT", tmp_path)
+    monkeypatch.setattr(mailbox_policy, "TASK_RUNS_DIR", tmp_path / ".local_agent" / "task_runs")
+    monkeypatch.setattr(mailbox_policy, "TASK_ACTIVE_FILE", tmp_path / ".local_agent" / "task_active.json")
+    monkeypatch.setattr(mailbox_policy, "TASK_STOP_REQUEST", tmp_path / ".local_agent" / "task_stop_request.json")
+    monkeypatch.setattr(mailbox_policy, "_task_worker_command",
+                        lambda payload: [sys.executable, "-c", "import time; time.sleep(60)"])
+    monkeypatch.setattr(mailbox_policy._task_time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(mailbox_policy, "_task_control_authorized", lambda _task: True)
+
+    now = datetime.now(timezone.utc)
+    created = now.isoformat()
+    expires = (now + timedelta(hours=1)).isoformat()
+    running = TaskEnvelope(1, "active-sleeper-01", "test", created, expires, True, {})
+    stop = TaskEnvelope(1, "stop-sleeper-01", "stop_task", created, expires, True, {})
+
+    class ChangingManifestClient:
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_desired_task(self):
+            self.calls += 1
+            return (running, "running-sha") if self.calls == 1 else (stop, "stop-sha")
+
+    published = []
+    monkeypatch.setattr(mailbox_policy, "_task_publish_result",
+                        lambda _client, task_id, result: published.append((task_id, result)))
+
+    outcome = mailbox_policy._task_launch_worker(
+        ChangingManifestClient(), running, "running-sha")
+
+    assert outcome["status"] == "completed"
+    assert outcome["details"]["stopped_task_id"] == running.task_id
+    original_result = next(result for task_id, result in published if task_id == running.task_id)
+    assert original_result["status"] == "interrupted"
+    assert original_result["resume_available"] is True
+    assert not mailbox_policy.TASK_ACTIVE_FILE.exists()
