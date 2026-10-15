@@ -20,7 +20,7 @@ def _fake_windows_blender_header() -> bytes:
     header = bytearray(0x86)
     header[0:2] = b"MZ"
     header[0x3C:0x40] = (0x80).to_bytes(4, "little")
-    header[0x80:0x84] = b"PE\\x00\\x00"
+    header[0x80:0x84] = b"PE\x00\x00"
     header[0x84:0x86] = (0x8664).to_bytes(2, "little")
     return bytes(header)
 
