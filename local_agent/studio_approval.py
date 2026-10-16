@@ -133,6 +133,12 @@ class StudioApprovalStore:
             raise StudioApprovalError("Pending task ID is invalid")
         if self._expiry(request.get("expires_at", "")) <= datetime.now(timezone.utc):
             return None
+        decision_path = self._decision_path(request["task_id"], self.decisions_dir)
+        decision = self._read(decision_path, 4096)
+        if decision is not None:
+            if decision.get("task_id") != request["task_id"] or decision.get("decision") not in {"approve", "reject"}:
+                raise StudioApprovalError("Approval decision is invalid")
+            return None
         return request
 
     def decide(self, task_id: str, decision: str) -> dict[str, Any]:
@@ -177,7 +183,6 @@ class StudioApprovalStore:
             if decision is not None:
                 if decision.get("task_id") != task_id or decision.get("decision") not in {"approve", "reject"}:
                     raise StudioApprovalError("Approval decision is invalid")
-                target.unlink(missing_ok=True)
                 return decision["decision"]
             time.sleep(min(0.25, max(0.01, deadline - time.time())))
         return "timeout"
@@ -188,9 +193,21 @@ class StudioApprovalStore:
         if request and request.get("task_id") == task_id:
             self.request_path.unlink(missing_ok=True)
 
+    def clear_decision(self, task_id: str) -> None:
+        self._ensure_dirs()
+        if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
+            raise StudioApprovalError("Task ID is invalid")
+        target = self._decision_path(task_id, self.decisions_dir)
+        decision = self._read(target, 4096)
+        if decision and decision.get("task_id") == task_id:
+            target.unlink(missing_ok=True)
+
     def request_and_wait(self, task: Any, timeout_seconds: int = 600) -> str:
         request = self.create_request(task)
         try:
             return self.wait_for_decision(request["task_id"], request["expires_at"], timeout_seconds)
         finally:
-            self.clear_request(request["task_id"])
+            try:
+                self.clear_request(request["task_id"])
+            finally:
+                self.clear_decision(request["task_id"])
