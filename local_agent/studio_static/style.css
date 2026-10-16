@@ -10,3 +10,23 @@
 svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round} .header-title svg{width:20px;height:20px;flex-shrink:0}
 
 .render-video{width:100%;max-height:400px;background:#07111b;border-radius:10px;border:1px solid var(--edge);margin-bottom:12px}
+.approval-top-button{border:1px solid #326074;background:#102839;color:#dffaff;border-radius:9px;padding:8px 11px;font-weight:650;white-space:nowrap}
+.approval-top-button:hover,.approval-top-button.approval-needed{border-color:#24d8e8;box-shadow:0 0 0 2px #16bfd01c}
+.approval-badge{display:inline-grid;place-items:center;min-width:19px;height:19px;margin-left:5px;padding:0 5px;border-radius:999px;background:#f06758;color:#fff;font-size:11px}
+.approval-card{max-width:980px;padding:20px}
+.approval-heading{display:flex;align-items:center;gap:13px}
+.approval-heading h2{margin:0;font-size:19px}
+.approval-heading p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.approval-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#133a4b;color:#56e2ed}
+.approval-icon svg{width:23px;height:23px}
+.approval-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+.approval-meta div{min-width:0;padding:11px;border:1px solid var(--edge);border-radius:9px;background:#0c1e2b}
+.approval-meta dt{color:var(--muted);font-size:11px}
+.approval-meta dd{margin:5px 0 0;color:#e7f4fa;font-size:12px;overflow-wrap:anywhere}
+.approval-details{border:1px solid var(--edge);border-radius:9px;background:#0b1a25}
+.approval-details summary{cursor:pointer;padding:11px 13px;color:#d9edf5;font-weight:650}
+.approval-details pre{max-height:380px;overflow:auto;margin:0;padding:12px;border-top:1px solid var(--edge);white-space:pre-wrap;overflow-wrap:anywhere;color:#c9e1ed;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.approval-note{margin:14px 0;color:var(--muted);font-size:12px;line-height:1.55}
+.approval-actions{display:flex;gap:10px;flex-wrap:wrap}
+.approval-actions button{min-width:170px}
+@media(max-width:850px){.approval-top-button{padding:7px 8px;font-size:10px}.approval-actions button{flex:1}.approval-meta{grid-template-columns:1fr}}

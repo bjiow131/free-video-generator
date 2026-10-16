@@ -22,6 +22,7 @@ from local_agent.story_plan import StoryPlanError, save_story_plan
 from local_agent.studio_state import StudioConflict, StudioError, StudioStore, to_story_plan
 from local_agent.studio_jobs import StudioJobs, StudioJobError
 from local_agent.prompt_interpreter import interpret_scene, PromptError
+from local_agent.studio_approval import StudioApprovalError, StudioApprovalStore
 
 _STATIC = Path(__file__).resolve().parent / "studio_static"
 _MEDIA_NAME = re.compile(r"[a-f0-9]{32}\.(?:png|jpg|webp)\Z")
@@ -32,10 +33,13 @@ _MAX_REQUEST = 4_600_000
 class StudioHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, store: StudioStore):
+    def __init__(self, address, store: StudioStore, approval_state_dir: str | Path | None = None):
         super().__init__(address, StudioHandler)
         self.store = store
         self.jobs = StudioJobs(store)
+        agent_root = Path(__file__).resolve().parents[1]
+        approval_root = Path(approval_state_dir) if approval_state_dir is not None else agent_root / ".local_agent"
+        self.approvals = StudioApprovalStore(approval_root)
         self.render_lock = threading.Lock()
         self.render_status = {"state": "idle", "message": "Рендер ещё не запускался."}
 
@@ -122,6 +126,11 @@ class StudioHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/health":
             return self._json(200, {"status": "ok", "offline": True})
+        if path == "/api/agent/approval":
+            try:
+                return self._json(200, {"pending": self.server.approvals.get_pending()})
+            except StudioApprovalError:
+                return self._json(503, {"error": "Local approval state is unavailable"})
         if path == "/api/state":
             try:
                 return self._json(200, self.server.store.load())
@@ -213,6 +222,14 @@ class StudioHandler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise StudioError("JSON object required")
             path = urlsplit(self.path).path
+            if path == "/api/agent/approval/decision":
+                if set(body) != {"task_id", "decision"}:
+                    return self._json(400, {"error": "Task ID and decision are required"})
+                try:
+                    result = self.server.approvals.decide(body.get("task_id"), body.get("decision"))
+                except StudioApprovalError as exc:
+                    return self._json(409, {"error": str(exc)})
+                return self._json(200, result)
             if path == "/api/state":
                 result = self.server.store.save(body.get("state"), body.get("revision"))
                 return self._json(200, result)

@@ -10,6 +10,7 @@ on:
       - blender-agent-repair
       - feature/enable-github-mailbox
       - feature/chatgpt-repair-channel
+      - feature/blender-studio-ui-20261011
     paths:
       - "local_agent/**"
       - "tests/test_blender_*.py"
@@ -31,6 +32,8 @@ on:
       - "tests/test_notifications.py"
       - "tests/test_error_knowledge.py"
       - "tests/test_manifest_security.py"
+      - "tests/test_studio.py"
+      - "tests/test_studio_approval.py"
       - "tests/test_control_protocol.py"
       - "requirements-local-agent.txt"
       - "requirements-github-mailbox.txt"

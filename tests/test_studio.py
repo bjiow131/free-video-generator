@@ -3,6 +3,8 @@ import json
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -80,7 +82,7 @@ class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory()
-        cls.server=StudioHTTPServer(('127.0.0.1',0),StudioStore(cls.tmp.name))
+        cls.server=StudioHTTPServer(('127.0.0.1',0),StudioStore(cls.tmp.name),Path(cls.tmp.name)/'approval-state')
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start()
         cls.url=f'http://127.0.0.1:{cls.server.server_port}'
     @classmethod
@@ -99,6 +101,31 @@ class ServerTests(unittest.TestCase):
         return r.status,json.loads(data) if r.headers.get_content_type()=='application/json' else data
     def test_health(self):
         self.assertEqual(self.req('/api/health')[1]['status'],'ok')
+    def test_studio_local_approval_round_trip(self):
+        now=datetime.now(timezone.utc)
+        task=SimpleNamespace(task_id='studio-approval-001',operation='blender_inspect_mia_project',
+                             arguments={'project_name':'mia_story'},created_at=now.isoformat(),
+                             expires_at=(now+timedelta(minutes=2)).isoformat())
+        self.server.approvals.create_request(task)
+        code,pending=self.req('/api/agent/approval')
+        self.assertEqual(code,200)
+        self.assertEqual(pending['pending']['task_id'],task.task_id)
+        self.assertEqual(pending['pending']['arguments'],task.arguments)
+        code,decision=self.req('/api/agent/approval/decision',
+                               {'task_id':task.task_id,'decision':'approve'})
+        self.assertEqual(code,200)
+        self.assertEqual(decision['decision'],'approve')
+        code,duplicate=self.req('/api/agent/approval/decision',
+                                {'task_id':task.task_id,'decision':'approve'})
+        self.assertEqual(code,409)
+        self.assertEqual(self.server.approvals.wait_for_decision(task.task_id,task.expires_at,1),'approve')
+        self.server.approvals.clear_request(task.task_id)
+        self.assertIsNone(self.req('/api/agent/approval')[1]['pending'])
+
+    def test_studio_approval_rejects_unknown_fields(self):
+        code,_=self.req('/api/agent/approval/decision',
+                        {'task_id':'studio-approval-002','decision':'approve','command':'unsafe'})
+        self.assertEqual(code,400)
     def test_static(self):
         for path in ['/','/style.css','/app.js']:
             code,data=self.req(path);self.assertEqual(code,200);self.assertGreater(len(data),1000)

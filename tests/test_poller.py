@@ -313,12 +313,13 @@ def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch)
     client = FakeClient()
     monkeypatch.setattr(poller, "sys", SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: False)))
     monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    monkeypatch.setattr(poller.StudioApprovalStore, "request_and_wait", lambda _self, _task: "timeout")
     ran = []
     monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
     poller._run_one(client, task)
     assert ran == []
     assert client.published[1]["status"] == "blocked"
-    assert client.published[1]["reason"] == "local_console_approval_required_but_no_interactive_console"
+    assert client.published[1]["reason"] == "local_approval_timeout"
 
 
 def test_failed_task_writes_report_and_notifies_user(monkeypatch, tmp_path):
