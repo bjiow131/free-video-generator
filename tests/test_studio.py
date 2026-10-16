@@ -47,7 +47,11 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(StudioError): self.store.save(s,0)
     def test_reject_symlink(self):
         outside=Path(self.tmp.name)/'outside';outside.mkdir()
-        (Path(self.tmp.name)/'redirect').symlink_to(outside,target_is_directory=True)
+        link=Path(self.tmp.name)/'redirect'
+        try:
+            link.symlink_to(outside,target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"Symlink creation is unavailable: {exc}")
         with self.assertRaises(StudioError): StudioStore(self.tmp.name,'redirect')
     def test_plan(self):
         p=to_story_plan(self.scene());self.assertEqual(p['scenes'][0]['scene_id'],'scene_001');self.assertEqual(p['scenes'][0]['assets'],['Улитка'])
