@@ -68,5 +68,14 @@ class StudioApprovalStoreTests(unittest.TestCase):
         self.assertEqual(self.store.wait_for_decision(request["task_id"], request["expires_at"], 1), "timeout")
 
 
+    def test_studio_installer_includes_local_approval_runtime(self):
+        installer = Path(__file__).resolve().parents[1] / "install_blender_studio.ps1"
+        source = installer.read_text(encoding="utf-8")
+        names = source.split("$Names = @(", 1)[1].split(")", 1)[0]
+        self.assertIn("'local_agent\\studio_approval.py'", names)
+        self.assertIn("'local_agent\\poller.py'", names)
+        self.assertIn("'tests\\test_studio_approval.py'", names)
+
+
 if __name__ == "__main__":
     unittest.main()
