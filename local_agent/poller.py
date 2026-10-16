@@ -26,6 +26,7 @@ from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
 from local_agent.blender_locator import find_blender_executable
+from local_agent.studio_approval import StudioApprovalError, StudioApprovalStore
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / ".local_agent" / "poller_state.json"
@@ -632,14 +633,23 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         commit_sha = _publish_result_durable(client, task.task_id, result)
         print(f"Remote approval is disabled. Result commit: {commit_sha}")
         return
-    if not sys.stdin.isatty():
-        result = {"task_id": task.task_id, "status": "blocked", "reason": "local_console_approval_required_but_no_interactive_console"}
-        commit_sha = _publish_result_durable(client, task.task_id, result)
-        print(f"Local approval required; non-interactive runner blocked the task. Result commit: {commit_sha}")
-        return
-    answer = input("Approve this local operation? Type YES to run: ").strip()
-    if answer != "YES":
-        result = {"task_id": task.task_id, "status": "declined", "reason": "local_user_declined"}
+    if sys.stdin.isatty():
+        answer = input("Approve this local operation? Type YES to run: ").strip()
+        decision = "approve" if answer == "YES" else "reject"
+    else:
+        try:
+            print("Waiting for this task to be approved in the local Blender Studio.")
+            approval_store = StudioApprovalStore(_ensure_agent_dir())
+            decision = approval_store.request_and_wait(task)
+        except (StudioApprovalError, OSError):
+            result = {"task_id": task.task_id, "status": "blocked", "reason": "studio_local_approval_unavailable"}
+            commit_sha = _publish_result_durable(client, task.task_id, result)
+            print(f"Studio approval unavailable. Result commit: {commit_sha}")
+            return
+    if decision != "approve":
+        status = "declined" if decision == "reject" else "blocked"
+        reason = "local_user_declined" if decision == "reject" else "local_approval_timeout"
+        result = {"task_id": task.task_id, "status": status, "reason": reason}
     else:
         # Re-read the desired manifest after local approval. If a newer task
         # replaced this one while the prompt was open, do not apply stale work.
