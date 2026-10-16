@@ -15,9 +15,10 @@ import re
 from local_agent.patch_validation import PatchValidationError, validate_patch_paths
 
 PROTOCOL_VERSION = 1
-ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "sync_asset_library", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"})
+ALLOWED_OPERATIONS = frozenset({"status", "doctor", "preflight", "test", "logs", "start", "stop", "backup", "apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "sync_asset_library", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "blender_mia_reference_fit", "blender_mia_reference_fit_preflight", "octava_advice"})
 TASK_ID_RE = path_identifier_pattern(80, dots=True)
 BLENDER_PROJECT_RE = path_identifier_pattern(48)
+MIA_REFERENCE_PROJECT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]{0,47}$")
 
 
 class ProtocolError(ValueError):
@@ -160,6 +161,30 @@ def parse_task(raw: str, *, max_bytes: int = 65_536) -> TaskEnvelope:
         prompt = args.get("prompt")
         if set(args) != {"prompt"} or not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 1600:
             raise ProtocolError("octava_advice requires exactly one 1-1600 character prompt.")
+
+    if value["operation"] == "blender_mia_reference_fit_preflight":
+        args = value["arguments"]
+        if set(args) != {"project_name", "source_blend"}:
+            raise ProtocolError("blender_mia_reference_fit_preflight requires project_name and source_blend.")
+        if not isinstance(args["project_name"], str) or not MIA_REFERENCE_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("ReferenceFit preflight project_name must use safe project-name characters.")
+        name = args["source_blend"]
+        if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}[.]blend", name):
+            raise ProtocolError("ReferenceFit preflight source_blend must be a safe .blend basename.")
+    if value["operation"] == "blender_mia_reference_fit":
+        args = value["arguments"]
+        required = {"project_name", "source_blend", "reference_map_file", "passport_file", "approved_reference_sha256"}
+        if set(args) != required:
+            raise ProtocolError("blender_mia_reference_fit requires project_name, source_blend, reference_map_file, passport_file, and approved_reference_sha256.")
+        if not isinstance(args["project_name"], str) or not MIA_REFERENCE_PROJECT_RE.fullmatch(args["project_name"]):
+            raise ProtocolError("ReferenceFit project_name must use safe project-name characters.")
+        for key, suffix in (("source_blend", ".blend"), ("reference_map_file", ".json"), ("passport_file", ".json")):
+            name = args[key]
+            if not isinstance(name, str) or len(name) > 128 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}" + re.escape(suffix), name):
+                raise ProtocolError(f"ReferenceFit {key} must be a safe basename ending in {suffix}.")
+        digest = args["approved_reference_sha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ProtocolError("approved_reference_sha256 must be a lowercase SHA-256 digest.")
 
     # The initial protocol allows no free-form command, script, URL, or executable path.
     forbidden_keys = {"command", "cmd", "shell", "script", "executable", "url", "powershell"}

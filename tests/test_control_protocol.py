@@ -265,3 +265,29 @@ def test_blender_mia_skeleton_requires_local_approval():
     value["requires_local_approval"] = False
     with pytest.raises(ProtocolError, match="require local approval"):
         parse_task(json.dumps(value))
+
+def test_accepts_mia_reference_fit_preflight_for_candidate_folder():
+    task = parse_task(_task("blender_mia_reference_fit_preflight", {
+        "project_name": "_Mia_final_model_work",
+        "source_blend": "Mia_Final_Model_Standalone_v05.blend",
+    }))
+    assert task.arguments["project_name"] == "_Mia_final_model_work"
+
+
+def test_rejects_unsafe_mia_reference_fit_preflight_paths():
+    for arguments in (
+        {"project_name": "../outside", "source_blend": "candidate.blend"},
+        {"project_name": "_Mia_final_model_work", "source_blend": "../candidate.blend"},
+    ):
+        with pytest.raises(ProtocolError):
+            parse_task(_task("blender_mia_reference_fit_preflight", arguments))
+
+
+def test_mia_reference_fit_requires_local_approval():
+    value = json.loads(_task("blender_mia_reference_fit_preflight", {
+        "project_name": "_Mia_final_model_work",
+        "source_blend": "Mia_Final_Model_Standalone_v05.blend",
+    }))
+    value["requires_local_approval"] = False
+    with pytest.raises(ProtocolError, match="require local approval"):
+        parse_task(json.dumps(value))
