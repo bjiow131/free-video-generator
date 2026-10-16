@@ -18,6 +18,7 @@ SECURITY_TESTS = (
     "tests/test_repair_channel.py",
     "tests/test_poller.py",
     "tests/test_control_protocol.py",
+    "tests/test_mia_reference_fit.py",
     "tests/test_patch_validation.py",
     "tests/test_repair_replay.py",
     "tests/test_local_agent_control_protocol.py",
