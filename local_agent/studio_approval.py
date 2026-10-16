@@ -27,6 +27,7 @@ class StudioApprovalStore:
         self.state_dir = Path(state_dir)
         self.request_path = self.state_dir / "studio_approval_request.json"
         self.decisions_dir = self.state_dir / "studio_approval_decisions"
+        self.policy_path = self.state_dir / "studio_approval_policy.json"
 
     def _ensure_dirs(self) -> None:
         if self.state_dir.is_symlink() or getattr(self.state_dir, "is_junction", lambda: False)():
@@ -37,6 +38,27 @@ class StudioApprovalStore:
         if self.decisions_dir.is_symlink() or getattr(self.decisions_dir, "is_junction", lambda: False)():
             raise StudioApprovalError("Approval decisions directory is unsafe")
         self.decisions_dir.mkdir(exist_ok=True)
+
+    def auto_approve_enabled(self) -> bool:
+        self._ensure_dirs()
+        policy = self._read(self.policy_path, 4096)
+        if policy is None:
+            return False
+        if set(policy) != {"schema_version", "auto_approve"} or policy.get("schema_version") != 1:
+            raise StudioApprovalError("Approval policy is invalid")
+        enabled = policy.get("auto_approve")
+        if not isinstance(enabled, bool):
+            raise StudioApprovalError("Approval policy is invalid")
+        return enabled
+
+    def set_auto_approve(self, enabled: bool) -> dict[str, bool]:
+        if not isinstance(enabled, bool):
+            raise StudioApprovalError("Auto-approval setting must be boolean")
+        self._ensure_dirs()
+        # Read first to reject a symlink or malformed policy instead of replacing it.
+        self.auto_approve_enabled()
+        self._atomic_write(self.policy_path, {"schema_version": 1, "auto_approve": enabled})
+        return {"auto_approve_enabled": enabled}
 
     @staticmethod
     def _expiry(value: str) -> datetime:
@@ -141,12 +163,14 @@ class StudioApprovalStore:
             return None
         return request
 
-    def decide(self, task_id: str, decision: str) -> dict[str, Any]:
+    def decide(self, task_id: str, decision: str, approval_mode: str = "manual") -> dict[str, Any]:
         self._ensure_dirs()
         if not isinstance(task_id, str) or not _TASK_ID.fullmatch(task_id):
             raise StudioApprovalError("Task ID is invalid")
         if decision not in {"approve", "reject"}:
             raise StudioApprovalError("Decision must be approve or reject")
+        if approval_mode not in {"manual", "persistent_toggle"}:
+            raise StudioApprovalError("Approval mode is invalid")
         request = self.get_pending()
         if request is None or request["task_id"] != task_id:
             raise StudioApprovalError("No matching task is awaiting approval")
@@ -156,6 +180,7 @@ class StudioApprovalStore:
             "task_id": task_id,
             "decision": decision,
             "decided_at": datetime.now(timezone.utc).isoformat(),
+            "approval_mode": approval_mode,
         }, separators=(",", ":")).encode("utf-8")
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
         flags |= getattr(os, "O_BINARY", 0)
@@ -184,6 +209,15 @@ class StudioApprovalStore:
                 if decision.get("task_id") != task_id or decision.get("decision") not in {"approve", "reject"}:
                     raise StudioApprovalError("Approval decision is invalid")
                 return decision["decision"]
+            if self.auto_approve_enabled():
+                pending = self.get_pending()
+                if pending is not None and pending.get("task_id") == task_id:
+                    try:
+                        self.decide(task_id, "approve", approval_mode="persistent_toggle")
+                    except StudioApprovalError:
+                        # A manual decision may have arrived between the read and write.
+                        if self._read(target, 4096) is None:
+                            raise
             time.sleep(min(0.25, max(0.01, deadline - time.time())))
         return "timeout"
 
