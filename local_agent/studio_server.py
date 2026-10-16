@@ -128,7 +128,10 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._json(200, {"status": "ok", "offline": True})
         if path == "/api/agent/approval":
             try:
-                return self._json(200, {"pending": self.server.approvals.get_pending()})
+                return self._json(200, {
+                    "pending": self.server.approvals.get_pending(),
+                    "auto_approve_enabled": self.server.approvals.auto_approve_enabled(),
+                })
             except StudioApprovalError:
                 return self._json(503, {"error": "Local approval state is unavailable"})
         if path == "/api/state":
@@ -222,6 +225,14 @@ class StudioHandler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise StudioError("JSON object required")
             path = urlsplit(self.path).path
+            if path == "/api/agent/approval/policy":
+                if set(body) != {"auto_approve"} or not isinstance(body.get("auto_approve"), bool):
+                    return self._json(400, {"error": "Auto-approval must be a boolean"})
+                try:
+                    result = self.server.approvals.set_auto_approve(body["auto_approve"])
+                except StudioApprovalError as exc:
+                    return self._json(409, {"error": str(exc)})
+                return self._json(200, result)
             if path == "/api/agent/approval/decision":
                 if set(body) != {"task_id", "decision"}:
                     return self._json(400, {"error": "Task ID and decision are required"})
