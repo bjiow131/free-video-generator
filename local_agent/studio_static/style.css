@@ -30,3 +30,16 @@ svg{stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-l
 .approval-actions{display:flex;gap:10px;flex-wrap:wrap}
 .approval-actions button{min-width:170px}
 @media(max-width:850px){.approval-top-button{padding:7px 8px;font-size:10px}.approval-actions button{flex:1}.approval-meta{grid-template-columns:1fr}}
+
+.approval-policy{max-width:980px;margin-bottom:13px;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:20px;border-color:#386075;background:linear-gradient(120deg,#102c3c,#102334)}
+.approval-policy-copy h2{margin:0 0 6px;font-size:16px}
+.approval-policy-copy p{max-width:760px;margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.approval-switch{position:relative;display:inline-flex;flex:0 0 auto;align-items:center;cursor:pointer}
+.approval-switch input{position:absolute;width:1px;height:1px;opacity:0}
+.approval-switch-track{position:relative;width:50px;height:28px;border:1px solid #557084;border-radius:99px;background:#203748;transition:background .18s,border-color .18s}
+.approval-switch-track:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#d0e0e8;transition:transform .18s,background .18s}
+.approval-switch input:checked+.approval-switch-track{border-color:#35dedb;background:#087c86}
+.approval-switch input:checked+.approval-switch-track:after{transform:translateX(22px);background:#fff}
+.approval-switch input:focus-visible+.approval-switch-track{outline:2px solid #8ff7ff;outline-offset:3px}
+.approval-switch input:disabled+.approval-switch-track{opacity:.55;cursor:wait}
+@media(max-width:600px){.approval-policy{align-items:flex-start;padding:14px;gap:12px}.approval-policy-copy p{max-width:none}}
