@@ -48,6 +48,8 @@ BLENDER_TESTS = (
     "tests/test_local_agent_examples.py",
     "tests/test_manifest_security.py",
     "tests/test_blender_agent_scope.py",
+    "tests/test_studio.py",
+    "tests/test_studio_approval.py",
 )
 TEST_SUITES = {
     "security": SECURITY_TESTS,
