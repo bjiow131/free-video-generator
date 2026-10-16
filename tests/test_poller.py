@@ -313,6 +313,7 @@ def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch)
     client = FakeClient()
     monkeypatch.setattr(poller, "sys", SimpleNamespace(stdin=SimpleNamespace(isatty=lambda: False)))
     monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not prompt")))
+    monkeypatch.setattr(poller.StudioApprovalStore, "request_and_wait", lambda _self, _task: "timeout")
     ran = []
     monkeypatch.setattr(poller, "_run_blender_forest_preview", lambda args: ran.append(args))
     poller._run_one(client, task)
