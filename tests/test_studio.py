@@ -10,7 +10,6 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from local_agent.studio_state import StudioStore, StudioError, StudioConflict, to_story_plan
 from local_agent.studio_server import StudioHTTPServer
-from local_agent.studio_approval import StudioApprovalStore
 
 class StoreTests(unittest.TestCase):
     def setUp(self):
