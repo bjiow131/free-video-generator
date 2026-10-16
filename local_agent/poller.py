@@ -633,19 +633,15 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         commit_sha = _publish_result_durable(client, task.task_id, result)
         print(f"Remote approval is disabled. Result commit: {commit_sha}")
         return
-    if sys.stdin.isatty():
-        answer = input("Approve this local operation? Type YES to run: ").strip()
-        decision = "approve" if answer == "YES" else "reject"
-    else:
-        try:
-            print("Waiting for this task to be approved in the local Blender Studio.")
-            approval_store = StudioApprovalStore(_ensure_agent_dir())
-            decision = approval_store.request_and_wait(task)
-        except (StudioApprovalError, OSError):
-            result = {"task_id": task.task_id, "status": "blocked", "reason": "studio_local_approval_unavailable"}
-            commit_sha = _publish_result_durable(client, task.task_id, result)
-            print(f"Studio approval unavailable. Result commit: {commit_sha}")
-            return
+    try:
+        print("Waiting for this task to be approved in the local Blender Studio.")
+        approval_store = StudioApprovalStore(_ensure_agent_dir())
+        decision = approval_store.request_and_wait(task)
+    except (StudioApprovalError, OSError):
+        result = {"task_id": task.task_id, "status": "blocked", "reason": "studio_local_approval_unavailable"}
+        commit_sha = _publish_result_durable(client, task.task_id, result)
+        print(f"Studio approval unavailable. Result commit: {commit_sha}")
+        return
     if decision != "approve":
         status = "declined" if decision == "reject" else "blocked"
         reason = "local_user_declined" if decision == "reject" else "local_approval_timeout"
