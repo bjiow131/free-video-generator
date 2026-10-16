@@ -32,6 +32,27 @@ class StudioApprovalStoreTests(unittest.TestCase):
         self.store.clear_request(request["task_id"])
         self.assertIsNone(self.store.get_pending())
 
+    def test_auto_approval_is_off_by_default_and_persists(self):
+        self.assertFalse(self.store.auto_approve_enabled())
+        self.store.set_auto_approve(True)
+        reopened = StudioApprovalStore(Path(self.temp.name) / ".local_agent")
+        self.assertTrue(reopened.auto_approve_enabled())
+        reopened.set_auto_approve(False)
+        self.assertFalse(self.store.auto_approve_enabled())
+
+    def test_auto_approval_resolves_pending_task(self):
+        request = self.store.create_request(task())
+        self.store.set_auto_approve(True)
+        self.assertEqual(
+            self.store.wait_for_decision(request["task_id"], request["expires_at"], 1),
+            "approve",
+        )
+        decision_path = self.store._decision_path(
+            request["task_id"], self.store.decisions_dir
+        )
+        decision = self.store._read(decision_path, 4096)
+        self.assertEqual(decision["approval_mode"], "persistent_toggle")
+
     def test_rejection_round_trip(self):
         request = self.store.create_request(task())
         self.store.decide(request["task_id"], "reject")
