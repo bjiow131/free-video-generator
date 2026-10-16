@@ -33,12 +33,13 @@ _MAX_REQUEST = 4_600_000
 class StudioHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, store: StudioStore):
+    def __init__(self, address, store: StudioStore, approval_state_dir: str | Path | None = None):
         super().__init__(address, StudioHandler)
         self.store = store
         self.jobs = StudioJobs(store)
         agent_root = Path(__file__).resolve().parents[1]
-        self.approvals = StudioApprovalStore(agent_root / ".local_agent")
+        approval_root = Path(approval_state_dir) if approval_state_dir is not None else agent_root / ".local_agent"
+        self.approvals = StudioApprovalStore(approval_root)
         self.render_lock = threading.Lock()
         self.render_status = {"state": "idle", "message": "Рендер ещё не запускался."}
 
