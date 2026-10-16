@@ -19,7 +19,7 @@
 
 ## Безопасная установка
 
-Остановите старый локальный сервер. Распакуйте архив в `C:\AI-Agent-Studio-Update` без вложенного лишнего уровня. После резервного копирования файлов обновления запустите:
+Остановите Blender Studio и, если запущен, `run_github_mailbox_agent.bat`. Распакуйте архив в `C:\AI-Agent-Studio-Update` без вложенного лишнего уровня. После резервного копирования файлов обновления запустите:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\AI-Agent-Studio-Update\install_blender_studio.ps1" -Target "C:\AI-Agent"
@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File "C:\AI-Agent\rollback_blender_studio.ps
 ```powershell
 cd C:\AI-Agent
 py -3.11 -m unittest discover -s tests -p test_prompt_pipeline.py -v
+py -3.11 -m unittest discover -s tests -p test_studio_approval.py -v
 py -3.11 -m unittest discover -s tests -p test_studio_assembly.py -v
 .\run_blender_studio.bat
 ```

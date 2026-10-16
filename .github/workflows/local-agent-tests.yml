@@ -41,6 +41,8 @@ on:
       - "setup_blender_agent.bat"
       - "run_blender_agent.bat"
       - ".github/workflows/local-agent-tests.yml"
+      - "install_blender_studio.ps1"
+      - "docs/studio_ui_release.md"
   push:
     branches:
       - feature/local-first-migration

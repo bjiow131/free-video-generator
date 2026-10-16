@@ -7,6 +7,8 @@ if (!(Test-Path (Join-Path $Target 'local_agent\multiscene_cli.py'))) {
 $Names = @(
     'local_agent\studio_state.py',
     'local_agent\studio_server.py',
+    'local_agent\studio_approval.py',
+    'local_agent\poller.py',
     'local_agent\prompt_interpreter.py',
     'local_agent\studio_jobs.py',
     'local_agent\studio_blender_scene.py',
@@ -14,6 +16,7 @@ $Names = @(
     'local_agent\studio_static\style.css',
     'local_agent\studio_static\app.js',
     'tests\test_studio.py',
+    'tests\test_studio_approval.py',
     'tests\test_prompt_pipeline.py',
     'tests\test_studio_assembly.py',
     'tests\test_studio_jobs_cancellation.py',
