@@ -122,6 +122,22 @@ class ServerTests(unittest.TestCase):
         self.server.approvals.clear_request(task.task_id)
         self.assertIsNone(self.req('/api/agent/approval')[1]['pending'])
 
+    def test_studio_approval_policy_persists_and_is_reported(self):
+        code,initial=self.req('/api/agent/approval')
+        self.assertEqual(code,200)
+        self.assertFalse(initial['auto_approve_enabled'])
+        code,enabled=self.req('/api/agent/approval/policy',{'auto_approve':True})
+        self.assertEqual(code,200)
+        self.assertTrue(enabled['auto_approve_enabled'])
+        self.assertTrue(self.req('/api/agent/approval')[1]['auto_approve_enabled'])
+        code,disabled=self.req('/api/agent/approval/policy',{'auto_approve':False})
+        self.assertEqual(code,200)
+        self.assertFalse(disabled['auto_approve_enabled'])
+
+    def test_studio_approval_policy_rejects_unknown_or_non_boolean_fields(self):
+        self.assertEqual(self.req('/api/agent/approval/policy',{'auto_approve':'yes'})[0],400)
+        self.assertEqual(self.req('/api/agent/approval/policy',{'auto_approve':True,'anything':1})[0],400)
+
     def test_studio_approval_rejects_unknown_fields(self):
         code,_=self.req('/api/agent/approval/decision',
                         {'task_id':'studio-approval-002','decision':'approve','command':'unsafe'})
