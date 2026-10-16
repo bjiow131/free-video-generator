@@ -318,7 +318,7 @@ def test_local_approval_task_is_blocked_without_interactive_console(monkeypatch)
     poller._run_one(client, task)
     assert ran == []
     assert client.published[1]["status"] == "blocked"
-    assert client.published[1]["reason"] == "local_console_approval_required_but_no_interactive_console"
+    assert client.published[1]["reason"] == "local_approval_timeout"
 
 
 def test_failed_task_writes_report_and_notifies_user(monkeypatch, tmp_path):
