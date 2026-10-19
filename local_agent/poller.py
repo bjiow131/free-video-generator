@@ -26,7 +26,7 @@ from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
 from local_agent.blender_locator import find_blender_executable
-from local_agent.spring_preview import render_spring_preview
+from local_agent.blender_workflow import render_spring_preview
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
 )
@@ -709,6 +709,10 @@ def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     workspace = os.environ.get("LOCAL_AGENT_WORKSPACE", "").strip()
     if not workspace:
         workspace = str(ROOT.parent / "AI-Agent-Workspace")
+    if arguments["project_name"].startswith("spring_preview_"):
+        preview = render_spring_preview(arguments["project_name"])
+        return {"status": preview.get("status", "failed"),
+                "task": "blender_forest_preview", "spring_preview": preview}
     if arguments["project_name"].startswith("qa_export_"):
         review = _reexport_existing_camera_qa(workspace)
         return {"status": review["status"], "task": "blender_forest_preview",
