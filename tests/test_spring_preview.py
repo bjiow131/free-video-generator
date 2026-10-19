@@ -45,6 +45,18 @@ def test_does_not_follow_symlink_directory(tmp_path):
     assert find_spring_donor(workspace, expected_sha256=digest) is None
 
 
+def test_rejects_workspace_symlink(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "workspace_link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable")
+    with pytest.raises(SpringPreviewError, match="workspace_not_a_regular_directory"):
+        find_spring_donor(link)
+
+
 def test_rejects_invalid_project_name_before_local_execution(monkeypatch):
     monkeypatch.delenv("LOCAL_AGENT_WORKSPACE", raising=False)
     result = render_spring_preview("../outside")
