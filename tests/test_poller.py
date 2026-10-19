@@ -69,6 +69,16 @@ def test_blender_preview_uses_local_default_workspace_when_unset(monkeypatch, tm
 
 
 
+def test_spring_preview_dispatch_uses_fixed_local_handler(monkeypatch):
+    from local_agent import poller
+    calls = []
+    monkeypatch.setattr(poller, "render_spring_preview",
+                        lambda name: calls.append(name) or {"status": "completed"})
+    result = poller._run_blender_spring_preview({"project_name": "spring_demo"})
+    assert result == {"status": "completed"}
+    assert calls == ["spring_demo"]
+
+
 def test_run_one_dispatches_blender_task_after_local_approval(monkeypatch):
     from local_agent import poller
     from types import SimpleNamespace
