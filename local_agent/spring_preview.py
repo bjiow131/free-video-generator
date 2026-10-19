@@ -9,9 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
-import tempfile
 from typing import Any
 
 from local_agent.blender_locator import find_blender_executable
@@ -39,8 +37,11 @@ def _sha256(path: Path) -> str:
 
 def find_spring_donor(workspace: Path, *, expected_sha256: str = SPRING_SHA256) -> Path | None:
     """Find only the pinned Spring file beneath the configured local workspace."""
-    root = Path(workspace).expanduser().resolve()
-    if is_link_or_junction(root) or not root.is_dir():
+    root_value = Path(workspace).expanduser()
+    if is_link_or_junction(root_value):
+        raise SpringPreviewError("workspace_not_a_regular_directory")
+    root = root_value.resolve()
+    if not root.is_dir():
         raise SpringPreviewError("workspace_not_a_regular_directory")
     visited = 0
     matches: list[Path] = []
@@ -195,10 +196,11 @@ def render_spring_preview(project_name: str) -> dict[str, Any]:
     blender = find_blender_executable()
     if blender is None or not blender.is_file():
         return {"status": "blocked", "reason": "blender_executable_not_found"}
-    workspace = Path(workspace_value).expanduser().resolve()
-    workspace.mkdir(parents=True, exist_ok=True)
-    if is_link_or_junction(workspace):
+    workspace_value_path = Path(workspace_value).expanduser()
+    if is_link_or_junction(workspace_value_path):
         return {"status": "blocked", "reason": "workspace_must_not_be_link_or_junction"}
+    workspace = workspace_value_path.resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
     output = (workspace / project_name).resolve()
     if not output.is_relative_to(workspace) or is_link_or_junction(output):
         return {"status": "rejected", "reason": "unsafe_output_path"}
