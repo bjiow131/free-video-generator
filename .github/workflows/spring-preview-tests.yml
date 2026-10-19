@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/blender-spring-preview-20261019
+      - feature/octava-agent-bridge-20261011
   workflow_dispatch:
 
 permissions:
