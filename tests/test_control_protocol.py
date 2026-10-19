@@ -108,6 +108,24 @@ def test_rejects_unsafe_asset_scan_arguments(arguments):
     with pytest.raises(ProtocolError):
         parse_task(_task("scan_project_assets", arguments))
 
+def test_accepts_fixed_blender_spring_preview():
+    task = parse_task(_task("blender_spring_preview", {"project_name": "spring_test_5s"}))
+    assert task.operation == "blender_spring_preview"
+    assert task.arguments == {"project_name": "spring_test_5s"}
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"project_name": "../outside"},
+    {"project_name": "Spring Preview"},
+    {"project_name": "spring", "path": "C:\\\\private\\spring.blend"},
+    {"project_name": "spring", "script": "import os"},
+])
+def test_rejects_unsafe_blender_spring_preview(arguments):
+    with pytest.raises(ProtocolError):
+        parse_task(_task("blender_spring_preview", arguments))
+
+
 def test_accepts_argument_free_preflight_task():
     task = parse_task(_task("preflight", {}))
     assert task.operation == "preflight"
