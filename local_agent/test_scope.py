@@ -17,6 +17,7 @@ SECURITY_TESTS = (
     "tests/test_github_queue.py",
     "tests/test_repair_channel.py",
     "tests/test_poller.py",
+    "tests/test_spring_preview.py",
     "tests/test_control_protocol.py",
     "tests/test_patch_validation.py",
     "tests/test_repair_replay.py",

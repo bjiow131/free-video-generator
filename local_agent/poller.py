@@ -26,6 +26,7 @@ from local_agent.notifications import notify_user
 from local_agent.repair_channel import fetch_repair, RepairProtocolError, _validate_patch_paths
 from local_agent.test_scope import test_command
 from local_agent.blender_locator import find_blender_executable
+from local_agent.spring_preview import render_spring_preview
 from local_agent.mailbox_policy import (
     MailboxPolicyError, load_policy, is_auto_authorized, reserve_octava_call,
 )
@@ -695,6 +696,11 @@ def _reexport_existing_camera_qa(workspace: str) -> dict[str, Any]:
     return {"status": "failed", "reason": "camera_reviews_already_exported"}
 
 
+def _run_blender_spring_preview(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Run the fixed five-second preview from the locally pinned Spring donor."""
+    return render_spring_preview(arguments["project_name"])
+
+
 def _run_blender_forest_preview(arguments: dict[str, Any]) -> dict[str, Any]:
     """Run the single allowlisted Blender task using local-only configuration."""
     # The Studio launcher configures LOCAL_AGENT_WORKSPACE, but the GitHub
@@ -993,7 +999,7 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
         })
         return
     handler = SUPPORTED_HANDLERS.get(task.operation)
-    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"}:
+    if handler is None and task.operation not in {"apply_patch", "blender_forest_preview", "blender_spring_preview", "save_story_plan", "compile_story_plan", "scan_project_assets", "blender_knowledge_search", "blender_preflight", "blender_mia_blockout", "blender_open_mia_project", "blender_inspect_mia_project", "blender_mia_skeleton", "octava_advice"}:
         _publish_result_durable(client, task.task_id, {
             "task_id": task.task_id,
             "status": "unsupported",
@@ -1074,6 +1080,8 @@ def _run_one(client: GitHubQueueClient, task: Any, expected_manifest_sha: str | 
                 return
             if task.operation == "apply_patch":
                 details = _apply_patch(task.arguments["patch"], task.task_id)
+            elif task.operation == "blender_spring_preview":
+                details = _run_blender_spring_preview(task.arguments)
             elif task.operation == "blender_forest_preview":
                 details = _run_blender_forest_preview(task.arguments)
             elif task.operation == "save_story_plan":
