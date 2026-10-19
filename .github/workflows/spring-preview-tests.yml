@@ -1,0 +1,26 @@
+name: Spring preview agent checks
+
+on:
+  push:
+    branches:
+      - feature/blender-spring-preview-20261019
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-agent-tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install local agent test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-github-mailbox.txt
+      - name: Compile local agent
+        run: python -m compileall -q local_agent
+      - name: Run mailbox and Blender agent security tests
+        run: python -m local_agent.test_scope security
