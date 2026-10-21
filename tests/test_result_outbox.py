@@ -73,3 +73,52 @@ def test_pending_task_ids_includes_malformed_entries_for_recovery(tmp_path):
     (tmp_path / "task-005.json").write_text("{broken", encoding="utf-8")
 
     assert outbox.pending_task_ids() == {"task-005"}
+
+
+def test_oversized_task_result_publishes_explicit_summary_without_raw_payload(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    outbox = ResultOutbox(tmp_path)
+    monkeypatch.setattr(poller, "_result_outbox", lambda: outbox)
+    client = FakeClient()
+    raw = "private_reference_data_" * 5000
+    payload = {
+        "task_id": "huge-review",
+        "status": "blocked",
+        "local_report_path": r"C:\AI-Agent-Workspace\reports\huge.json",
+        "details": {"raw_render": raw},
+    }
+    assert poller._publish_result_durable(client, "huge-review", payload) == "fake-commit-sha"
+    assert len(client.published) == 1
+    task_id, published = client.published[0]
+    assert task_id == "huge-review"
+    assert published["status"] == "blocked"
+    assert published["mailbox_delivery"] == "summary_only"
+    assert published["details_omitted"] is True
+    assert published["reason"] == "result_exceeds_mailbox_limit"
+    assert published["local_report_path"] == payload["local_report_path"]
+    assert raw not in json.dumps(published)
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_oversized_task_summary_remains_durable_during_network_failure(tmp_path, monkeypatch):
+    from local_agent import poller
+
+    outbox = ResultOutbox(tmp_path)
+    monkeypatch.setattr(poller, "_result_outbox", lambda: outbox)
+    payload = {
+        "status": "completed",
+        "local_report_path": "report.json",
+        "details": {"large": "X" * 70000},
+    }
+    with pytest.raises(QueueTransportError):
+        poller._publish_result_durable(FakeClient(fail=True), "huge-offline", payload)
+
+    pending = tmp_path / "huge-offline.json"
+    assert pending.is_file()
+    assert pending.stat().st_size < 64000
+    online = FakeClient()
+    assert outbox.flush(online) == {"published": 1, "deferred": 0, "invalid": 0}
+    assert online.published[0][1]["mailbox_delivery"] == "summary_only"
+    assert online.published[0][1]["status"] == "completed"
+    assert not pending.exists()

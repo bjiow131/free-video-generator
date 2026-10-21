@@ -19,7 +19,7 @@ from typing import Any
 
 from local_agent.cli import doctor, preflight, run_tests, status, tail_logs
 from local_agent.github_queue import GitHubQueueClient, QueueConfig, QueueTransportError
-from local_agent.result_outbox import ResultOutbox
+from local_agent.result_outbox import ResultOutbox, ResultOutboxError
 from local_agent.reporting import _redact_value, write_report
 from local_agent.error_knowledge import diagnose_error
 from local_agent.notifications import notify_user
@@ -53,8 +53,29 @@ def _result_outbox() -> ResultOutbox:
 
 
 def _publish_result_durable(client: GitHubQueueClient, task_id: str, result: dict[str, Any]) -> str:
-    """Persist each result before publishing it; retain it if the network fails."""
-    return _result_outbox().publish(client, task_id, result)
+    """Persist first; publish an explicitly incomplete summary if the result is too large.
+
+    The complete pre-publication report has already been written locally by
+    _run_one. Never silently mark the details as delivered, change the task ID,
+    or truncate a potentially sensitive raw payload into the GitHub mailbox.
+    """
+    outbox = _result_outbox()
+    try:
+        return outbox.publish(client, task_id, result)
+    except ResultOutboxError as exc:
+        # Only recover from a known size-limit failure. Corrupt outbox entries,
+        # collisions and filesystem faults must remain visible to the supervisor.
+        if str(exc) != "Result exceeds the local outbox size limit.":
+            raise
+        summary = {
+            "task_id": task_id,
+            "status": str(result.get("status", "error"))[:48],
+            "mailbox_delivery": "summary_only",
+            "details_omitted": True,
+            "reason": "result_exceeds_mailbox_limit",
+            "local_report_path": str(result.get("local_report_path", ""))[:512],
+        }
+        return outbox.publish(client, task_id, summary)
 
 def _task_delivery_status(task_id: str, pending_task_ids: set[str]) -> str:
     """Distinguish a published result from one safely queued for later delivery."""
